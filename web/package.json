@@ -44,6 +44,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:footer-cache": "node --test tests/footer-cache-reset.test.mjs",
     "lint": "prettier . --check",
     "lint:fix": "prettier . --write",
     "eslint": "bunx eslint \"**/*.{js,jsx}\" --cache",

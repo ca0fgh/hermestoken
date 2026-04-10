@@ -36,6 +36,7 @@ import Text from '@douyinfe/semi-ui/lib/es/typography/text';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
+const LOGO_UPLOAD_FIELD = 'logo';
 
 const OtherSetting = () => {
   const { t } = useTranslation();
@@ -56,6 +57,7 @@ const OtherSetting = () => {
     tag_name: '',
     content: '',
   });
+  const logoUploadInputRef = useRef(null);
 
   const updateOption = async (key, value) => {
     setLoading(true);
@@ -70,6 +72,19 @@ const OtherSetting = () => {
       showError(message);
     }
     setLoading(false);
+    return success;
+  };
+
+  const applyLogoState = (logoValue) => {
+    localStorage.setItem('logo', logoValue);
+    setInputs((currentInputs) => ({ ...currentInputs, Logo: logoValue }));
+    statusDispatch({
+      type: 'set',
+      payload: {
+        ...(statusState?.status || {}),
+        logo: logoValue,
+      },
+    });
   };
 
   const [loadingInput, setLoadingInput] = useState({
@@ -78,6 +93,7 @@ const OtherSetting = () => {
     [LEGAL_PRIVACY_POLICY_KEY]: false,
     SystemName: false,
     Logo: false,
+    LogoUpload: false,
     HomePageContent: false,
     About: false,
     Footer: false,
@@ -173,13 +189,57 @@ const OtherSetting = () => {
   const submitLogo = async () => {
     try {
       setLoadingInput((loadingInput) => ({ ...loadingInput, Logo: true }));
-      await updateOption('Logo', inputs.Logo);
+      const success = await updateOption('Logo', inputs.Logo);
+      if (!success) {
+        return;
+      }
+      applyLogoState(inputs.Logo);
       showSuccess('Logo 已更新');
     } catch (error) {
       console.error('Logo 更新失败', error);
       showError('Logo 更新失败');
     } finally {
       setLoadingInput((loadingInput) => ({ ...loadingInput, Logo: false }));
+    }
+  };
+
+  const triggerLogoUpload = () => {
+    logoUploadInputRef.current?.click();
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      setLoadingInput((loadingInput) => ({ ...loadingInput, LogoUpload: true }));
+      const formData = new FormData();
+      formData.append(LOGO_UPLOAD_FIELD, file);
+      const res = await API.post('/api/option/logo', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message);
+        return;
+      }
+      if (data?.url) {
+        applyLogoState(data.url);
+      }
+      showSuccess(t('Logo 上传成功'));
+    } catch (error) {
+      console.error('Logo 上传失败', error);
+      showError(t('Logo 上传失败'));
+    } finally {
+      setLoadingInput((loadingInput) => ({
+        ...loadingInput,
+        LogoUpload: false,
+      }));
+      e.target.value = '';
     }
   };
   // 个性化设置 - 首页内容
@@ -441,9 +501,29 @@ const OtherSetting = () => {
                 field={'Logo'}
                 onChange={handleInputChange}
               />
-              <Button onClick={submitLogo} loading={loadingInput['Logo']}>
-                {t('设置 Logo')}
-              </Button>
+              <input
+                ref={logoUploadInputRef}
+                type='file'
+                accept='image/png,image/jpeg,image/gif,image/webp'
+                style={{ display: 'none' }}
+                onChange={handleLogoUpload}
+              />
+              <Space>
+                <Button onClick={submitLogo} loading={loadingInput['Logo']}>
+                  {t('设置 Logo')}
+                </Button>
+                <Button
+                  onClick={triggerLogoUpload}
+                  loading={loadingInput['LogoUpload']}
+                >
+                  {t('上传 Logo')}
+                </Button>
+              </Space>
+              <Text type='tertiary'>
+                {t(
+                  '上传会覆盖当前已上传的 Logo 文件，支持 PNG、JPEG、GIF、WebP，最大 5 MB',
+                )}
+              </Text>
               <Form.TextArea
                 label={t('首页内容')}
                 placeholder={t(
