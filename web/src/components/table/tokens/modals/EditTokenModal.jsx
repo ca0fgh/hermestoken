@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useState, useContext, useRef } from 'react';
 import {
   API,
+  processGroupsData,
   showError,
   showSuccess,
   timestamp2string,
@@ -130,11 +131,7 @@ const EditTokenModal = (props) => {
     let res = await API.get(`/api/user/self/groups`);
     const { success, message, data } = res.data;
     if (success) {
-      let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
-        value: group,
-        ratio: info.ratio,
-      }));
+      let localGroupOptions = processGroupsData(data);
       if (statusState?.status?.default_use_auto_group) {
         if (localGroupOptions.some((group) => group.value === 'auto')) {
           localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
@@ -366,14 +363,7 @@ const EditTokenModal = (props) => {
                         placeholder={t('令牌分组，默认为用户的分组')}
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
-                        filter={(input, option) => {
-                          const q = input.toLowerCase();
-                          return (
-                            option.value?.toLowerCase().includes(q) ||
-                            (typeof option.label === 'string' &&
-                              option.label.toLowerCase().includes(q))
-                          );
-                        }}
+                        filter={selectFilter}
                         showClear
                         style={{ width: '100%' }}
                       />

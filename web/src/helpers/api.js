@@ -23,6 +23,7 @@ import {
   formatMessageForAPI,
   isValidMessage,
 } from './utils';
+import { buildGroupOptions } from './groupOptions';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
@@ -211,13 +212,10 @@ export const processModelsData = (data, currentModel) => {
 
 // 处理分组数据
 export const processGroupsData = (data, userGroup) => {
-  let groupOptions = Object.entries(data).map(([group, info]) => ({
-    label:
-      info.desc.length > 20 ? info.desc.substring(0, 20) + '...' : info.desc,
-    value: group,
-    ratio: info.ratio,
-    fullLabel: info.desc,
-  }));
+  let groupOptions = buildGroupOptions(data, {
+    userGroup,
+    truncateDescAt: 20,
+  });
 
   if (groupOptions.length === 0) {
     groupOptions = [

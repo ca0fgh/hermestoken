@@ -602,8 +602,19 @@ export const selectFilter = (input, option) => {
   const keyword = input.trim().toLowerCase();
   const valueText = (option?.value ?? '').toString().toLowerCase();
   const labelText = (option?.label ?? '').toString().toLowerCase();
+  const descText = (option?.desc ?? '').toString().toLowerCase();
+  const fullLabelText = (option?.fullLabel ?? '').toString().toLowerCase();
+  const optionDescriptionText = (
+    option?.optionDescription ?? ''
+  ).toString().toLowerCase();
 
-  return valueText.includes(keyword) || labelText.includes(keyword);
+  return (
+    valueText.includes(keyword) ||
+    labelText.includes(keyword) ||
+    descText.includes(keyword) ||
+    fullLabelText.includes(keyword) ||
+    optionDescriptionText.includes(keyword)
+  );
 };
 
 // -------------------------------
