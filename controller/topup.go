@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
+	"net/http"
 	"net/url"
 	"strconv"
 	"sync"
@@ -82,20 +85,20 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
 		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
 		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
-		"enable_waffo_topup": enableWaffo,
+		"enable_waffo_topup":  enableWaffo,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products": setting.CreemProducts,
-		"pay_methods":         payMethods,
-		"min_topup":           operation_setting.MinTopUp,
-		"stripe_min_topup":    setting.StripeMinTopUp,
-		"waffo_min_topup":     setting.WaffoMinTopUp,
-		"amount_options":      operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":            operation_setting.GetPaymentSetting().AmountDiscount,
+		"creem_products":   setting.CreemProducts,
+		"pay_methods":      payMethods,
+		"min_topup":        operation_setting.MinTopUp,
+		"stripe_min_topup": setting.StripeMinTopUp,
+		"waffo_min_topup":  setting.WaffoMinTopUp,
+		"amount_options":   operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":         operation_setting.GetPaymentSetting().AmountDiscount,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -193,7 +196,7 @@ func RequestEpay(c *gin.Context) {
 	}
 
 	callBackAddress := service.GetCallbackAddress()
-	returnUrl, _ := url.Parse(system_setting.ServerAddress + "/console/log")
+	returnUrl, _ := url.Parse(callBackAddress + "/api/user/epay/return")
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
@@ -281,25 +284,11 @@ func UnlockOrder(tradeNo string) {
 }
 
 func EpayNotify(c *gin.Context) {
-	var params map[string]string
-
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
-		if err := c.Request.ParseForm(); err != nil {
-			log.Println("易支付回调POST解析失败:", err)
-			_, _ = c.Writer.Write([]byte("fail"))
-			return
-		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
-	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
+	params, err := parseEpayParams(c)
+	if err != nil {
+		log.Println("易支付回调参数解析失败:", err)
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
 	}
 
 	if len(params) == 0 {
@@ -335,34 +324,132 @@ func EpayNotify(c *gin.Context) {
 		log.Println(verifyInfo)
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		topUp := model.GetTopUpByTradeNo(verifyInfo.ServiceTradeNo)
-		if topUp == nil {
-			log.Printf("易支付回调未找到订单: %v", verifyInfo)
+		if err := completeEpayTopUp(verifyInfo.ServiceTradeNo); err != nil {
+			log.Printf("易支付回调处理订单失败: %v", err)
 			return
-		}
-		if topUp.Status == "pending" {
-			topUp.Status = "success"
-			err := topUp.Update()
-			if err != nil {
-				log.Printf("易支付回调更新订单失败: %v", topUp)
-				return
-			}
-			//user, _ := model.GetUserById(topUp.UserId, false)
-			//user.Quota += topUp.Amount * 500000
-			dAmount := decimal.NewFromInt(int64(topUp.Amount))
-			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
-			err = model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true)
-			if err != nil {
-				log.Printf("易支付回调更新用户失败: %v", topUp)
-				return
-			}
-			log.Printf("易支付回调更新用户成功 %v", topUp)
-			model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
 		}
 	} else {
 		log.Printf("易支付异常回调: %v", verifyInfo)
 	}
+}
+
+func EpayReturn(c *gin.Context) {
+	target := topUpResultURL("fail")
+
+	params, err := parseEpayParams(c)
+	if err != nil || len(params) == 0 {
+		renderBrowserRedirect(c, target)
+		return
+	}
+
+	client := GetEpayClient()
+	if client == nil {
+		renderBrowserRedirect(c, target)
+		return
+	}
+
+	verifyInfo, err := client.Verify(params)
+	if err != nil || !verifyInfo.VerifyStatus {
+		renderBrowserRedirect(c, target)
+		return
+	}
+
+	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
+		LockOrder(verifyInfo.ServiceTradeNo)
+		defer UnlockOrder(verifyInfo.ServiceTradeNo)
+		if err := completeEpayTopUp(verifyInfo.ServiceTradeNo); err != nil {
+			renderBrowserRedirect(c, target)
+			return
+		}
+		renderBrowserRedirect(c, topUpResultURL("success"))
+		return
+	}
+
+	renderBrowserRedirect(c, topUpResultURL("pending"))
+}
+
+func parseEpayParams(c *gin.Context) (map[string]string, error) {
+	if c.Request.Method == http.MethodPost {
+		if err := c.Request.ParseForm(); err != nil {
+			return nil, err
+		}
+		return lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
+			r[t] = c.Request.PostForm.Get(t)
+			return r
+		}, map[string]string{}), nil
+	}
+
+	return lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
+		r[t] = c.Request.URL.Query().Get(t)
+		return r
+	}, map[string]string{}), nil
+}
+
+func completeEpayTopUp(tradeNo string) error {
+	topUp := model.GetTopUpByTradeNo(tradeNo)
+	if topUp == nil {
+		return fmt.Errorf("未找到订单: %s", tradeNo)
+	}
+	if topUp.Status == common.TopUpStatusSuccess {
+		return nil
+	}
+	if topUp.Status != common.TopUpStatusPending && topUp.Status != "pending" {
+		return fmt.Errorf("订单状态异常: %s", topUp.Status)
+	}
+
+	topUp.CompleteTime = common.GetTimestamp()
+	topUp.Status = common.TopUpStatusSuccess
+	if err := topUp.Update(); err != nil {
+		return err
+	}
+
+	dAmount := decimal.NewFromInt(int64(topUp.Amount))
+	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
+	if err := model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true); err != nil {
+		return err
+	}
+
+	log.Printf("易支付回调更新用户成功 %v", topUp)
+	model.RecordLog(topUp.UserId, model.LogTypeTopup, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money))
+	return nil
+}
+
+func topUpResultURL(status string) string {
+	switch status {
+	case "success":
+		return system_setting.ServerAddress + "/console/topup?pay=success&show_history=true"
+	case "pending":
+		return system_setting.ServerAddress + "/console/topup?pay=pending&show_history=true"
+	default:
+		return system_setting.ServerAddress + "/console/topup?pay=fail"
+	}
+}
+
+func renderBrowserRedirect(c *gin.Context, target string) {
+	jsTarget, err := json.Marshal(target)
+	if err != nil {
+		c.Redirect(http.StatusFound, target)
+		return
+	}
+	escapedTarget := template.HTMLEscapeString(target)
+	html := fmt.Sprintf(`<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>支付结果跳转中</title>
+  <meta http-equiv="refresh" content="0;url=%s">
+</head>
+<body>
+  <p>正在返回站点，请稍候...</p>
+  <p><a href="%s">如果没有自动跳转，请点这里继续</a></p>
+  <script>
+    window.location.replace(%s);
+  </script>
+</body>
+</html>`, escapedTarget, escapedTarget, string(jsTarget))
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 }
 
 func RequestAmount(c *gin.Context) {
@@ -463,4 +550,3 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
-

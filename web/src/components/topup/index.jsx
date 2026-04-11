@@ -237,12 +237,6 @@ const TopUp = () => {
             let form = document.createElement('form');
             form.action = url;
             form.method = 'POST';
-            let isSafari =
-              navigator.userAgent.indexOf('Safari') > -1 &&
-              navigator.userAgent.indexOf('Chrome') < 1;
-            if (!isSafari) {
-              form.target = '_blank';
-            }
             for (let key in params) {
               let input = document.createElement('input');
               input.type = 'hidden';
@@ -572,12 +566,30 @@ const TopUp = () => {
 
   // URL 参数自动打开账单弹窗（支付回跳时触发）
   useEffect(() => {
+    const payStatus = searchParams.get('pay');
+    if (!payStatus) {
+      return;
+    }
+
+    if (payStatus === 'success') {
+      showSuccess(t('支付成功，充值记录已更新'));
+    } else if (payStatus === 'pending') {
+      showInfo(t('支付结果确认中，请稍后刷新账单记录'));
+    } else {
+      showError(t('支付未完成或返回校验失败'));
+    }
+
+    searchParams.delete('pay');
+    setSearchParams(searchParams, { replace: true });
+  }, [searchParams, setSearchParams, t]);
+
+  useEffect(() => {
     if (searchParams.get('show_history') === 'true') {
       setOpenHistory(true);
       searchParams.delete('show_history');
       setSearchParams(searchParams, { replace: true });
     }
-  }, []);
+  }, [searchParams, setSearchParams]);
 
   useEffect(() => {
     // 始终获取最新用户数据，确保余额等统计信息准确

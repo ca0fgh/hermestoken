@@ -53,10 +53,6 @@ function submitEpayForm({ url, params }) {
   const form = document.createElement('form');
   form.action = url;
   form.method = 'POST';
-  const isSafari =
-    navigator.userAgent.indexOf('Safari') > -1 &&
-    navigator.userAgent.indexOf('Chrome') < 1;
-  if (!isSafari) form.target = '_blank';
   Object.keys(params || {}).forEach((key) => {
     const input = document.createElement('input');
     input.type = 'hidden';
