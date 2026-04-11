@@ -29,3 +29,5 @@ data/
 .gomodcache/
 .gocache-temp
 .gopath
+scripts/__pycache__/
+scripts/.pytest_cache/

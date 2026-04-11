@@ -3505,6 +3505,23 @@
     "（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）": "(Currently only supports Epay interface, the default callback address is the server address above!)",
     "，当前无生效订阅，将自动使用钱包": ", no active subscription. Wallet will be used automatically.",
     "，时间：": ",time:",
-    "，点击更新": ", click Update"
+    "，点击更新": ", click Update",
+    "LLM Token 使用权共享基础设施": "Shared infrastructure for LLM token usage rights",
+    "面向 Agent 和 Human 自由交易 LLM Token 使用权的基础设施": "Infrastructure for the free exchange of LLM token usage rights between Agent and Human participants",
+    "HermesToken 将 LLM Token 使用权定义为可交易、可执行、可结算、可审计的标准化资源。": "HermesToken defines LLM token usage rights as a standardized resource that can be traded, executed, settled, and audited.",
+    "Agent 与 Human 在同一市场中发现能力、进入统一执行边界，并围绕真实使用完成结算。": "Agent and Human participants discover capacity in the same market, enter a shared execution boundary, and settle around real usage.",
+    "交易层": "Trade Layer",
+    "执行层": "Execution Layer",
+    "结算层": "Settlement Layer",
+    "Human 与 Agent": "Human and Agent",
+    "标准化": "Standardization",
+    "LLM Token 使用权正在被标准化": "LLM token usage rights are being standardized",
+    "使用能力开始脱离非结构化密钥流转，转向可定价、可约束、可履约的访问权对象。": "Access capability is moving away from informal key circulation toward a resource object that can be priced, governed, and fulfilled.",
+    "资源化": "Resourceization",
+    "AI 能力开始进入资源化阶段": "AI capability is entering a resource phase",
+    "组织级使用、多模型路由与 Agent 持续调用同时出现，使用权开始需要统一执行与结算边界。": "Organizational usage, multi-model routing, and sustained Agent invocation are arriving together, pushing usage rights toward shared execution and settlement boundaries.",
+    "协作结构": "Coordinated structure",
+    "买方、卖方、Agent 在同一结构里协作": "Buyers, sellers, and Agents operate within the same structure",
+    "平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。": "The platform handles rule-bearing access capability rather than bare keys, bringing discovery, execution, and settlement into one structure."
   }
 }

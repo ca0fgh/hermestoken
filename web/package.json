@@ -45,6 +45,7 @@
     "dev": "vite",
     "build": "vite build",
     "test:footer-cache": "node --test tests/footer-cache-reset.test.mjs",
+    "test:homepage-narrative": "node --test tests/homepage-narrative.test.mjs",
     "lint": "prettier . --check",
     "lint:fix": "prettier . --write",
     "eslint": "bunx eslint \"**/*.{js,jsx}\" --cache",

@@ -17,103 +17,107 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useState } from 'react';
-import {
-  Button,
-  Typography,
-  Input,
-  ScrollList,
-  ScrollItem,
-} from '@douyinfe/semi-ui';
-import { API, showError, copy, showSuccess } from '../../helpers';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { API, showError } from '../../helpers';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
-import { API_ENDPOINTS } from '../../constants/common.constant';
-import { StatusContext } from '../../context/Status';
 import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
-import {
-  IconGithubLogo,
-  IconPlay,
-  IconFile,
-  IconCopy,
-} from '@douyinfe/semi-icons';
-import { Link } from 'react-router-dom';
 import NoticeModal from '../../components/layout/NoticeModal';
-import {
-  Moonshot,
-  OpenAI,
-  XAI,
-  Zhipu,
-  Volcengine,
-  Cohere,
-  Claude,
-  Gemini,
-  Suno,
-  Minimax,
-  Wenxin,
-  Spark,
-  Qingyan,
-  DeepSeek,
-  Qwen,
-  Midjourney,
-  Grok,
-  AzureAI,
-  Hunyuan,
-  Xinference,
-} from '@lobehub/icons';
-
-const { Text } = Typography;
 
 const Home = () => {
   const { t, i18n } = useTranslation();
-  const [statusState] = useContext(StatusContext);
   const actualTheme = useActualTheme();
   const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
-  const [homePageContent, setHomePageContent] = useState('');
+  const [homePageContent, setHomePageContent] = useState(() => {
+    try {
+      return localStorage.getItem('home_page_content') || '';
+    } catch {
+      return '';
+    }
+  });
   const [noticeVisible, setNoticeVisible] = useState(false);
+  const homepageIframeRef = useRef(null);
   const isMobile = useIsMobile();
-  const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
-  const docsLink = statusState?.status?.docs_link || '';
-  const serverAddress =
-    statusState?.status?.server_address || `${window.location.origin}`;
-  const endpointItems = API_ENDPOINTS.map((e) => ({ value: e }));
-  const [endpointIndex, setEndpointIndex] = useState(0);
-  const isChinese = i18n.language.startsWith('zh');
+  const homeNarrativeTags = [
+    t('交易层'),
+    t('执行层'),
+    t('结算层'),
+    t('Human 与 Agent'),
+  ];
+  const homeNarrativeCards = [
+    {
+      eyebrow: t('标准化'),
+      title: t('LLM Token 使用权正在被标准化'),
+      body: t(
+        '使用能力开始脱离非结构化密钥流转，转向可定价、可约束、可履约的访问权对象。',
+      ),
+    },
+    {
+      eyebrow: t('资源化'),
+      title: t('AI 能力开始进入资源化阶段'),
+      body: t(
+        '组织级使用、多模型路由与 Agent 持续调用同时出现，使用权开始需要统一执行与结算边界。',
+      ),
+    },
+    {
+      eyebrow: t('协作结构'),
+      title: t('买方、卖方、Agent 在同一结构里协作'),
+      body: t(
+        '平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。',
+      ),
+    },
+  ];
+
+  const syncIframeThemeAndLanguage = useCallback(() => {
+    if (!homePageContent.startsWith('https://')) {
+      return;
+    }
+    const iframe = homepageIframeRef.current;
+    if (!iframe?.contentWindow) {
+      return;
+    }
+    iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
+    iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
+  }, [actualTheme, homePageContent, i18n.language]);
 
   const displayHomePageContent = async () => {
-    setHomePageContent(localStorage.getItem('home_page_content') || '');
-    const res = await API.get('/api/home_page_content');
-    const { success, message, data } = res.data;
-    if (success) {
-      let content = data;
-      if (!data.startsWith('https://')) {
-        content = marked.parse(data);
-      }
-      setHomePageContent(content);
-      localStorage.setItem('home_page_content', content);
-
-      // 如果内容是 URL，则发送主题模式
-      if (data.startsWith('https://')) {
-        const iframe = document.querySelector('iframe');
-        if (iframe) {
-          iframe.onload = () => {
-            iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
-            iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
-          };
+    let cachedHomePageContent = '';
+    try {
+      cachedHomePageContent = localStorage.getItem('home_page_content') || '';
+    } catch {
+      cachedHomePageContent = '';
+    }
+    try {
+      const res = await API.get('/api/home_page_content');
+      const { success, message, data } = res.data;
+      if (success) {
+        let content = data;
+        if (!data.startsWith('https://')) {
+          content = marked.parse(data);
+        }
+        setHomePageContent(content);
+        try {
+          localStorage.setItem('home_page_content', content);
+        } catch {
+          // Ignore storage write failures and keep the in-memory homepage state.
+        }
+      } else {
+        showError(message);
+        setHomePageContent('');
+        try {
+          localStorage.removeItem('home_page_content');
+        } catch {
+          // Ignore storage removal failures and continue with the default homepage.
         }
       }
-    } else {
-      showError(message);
-      setHomePageContent('加载首页内容失败...');
-    }
-    setHomePageContentLoaded(true);
-  };
-
-  const handleCopyBaseURL = async () => {
-    const ok = await copy(serverAddress);
-    if (ok) {
-      showSuccess(t('已复制到剪切板'));
+    } catch (error) {
+      showError(error?.message || '加载首页内容失败');
+      if (!cachedHomePageContent) {
+        setHomePageContent('');
+      }
+    } finally {
+      setHomePageContentLoaded(true);
     }
   };
 
@@ -138,15 +142,12 @@ const Home = () => {
   }, []);
 
   useEffect(() => {
-    displayHomePageContent().then();
+    void displayHomePageContent();
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setEndpointIndex((prev) => (prev + 1) % endpointItems.length);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [endpointItems.length]);
+    syncIframeThemeAndLanguage();
+  }, [syncIframeThemeAndLanguage]);
 
   return (
     <div className='w-full overflow-x-hidden'>
@@ -155,190 +156,13 @@ const Home = () => {
         onClose={() => setNoticeVisible(false)}
         isMobile={isMobile}
       />
-      {homePageContentLoaded && homePageContent === '' ? (
-        <div className='w-full overflow-x-hidden'>
-          {/* Banner 部分 */}
-          <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
-            {/* 背景模糊晕染球 */}
-            <div className='blur-ball blur-ball-indigo' />
-            <div className='blur-ball blur-ball-teal' />
-            <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
-              {/* 居中内容区 */}
-              <div className='flex flex-col items-center justify-center text-center max-w-4xl mx-auto'>
-                <div className='flex flex-col items-center justify-center mb-6 md:mb-8'>
-                  <h1
-                    className={`text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-semi-color-text-0 leading-tight ${isChinese ? 'tracking-wide md:tracking-wider' : ''}`}
-                  >
-                    <>
-                      {t('统一的')}
-                      <br />
-                      <span className='shine-text'>{t('大模型接口网关')}</span>
-                    </>
-                  </h1>
-                  <p className='text-base md:text-lg lg:text-xl text-semi-color-text-1 mt-4 md:mt-6 max-w-xl'>
-                    {t('更好的价格，更好的稳定性，只需要将模型基址替换为：')}
-                  </p>
-                  {/* BASE URL 与端点选择 */}
-                  <div className='flex flex-col md:flex-row items-center justify-center gap-4 w-full mt-4 md:mt-6 max-w-md'>
-                    <Input
-                      readonly
-                      value={serverAddress}
-                      className='flex-1 !rounded-full'
-                      size={isMobile ? 'default' : 'large'}
-                      suffix={
-                        <div className='flex items-center gap-2'>
-                          <ScrollList
-                            bodyHeight={32}
-                            style={{ border: 'unset', boxShadow: 'unset' }}
-                          >
-                            <ScrollItem
-                              mode='wheel'
-                              cycled={true}
-                              list={endpointItems}
-                              selectedIndex={endpointIndex}
-                              onSelect={({ index }) => setEndpointIndex(index)}
-                            />
-                          </ScrollList>
-                          <Button
-                            type='primary'
-                            onClick={handleCopyBaseURL}
-                            icon={<IconCopy />}
-                            className='!rounded-full'
-                          />
-                        </div>
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* 操作按钮 */}
-                <div className='flex flex-row gap-4 justify-center items-center'>
-                  <Link to='/console'>
-                    <Button
-                      theme='solid'
-                      type='primary'
-                      size={isMobile ? 'default' : 'large'}
-                      className='!rounded-3xl px-8 py-2'
-                      icon={<IconPlay />}
-                    >
-                      {t('获取密钥')}
-                    </Button>
-                  </Link>
-                  {isDemoSiteMode && statusState?.status?.version ? (
-                    <Button
-                      size={isMobile ? 'default' : 'large'}
-                      className='flex items-center !rounded-3xl px-6 py-2'
-                      icon={<IconGithubLogo />}
-                      onClick={() =>
-                        window.open(
-                          'https://github.com/QuantumNous/new-api',
-                          '_blank',
-                        )
-                      }
-                    >
-                      {statusState.status.version}
-                    </Button>
-                  ) : (
-                    docsLink && (
-                      <Button
-                        size={isMobile ? 'default' : 'large'}
-                        className='flex items-center !rounded-3xl px-6 py-2'
-                        icon={<IconFile />}
-                        onClick={() => window.open(docsLink, '_blank')}
-                      >
-                        {t('文档')}
-                      </Button>
-                    )
-                  )}
-                </div>
-
-                {/* 框架兼容性图标 */}
-                <div className='mt-12 md:mt-16 lg:mt-20 w-full'>
-                  <div className='flex items-center mb-6 md:mb-8 justify-center'>
-                    <Text
-                      type='tertiary'
-                      className='text-lg md:text-xl lg:text-2xl font-light'
-                    >
-                      {t('支持众多的大模型供应商')}
-                    </Text>
-                  </div>
-                  <div className='flex flex-wrap items-center justify-center gap-3 sm:gap-4 md:gap-6 lg:gap-8 max-w-5xl mx-auto px-4'>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Moonshot size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <OpenAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <XAI size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Zhipu.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Volcengine.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Cohere.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Claude.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Gemini.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Suno size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Minimax.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Wenxin.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Spark.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qingyan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <DeepSeek.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Qwen.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Midjourney size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Grok size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <AzureAI.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Hunyuan.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Xinference.Color size={40} />
-                    </div>
-                    <div className='w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center'>
-                      <Typography.Text className='!text-lg sm:!text-xl md:!text-2xl lg:!text-3xl font-bold'>
-                        30+
-                      </Typography.Text>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
+      {homePageContent !== '' ? (
         <div className='overflow-x-hidden w-full'>
           {homePageContent.startsWith('https://') ? (
             <iframe
+              ref={homepageIframeRef}
               src={homePageContent}
+              onLoad={syncIframeThemeAndLanguage}
               className='w-full h-screen border-none'
             />
           ) : (
@@ -347,6 +171,77 @@ const Home = () => {
               dangerouslySetInnerHTML={{ __html: homePageContent }}
             />
           )}
+        </div>
+      ) : !homePageContentLoaded ? (
+        <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
+          <div className='blur-ball blur-ball-indigo' />
+          <div className='blur-ball blur-ball-teal' />
+          <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
+            <p className='text-base md:text-lg text-semi-color-text-2'>
+              {t('加载中...')}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
+          <div className='blur-ball blur-ball-indigo' />
+          <div className='blur-ball blur-ball-teal' />
+          <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
+            <div className='w-full max-w-5xl mx-auto'>
+              <section className='text-center'>
+                <p className='text-sm md:text-base text-semi-color-text-2 mb-4'>
+                  {t('LLM Token 使用权共享基础设施')}
+                </p>
+                <h1 className='text-3xl md:text-5xl lg:text-6xl font-bold text-semi-color-text-0 leading-tight'>
+                  {t('面向 Agent 和 Human 自由交易 LLM Token 使用权的基础设施')}
+                </h1>
+                <div className='mt-6 space-y-3 max-w-3xl mx-auto'>
+                  <p className='text-base md:text-lg text-semi-color-text-1'>
+                    {t(
+                      'HermesToken 将 LLM Token 使用权定义为可交易、可执行、可结算、可审计的标准化资源。',
+                    )}
+                  </p>
+                  <p className='text-base md:text-lg text-semi-color-text-1'>
+                    {t(
+                      'Agent 与 Human 在同一市场中发现能力、进入统一执行边界，并围绕真实使用完成结算。',
+                    )}
+                  </p>
+                </div>
+              </section>
+
+              <section className='mt-8 md:mt-10'>
+                <div className='flex flex-wrap justify-center gap-2 md:gap-3'>
+                  {homeNarrativeTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className='px-3 py-1.5 rounded-full border border-semi-color-border text-sm text-semi-color-text-1 bg-semi-color-fill-0'
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              </section>
+
+              <section className='mt-10 md:mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6'>
+                {homeNarrativeCards.map((card) => (
+                  <article
+                    key={card.eyebrow}
+                    className='rounded-2xl border border-semi-color-border bg-semi-color-bg-1 p-5 md:p-6'
+                  >
+                    <p className='text-sm text-semi-color-text-2'>
+                      {card.eyebrow}
+                    </p>
+                    <h2 className='mt-2 text-lg md:text-xl font-semibold text-semi-color-text-0'>
+                      {card.title}
+                    </h2>
+                    <p className='mt-3 text-sm md:text-base text-semi-color-text-1 leading-relaxed'>
+                      {card.body}
+                    </p>
+                  </article>
+                ))}
+              </section>
+            </div>
+          </div>
         </div>
       )}
     </div>

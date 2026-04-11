@@ -4010,6 +4010,23 @@
     "（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）": "(Hiện tại chỉ hỗ trợ giao diện Epay, địa chỉ máy chủ phía trên được sử dụng làm địa chỉ gọi lại theo mặc định!)",
     "，当前无生效订阅，将自动使用钱包": ", hiện không có gói đăng ký hiệu lực, sẽ tự động dùng ví.",
     "，时间：": ", thời gian:",
-    "，点击更新": ", nhấn để cập nhật"
+    "，点击更新": ", nhấn để cập nhật",
+    "LLM Token 使用权共享基础设施": "Hạ tầng chia sẻ cho quyền sử dụng token LLM",
+    "面向 Agent 和 Human 自由交易 LLM Token 使用权的基础设施": "Hạ tầng cho giao dịch tự do quyền sử dụng token LLM giữa Agent và Human",
+    "HermesToken 将 LLM Token 使用权定义为可交易、可执行、可结算、可审计的标准化资源。": "HermesToken định nghĩa quyền sử dụng token LLM như một tài nguyên chuẩn hóa có thể được giao dịch, thực thi, quyết toán và kiểm toán.",
+    "Agent 与 Human 在同一市场中发现能力、进入统一执行边界，并围绕真实使用完成结算。": "Agent và Human khám phá năng lực trong cùng một thị trường, đi vào cùng một ranh giới thực thi và quyết toán theo mức sử dụng thực tế.",
+    "交易层": "Lớp giao dịch",
+    "执行层": "Lớp thực thi",
+    "结算层": "Lớp quyết toán",
+    "Human 与 Agent": "Human và Agent",
+    "标准化": "Chuẩn hóa",
+    "LLM Token 使用权正在被标准化": "Quyền sử dụng token LLM đang được chuẩn hóa",
+    "使用能力开始脱离非结构化密钥流转，转向可定价、可约束、可履约的访问权对象。": "Năng lực truy cập đang rời khỏi cách lưu chuyển khóa phi cấu trúc để trở thành một đối tượng quyền truy cập có thể định giá, ràng buộc và thực thi.",
+    "资源化": "Tài nguyên hóa",
+    "AI 能力开始进入资源化阶段": "Năng lực AI đang bước vào giai đoạn tài nguyên hóa",
+    "组织级使用、多模型路由与 Agent 持续调用同时出现，使用权开始需要统一执行与结算边界。": "Việc sử dụng ở cấp tổ chức, định tuyến đa mô hình và các lời gọi Agent liên tục đang cùng xuất hiện, nên quyền sử dụng bắt đầu cần một ranh giới thực thi và quyết toán thống nhất.",
+    "协作结构": "Cấu trúc cộng tác",
+    "买方、卖方、Agent 在同一结构里协作": "Bên mua, bên bán và Agent phối hợp trong cùng một cấu trúc",
+    "平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。": "Nền tảng không xử lý Key thô mà xử lý năng lực truy cập có quy tắc, để việc khám phá, thực thi và quyết toán đi vào cùng một cấu trúc."
   }
 }

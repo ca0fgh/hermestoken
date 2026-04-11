@@ -1,0 +1,11 @@
+{
+  "compose_file": "docker-compose.yml",
+  "local_url": "http://localhost:3000",
+  "public_url": "https://pay-local.hermestoken.top",
+  "cloudflared_tunnel_name": "hermestoken-local",
+  "cloudflared_config_path": "~/.cloudflared/config.yml",
+  "cloudflared_tunnel_token": "",
+  "cloudflared_tunnel_token_path": "~/.cloudflared/hermestoken-local.token",
+  "healthcheck_timeout_seconds": 60,
+  "healthcheck_interval_seconds": 1
+}

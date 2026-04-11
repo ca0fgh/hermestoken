@@ -1,0 +1,197 @@
+import io
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+from unittest import mock
+
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+import launcher_common
+import local
+
+
+class LocalLauncherTests(unittest.TestCase):
+    def _config(self, compose_file="docker-compose.yml"):
+        return launcher_common.LauncherConfig(
+            compose_file=compose_file,
+            local_url="http://localhost:3000",
+            public_url="https://pay-local.hermestoken.top",
+            cloudflared_tunnel_name="hermestoken-local",
+            cloudflared_config_path="~/.cloudflared/config.yml",
+            healthcheck_timeout_seconds=30,
+            healthcheck_interval_seconds=1,
+        )
+
+    @mock.patch("local.poll_http_until_healthy")
+    @mock.patch("local.run_command")
+    @mock.patch("local.require_docker_and_compose")
+    @mock.patch("local.load_launcher_config")
+    def test_main_runs_local_stack_and_waits_for_health(
+        self,
+        load_config,
+        require_docker_and_compose,
+        run_command,
+        poll_http_until_healthy,
+    ):
+        repo_root = Path(__file__).resolve().parents[2]
+        config = self._config()
+        load_config.return_value = config
+
+        stdout = io.StringIO()
+        with mock.patch("sys.stdout", stdout):
+            exit_code = local.main()
+
+        self.assertEqual(exit_code, 0)
+        require_docker_and_compose.assert_called_once_with()
+        run_command.assert_called_once_with(
+            ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d"],
+            check=True,
+            stream_output=True,
+            cwd=repo_root,
+            stdout_stream=stdout,
+        )
+        poll_http_until_healthy.assert_called_once_with(
+            "http://localhost:3000",
+            timeout_seconds=30,
+            interval_seconds=1,
+        )
+        self.assertIn("http://localhost:3000", stdout.getvalue())
+        self.assertIn("[ok] Docker available", stdout.getvalue())
+        self.assertIn("[ok] Containers started", stdout.getvalue())
+
+    @mock.patch("local.require_docker_and_compose", side_effect=launcher_common.LauncherError("docker missing Next step: install docker"))
+    @mock.patch("local.load_launcher_config")
+    def test_main_returns_non_zero_with_actionable_error(self, load_config, _require):
+        load_config.return_value = self._config()
+
+        stderr = io.StringIO()
+        with mock.patch("sys.stderr", stderr):
+            exit_code = local.main()
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("[error]", stderr.getvalue())
+        self.assertIn("Next step", stderr.getvalue())
+
+    @mock.patch(
+        "local.poll_http_until_healthy",
+        side_effect=launcher_common.LauncherError("Health check timed out for http://localhost:3000."),
+    )
+    @mock.patch("local.run_command")
+    @mock.patch("local.require_docker_and_compose")
+    @mock.patch("local.load_launcher_config")
+    def test_main_prints_container_status_when_local_health_check_fails(
+        self,
+        load_config,
+        require_docker_and_compose,
+        run_command,
+        _poll_http_until_healthy,
+    ):
+        repo_root = Path(__file__).resolve().parents[2]
+        load_config.return_value = self._config()
+        run_command.side_effect = [
+            mock.Mock(returncode=0, stdout="started\n"),
+            mock.Mock(returncode=0, stdout="NAME   STATE\nweb    running\n"),
+        ]
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with mock.patch("sys.stdout", stdout), mock.patch("sys.stderr", stderr):
+            exit_code = local.main()
+
+        self.assertEqual(exit_code, 1)
+        require_docker_and_compose.assert_called_once_with()
+        self.assertEqual(run_command.call_count, 2)
+        run_command.assert_has_calls(
+            [
+                mock.call(
+                    ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d"],
+                    check=True,
+                    stream_output=True,
+                    cwd=repo_root,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "ps"],
+                    check=False,
+                    stream_output=False,
+                    cwd=repo_root,
+                ),
+            ]
+        )
+        self.assertIn("[info] Recent container status", stdout.getvalue())
+        self.assertIn("web    running", stdout.getvalue())
+        self.assertIn("[error]", stderr.getvalue())
+
+    @mock.patch(
+        "local.poll_http_until_healthy",
+        side_effect=launcher_common.LauncherError("Health check timed out for http://localhost:3000."),
+    )
+    @mock.patch("local.run_command")
+    @mock.patch("local.require_docker_and_compose")
+    @mock.patch("local.load_launcher_config")
+    def test_main_surfaces_ps_stderr_when_ps_command_fails(
+        self,
+        load_config,
+        _require_docker_and_compose,
+        run_command,
+        _poll_http_until_healthy,
+    ):
+        load_config.return_value = self._config()
+        run_command.side_effect = [
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="started\n", stderr=""),
+            subprocess.CompletedProcess(args=["docker"], returncode=1, stdout="", stderr="cannot connect daemon"),
+        ]
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with mock.patch("sys.stdout", stdout), mock.patch("sys.stderr", stderr):
+            exit_code = local.main()
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("cannot connect daemon", stdout.getvalue())
+        self.assertNotIn("No container status output was returned", stdout.getvalue())
+        self.assertIn("[error]", stderr.getvalue())
+
+    @mock.patch("local.poll_http_until_healthy", side_effect=launcher_common.LauncherError("Health check timed out for http://localhost:3000."))
+    @mock.patch("local.run_command")
+    @mock.patch("local.require_docker_and_compose")
+    def test_run_local_stack_handles_empty_ps_output(self, _require_docker_and_compose, run_command, _poll_http_until_healthy):
+        run_command.side_effect = [
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="started\n", stderr=""),
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr=""),
+        ]
+        stdout = io.StringIO()
+
+        with self.assertRaises(launcher_common.LauncherError):
+            local.run_local_stack(self._config(), output=stdout)
+
+        self.assertIn("Recent container status", stdout.getvalue())
+        self.assertIn("No container status output was returned", stdout.getvalue())
+
+    @mock.patch("local.poll_http_until_healthy")
+    @mock.patch("local.run_command")
+    @mock.patch("local.require_docker_and_compose")
+    def test_run_local_stack_uses_absolute_compose_path_without_rebasing(
+        self, _require_docker_and_compose, run_command, poll_http_until_healthy
+    ):
+        absolute_compose = Path("/tmp/hermestoken-compose.yml")
+        custom_repo_root = Path("/tmp/custom-repo-root")
+        stdout = io.StringIO()
+
+        local.run_local_stack(self._config(compose_file=str(absolute_compose)), output=stdout, repo_root=custom_repo_root)
+
+        run_command.assert_called_once_with(
+            ["docker", "compose", "-f", str(absolute_compose), "up", "-d"],
+            check=True,
+            stream_output=True,
+            cwd=custom_repo_root,
+            stdout_stream=stdout,
+        )
+        poll_http_until_healthy.assert_called_once()
+
+
+if __name__ == "__main__":
+    unittest.main()
