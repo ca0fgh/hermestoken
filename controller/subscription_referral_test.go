@@ -40,6 +40,11 @@ func seedSubscriptionReferralControllerTradeNo(t *testing.T) string {
 	})
 	invitee := seedSubscriptionReferralControllerUser(t, "admin-invitee", inviter.Id, dto.UserSetting{})
 	plan := seedSubscriptionPlan(t, model.DB, "referral-admin-plan")
+	plan.UpgradeGroup = "default"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update referral admin plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
 	order := &model.SubscriptionOrder{
 		UserId:        invitee.Id,
 		PlanId:        plan.Id,
