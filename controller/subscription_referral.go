@@ -423,8 +423,14 @@ func normalizeSubscriptionReferralRequestGroup(group string) string {
 }
 
 func isValidSubscriptionReferralGroup(group string) bool {
-	_, ok := ratio_setting.GetGroupRatioCopy()[strings.TrimSpace(group)]
-	return ok
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+	if _, ok := ratio_setting.GetGroupRatioCopy()[trimmedGroup]; ok {
+		return true
+	}
+	return model.IsSubscriptionReferralPlanBackedGroup(trimmedGroup)
 }
 
 func canDeleteSubscriptionReferralOverrideGroup(userID int, group string) bool {

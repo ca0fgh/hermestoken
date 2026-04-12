@@ -180,6 +180,46 @@ func TestUpdateSubscriptionReferralSelfRejectsInviteeRateOverTotal(t *testing.T)
 	}
 }
 
+func TestUpdateSubscriptionReferralSelfAllowsPlanBackedRetiredGroup(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-update-plan-backed-group", 0, dto.UserSetting{})
+	plan := seedSubscriptionPlan(t, model.DB, "self-update-retired-group-plan")
+	plan.UpgradeGroup = "retired"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update retired group plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "retired", 2600, 1); err != nil {
+		t.Fatalf("failed to create retired group override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/user/referral/subscription",
+		UpdateSubscriptionReferralSelfRequest{Group: "retired", InviteeRateBps: 900},
+		user.Id,
+	)
+	UpdateSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected retired plan-backed group update to succeed, got message: %s", resp.Message)
+	}
+
+	updatedUser, err := model.GetUserById(user.Id, true)
+	if err != nil {
+		t.Fatalf("failed to reload updated user: %v", err)
+	}
+	if got := updatedUser.GetSetting().SubscriptionReferralInviteeRateBpsByGroup["retired"]; got != 900 {
+		t.Fatalf("retired group invitee rate = %d, want 900", got)
+	}
+}
+
 func TestAdminGetSubscriptionReferralSettingsReturnsGroupedRates(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true
@@ -370,6 +410,42 @@ func TestAdminUpsertSubscriptionReferralOverridePersistsGroupSpecificOverride(t 
 	}
 	if override.TotalRateBps != 3500 {
 		t.Fatalf("vip override TotalRateBps = %d, want 3500", override.TotalRateBps)
+	}
+}
+
+func TestAdminUpsertSubscriptionReferralOverrideAllowsPlanBackedRetiredGroup(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-retired-group", 0, dto.UserSetting{})
+	plan := seedSubscriptionPlan(t, model.DB, "override-retired-group-plan")
+	plan.UpgradeGroup = "retired"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update retired group plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/users/1",
+		map[string]any{"group": "retired", "total_rate_bps": 3100},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	AdminUpsertSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected retired plan-backed override upsert to succeed, got message: %s", resp.Message)
+	}
+
+	override, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "retired")
+	if err != nil {
+		t.Fatalf("failed to load retired override: %v", err)
+	}
+	if override.TotalRateBps != 3100 {
+		t.Fatalf("retired override TotalRateBps = %d, want 3100", override.TotalRateBps)
 	}
 }
 

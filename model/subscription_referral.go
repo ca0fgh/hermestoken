@@ -326,6 +326,20 @@ func listSubscriptionPlanUpgradeGroups() []string {
 	return groups
 }
 
+func IsSubscriptionReferralPlanBackedGroup(group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+
+	for _, configuredGroup := range listSubscriptionPlanUpgradeGroups() {
+		if configuredGroup == trimmedGroup {
+			return true
+		}
+	}
+	return false
+}
+
 func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {
 	resolvedGroup := strings.TrimSpace(group)
 	if resolvedGroup != "" {

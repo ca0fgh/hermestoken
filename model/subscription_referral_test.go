@@ -394,6 +394,19 @@ func TestListSubscriptionReferralConfiguredGroupsIncludesPlanUpgradeGroups(t *te
 	}
 }
 
+func TestIsSubscriptionReferralPlanBackedGroupRecognizesRetiredUpgradeGroup(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, plan, "retired")
+
+	if !IsSubscriptionReferralPlanBackedGroup("retired") {
+		t.Fatal("expected retired plan-backed group to be recognized")
+	}
+	if IsSubscriptionReferralPlanBackedGroup("ghost") {
+		t.Fatal("expected unknown non-plan group to be rejected")
+	}
+}
+
 func TestEnsureSubscriptionReferralOverrideSchemaReconcilesDuplicateGroupedRows(t *testing.T) {
 	db := setupSubscriptionReferralOverrideSchemaDB(t)
 
