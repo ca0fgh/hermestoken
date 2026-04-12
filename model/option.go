@@ -123,6 +123,8 @@ func InitOptionMap() {
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
+	common.OptionMap["SubscriptionReferralEnabled"] = strconv.FormatBool(common.SubscriptionReferralEnabled)
+	common.OptionMap["SubscriptionReferralGlobalRateBps"] = strconv.Itoa(NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps))
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -307,6 +309,8 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.ModelRequestRateLimitEnabled = boolValue
 		case "StopOnSensitiveEnabled":
 			setting.StopOnSensitiveEnabled = boolValue
+		case "SubscriptionReferralEnabled":
+			common.SubscriptionReferralEnabled = boolValue
 		case "SMTPSSLEnabled":
 			common.SMTPSSLEnabled = boolValue
 		case "SMTPForceAuthLogin":
@@ -445,6 +449,9 @@ func updateOptionMap(key string, value string) (err error) {
 		common.QuotaForInviter, _ = strconv.Atoi(value)
 	case "QuotaForInvitee":
 		common.QuotaForInvitee, _ = strconv.Atoi(value)
+	case "SubscriptionReferralGlobalRateBps":
+		common.SubscriptionReferralGlobalRateBps, _ = strconv.Atoi(value)
+		common.SubscriptionReferralGlobalRateBps = NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
 	case "QuotaRemindThreshold":
 		common.QuotaRemindThreshold, _ = strconv.Atoi(value)
 	case "PreConsumedQuota":
