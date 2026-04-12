@@ -293,6 +293,9 @@ func migrateDB() error {
 	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
 		return err
 	}
+	if err := ensureSubscriptionReferralRecordSchema(); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -367,6 +370,9 @@ func migrateDBFast() error {
 		}
 	}
 	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
+		return err
+	}
+	if err := ensureSubscriptionReferralRecordSchema(); err != nil {
 		return err
 	}
 	if common.UsingSQLite {
@@ -486,6 +492,22 @@ func dropSubscriptionReferralOverrideIndexes(includeTargetIndex bool) error {
 		}
 	}
 	return nil
+}
+
+func ensureSubscriptionReferralRecordSchema() error {
+	model := &SubscriptionReferralRecord{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(model, "ReferralGroup") {
+		if err := DB.Migrator().AddColumn(model, "ReferralGroup"); err != nil {
+			return err
+		}
+	}
+	if DB.Migrator().HasIndex(model, "ReferralGroup") {
+		return nil
+	}
+	return DB.Migrator().CreateIndex(model, "ReferralGroup")
 }
 
 type sqliteColumnDef struct {

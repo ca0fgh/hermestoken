@@ -28,6 +28,32 @@ func (legacySubscriptionReferralOverrideSchemaRow) TableName() string {
 	return "subscription_referral_overrides"
 }
 
+type legacySubscriptionReferralRecordSchemaRow struct {
+	Id                     int     `gorm:"primaryKey"`
+	OrderId                int     `gorm:"index;uniqueIndex:idx_sub_referral_once"`
+	OrderTradeNo           string  `gorm:"type:varchar(255);index"`
+	PlanId                 int     `gorm:"index"`
+	PayerUserId            int     `gorm:"index"`
+	InviterUserId          int     `gorm:"index"`
+	BeneficiaryUserId      int     `gorm:"index;uniqueIndex:idx_sub_referral_once"`
+	BeneficiaryRole        string  `gorm:"type:varchar(16);uniqueIndex:idx_sub_referral_once"`
+	OrderPaidAmount        float64 `gorm:"type:decimal(10,6);not null;default:0"`
+	QuotaPerUnitSnapshot   float64 `gorm:"type:decimal(18,6);not null;default:0"`
+	TotalRateBpsSnapshot   int     `gorm:"type:int;not null;default:0"`
+	InviteeRateBpsSnapshot int     `gorm:"type:int;not null;default:0"`
+	AppliedRateBps         int     `gorm:"type:int;not null;default:0"`
+	RewardQuota            int64   `gorm:"type:bigint;not null;default:0"`
+	ReversedQuota          int64   `gorm:"type:bigint;not null;default:0"`
+	DebtQuota              int64   `gorm:"type:bigint;not null;default:0"`
+	Status                 string  `gorm:"type:varchar(32);not null;default:'credited';index"`
+	CreatedAt              int64   `gorm:"bigint"`
+	UpdatedAt              int64   `gorm:"bigint;index"`
+}
+
+func (legacySubscriptionReferralRecordSchemaRow) TableName() string {
+	return "subscription_referral_records"
+}
+
 func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -55,6 +81,52 @@ func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 
 	if err := db.AutoMigrate(&legacySubscriptionReferralOverrideSchemaRow{}); err != nil {
 		t.Fatalf("failed to create legacy override table: %v", err)
+	}
+
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+		DB = originalDB
+		LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.RedisEnabled = originalRedisEnabled
+		common.BatchUpdateEnabled = originalBatchUpdateEnabled
+	})
+
+	return db
+}
+
+func setupSubscriptionReferralRecordSchemaDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	originalDB := DB
+	originalLogDB := LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalRedisEnabled := common.RedisEnabled
+	originalBatchUpdateEnabled := common.BatchUpdateEnabled
+
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	DB = db
+	LOG_DB = db
+
+	if err := db.AutoMigrate(&legacySubscriptionReferralRecordSchemaRow{}); err != nil {
+		t.Fatalf("failed to create legacy referral record table: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -398,6 +470,40 @@ func TestSubscriptionReferralOverrideMigrationStartupPathHandlesDuplicateGrouped
 	}
 	if err := db.Create(duplicate).Error; err == nil {
 		t.Fatal("expected duplicate grouped row insert to fail after migrateDB() startup path")
+	}
+}
+
+func TestSubscriptionReferralRecordSchemaMigrationPreservesLegacyRows(t *testing.T) {
+	db := setupSubscriptionReferralRecordSchemaDB(t)
+
+	insertSQL := "INSERT INTO `subscription_referral_records` (`id`, `order_id`, `order_trade_no`, `plan_id`, `payer_user_id`, `inviter_user_id`, `beneficiary_user_id`, `beneficiary_role`, `order_paid_amount`, `quota_per_unit_snapshot`, `total_rate_bps_snapshot`, `invitee_rate_bps_snapshot`, `applied_rate_bps`, `reward_quota`, `reversed_quota`, `debt_quota`, `status`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	if err := db.Exec(insertSQL, 21, 301, "legacy-trade", 41, 51, 61, 71, SubscriptionReferralBeneficiaryRoleInviter, 12.5, 100.0, 4500, 500, 4000, 400, 10, 5, SubscriptionReferralStatusPartialRevert, int64(123), int64(456)).Error; err != nil {
+		t.Fatalf("failed to seed legacy referral record row: %v", err)
+	}
+
+	if err := ensureSubscriptionReferralRecordSchema(); err != nil {
+		t.Fatalf("ensureSubscriptionReferralRecordSchema() error = %v", err)
+	}
+
+	if !db.Migrator().HasColumn(&SubscriptionReferralRecord{}, "ReferralGroup") {
+		t.Fatal("expected referral_group column to exist after schema migration")
+	}
+	if !db.Migrator().HasIndex(&SubscriptionReferralRecord{}, "ReferralGroup") {
+		t.Fatal("expected referral_group index to exist after schema migration")
+	}
+
+	var record SubscriptionReferralRecord
+	if err := db.Where("id = ?", 21).First(&record).Error; err != nil {
+		t.Fatalf("failed to load migrated referral record row: %v", err)
+	}
+	if record.OrderTradeNo != "legacy-trade" {
+		t.Fatalf("OrderTradeNo = %q, want legacy-trade", record.OrderTradeNo)
+	}
+	if record.RewardQuota != 400 || record.ReversedQuota != 10 || record.DebtQuota != 5 {
+		t.Fatalf("unexpected quota fields after migration: %+v", record)
+	}
+	if record.ReferralGroup != "" {
+		t.Fatalf("ReferralGroup = %q, want empty default", record.ReferralGroup)
 	}
 }
 
