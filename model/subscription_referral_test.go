@@ -45,7 +45,7 @@ func TestResolveSubscriptionReferralConfigPrefersOverrideAndClampsInviteeRate(t 
 		SubscriptionReferralInviteeRateBps: 7000,
 	}
 
-	cfg := ResolveSubscriptionReferralConfig(3500, setting)
+	cfg := ResolveSubscriptionReferralConfig(3500, setting.SubscriptionReferralInviteeRateBps)
 	if !cfg.Enabled {
 		t.Fatal("expected referral config to stay enabled")
 	}
@@ -59,7 +59,7 @@ func TestResolveSubscriptionReferralConfigPrefersOverrideAndClampsInviteeRate(t 
 		t.Fatalf("unexpected inviter rate: %d", cfg.InviterRateBps)
 	}
 
-	cfg = ResolveSubscriptionReferralConfig(1800, setting)
+	cfg = ResolveSubscriptionReferralConfig(1800, setting.SubscriptionReferralInviteeRateBps)
 	if cfg.InviteeRateBps != 1800 || cfg.InviterRateBps != 0 {
 		t.Fatalf("expected clamped config, got %+v", cfg)
 	}
@@ -157,5 +157,26 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesGroupedOverrideAndGroup
 	}
 	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 1800 {
 		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) after clear = %d, want 1800", got)
+	}
+}
+
+func TestDeleteSubscriptionReferralOverrideByUserIDRemovesDefaultGroupedOverride(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "delete-grouped-default-override", 0, dto.UserSetting{})
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "default", 3200, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
+
+	if err := DeleteSubscriptionReferralOverrideByUserID(user.Id); err != nil {
+		t.Fatalf("DeleteSubscriptionReferralOverrideByUserID() error = %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&SubscriptionReferralOverride{}).Where("user_id = ?", user.Id).Count(&count).Error; err != nil {
+		t.Fatalf("count override rows error = %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("override row count = %d, want 0", count)
 	}
 }

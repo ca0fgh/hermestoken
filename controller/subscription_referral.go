@@ -31,8 +31,8 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		return
 	}
 
-	totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(userID)
-	cfg := model.ResolveSubscriptionReferralConfig(totalRateBps, user.GetSetting())
+	totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(userID, "")
+	cfg := model.ResolveSubscriptionReferralConfig(totalRateBps, user.GetSetting().SubscriptionReferralInviteeRateBps)
 	common.ApiSuccess(c, gin.H{
 		"enabled":              cfg.Enabled,
 		"total_rate_bps":       cfg.TotalRateBps,
@@ -52,7 +52,7 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		return
 	}
 
-	totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(userID)
+	totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(userID, "")
 	if req.InviteeRateBps < 0 || req.InviteeRateBps > totalRateBps {
 		common.ApiErrorMsg(c, "被邀请人比例不能超过总返佣率")
 		return
@@ -71,7 +71,7 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		return
 	}
 
-	cfg := model.ResolveSubscriptionReferralConfig(totalRateBps, setting)
+	cfg := model.ResolveSubscriptionReferralConfig(totalRateBps, setting.SubscriptionReferralInviteeRateBps)
 	common.ApiSuccess(c, gin.H{
 		"invitee_rate_bps": req.InviteeRateBps,
 		"inviter_rate_bps": cfg.InviterRateBps,
@@ -129,7 +129,7 @@ func AdminGetSubscriptionReferralOverride(c *gin.Context) {
 
 	response := gin.H{
 		"user_id":                  userID,
-		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID),
+		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID, ""),
 		"has_override":             override != nil,
 		"override_rate_bps":        nil,
 	}
@@ -167,7 +167,7 @@ func AdminUpsertSubscriptionReferralOverride(c *gin.Context) {
 		"user_id":                  userID,
 		"has_override":             true,
 		"override_rate_bps":        override.TotalRateBps,
-		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID),
+		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID, ""),
 	})
 }
 
@@ -190,7 +190,7 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"user_id":                  userID,
 		"has_override":             false,
-		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID),
+		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID, ""),
 	})
 }
 
