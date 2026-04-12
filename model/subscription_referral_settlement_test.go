@@ -13,6 +13,14 @@ import (
 func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
+	originalDB := DB
+	originalLogDB := LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalRedisEnabled := common.RedisEnabled
+	originalBatchUpdateEnabled := common.BatchUpdateEnabled
+
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
@@ -45,6 +53,13 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 		if err == nil {
 			_ = sqlDB.Close()
 		}
+		DB = originalDB
+		LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.RedisEnabled = originalRedisEnabled
+		common.BatchUpdateEnabled = originalBatchUpdateEnabled
 	})
 
 	return db
