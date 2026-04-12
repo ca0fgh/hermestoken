@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"time"
@@ -35,19 +36,6 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if !plan.Enabled {
-		common.ApiErrorMsg(c, "套餐未启用")
-		return
-	}
-	if plan.CreemProductId == "" {
-		common.ApiErrorMsg(c, "该套餐未配置 CreemProductId")
-		return
-	}
 	if setting.CreemWebhookSecret == "" && !setting.CreemTestMode {
 		common.ApiErrorMsg(c, "Creem Webhook 未配置")
 		return
@@ -64,33 +52,26 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 
-	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "已达到该套餐购买上限")
-			return
-		}
-	}
-
 	reference := "sub-creem-ref-" + randstr.String(6)
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference+time.Now().String()+user.Username))
 
-	// create pending order first
-	order := &model.SubscriptionOrder{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		Money:         plan.PriceAmount,
-		TradeNo:       referenceId,
-		PaymentMethod: PaymentMethodCreem,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
-	}
-	if err := order.Insert(); err != nil {
-		c.JSON(200, gin.H{"message": "error", "data": "创建订单失败"})
+	plan, err := createPendingSubscriptionOrder(
+		userId,
+		req.PlanId,
+		referenceId,
+		PaymentMethodCreem,
+		func(plan *model.SubscriptionPlan) error {
+			if !plan.Enabled {
+				return fmt.Errorf("套餐未启用")
+			}
+			if plan.CreemProductId == "" {
+				return fmt.Errorf("该套餐未配置 CreemProductId")
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		common.ApiError(c, err)
 		return
 	}
 
@@ -114,6 +95,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 
 	checkoutUrl, err := genCreemLink(referenceId, product, user.Email, user.Username)
 	if err != nil {
+		_ = model.ExpireSubscriptionOrder(referenceId)
 		log.Printf("获取Creem支付链接失败: %v", err)
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
 		return

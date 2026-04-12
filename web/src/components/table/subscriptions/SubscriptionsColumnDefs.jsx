@@ -228,7 +228,11 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
   );
 };
 
-const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
+const renderOperations = (
+  text,
+  record,
+  { openEdit, setPlanEnabled, deletePlan, t },
+) => {
   const isEnabled = record?.plan?.enabled;
 
   const handleToggle = () => {
@@ -273,6 +277,24 @@ const renderOperations = (text, record, { openEdit, setPlanEnabled, t }) => {
           {t('启用')}
         </Button>
       )}
+      <Button
+        theme='light'
+        type='danger'
+        size='small'
+        onClick={() =>
+          Modal.confirm({
+            title: t('确认删除'),
+            content: t(
+              '仅当该套餐没有任何历史订单或用户订阅记录时才可删除，否则请改为禁用。是否继续？',
+            ),
+            centered: true,
+            okType: 'danger',
+            onOk: () => deletePlan(record),
+          })
+        }
+      >
+        {t('删除')}
+      </Button>
     </Space>
   );
 };
@@ -281,6 +303,7 @@ export const getSubscriptionsColumns = ({
   t,
   openEdit,
   setPlanEnabled,
+  deletePlan,
   enableEpay,
 }) => {
   return [
@@ -349,9 +372,14 @@ export const getSubscriptionsColumns = ({
       title: t('操作'),
       dataIndex: 'operate',
       fixed: 'right',
-      width: 160,
+      width: 220,
       render: (text, record) =>
-        renderOperations(text, record, { openEdit, setPlanEnabled, t }),
+        renderOperations(text, record, {
+          openEdit,
+          setPlanEnabled,
+          deletePlan,
+          t,
+        }),
     },
   ];
 };

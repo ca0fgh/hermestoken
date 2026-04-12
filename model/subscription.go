@@ -797,6 +797,53 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	return "", nil
 }
 
+// AdminDeleteSubscriptionPlan hard-deletes a subscription plan only when it has no historical references.
+func AdminDeleteSubscriptionPlan(planId int) (string, error) {
+	if planId <= 0 {
+		return "", errors.New("invalid planId")
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var plan SubscriptionPlan
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", planId).First(&plan).Error; err != nil {
+			return err
+		}
+
+		var orderCount int64
+		if err := tx.Model(&SubscriptionOrder{}).
+			Where("plan_id = ?", planId).
+			Count(&orderCount).Error; err != nil {
+			return err
+		}
+		if orderCount > 0 {
+			return errors.New("套餐已存在历史订单，无法删除，请改为禁用")
+		}
+
+		var subscriptionCount int64
+		if err := tx.Model(&UserSubscription{}).
+			Where("plan_id = ?", planId).
+			Count(&subscriptionCount).Error; err != nil {
+			return err
+		}
+		if subscriptionCount > 0 {
+			return errors.New("套餐已存在用户订阅记录，无法删除，请改为禁用")
+		}
+
+		if err := tx.Where("id = ?", planId).Delete(&SubscriptionPlan{}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	InvalidateSubscriptionPlanCache(planId)
+	return "", nil
+}
+
 type SubscriptionPreConsumeResult struct {
 	UserSubscriptionId int
 	PreConsumed        int64
