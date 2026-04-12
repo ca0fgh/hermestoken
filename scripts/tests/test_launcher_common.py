@@ -311,6 +311,14 @@ class LauncherCommonTests(unittest.TestCase):
 
     @mock.patch("launcher_common.urllib.request.urlopen")
     @mock.patch("launcher_common.time.monotonic")
+    def test_poll_http_until_healthy_retries_on_connection_reset(self, monotonic_mock, urlopen_mock):
+        monotonic_mock.side_effect = [0.0, 0.0, 0.1, 0.2]
+        urlopen_mock.side_effect = [ConnectionResetError("connection reset by peer"), _FakeResponse(status=200)]
+
+        launcher_common.poll_http_until_healthy("http://localhost:3000", timeout_seconds=2, interval_seconds=0)
+
+    @mock.patch("launcher_common.urllib.request.urlopen")
+    @mock.patch("launcher_common.time.monotonic")
     def test_poll_http_until_healthy_sets_user_agent_header(self, monotonic_mock, urlopen_mock):
         monotonic_mock.side_effect = [0.0, 0.0, 0.1]
         captured = {}

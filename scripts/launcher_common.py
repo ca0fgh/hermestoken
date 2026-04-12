@@ -335,6 +335,10 @@ def poll_http_until_healthy(
             last_error = f"unexpected HTTP status: {exc.code}"
         except URLError as exc:
             last_error = str(exc.reason or exc)
+        except OSError as exc:
+            # Container restarts can briefly reset local TCP connections
+            # before the HTTP server is fully ready. Treat that as retriable.
+            last_error = str(exc)
 
         sleep_for = min(interval_seconds, max(0.0, deadline - time.monotonic()))
         if sleep_for > 0:
