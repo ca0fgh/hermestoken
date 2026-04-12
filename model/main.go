@@ -286,6 +286,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -356,6 +359,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -375,6 +381,37 @@ func migrateLOGDB() error {
 		return err
 	}
 	return nil
+}
+
+func ensureSubscriptionReferralOverrideSchema() error {
+	model := &SubscriptionReferralOverride{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(model, "Group") {
+		if err := DB.Migrator().AddColumn(model, "Group"); err != nil {
+			return err
+		}
+	}
+
+	oldIndexNames := []string{
+		"idx_subscription_referral_overrides_user_id",
+		"idx_subscription_referral_override_user_group",
+	}
+	for _, indexName := range oldIndexNames {
+		if DB.Migrator().HasIndex(model, indexName) {
+			if err := DB.Migrator().DropIndex(model, indexName); err != nil {
+				return err
+			}
+		}
+	}
+
+	if DB.Migrator().HasIndex(model, "idx_sub_referral_override_group") {
+		if err := DB.Migrator().DropIndex(model, "idx_sub_referral_override_group"); err != nil {
+			return err
+		}
+	}
+	return DB.Migrator().CreateIndex(model, "idx_sub_referral_override_group")
 }
 
 type sqliteColumnDef struct {

@@ -1,10 +1,12 @@
 package model
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"gorm.io/gorm"
 )
 
 func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {
@@ -228,6 +230,73 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 
 	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 2600 {
 		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 2600", got)
+	}
+}
+
+func TestUpsertSubscriptionReferralOverridePersistsPerGroup(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "persist-per-group-user", 0, dto.UserSetting{})
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "default", 3500, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride(default) error = %v", err)
+	}
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "vip", 2800, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride(vip) error = %v", err)
+	}
+
+	defaultOverride, err := GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default")
+	if err != nil {
+		t.Fatalf("GetSubscriptionReferralOverrideByUserIDAndGroup(default) error = %v", err)
+	}
+	if defaultOverride.TotalRateBps != 3500 {
+		t.Fatalf("default override TotalRateBps = %d, want 3500", defaultOverride.TotalRateBps)
+	}
+
+	vipOverride, err := GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("GetSubscriptionReferralOverrideByUserIDAndGroup(vip) error = %v", err)
+	}
+	if vipOverride.TotalRateBps != 2800 {
+		t.Fatalf("vip override TotalRateBps = %d, want 2800", vipOverride.TotalRateBps)
+	}
+
+	duplicate := &SubscriptionReferralOverride{
+		UserId:       user.Id,
+		Group:        "vip",
+		TotalRateBps: 2700,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}
+	if err := db.Create(duplicate).Error; err == nil {
+		t.Fatal("expected duplicate (user_id, group) insert to fail")
+	}
+}
+
+func TestDeleteSubscriptionReferralOverrideByUserIDAndGroupKeepsOtherGroups(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "delete-per-group-user", 0, dto.UserSetting{})
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "default", 3500, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride(default) error = %v", err)
+	}
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "vip", 2800, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride(vip) error = %v", err)
+	}
+
+	if err := DeleteSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default"); err != nil {
+		t.Fatalf("DeleteSubscriptionReferralOverrideByUserIDAndGroup(default) error = %v", err)
+	}
+
+	if _, err := GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default"); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("GetSubscriptionReferralOverrideByUserIDAndGroup(default) error = %v, want %v", err, gorm.ErrRecordNotFound)
+	}
+
+	vipOverride, err := GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("GetSubscriptionReferralOverrideByUserIDAndGroup(vip) error = %v", err)
+	}
+	if vipOverride.TotalRateBps != 2800 {
+		t.Fatalf("vip override TotalRateBps = %d, want 2800", vipOverride.TotalRateBps)
 	}
 }
 
