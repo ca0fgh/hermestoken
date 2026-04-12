@@ -160,6 +160,49 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesGroupedOverrideAndGroup
 	}
 }
 
+func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesNonDefaultGroupedOverride(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalGlobalRate := common.SubscriptionReferralGlobalRateBps
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralGlobalRateBps = originalGlobalRate
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralGlobalRateBps = 1800
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"default":4500,"vip":3000}`); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+
+	user := seedReferralUser(t, db, "vip-grouped-referral-user", 0, dto.UserSetting{})
+	override, err := UpsertSubscriptionReferralOverride(user.Id, "vip", 2200, 1)
+	if err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
+	if override.Group != "vip" {
+		t.Fatalf("override.Group = %q, want %q", override.Group, "vip")
+	}
+
+	loaded, err := GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("GetSubscriptionReferralOverrideByUserIDAndGroup() error = %v", err)
+	}
+	if loaded.Group != "vip" {
+		t.Fatalf("loaded.Group = %q, want %q", loaded.Group, "vip")
+	}
+	if loaded.TotalRateBps != 2200 {
+		t.Fatalf("loaded.TotalRateBps = %d, want 2200", loaded.TotalRateBps)
+	}
+
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 2200 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 2200", got)
+	}
+}
+
 func TestDeleteSubscriptionReferralOverrideByUserIDRemovesDefaultGroupedOverride(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 

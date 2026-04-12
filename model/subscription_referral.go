@@ -32,8 +32,8 @@ type SubscriptionReferralConfig struct {
 
 type SubscriptionReferralOverride struct {
 	Id           int    `json:"id"`
-	UserId       int    `json:"user_id" gorm:"uniqueIndex"`
-	Group        string `json:"group" gorm:"-"`
+	UserId       int    `json:"user_id" gorm:"index:idx_subscription_referral_override_user_group"`
+	Group        string `json:"group" gorm:"type:varchar(64);not null;default:'';index:idx_subscription_referral_override_user_group"`
 	TotalRateBps int    `json:"total_rate_bps" gorm:"type:int;not null;default:0"`
 	CreatedBy    int    `json:"created_by" gorm:"type:int;not null;default:0"`
 	UpdatedBy    int    `json:"updated_by" gorm:"type:int;not null;default:0"`
@@ -45,12 +45,14 @@ func (o *SubscriptionReferralOverride) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	o.CreatedAt = now
 	o.UpdatedAt = now
+	o.Group = strings.TrimSpace(o.Group)
 	o.TotalRateBps = NormalizeSubscriptionReferralRateBps(o.TotalRateBps)
 	return nil
 }
 
 func (o *SubscriptionReferralOverride) BeforeUpdate(tx *gorm.DB) error {
 	o.UpdatedAt = common.GetTimestamp()
+	o.Group = strings.TrimSpace(o.Group)
 	o.TotalRateBps = NormalizeSubscriptionReferralRateBps(o.TotalRateBps)
 	return nil
 }
@@ -157,7 +159,13 @@ func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralO
 	}
 
 	var override SubscriptionReferralOverride
-	if err := DB.Where("user_id = ?", userID).First(&override).Error; err != nil {
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, "default").First(&override).Error; err == nil {
+		return &override, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, "").First(&override).Error; err != nil {
 		return nil, err
 	}
 	return &override, nil
@@ -165,16 +173,19 @@ func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralO
 
 func GetSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string) (*SubscriptionReferralOverride, error) {
 	trimmedGroup := strings.TrimSpace(group)
-	if trimmedGroup != "" && trimmedGroup != "default" {
-		return nil, gorm.ErrRecordNotFound
+	if trimmedGroup == "" {
+		return GetSubscriptionReferralOverrideByUserID(userID)
 	}
 
-	override, err := GetSubscriptionReferralOverrideByUserID(userID)
-	if err != nil {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var override SubscriptionReferralOverride
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, trimmedGroup).First(&override).Error; err != nil {
 		return nil, err
 	}
-	override.Group = trimmedGroup
-	return override, nil
+	return &override, nil
 }
 
 func UpsertSubscriptionReferralOverride(userID int, args ...any) (*SubscriptionReferralOverride, error) {
@@ -189,17 +200,15 @@ func UpsertSubscriptionReferralOverride(userID int, args ...any) (*SubscriptionR
 	if err != nil {
 		return nil, err
 	}
-	if group != "" && group != "default" {
-		return nil, errors.New("group-specific overrides beyond default are not supported")
-	}
 
 	override := &SubscriptionReferralOverride{}
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", userID).First(override).Error; err != nil {
+		if err := tx.Where("user_id = ? AND `group` = ?", userID, group).First(override).Error; err != nil {
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
 			override.UserId = userID
+			override.Group = group
 			override.CreatedBy = operatorID
 		}
 		override.TotalRateBps = NormalizeSubscriptionReferralRateBps(totalRateBps)
@@ -209,7 +218,6 @@ func UpsertSubscriptionReferralOverride(userID int, args ...any) (*SubscriptionR
 	if err != nil {
 		return nil, err
 	}
-	override.Group = group
 	return override, nil
 }
 
