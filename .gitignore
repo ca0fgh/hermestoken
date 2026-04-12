@@ -31,3 +31,4 @@ data/
 .gopath
 scripts/__pycache__/
 scripts/.pytest_cache/
+.worktrees/
