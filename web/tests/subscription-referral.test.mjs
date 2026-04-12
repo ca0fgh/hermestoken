@@ -100,6 +100,59 @@ test('buildAdminReferralRows maps group names and rates into table rows', () => 
   );
 });
 
+test('buildAdminReferralRows sorts rows alphabetically and includes rates missing from explicit group list', () => {
+  assert.deepEqual(
+    buildAdminReferralRows(['vip'], {
+      zeta: 1200,
+      default: 4500,
+      vip: 3000,
+    }),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'vip',
+        enabled: true,
+        totalRateBps: 3000,
+        totalRatePercent: 30,
+      },
+      {
+        group: 'zeta',
+        enabled: true,
+        totalRateBps: 1200,
+        totalRatePercent: 12,
+      },
+    ],
+  );
+});
+
+test('buildAdminReferralRows renders from group_rates when no explicit group list is available', () => {
+  assert.deepEqual(
+    buildAdminReferralRows([], {
+      vip: 3000,
+      default: 4500,
+    }),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'vip',
+        enabled: true,
+        totalRateBps: 3000,
+        totalRatePercent: 30,
+      },
+    ],
+  );
+});
+
 test('buildGroupedReferralSummaries derives inviter rate per group', () => {
   assert.deepEqual(
     buildGroupedReferralSummaries([

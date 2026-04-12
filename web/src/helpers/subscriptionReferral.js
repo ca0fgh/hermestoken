@@ -121,12 +121,15 @@ export function buildAdminReferralFormValues({
 
 export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
   const normalizedGroupRates = normalizeGroupRateMap(groupRates);
+  const normalizedGroupNames = groupNames
+    .map((group) => String(group || '').trim())
+    .filter(Boolean);
   const orderedGroups = [
-    ...groupNames,
+    ...normalizedGroupNames,
     ...Object.keys(normalizedGroupRates).filter(
-      (group) => !groupNames.includes(group),
+      (group) => !normalizedGroupNames.includes(group),
     ),
-  ];
+  ].sort((left, right) => left.localeCompare(right));
 
   return orderedGroups.map((group) => {
     const totalRateBps = normalizeRateBps(normalizedGroupRates[group] || 0);

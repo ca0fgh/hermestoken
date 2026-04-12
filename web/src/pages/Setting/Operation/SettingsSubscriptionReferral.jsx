@@ -50,15 +50,14 @@ export default function SettingsSubscriptionReferral() {
 
   const applySettings = (payload, nextGroupNames = groupNames) => {
     const nextSettings = parseAdminReferralSettings(payload);
-    const resolvedGroupNames =
-      nextGroupNames.length > 0
-        ? nextGroupNames
-        : Object.keys(nextSettings.groupRates || {});
+    const nextRows = buildAdminReferralRows(
+      nextGroupNames,
+      nextSettings.groupRates,
+    );
 
     setEnabled(nextSettings.enabled);
-    setGroupRows(
-      buildAdminReferralRows(resolvedGroupNames, nextSettings.groupRates),
-    );
+    setGroupRows(nextRows);
+    setGroupNames(nextRows.map((row) => row.group));
     setSnapshot({
       enabled: nextSettings.enabled,
       groupRates: normalizeGroupRateMap(nextSettings.groupRates),
@@ -74,18 +73,22 @@ export default function SettingsSubscriptionReferral() {
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const [settingsRes, groupsRes] = await Promise.all([
-        API.get('/api/subscription/admin/referral/settings'),
-        API.get('/api/group/'),
-      ]);
-
-      const nextGroupNames = Array.isArray(groupsRes.data?.data)
-        ? groupsRes.data.data
-        : [];
-      setGroupNames(nextGroupNames);
-
+      const settingsRes = await API.get('/api/subscription/admin/referral/settings');
       if (settingsRes.data?.success) {
-        applySettings(settingsRes.data?.data || {}, nextGroupNames);
+        const settingsPayload = settingsRes.data?.data || {};
+        const fallbackSettings = parseAdminReferralSettings(settingsPayload);
+        let nextGroupNames = Object.keys(fallbackSettings.groupRates || {});
+
+        try {
+          const groupsRes = await API.get('/api/group/');
+          if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
+            nextGroupNames = groupsRes.data.data;
+          }
+        } catch (error) {
+          // Keep rendering from settings payload when the group catalog is unavailable.
+        }
+
+        applySettings(settingsPayload, nextGroupNames);
       } else {
         showError(settingsRes.data?.message || t('加载失败'));
       }
