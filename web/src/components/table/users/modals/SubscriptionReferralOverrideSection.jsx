@@ -22,9 +22,9 @@ import { Button, Card, InputNumber, Space, Typography } from '@douyinfe/semi-ui'
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../../../helpers';
 import {
+  buildAdminOverrideRows,
   formatRateBpsPercent,
   percentNumberToRateBps,
-  rateBpsToPercentNumber,
 } from '../../../../helpers/subscriptionReferral';
 
 const { Text } = Typography;
@@ -32,12 +32,8 @@ const { Text } = Typography;
 const SubscriptionReferralOverrideSection = ({ userId }) => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState({
-    hasOverride: false,
-    overrideRateBps: null,
-    effectiveTotalRateBps: 0,
-  });
-  const [inputPercent, setInputPercent] = useState(0);
+  const [savingGroup, setSavingGroup] = useState('');
+  const [overrideRows, setOverrideRows] = useState([]);
 
   const loadOverride = async () => {
     if (!userId) return;
@@ -46,12 +42,23 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
       const res = await API.get(`/api/subscription/admin/referral/users/${userId}`);
       if (res.data?.success) {
         const next = res.data.data || {};
-        setData({
-          hasOverride: Boolean(next.has_override),
-          overrideRateBps: next.override_rate_bps,
-          effectiveTotalRateBps: next.effective_total_rate_bps || 0,
-        });
-        setInputPercent(rateBpsToPercentNumber(next.override_rate_bps || next.effective_total_rate_bps || 0));
+        const fallbackGroups = next.group
+          ? [
+              {
+                group: next.group,
+                effective_total_rate_bps: next.effective_total_rate_bps,
+                has_override: next.has_override,
+                override_rate_bps: next.override_rate_bps,
+              },
+            ]
+          : [];
+        setOverrideRows(
+          buildAdminOverrideRows(
+            Array.isArray(next.groups) && next.groups.length > 0
+              ? next.groups
+              : fallbackGroups,
+          ),
+        );
       } else {
         showError(res.data?.message || t('加载失败'));
       }
@@ -66,11 +73,30 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
     loadOverride().then();
   }, [userId]);
 
-  const saveOverride = async () => {
-    setLoading(true);
+  const updateInputPercent = (group, value) => {
+    setOverrideRows((currentRows) =>
+      currentRows.map((row) =>
+        row.group === group
+          ? {
+              ...row,
+              inputPercent: Number(value || 0),
+            }
+          : row,
+      ),
+    );
+  };
+
+  const saveOverride = async (group) => {
+    const targetRow = overrideRows.find((row) => row.group === group);
+    if (!targetRow) {
+      return;
+    }
+
+    setSavingGroup(group);
     try {
-      const totalRateBps = percentNumberToRateBps(inputPercent);
+      const totalRateBps = percentNumberToRateBps(targetRow.inputPercent);
       const res = await API.put(`/api/subscription/admin/referral/users/${userId}`, {
+        group,
         total_rate_bps: totalRateBps,
       });
       if (res.data?.success) {
@@ -82,16 +108,21 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
     } catch (error) {
       showError(t('保存失败，请重试'));
     } finally {
-      setLoading(false);
+      setSavingGroup('');
     }
   };
 
-  const clearOverride = async () => {
-    setLoading(true);
+  const clearOverride = async (group) => {
+    setSavingGroup(group);
     try {
-      const res = await API.delete(`/api/subscription/admin/referral/users/${userId}`);
+      const res = await API.delete(
+        `/api/subscription/admin/referral/users/${userId}`,
+        {
+          params: { group },
+        },
+      );
       if (res.data?.success) {
-        showSuccess(t('已恢复为全局总返佣率'));
+        showSuccess(t('已清除该分组覆盖'));
         await loadOverride();
       } else {
         showError(res.data?.message || t('保存失败，请重试'));
@@ -99,7 +130,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
     } catch (error) {
       showError(t('保存失败，请重试'));
     } finally {
-      setLoading(false);
+      setSavingGroup('');
     }
   };
 
@@ -109,41 +140,75 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
         <div>
           <Text className='text-lg font-medium'>{t('邀请人返佣覆盖')}</Text>
           <div className='text-xs text-gray-600'>
-            {t('未设置覆盖时使用全局总返佣率')}
+            {t('未设置覆盖时使用对应分组默认总返佣率')}
           </div>
         </div>
 
-        <div className='rounded-xl bg-gray-50 p-3'>
-          <Text type='tertiary' className='text-xs block mb-1'>
-            {t('当前生效总返佣率')}
-          </Text>
-          <Text strong>{formatRateBpsPercent(data.effectiveTotalRateBps)}</Text>
-        </div>
+        <div className='flex flex-col gap-3'>
+          {overrideRows.map((row) => {
+            const isSaving = savingGroup === row.group;
+            return (
+              <div key={row.group} className='rounded-xl border border-gray-100 p-4'>
+                <div className='flex flex-col gap-3'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <div>
+                      <Text strong>{row.group}</Text>
+                      <div className='text-xs text-gray-600'>
+                        {row.hasOverride
+                          ? t('已设置单独覆盖')
+                          : t('当前使用该分组默认总返佣率')}
+                      </div>
+                    </div>
+                    <div className='text-right'>
+                      <Text type='tertiary' className='text-xs block mb-1'>
+                        {t('当前生效总返佣率')}
+                      </Text>
+                      <Text strong>
+                        {formatRateBpsPercent(row.effectiveTotalRateBps)}
+                      </Text>
+                    </div>
+                  </div>
 
-        <div>
-          <Text type='tertiary' className='text-xs block mb-2'>
-            {t('覆盖总返佣率')}
-          </Text>
-          <InputNumber
-            value={inputPercent}
-            min={0}
-            max={100}
-            step={0.01}
-            precision={2}
-            suffix='%'
-            style={{ width: '100%' }}
-            onChange={(value) => setInputPercent(Number(value || 0))}
-          />
-        </div>
+                  <div>
+                    <Text type='tertiary' className='text-xs block mb-2'>
+                      {t('覆盖总返佣率')}
+                    </Text>
+                    <InputNumber
+                      value={row.inputPercent}
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      precision={2}
+                      suffix='%'
+                      style={{ width: '100%' }}
+                      disabled={loading || isSaving}
+                      onChange={(value) => updateInputPercent(row.group, value)}
+                    />
+                  </div>
 
-        <Space>
-          <Button type='primary' theme='solid' loading={loading} onClick={saveOverride}>
-            {t('保存订阅返佣设置')}
-          </Button>
-          <Button theme='light' disabled={!data.hasOverride || loading} onClick={clearOverride}>
-            {t('清除覆盖')}
-          </Button>
-        </Space>
+                  <Space>
+                    <Button
+                      type='primary'
+                      theme='solid'
+                      loading={isSaving}
+                      disabled={loading}
+                      onClick={() => saveOverride(row.group)}
+                    >
+                      {t('保存订阅返佣设置')}
+                    </Button>
+                    <Button
+                      theme='light'
+                      disabled={!row.hasOverride || loading || isSaving}
+                      onClick={() => clearOverride(row.group)}
+                    >
+                      {t('清除覆盖')}
+                    </Button>
+                  </Space>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </Card>
   );

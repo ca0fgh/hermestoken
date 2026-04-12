@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildAdminOverrideRows,
   buildAdminReferralRows,
   buildAdminReferralFormValues,
   buildGroupedReferralSummaries,
@@ -37,6 +38,7 @@ test('clampInviteeRateBps caps invitee rate to total rate', () => {
 
 test('buildReferralRateSummary derives inviter rate from total minus invitee', () => {
   assert.deepEqual(buildReferralRateSummary(2000, 500), {
+    group: '',
     totalRateBps: 2000,
     inviteeRateBps: 500,
     inviterRateBps: 1500,
@@ -179,6 +181,61 @@ test('buildGroupedReferralSummaries derives inviter rate per group', () => {
         totalRateBps: 3000,
         inviteeRateBps: 0,
         inviterRateBps: 3000,
+      },
+    ],
+  );
+});
+
+test('buildAdminOverrideRows normalizes grouped override API payload', () => {
+  assert.deepEqual(
+    buildAdminOverrideRows([
+      {
+        group: 'default',
+        effective_total_rate_bps: 4500,
+        has_override: false,
+        override_rate_bps: null,
+      },
+      {
+        group: 'vip',
+        effective_total_rate_bps: 3000,
+        has_override: true,
+        override_rate_bps: 2500,
+      },
+    ]),
+    [
+      {
+        group: 'default',
+        effectiveTotalRateBps: 4500,
+        hasOverride: false,
+        overrideRateBps: null,
+        inputPercent: 45,
+      },
+      {
+        group: 'vip',
+        effectiveTotalRateBps: 3000,
+        hasOverride: true,
+        overrideRateBps: 2500,
+        inputPercent: 25,
+      },
+    ],
+  );
+});
+
+test('buildGroupedReferralSummaries preserves group names for invitation cards', () => {
+  assert.deepEqual(
+    buildGroupedReferralSummaries([
+      {
+        group: 'default',
+        total_rate_bps: 4500,
+        invitee_rate_bps: 500,
+      },
+    ]),
+    [
+      {
+        group: 'default',
+        totalRateBps: 4500,
+        inviteeRateBps: 500,
+        inviterRateBps: 4000,
       },
     ],
   );

@@ -23,10 +23,15 @@ export function clampInviteeRateBps(inviteeRateBps, totalRateBps) {
   return Math.min(invitee, total);
 }
 
-export function buildReferralRateSummary(totalRateBps, inviteeRateBps) {
+export function buildReferralRateSummary(
+  totalRateBps,
+  inviteeRateBps,
+  group = '',
+) {
   const total = Math.max(0, Number(totalRateBps || 0));
   const invitee = clampInviteeRateBps(inviteeRateBps, total);
   return {
+    group: String(group || '').trim(),
     totalRateBps: total,
     inviteeRateBps: invitee,
     inviterRateBps: Math.max(0, total - invitee),
@@ -142,12 +147,38 @@ export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
   });
 }
 
+export function buildAdminOverrideRows(groups = []) {
+  return groups.map((groupItem) => {
+    const group = String(groupItem?.group || '').trim();
+    const effectiveTotalRateBps = normalizeRateBps(
+      groupItem?.effective_total_rate_bps ?? groupItem?.effectiveTotalRateBps,
+    );
+    const hasOverride = Boolean(groupItem?.has_override ?? groupItem?.hasOverride);
+    const overrideRateBps =
+      groupItem?.override_rate_bps ?? groupItem?.overrideRateBps;
+    const normalizedOverrideRateBps =
+      overrideRateBps === null || overrideRateBps === undefined
+        ? null
+        : normalizeRateBps(overrideRateBps);
+    const inputRateBps =
+      normalizedOverrideRateBps ?? effectiveTotalRateBps;
+
+    return {
+      group,
+      effectiveTotalRateBps,
+      hasOverride,
+      overrideRateBps: normalizedOverrideRateBps,
+      inputPercent: rateBpsToPercentNumber(inputRateBps),
+    };
+  });
+}
+
 export function buildGroupedReferralSummaries(groups = []) {
   return groups.map((groupItem) => ({
-    group: groupItem.group || '',
     ...buildReferralRateSummary(
       groupItem.total_rate_bps ?? groupItem.totalRateBps,
       groupItem.invitee_rate_bps ?? groupItem.inviteeRateBps,
+      groupItem.group || '',
     ),
   }));
 }
