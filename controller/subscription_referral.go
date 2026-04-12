@@ -103,6 +103,7 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 func AdminGetSubscriptionReferralSettings(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"enabled":        common.SubscriptionReferralEnabled,
+		"groups":         model.ListSubscriptionReferralConfiguredGroups(),
 		"group_rates":    common.GetSubscriptionReferralGroupRatesCopy(),
 		"total_rate_bps": model.NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps),
 	})

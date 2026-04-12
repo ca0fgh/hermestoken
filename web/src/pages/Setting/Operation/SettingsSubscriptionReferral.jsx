@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, showWarning } from '../../../helpers';
 import {
   buildAdminReferralRows,
+  mergeAdminReferralGroupNames,
   normalizeGroupRateMap,
   parseAdminReferralSettings,
   percentNumberToRateBps,
@@ -50,8 +51,12 @@ export default function SettingsSubscriptionReferral() {
 
   const applySettings = (payload, nextCatalogGroupNames = catalogGroupNames) => {
     const nextSettings = parseAdminReferralSettings(payload);
+    const resolvedCatalogGroupNames =
+      Array.isArray(nextCatalogGroupNames) && nextCatalogGroupNames.length > 0
+        ? nextCatalogGroupNames
+        : nextSettings.groups;
     const nextRows = buildAdminReferralRows(
-      nextCatalogGroupNames,
+      resolvedCatalogGroupNames,
       nextSettings.groupRates,
     );
 
@@ -76,12 +81,17 @@ export default function SettingsSubscriptionReferral() {
       if (settingsRes.data?.success) {
         const settingsPayload = settingsRes.data?.data || {};
         const fallbackSettings = parseAdminReferralSettings(settingsPayload);
-        let nextCatalogGroupNames = Object.keys(fallbackSettings.groupRates || {});
+        let nextCatalogGroupNames = settingsPayload?.groups?.length
+          ? fallbackSettings.groups
+          : Object.keys(fallbackSettings.groupRates || {});
 
         try {
           const groupsRes = await API.get('/api/group/');
           if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
-            nextCatalogGroupNames = groupsRes.data.data;
+            nextCatalogGroupNames = mergeAdminReferralGroupNames(
+              nextCatalogGroupNames,
+              groupsRes.data.data,
+            );
           }
         } catch (error) {
           // Keep rendering from settings payload when the group catalog is unavailable.
@@ -148,12 +158,17 @@ export default function SettingsSubscriptionReferral() {
       if (res.data?.success) {
         const savedPayload = res.data?.data || {};
         const savedSettings = parseAdminReferralSettings(savedPayload);
-        let nextCatalogGroupNames = Object.keys(savedSettings.groupRates || {});
+        let nextCatalogGroupNames = savedPayload?.groups?.length
+          ? savedSettings.groups
+          : Object.keys(savedSettings.groupRates || {});
 
         try {
           const groupsRes = await API.get('/api/group/');
           if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
-            nextCatalogGroupNames = groupsRes.data.data;
+            nextCatalogGroupNames = mergeAdminReferralGroupNames(
+              nextCatalogGroupNames,
+              groupsRes.data.data,
+            );
           }
         } catch (error) {
           // Keep rendering from saved settings when the group catalog is unavailable.

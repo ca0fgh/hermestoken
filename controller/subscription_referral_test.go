@@ -257,6 +257,49 @@ func TestAdminGetSubscriptionReferralSettingsReturnsGroupedRates(t *testing.T) {
 	}
 }
 
+func TestAdminGetSubscriptionReferralSettingsIncludesPlanBackedGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500}`)
+
+	plan := seedSubscriptionPlan(t, model.DB, "settings-retired-group-plan")
+	plan.UpgradeGroup = "retired"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update retired group plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/settings",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+
+	AdminGetSubscriptionReferralSettings(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		Groups []string `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 2 {
+		t.Fatalf("groups length = %d, want 2 (%v)", len(data.Groups), data.Groups)
+	}
+	if data.Groups[0] != "default" || data.Groups[1] != "retired" {
+		t.Fatalf("groups = %v, want [default retired]", data.Groups)
+	}
+}
+
 func TestAdminUpdateSubscriptionReferralSettingsLegacyTotalRateBpsMapsToDefaultGroup(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	initSubscriptionReferralOptionMapForTest()

@@ -73,6 +73,7 @@ test('parseAdminReferralSettings normalizes grouped admin API payload for local 
     }),
     {
       enabled: true,
+      groups: ['default', 'vip'],
       groupRates: {
         default: 4500,
         vip: 3000,
@@ -152,6 +153,34 @@ test('buildAdminReferralRows renders from group_rates when no explicit group lis
         enabled: true,
         totalRateBps: 3000,
         totalRatePercent: 30,
+      },
+    ],
+  );
+});
+
+test('plan-backed settings groups render rows even when missing from group_rates', () => {
+  const parsedSettings = parseAdminReferralSettings({
+    enabled: true,
+    groups: ['default', 'retired'],
+    group_rates: {
+      default: 4500,
+    },
+  });
+
+  assert.deepEqual(
+    buildAdminReferralRows(parsedSettings.groups, parsedSettings.groupRates),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'retired',
+        enabled: false,
+        totalRateBps: 0,
+        totalRatePercent: 0,
       },
     ],
   );
@@ -340,6 +369,7 @@ test('SettingsSubscriptionReferral reapplies saved settings from catalog groups 
     settingsSource.includes('applySettings(res.data?.data || {}, groupNames);'),
     false,
   );
+  assert.match(settingsSource, /settingsPayload\?\.groups/);
 });
 
 test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {

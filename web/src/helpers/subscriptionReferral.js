@@ -79,6 +79,24 @@ export function normalizeGroupRateMap(payload = {}) {
   }, {});
 }
 
+export function normalizeGroupNames(groups = []) {
+  if (!Array.isArray(groups)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      groups
+        .map((group) => String(group || '').trim())
+        .filter(Boolean),
+    ),
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+export function mergeAdminReferralGroupNames(...groupLists) {
+  return normalizeGroupNames(groupLists.flat());
+}
+
 export function normalizeAdminReferralPayload({ enabled, totalRateBps }) {
   return {
     enabled: Boolean(enabled),
@@ -102,9 +120,18 @@ export function parseAdminReferralSettings(payload = {}) {
   const legacyTotalRateBps = normalizeRateBps(payload.total_rate_bps);
   const hasLegacyTotalRate =
     payload.total_rate_bps !== undefined && payload.total_rate_bps !== null;
+  const groups = normalizeGroupNames(payload.groups);
 
   return {
     enabled,
+    groups:
+      groups.length > 0
+        ? groups
+        : Object.keys(groupRates).length > 0
+          ? normalizeGroupNames(Object.keys(groupRates))
+          : hasLegacyTotalRate
+            ? ['default']
+            : [],
     groupRates:
       Object.keys(groupRates).length > 0
         ? groupRates
@@ -126,9 +153,7 @@ export function buildAdminReferralFormValues({
 
 export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
   const normalizedGroupRates = normalizeGroupRateMap(groupRates);
-  const normalizedGroupNames = groupNames
-    .map((group) => String(group || '').trim())
-    .filter(Boolean);
+  const normalizedGroupNames = normalizeGroupNames(groupNames);
   const orderedGroups = [
     ...normalizedGroupNames,
     ...Object.keys(normalizedGroupRates).filter(
