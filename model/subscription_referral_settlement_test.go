@@ -223,7 +223,7 @@ func TestCompleteSubscriptionOrderIgnoresInviteeCurrentGroupForReferralRates(t *
 	inviter := seedReferralUser(t, db, "group-agnostic-inviter", 0, dto.UserSetting{
 		SubscriptionReferralInviteeRateBps: 500,
 	})
-	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, 2500, 1); err != nil {
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "", 2500, 1); err != nil {
 		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
 	}
 

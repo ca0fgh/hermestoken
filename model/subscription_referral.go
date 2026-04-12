@@ -197,7 +197,7 @@ func GetSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string) (
 	return &override, nil
 }
 
-func UpsertSubscriptionReferralOverride(userID int, args ...any) (*SubscriptionReferralOverride, error) {
+func UpsertSubscriptionReferralOverride(userID int, group string, totalRateBps int, operatorID int) (*SubscriptionReferralOverride, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}
@@ -205,10 +205,7 @@ func UpsertSubscriptionReferralOverride(userID int, args ...any) (*SubscriptionR
 		return nil, err
 	}
 
-	group, totalRateBps, operatorID, err := parseSubscriptionReferralOverrideArgs(args...)
-	if err != nil {
-		return nil, err
-	}
+	group = strings.TrimSpace(group)
 
 	override := &SubscriptionReferralOverride{
 		UserId:       userID,
@@ -217,7 +214,7 @@ func UpsertSubscriptionReferralOverride(userID int, args ...any) (*SubscriptionR
 		CreatedBy:    operatorID,
 		UpdatedBy:    operatorID,
 	}
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{
 				{Name: "user_id"},
@@ -365,37 +362,6 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 	}
 
 	return nil
-}
-
-func parseSubscriptionReferralOverrideArgs(args ...any) (string, int, int, error) {
-	switch len(args) {
-	case 2:
-		totalRateBps, ok := args[0].(int)
-		if !ok {
-			return "", 0, 0, errors.New("invalid total rate bps")
-		}
-		operatorID, ok := args[1].(int)
-		if !ok {
-			return "", 0, 0, errors.New("invalid operator id")
-		}
-		return "", totalRateBps, operatorID, nil
-	case 3:
-		group, ok := args[0].(string)
-		if !ok {
-			return "", 0, 0, errors.New("invalid group")
-		}
-		totalRateBps, ok := args[1].(int)
-		if !ok {
-			return "", 0, 0, errors.New("invalid total rate bps")
-		}
-		operatorID, ok := args[2].(int)
-		if !ok {
-			return "", 0, 0, errors.New("invalid operator id")
-		}
-		return strings.TrimSpace(group), totalRateBps, operatorID, nil
-	default:
-		return "", 0, 0, errors.New("invalid override arguments")
-	}
 }
 
 func ReverseSubscriptionReferralByTradeNo(tradeNo string, operatorId int) error {

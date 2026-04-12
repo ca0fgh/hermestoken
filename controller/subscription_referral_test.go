@@ -67,7 +67,7 @@ func TestGetSubscriptionReferralSelfReturnsEffectiveRates(t *testing.T) {
 	user := seedSubscriptionReferralControllerUser(t, "self-user", 0, dto.UserSetting{
 		SubscriptionReferralInviteeRateBps: 500,
 	})
-	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, 3500, 1); err != nil {
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "", 3500, 1); err != nil {
 		t.Fatalf("failed to create override: %v", err)
 	}
 

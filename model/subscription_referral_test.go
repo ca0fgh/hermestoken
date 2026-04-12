@@ -9,6 +9,8 @@ import (
 	"gorm.io/gorm"
 )
 
+var _ func(int, string, int, int) (*SubscriptionReferralOverride, error) = UpsertSubscriptionReferralOverride
+
 func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -224,7 +226,7 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 	}
 
 	user := seedReferralUser(t, db, "legacy-ungrouped-override-user", 0, dto.UserSetting{})
-	if _, err := UpsertSubscriptionReferralOverride(user.Id, 2600, 1); err != nil {
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 2600, 1); err != nil {
 		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
 	}
 

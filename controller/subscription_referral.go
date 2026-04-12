@@ -157,7 +157,7 @@ func AdminUpsertSubscriptionReferralOverride(c *gin.Context) {
 		return
 	}
 
-	override, err := model.UpsertSubscriptionReferralOverride(userID, req.TotalRateBps, c.GetInt("id"))
+	override, err := model.UpsertSubscriptionReferralOverride(userID, "", req.TotalRateBps, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
