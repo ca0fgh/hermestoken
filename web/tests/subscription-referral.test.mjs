@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   buildAdminOverrideRows,
   buildAdminReferralRows,
@@ -295,6 +296,15 @@ test('buildInvitationDraftPercentInputs preserves the saving group draft when pe
       vip: 12.34,
     },
   );
+});
+
+test('InvitationCard does not reference removed referralSavingGroup state', () => {
+  const invitationCardSource = readFileSync(
+    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.equal(invitationCardSource.includes('referralSavingGroup'), false);
 });
 
 test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {

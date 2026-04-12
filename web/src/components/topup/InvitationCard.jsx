@@ -46,6 +46,7 @@ const InvitationCard = ({
   affLink,
   handleAffLinkClick,
   referralGroups,
+  referralSaving,
   onSaveReferralConfig,
 }) => {
   const [inviteePercentInputs, setInviteePercentInputs] = useState({});
@@ -230,7 +231,7 @@ const InvitationCard = ({
                 referralSummary.totalRateBps,
               );
               const canSaveReferral =
-                referralSavingGroup !== referralSummary.group &&
+                !referralSaving &&
                 inviteeRateBpsDraft !== referralSummary.inviteeRateBps;
 
               return (
@@ -288,7 +289,7 @@ const InvitationCard = ({
                           precision={2}
                           style={{ width: '100%' }}
                           suffix='%'
-                          disabled={referralSavingGroup === referralSummary.group}
+                          disabled={referralSaving}
                           onChange={(value) =>
                             updateInviteePercentInput(referralSummary.group, value)
                           }
@@ -301,7 +302,7 @@ const InvitationCard = ({
                         type='primary'
                         theme='solid'
                         className='!rounded-lg self-start'
-                        loading={referralSavingGroup === referralSummary.group}
+                        loading={referralSaving}
                         disabled={!canSaveReferral}
                         onClick={() =>
                           onSaveReferralConfig?.(
