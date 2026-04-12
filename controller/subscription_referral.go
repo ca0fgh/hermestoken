@@ -63,6 +63,10 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		return
 	}
 	req.Group = strings.TrimSpace(req.Group)
+	if req.Group == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
 
 	totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(userID, req.Group)
 	if req.InviteeRateBps < 0 || req.InviteeRateBps > totalRateBps {
@@ -76,13 +80,9 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		return
 	}
 	setting := user.GetSetting()
-	if req.Group == "" {
-		setting.SubscriptionReferralInviteeRateBps = req.InviteeRateBps
-	} else {
-		nextByGroup := copySubscriptionReferralInviteeRatesByGroup(setting.SubscriptionReferralInviteeRateBpsByGroup)
-		nextByGroup[req.Group] = req.InviteeRateBps
-		setting.SubscriptionReferralInviteeRateBpsByGroup = nextByGroup
-	}
+	nextByGroup := copySubscriptionReferralInviteeRatesByGroup(setting.SubscriptionReferralInviteeRateBpsByGroup)
+	nextByGroup[req.Group] = req.InviteeRateBps
+	setting.SubscriptionReferralInviteeRateBpsByGroup = nextByGroup
 	user.SetSetting(setting)
 	if err := user.Update(false); err != nil {
 		common.ApiError(c, err)
@@ -317,7 +317,7 @@ func buildAdminSubscriptionReferralOverrideResponse(userID int) (gin.H, error) {
 		overrideRateBps := interface{}(nil)
 		if hasOverride {
 			overrideRateBps = override.TotalRateBps
-		} else if group == "default" && legacyOverride != nil && strings.TrimSpace(legacyOverride.Group) == "" && len(groups) == 1 {
+		} else if group == "default" && legacyOverride != nil && strings.TrimSpace(legacyOverride.Group) == "" {
 			hasOverride = true
 			overrideRateBps = legacyOverride.TotalRateBps
 		}
@@ -354,9 +354,7 @@ func collectSubscriptionReferralResponseGroups(configuredGroups []string, overri
 	for _, override := range overrides {
 		trimmedGroup := strings.TrimSpace(override.Group)
 		if trimmedGroup == "" {
-			if len(groupSet) == 0 {
-				groupSet["default"] = struct{}{}
-			}
+			groupSet["default"] = struct{}{}
 			continue
 		}
 		groupSet[trimmedGroup] = struct{}{}

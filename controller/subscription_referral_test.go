@@ -230,6 +230,43 @@ func TestUpdateSubscriptionReferralSelfStoresPerGroupInviteeRate(t *testing.T) {
 	}
 }
 
+func TestUpdateSubscriptionReferralSelfRejectsEmptyGroupForGroupedAPI(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-update-empty-group", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 700,
+	})
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/user/referral/subscription",
+		map[string]any{"group": "", "invitee_rate_bps": 500},
+		user.Id,
+	)
+
+	UpdateSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if resp.Success {
+		t.Fatal("expected empty group request to fail")
+	}
+
+	updatedUser, err := model.GetUserById(user.Id, false)
+	if err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	setting := updatedUser.GetSetting()
+	if setting.SubscriptionReferralInviteeRateBps != 700 {
+		t.Fatalf("legacy scalar rate = %d, want 700", setting.SubscriptionReferralInviteeRateBps)
+	}
+	if len(setting.SubscriptionReferralInviteeRateBpsByGroup) != 0 {
+		t.Fatalf("expected no grouped rates to be stored, got %+v", setting.SubscriptionReferralInviteeRateBpsByGroup)
+	}
+}
+
 func TestAdminUpsertSubscriptionReferralOverridePersistsOverride(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user", 0, dto.UserSetting{})
@@ -299,6 +336,93 @@ func TestAdminGetSubscriptionReferralOverrideReadsDefaultGroupLegacyOverride(t *
 	}
 	if data.EffectiveTotalRateBps != 4100 {
 		t.Fatalf("effective_total_rate_bps = %d, want 4100", data.EffectiveTotalRateBps)
+	}
+}
+
+func TestAdminGetSubscriptionReferralOverrideRepresentsLegacyEmptyGroupOverrideAsDefaultAlongsideOtherGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-legacy-default-with-vip", 0, dto.UserSetting{})
+
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "", 4100, 1); err != nil {
+		t.Fatalf("failed to create legacy empty-group override: %v", err)
+	}
+
+	getCtx, getRecorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/users/1",
+		nil,
+		1,
+	)
+	getCtx.Set("role", common.RoleRootUser)
+	getCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	AdminGetSubscriptionReferralOverride(getCtx)
+
+	getResp := decodeAPIResponse(t, getRecorder)
+	if !getResp.Success {
+		t.Fatalf("expected admin get override success")
+	}
+
+	var data struct {
+		Groups []struct {
+			Group                 string `json:"group"`
+			EffectiveTotalRateBps int    `json:"effective_total_rate_bps"`
+			HasOverride           bool   `json:"has_override"`
+			OverrideRateBps       *int   `json:"override_rate_bps"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(getResp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+
+	var foundDefault bool
+	var defaultHasOverride bool
+	var defaultOverrideRate *int
+	var defaultEffectiveTotal int
+	var foundVIP bool
+	var vipHasOverride bool
+	var vipOverrideRate *int
+	var vipEffectiveTotal int
+	for i := range data.Groups {
+		switch data.Groups[i].Group {
+		case "default":
+			foundDefault = true
+			defaultHasOverride = data.Groups[i].HasOverride
+			defaultOverrideRate = data.Groups[i].OverrideRateBps
+			defaultEffectiveTotal = data.Groups[i].EffectiveTotalRateBps
+		case "vip":
+			foundVIP = true
+			vipHasOverride = data.Groups[i].HasOverride
+			vipOverrideRate = data.Groups[i].OverrideRateBps
+			vipEffectiveTotal = data.Groups[i].EffectiveTotalRateBps
+		}
+	}
+
+	if !foundDefault {
+		t.Fatalf("expected default group entry in %+v", data.Groups)
+	}
+	if !defaultHasOverride {
+		t.Fatal("expected default group to report legacy override")
+	}
+	if defaultOverrideRate == nil || *defaultOverrideRate != 4100 {
+		t.Fatalf("default override rate = %v, want 4100", defaultOverrideRate)
+	}
+	if defaultEffectiveTotal != 4100 {
+		t.Fatalf("default effective_total_rate_bps = %d, want 4100", defaultEffectiveTotal)
+	}
+	if !foundVIP {
+		t.Fatalf("expected vip group entry in %+v", data.Groups)
+	}
+	if vipHasOverride {
+		t.Fatal("expected vip group to have no override")
+	}
+	if vipOverrideRate != nil {
+		t.Fatalf("expected nil vip override rate, got %v", *vipOverrideRate)
+	}
+	if vipEffectiveTotal <= 0 {
+		t.Fatalf("expected vip effective_total_rate_bps to be positive, got %d", vipEffectiveTotal)
 	}
 }
 
