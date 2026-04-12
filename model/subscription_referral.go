@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/shopspring/decimal"
@@ -9,6 +11,13 @@ import (
 
 const (
 	SubscriptionReferralMaxRateBps = 10000
+
+	SubscriptionReferralStatusCredited      = "credited"
+	SubscriptionReferralStatusReversed      = "reversed"
+	SubscriptionReferralStatusPartialRevert = "partially_reversed"
+
+	SubscriptionReferralBeneficiaryRoleInviter = "inviter"
+	SubscriptionReferralBeneficiaryRoleInvitee = "invitee"
 )
 
 type SubscriptionReferralConfig struct {
@@ -71,6 +80,9 @@ func (r *SubscriptionReferralRecord) BeforeCreate(tx *gorm.DB) error {
 	r.TotalRateBpsSnapshot = NormalizeSubscriptionReferralRateBps(r.TotalRateBpsSnapshot)
 	r.InviteeRateBpsSnapshot = NormalizeSubscriptionReferralRateBps(r.InviteeRateBpsSnapshot)
 	r.AppliedRateBps = NormalizeSubscriptionReferralRateBps(r.AppliedRateBps)
+	if r.Status == "" {
+		r.Status = SubscriptionReferralStatusCredited
+	}
 	return nil
 }
 
@@ -89,41 +101,174 @@ func NormalizeSubscriptionReferralRateBps(rateBps int) int {
 	return rateBps
 }
 
-func ResolveSubscriptionReferralConfig(setting dto.UserSetting, override *SubscriptionReferralOverride) SubscriptionReferralConfig {
-	config := SubscriptionReferralConfig{
-		Enabled: common.SubscriptionReferralEnabled,
+func ResolveSubscriptionReferralConfig(totalRateBps int, setting dto.UserSetting) SubscriptionReferralConfig {
+	total := NormalizeSubscriptionReferralRateBps(totalRateBps)
+	invitee := NormalizeSubscriptionReferralRateBps(setting.SubscriptionReferralInviteeRateBps)
+	if invitee > total {
+		invitee = total
 	}
-	if !config.Enabled {
-		return config
+	return SubscriptionReferralConfig{
+		Enabled:        common.SubscriptionReferralEnabled && total > 0,
+		TotalRateBps:   total,
+		InviteeRateBps: invitee,
+		InviterRateBps: total - invitee,
 	}
-
-	totalRateBps := NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
-	if override != nil {
-		totalRateBps = NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
-	}
-
-	inviteeRateBps := NormalizeSubscriptionReferralRateBps(setting.SubscriptionReferralInviteeRateBps)
-	if inviteeRateBps > totalRateBps {
-		inviteeRateBps = totalRateBps
-	}
-
-	config.TotalRateBps = totalRateBps
-	config.InviteeRateBps = inviteeRateBps
-	config.InviterRateBps = totalRateBps - inviteeRateBps
-	return config
 }
 
-func CalculateSubscriptionReferralQuota(orderMoney float64, rateBps int, quotaPerUnit float64) int {
+func CalculateSubscriptionReferralQuota(orderMoney float64, rateBps int) int {
 	normalizedRateBps := NormalizeSubscriptionReferralRateBps(rateBps)
-	if orderMoney <= 0 || normalizedRateBps == 0 || quotaPerUnit <= 0 {
+	if orderMoney <= 0 || normalizedRateBps == 0 || common.QuotaPerUnit <= 0 {
 		return 0
 	}
 
 	return int(
 		decimal.NewFromFloat(orderMoney).
-			Mul(decimal.NewFromFloat(quotaPerUnit)).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
 			Mul(decimal.NewFromInt(int64(normalizedRateBps))).
 			Div(decimal.NewFromInt(SubscriptionReferralMaxRateBps)).
 			IntPart(),
 	)
+}
+
+func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder) error {
+	if tx == nil || order == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
+		return nil
+	}
+
+	var invitee User
+	if err := tx.First(&invitee, order.UserId).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if invitee.InviterId <= 0 || invitee.InviterId == invitee.Id {
+		return nil
+	}
+
+	var inviter User
+	if err := tx.First(&inviter, invitee.InviterId).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	totalRateBps := common.SubscriptionReferralGlobalRateBps
+	var override SubscriptionReferralOverride
+	if err := tx.Where("user_id = ?", invitee.InviterId).First(&override).Error; err == nil {
+		totalRateBps = override.TotalRateBps
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	cfg := ResolveSubscriptionReferralConfig(totalRateBps, inviter.GetSetting())
+	if !cfg.Enabled {
+		return nil
+	}
+
+	records := []SubscriptionReferralRecord{
+		{
+			OrderId:                order.Id,
+			OrderTradeNo:           order.TradeNo,
+			PlanId:                 order.PlanId,
+			PayerUserId:            order.UserId,
+			InviterUserId:          invitee.InviterId,
+			BeneficiaryUserId:      invitee.InviterId,
+			BeneficiaryRole:        SubscriptionReferralBeneficiaryRoleInviter,
+			OrderPaidAmount:        order.Money,
+			QuotaPerUnitSnapshot:   common.QuotaPerUnit,
+			TotalRateBpsSnapshot:   cfg.TotalRateBps,
+			InviteeRateBpsSnapshot: cfg.InviteeRateBps,
+			AppliedRateBps:         cfg.InviterRateBps,
+			RewardQuota:            int64(CalculateSubscriptionReferralQuota(order.Money, cfg.InviterRateBps)),
+			Status:                 SubscriptionReferralStatusCredited,
+		},
+		{
+			OrderId:                order.Id,
+			OrderTradeNo:           order.TradeNo,
+			PlanId:                 order.PlanId,
+			PayerUserId:            order.UserId,
+			InviterUserId:          invitee.InviterId,
+			BeneficiaryUserId:      order.UserId,
+			BeneficiaryRole:        SubscriptionReferralBeneficiaryRoleInvitee,
+			OrderPaidAmount:        order.Money,
+			QuotaPerUnitSnapshot:   common.QuotaPerUnit,
+			TotalRateBpsSnapshot:   cfg.TotalRateBps,
+			InviteeRateBpsSnapshot: cfg.InviteeRateBps,
+			AppliedRateBps:         cfg.InviteeRateBps,
+			RewardQuota:            int64(CalculateSubscriptionReferralQuota(order.Money, cfg.InviteeRateBps)),
+			Status:                 SubscriptionReferralStatusCredited,
+		},
+	}
+
+	for i := range records {
+		record := records[i]
+		if record.RewardQuota <= 0 {
+			continue
+		}
+		if err := tx.Create(&record).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", record.BeneficiaryUserId).Updates(map[string]interface{}{
+			"aff_quota":   gorm.Expr("aff_quota + ?", record.RewardQuota),
+			"aff_history": gorm.Expr("aff_history + ?", record.RewardQuota),
+		}).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func ReverseSubscriptionReferralByTradeNo(tradeNo string, operatorId int) error {
+	if tradeNo == "" {
+		return errors.New("tradeNo is empty")
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var records []SubscriptionReferralRecord
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("order_trade_no = ?", tradeNo).Find(&records).Error; err != nil {
+			return err
+		}
+
+		for i := range records {
+			record := &records[i]
+			reversible := record.RewardQuota - record.ReversedQuota - record.DebtQuota
+			if reversible <= 0 {
+				continue
+			}
+
+			var user User
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, record.BeneficiaryUserId).Error; err != nil {
+				return err
+			}
+
+			recovered := reversible
+			if int64(user.AffQuota) < recovered {
+				recovered = int64(user.AffQuota)
+			}
+			debt := reversible - recovered
+
+			if recovered > 0 {
+				if err := tx.Model(&User{}).Where("id = ?", user.Id).
+					Update("aff_quota", gorm.Expr("aff_quota - ?", recovered)).Error; err != nil {
+					return err
+				}
+			}
+
+			record.ReversedQuota += recovered
+			record.DebtQuota += debt
+			if debt > 0 {
+				record.Status = SubscriptionReferralStatusPartialRevert
+			} else {
+				record.Status = SubscriptionReferralStatusReversed
+			}
+			if err := tx.Save(record).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
