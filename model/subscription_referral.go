@@ -130,6 +130,59 @@ func CalculateSubscriptionReferralQuota(orderMoney float64, rateBps int) int {
 	)
 }
 
+func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var override SubscriptionReferralOverride
+	if err := DB.Where("user_id = ?", userID).First(&override).Error; err != nil {
+		return nil, err
+	}
+	return &override, nil
+}
+
+func UpsertSubscriptionReferralOverride(userID int, totalRateBps int, operatorID int) (*SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	override := &SubscriptionReferralOverride{}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).First(override).Error; err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			override.UserId = userID
+			override.CreatedBy = operatorID
+		}
+		override.TotalRateBps = NormalizeSubscriptionReferralRateBps(totalRateBps)
+		override.UpdatedBy = operatorID
+		return tx.Save(override).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return override, nil
+}
+
+func DeleteSubscriptionReferralOverrideByUserID(userID int) error {
+	if userID <= 0 {
+		return errors.New("invalid user id")
+	}
+	return DB.Where("user_id = ?", userID).Delete(&SubscriptionReferralOverride{}).Error
+}
+
+func GetEffectiveSubscriptionReferralTotalRateBps(userID int) int {
+	if userID > 0 {
+		override, err := GetSubscriptionReferralOverrideByUserID(userID)
+		if err == nil && override != nil {
+			return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
+		}
+	}
+	return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
+}
+
 func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if tx == nil || order == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
 		return nil

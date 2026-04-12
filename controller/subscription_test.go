@@ -33,9 +33,15 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 	model.LOG_DB = db
 
 	if err := db.AutoMigrate(
+		&model.User{},
+		&model.Option{},
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
+		&model.SubscriptionReferralOverride{},
+		&model.SubscriptionReferralRecord{},
+		&model.TopUp{},
+		&model.Log{},
 	); err != nil {
 		t.Fatalf("failed to migrate subscription tables: %v", err)
 	}

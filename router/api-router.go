@@ -111,6 +111,8 @@ func SetApiRouter(router *gin.Engine) {
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+				selfRoute.GET("/referral/subscription", controller.GetSubscriptionReferralSelf)
+				selfRoute.PUT("/referral/subscription", controller.UpdateSubscriptionReferralSelf)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -156,6 +158,12 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.DELETE("/plans/:id", controller.AdminDeleteSubscriptionPlan)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
+			subscriptionAdminRoute.GET("/referral/settings", controller.AdminGetSubscriptionReferralSettings)
+			subscriptionAdminRoute.PUT("/referral/settings", controller.AdminUpdateSubscriptionReferralSettings)
+			subscriptionAdminRoute.GET("/referral/users/:id", controller.AdminGetSubscriptionReferralOverride)
+			subscriptionAdminRoute.PUT("/referral/users/:id", controller.AdminUpsertSubscriptionReferralOverride)
+			subscriptionAdminRoute.DELETE("/referral/users/:id", controller.AdminDeleteSubscriptionReferralOverride)
+			subscriptionAdminRoute.POST("/referral/orders/:trade_no/reverse", controller.AdminReverseSubscriptionReferral)
 
 			// User subscription management (admin)
 			subscriptionAdminRoute.GET("/users/:id/subscriptions", controller.AdminListUserSubscriptions)
