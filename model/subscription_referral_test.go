@@ -13,6 +13,21 @@ import (
 
 var _ func(int, string, int, int) (*SubscriptionReferralOverride, error) = UpsertSubscriptionReferralOverride
 
+type legacySubscriptionReferralOverrideSchemaRow struct {
+	Id           int    `gorm:"primaryKey"`
+	UserId       int    `gorm:"index:idx_subscription_referral_override_user_group"`
+	Group        string `gorm:"type:varchar(64);not null;default:'';index:idx_subscription_referral_override_user_group"`
+	TotalRateBps int    `gorm:"type:int;not null;default:0"`
+	CreatedBy    int    `gorm:"type:int;not null;default:0"`
+	UpdatedBy    int    `gorm:"type:int;not null;default:0"`
+	CreatedAt    int64  `gorm:"bigint"`
+	UpdatedAt    int64  `gorm:"bigint"`
+}
+
+func (legacySubscriptionReferralOverrideSchemaRow) TableName() string {
+	return "subscription_referral_overrides"
+}
+
 func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -38,21 +53,8 @@ func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 	DB = db
 	LOG_DB = db
 
-	createTableSQL := `CREATE TABLE ` + "`subscription_referral_overrides`" + ` (
-` + "`id`" + ` integer PRIMARY KEY,
-` + "`user_id`" + ` integer NOT NULL,
-` + "`group`" + ` varchar(64) NOT NULL DEFAULT '',
-` + "`total_rate_bps`" + ` integer NOT NULL DEFAULT 0,
-` + "`created_by`" + ` integer NOT NULL DEFAULT 0,
-` + "`updated_by`" + ` integer NOT NULL DEFAULT 0,
-` + "`created_at`" + ` bigint,
-` + "`updated_at`" + ` bigint
-)`
-	if err := db.Exec(createTableSQL).Error; err != nil {
+	if err := db.AutoMigrate(&legacySubscriptionReferralOverrideSchemaRow{}); err != nil {
 		t.Fatalf("failed to create legacy override table: %v", err)
-	}
-	if err := db.Exec("CREATE INDEX `idx_subscription_referral_override_user_group` ON `subscription_referral_overrides`(`user_id`, `group`)").Error; err != nil {
-		t.Fatalf("failed to create legacy override index: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -345,6 +347,57 @@ func TestEnsureSubscriptionReferralOverrideSchemaReconcilesDuplicateGroupedRows(
 	}
 	if err := db.Create(duplicate).Error; err == nil {
 		t.Fatal("expected duplicate grouped row insert to fail after schema reconciliation")
+	}
+}
+
+func TestSubscriptionReferralOverrideMigrationStartupPathHandlesDuplicateGroupedRows(t *testing.T) {
+	db := setupSubscriptionReferralOverrideSchemaDB(t)
+
+	insertSQL := "INSERT INTO `subscription_referral_overrides` (`id`, `user_id`, `group`, `total_rate_bps`, `created_by`, `updated_by`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	rows := []struct {
+		id           int
+		userID       int
+		groupName    string
+		totalRateBps int
+		updatedAt    int64
+	}{
+		{id: 11, userID: 9, groupName: "default", totalRateBps: 2000, updatedAt: 100},
+		{id: 12, userID: 9, groupName: "default", totalRateBps: 2300, updatedAt: 200},
+		{id: 13, userID: 9, groupName: "", totalRateBps: 1700, updatedAt: 150},
+	}
+	for _, row := range rows {
+		if err := db.Exec(insertSQL, row.id, row.userID, row.groupName, row.totalRateBps, 1, 1, row.updatedAt, row.updatedAt).Error; err != nil {
+			t.Fatalf("failed to seed legacy override row %+v: %v", row, err)
+		}
+	}
+
+	if err := migrateDB(); err != nil {
+		t.Fatalf("migrateDB() error = %v", err)
+	}
+
+	var defaultRows []SubscriptionReferralOverride
+	if err := db.Where("user_id = ? AND `group` = ?", 9, "default").Order("id ASC").Find(&defaultRows).Error; err != nil {
+		t.Fatalf("failed to load migrated default rows: %v", err)
+	}
+	if len(defaultRows) != 1 {
+		t.Fatalf("default row count = %d, want 1", len(defaultRows))
+	}
+	if defaultRows[0].Id != 12 {
+		t.Fatalf("retained default row id = %d, want 12", defaultRows[0].Id)
+	}
+	if defaultRows[0].TotalRateBps != 2300 {
+		t.Fatalf("retained default row TotalRateBps = %d, want 2300", defaultRows[0].TotalRateBps)
+	}
+
+	duplicate := &SubscriptionReferralOverride{
+		UserId:       9,
+		Group:        "default",
+		TotalRateBps: 2600,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}
+	if err := db.Create(duplicate).Error; err == nil {
+		t.Fatal("expected duplicate grouped row insert to fail after migrateDB() startup path")
 	}
 }
 
