@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -19,8 +20,9 @@ type UpdateSubscriptionReferralSelfRequest struct {
 }
 
 type AdminUpdateSubscriptionReferralSettingsRequest struct {
-	Enabled    *bool          `json:"enabled"`
-	GroupRates map[string]int `json:"group_rates"`
+	Enabled      *bool          `json:"enabled"`
+	GroupRates   map[string]int `json:"group_rates"`
+	TotalRateBps *int           `json:"total_rate_bps"`
 }
 
 type AdminUpsertSubscriptionReferralOverrideRequest struct {
@@ -62,9 +64,9 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	req.Group = strings.TrimSpace(req.Group)
-	if req.Group == "" {
-		common.ApiErrorMsg(c, "参数错误")
+	req.Group = normalizeSubscriptionReferralRequestGroup(req.Group)
+	if !isValidSubscriptionReferralGroup(req.Group) {
+		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
 
@@ -119,8 +121,13 @@ func AdminUpdateSubscriptionReferralSettings(c *gin.Context) {
 			return
 		}
 	}
-	if req.GroupRates != nil {
-		jsonBytes, err := json.Marshal(normalizeSubscriptionReferralGroupRates(req.GroupRates))
+	groupRates, err := resolveSubscriptionReferralSettingsGroupRates(req)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	if groupRates != nil {
+		jsonBytes, err := json.Marshal(groupRates)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -171,6 +178,10 @@ func AdminUpsertSubscriptionReferralOverride(c *gin.Context) {
 		return
 	}
 	req.Group = strings.TrimSpace(req.Group)
+	if req.Group != "" && !isValidSubscriptionReferralGroup(req.Group) {
+		common.ApiErrorMsg(c, "分组不存在")
+		return
+	}
 
 	targetGroup := req.Group
 	if targetGroup == "" {
@@ -214,6 +225,10 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 	targetGroup, err := resolveSubscriptionReferralOverrideDeleteGroup(c, userID)
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if targetGroup != "" && !isValidSubscriptionReferralGroup(targetGroup) {
+		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
 
@@ -266,6 +281,9 @@ func normalizeSubscriptionReferralGroupRates(groupRates map[string]int) map[stri
 		trimmedGroup := strings.TrimSpace(group)
 		if trimmedGroup == "" {
 			continue
+		}
+		if !isValidSubscriptionReferralGroup(trimmedGroup) {
+			return nil
 		}
 		normalized[trimmedGroup] = model.NormalizeSubscriptionReferralRateBps(rate)
 	}
@@ -389,4 +407,42 @@ func resolveSubscriptionReferralOverrideDeleteGroup(c *gin.Context, userID int) 
 		return "", err
 	}
 	return "", nil
+}
+
+func normalizeSubscriptionReferralRequestGroup(group string) string {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return "default"
+	}
+	return trimmedGroup
+}
+
+func isValidSubscriptionReferralGroup(group string) bool {
+	_, ok := ratio_setting.GetGroupRatioCopy()[strings.TrimSpace(group)]
+	return ok
+}
+
+func resolveSubscriptionReferralSettingsGroupRates(req AdminUpdateSubscriptionReferralSettingsRequest) (map[string]int, error) {
+	if req.GroupRates == nil && req.TotalRateBps == nil {
+		return nil, nil
+	}
+
+	if req.GroupRates != nil {
+		normalized := make(map[string]int, len(req.GroupRates))
+		for group, rate := range req.GroupRates {
+			trimmedGroup := strings.TrimSpace(group)
+			if trimmedGroup == "" {
+				continue
+			}
+			if !isValidSubscriptionReferralGroup(trimmedGroup) {
+				return nil, errors.New("分组不存在")
+			}
+			normalized[trimmedGroup] = model.NormalizeSubscriptionReferralRateBps(rate)
+		}
+		return normalized, nil
+	}
+
+	groupRates := common.GetSubscriptionReferralGroupRatesCopy()
+	groupRates["default"] = model.NormalizeSubscriptionReferralRateBps(*req.TotalRateBps)
+	return groupRates, nil
 }
