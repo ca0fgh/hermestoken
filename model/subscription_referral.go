@@ -272,18 +272,57 @@ func ListSubscriptionReferralOverridesByUserID(userID int) ([]SubscriptionReferr
 
 func ListSubscriptionReferralConfiguredGroups() []string {
 	groupRates := common.GetSubscriptionReferralGroupRatesCopy()
-	groups := make([]string, 0, len(groupRates))
+	groupSet := make(map[string]struct{}, len(groupRates))
 	for group := range groupRates {
 		trimmedGroup := strings.TrimSpace(group)
 		if trimmedGroup == "" {
 			continue
 		}
-		groups = append(groups, trimmedGroup)
+		groupSet[trimmedGroup] = struct{}{}
+	}
+
+	for _, group := range listSubscriptionPlanUpgradeGroups() {
+		groupSet[group] = struct{}{}
+	}
+
+	groups := make([]string, 0, len(groupSet))
+	for group := range groupSet {
+		groups = append(groups, group)
 	}
 	sort.Strings(groups)
 	if len(groups) == 0 {
 		return []string{"default"}
 	}
+	return groups
+}
+
+func listSubscriptionPlanUpgradeGroups() []string {
+	if DB == nil {
+		return nil
+	}
+
+	var rawGroups []string
+	if err := DB.Model(&SubscriptionPlan{}).
+		Distinct("upgrade_group").
+		Where("upgrade_group <> ''").
+		Pluck("upgrade_group", &rawGroups).Error; err != nil {
+		return nil
+	}
+
+	groupSet := make(map[string]struct{}, len(rawGroups))
+	groups := make([]string, 0, len(rawGroups))
+	for _, group := range rawGroups {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		if _, exists := groupSet[trimmedGroup]; exists {
+			continue
+		}
+		groupSet[trimmedGroup] = struct{}{}
+		groups = append(groups, trimmedGroup)
+	}
+	sort.Strings(groups)
 	return groups
 }
 

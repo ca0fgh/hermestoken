@@ -115,24 +115,29 @@ func AdminUpdateSubscriptionReferralSettings(c *gin.Context) {
 		return
 	}
 
-	if req.Enabled != nil {
-		if err := model.UpdateOption("SubscriptionReferralEnabled", strconv.FormatBool(*req.Enabled)); err != nil {
-			common.ApiError(c, err)
-			return
-		}
-	}
 	groupRates, err := resolveSubscriptionReferralSettingsGroupRates(req)
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	groupRatesJSON := ""
 	if groupRates != nil {
 		jsonBytes, err := json.Marshal(groupRates)
 		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
-		if err := model.UpdateOption("SubscriptionReferralGroupRates", string(jsonBytes)); err != nil {
+		groupRatesJSON = string(jsonBytes)
+	}
+
+	if req.Enabled != nil {
+		if err := model.UpdateOption("SubscriptionReferralEnabled", strconv.FormatBool(*req.Enabled)); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+	if groupRates != nil {
+		if err := model.UpdateOption("SubscriptionReferralGroupRates", groupRatesJSON); err != nil {
 			common.ApiError(c, err)
 			return
 		}
@@ -227,7 +232,7 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if targetGroup != "" && !isValidSubscriptionReferralGroup(targetGroup) {
+	if targetGroup != "" && !canDeleteSubscriptionReferralOverrideGroup(userID, targetGroup) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
@@ -422,6 +427,18 @@ func isValidSubscriptionReferralGroup(group string) bool {
 	return ok
 }
 
+func canDeleteSubscriptionReferralOverrideGroup(userID int, group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return true
+	}
+	if isValidSubscriptionReferralGroup(trimmedGroup) {
+		return true
+	}
+	override, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(userID, trimmedGroup)
+	return err == nil && override != nil
+}
+
 func resolveSubscriptionReferralSettingsGroupRates(req AdminUpdateSubscriptionReferralSettingsRequest) (map[string]int, error) {
 	if req.GroupRates == nil && req.TotalRateBps == nil {
 		return nil, nil
@@ -434,10 +451,14 @@ func resolveSubscriptionReferralSettingsGroupRates(req AdminUpdateSubscriptionRe
 			if trimmedGroup == "" {
 				continue
 			}
+			normalizedRate := model.NormalizeSubscriptionReferralRateBps(rate)
 			if !isValidSubscriptionReferralGroup(trimmedGroup) {
+				if normalizedRate == 0 {
+					continue
+				}
 				return nil, errors.New("分组不存在")
 			}
-			normalized[trimmedGroup] = model.NormalizeSubscriptionReferralRateBps(rate)
+			normalized[trimmedGroup] = normalizedRate
 		}
 		return normalized, nil
 	}

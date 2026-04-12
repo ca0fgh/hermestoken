@@ -115,6 +115,50 @@ func TestGetSubscriptionReferralSelfReturnsEffectiveRates(t *testing.T) {
 	}
 }
 
+func TestGetSubscriptionReferralSelfIncludesPlanUpgradeGroupWithoutConfiguredRate(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-user-plan-group", 0, dto.UserSetting{})
+	plan := seedSubscriptionPlan(t, model.DB, "self-group-plan")
+	plan.UpgradeGroup = "vip"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update self group plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		Groups []struct {
+			Group          string `json:"group"`
+			TotalRateBps   int    `json:"total_rate_bps"`
+			InviteeRateBps int    `json:"invitee_rate_bps"`
+			InviterRateBps int    `json:"inviter_rate_bps"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 1 {
+		t.Fatalf("groups length = %d, want 1 (%+v)", len(data.Groups), data.Groups)
+	}
+	if data.Groups[0].Group != "vip" {
+		t.Fatalf("group = %q, want vip", data.Groups[0].Group)
+	}
+	if data.Groups[0].TotalRateBps != 2000 || data.Groups[0].InviteeRateBps != 0 || data.Groups[0].InviterRateBps != 2000 {
+		t.Fatalf("unexpected plan-derived group payload: %+v", data.Groups[0])
+	}
+}
+
 func TestUpdateSubscriptionReferralSelfRejectsInviteeRateOverTotal(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true
@@ -227,6 +271,75 @@ func TestAdminUpdateSubscriptionReferralSettingsRejectsUnknownGroup(t *testing.T
 	}
 	if got := common.GetSubscriptionReferralGroupRate("ghost"); got != 0 {
 		t.Fatalf("ghost group rate = %d, want 0", got)
+	}
+}
+
+func TestAdminUpdateSubscriptionReferralSettingsRejectsUnknownPositiveGroupWithoutUpdatingEnabled(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	initSubscriptionReferralOptionMapForTest()
+	common.SubscriptionReferralEnabled = false
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500}`)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/settings",
+		map[string]any{
+			"enabled":     true,
+			"group_rates": map[string]int{"ghost": 3600},
+		},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+
+	AdminUpdateSubscriptionReferralSettings(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if resp.Success {
+		t.Fatal("expected invalid group settings request to fail")
+	}
+	if common.SubscriptionReferralEnabled {
+		t.Fatal("expected SubscriptionReferralEnabled to remain false after rejected request")
+	}
+}
+
+func TestAdminUpdateSubscriptionReferralSettingsAllowsRemovingStaleUnknownGroup(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	initSubscriptionReferralOptionMapForTest()
+	common.SubscriptionReferralEnabled = false
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"ghost":1200}`)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/settings",
+		map[string]any{
+			"enabled": true,
+			"group_rates": map[string]int{
+				"default": 4600,
+				"ghost":   0,
+			},
+		},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+
+	AdminUpdateSubscriptionReferralSettings(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected stale-group cleanup save to succeed, got message: %s", resp.Message)
+	}
+	if !common.SubscriptionReferralEnabled {
+		t.Fatal("expected SubscriptionReferralEnabled to update after valid save")
+	}
+	if got := common.GetSubscriptionReferralGroupRate("default"); got != 4600 {
+		t.Fatalf("default group rate = %d, want 4600", got)
+	}
+	if got := common.GetSubscriptionReferralGroupRate("ghost"); got != 0 {
+		t.Fatalf("ghost group rate = %d, want 0 after cleanup", got)
 	}
 }
 
@@ -540,6 +653,58 @@ func TestAdminGetSubscriptionReferralOverrideRepresentsLegacyEmptyGroupOverrideA
 	}
 }
 
+func TestAdminGetSubscriptionReferralOverrideIncludesPlanUpgradeGroupWithoutConfiguredRate(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-plan-group", 0, dto.UserSetting{})
+	plan := seedSubscriptionPlan(t, model.DB, "override-group-plan")
+	plan.UpgradeGroup = "vip"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update override group plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	getCtx, getRecorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/users/1",
+		nil,
+		1,
+	)
+	getCtx.Set("role", common.RoleRootUser)
+	getCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	AdminGetSubscriptionReferralOverride(getCtx)
+
+	getResp := decodeAPIResponse(t, getRecorder)
+	if !getResp.Success {
+		t.Fatalf("expected admin get override success")
+	}
+
+	var data struct {
+		Groups []struct {
+			Group                 string `json:"group"`
+			EffectiveTotalRateBps int    `json:"effective_total_rate_bps"`
+			HasOverride           bool   `json:"has_override"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(getResp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 1 {
+		t.Fatalf("groups length = %d, want 1 (%+v)", len(data.Groups), data.Groups)
+	}
+	if data.Groups[0].Group != "vip" {
+		t.Fatalf("group = %q, want vip", data.Groups[0].Group)
+	}
+	if data.Groups[0].EffectiveTotalRateBps != 2000 {
+		t.Fatalf("vip effective_total_rate_bps = %d, want 2000", data.Groups[0].EffectiveTotalRateBps)
+	}
+	if data.Groups[0].HasOverride {
+		t.Fatal("expected plan-derived group without override to report has_override=false")
+	}
+}
+
 func TestAdminUpsertSubscriptionReferralOverrideUpdatesDefaultGroupLegacyOverride(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-default-upsert", 0, dto.UserSetting{})
@@ -707,6 +872,35 @@ func TestAdminDeleteSubscriptionReferralOverrideRejectsUnknownGroup(t *testing.T
 	resp := decodeAPIResponse(t, recorder)
 	if resp.Success {
 		t.Fatal("expected invalid group delete request to fail")
+	}
+}
+
+func TestAdminDeleteSubscriptionReferralOverrideAllowsRetiredExistingGroup(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-delete-retired-group", 0, dto.UserSetting{})
+
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "retired", 2800, 1); err != nil {
+		t.Fatalf("failed to create retired grouped override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodDelete,
+		"/api/subscription/admin/referral/users/1?group=retired",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	AdminDeleteSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected retired override delete to succeed, got message: %s", resp.Message)
+	}
+	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "retired"); err == nil {
+		t.Fatal("expected retired grouped override to be deleted")
 	}
 }
 

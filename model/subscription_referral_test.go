@@ -370,6 +370,30 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 	}
 }
 
+func TestListSubscriptionReferralConfiguredGroupsIncludesPlanUpgradeGroups(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	planWithVIP := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, planWithVIP, "vip")
+	planWithSpaces := seedReferralPlan(t, db, 29.9)
+	setReferralPlanUpgradeGroup(t, db, planWithSpaces, " vip ")
+	planDefault := seedReferralPlan(t, db, 39.9)
+	setReferralPlanUpgradeGroup(t, db, planDefault, "")
+
+	groups := ListSubscriptionReferralConfiguredGroups()
+	if len(groups) != 1 || groups[0] != "vip" {
+		t.Fatalf("ListSubscriptionReferralConfiguredGroups() = %v, want [vip]", groups)
+	}
+}
+
 func TestEnsureSubscriptionReferralOverrideSchemaReconcilesDuplicateGroupedRows(t *testing.T) {
 	db := setupSubscriptionReferralOverrideSchemaDB(t)
 
