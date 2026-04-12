@@ -242,7 +242,7 @@ test('buildGroupedReferralSummaries preserves group names for invitation cards',
   );
 });
 
-test('buildInvitationDraftPercentInputs preserves untouched group drafts when one group refreshes', () => {
+test('buildInvitationDraftPercentInputs preserves existing drafts when persisted groups refresh', () => {
   assert.deepEqual(
     buildInvitationDraftPercentInputs(
       {
@@ -261,10 +261,37 @@ test('buildInvitationDraftPercentInputs preserves untouched group drafts when on
           inviteeRateBps: 500,
         },
       ],
+    ),
+    {
+      default: 3.5,
+      vip: 12.34,
+    },
+  );
+});
+
+test('buildInvitationDraftPercentInputs preserves the saving group draft when persisted data has not changed', () => {
+  assert.deepEqual(
+    buildInvitationDraftPercentInputs(
+      {
+        default: 7.25,
+        vip: 12.34,
+      },
+      [
+        {
+          group: 'default',
+          totalRateBps: 4500,
+          inviteeRateBps: 500,
+        },
+        {
+          group: 'vip',
+          totalRateBps: 3000,
+          inviteeRateBps: 500,
+        },
+      ],
       'default',
     ),
     {
-      default: 4,
+      default: 7.25,
       vip: 12.34,
     },
   );

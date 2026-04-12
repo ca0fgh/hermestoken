@@ -907,7 +907,6 @@ const TopUp = () => {
           affLink={affLink}
           handleAffLinkClick={handleAffLinkClick}
           referralGroups={referralGroups}
-          referralSavingGroup={referralSavingGroup}
           onSaveReferralConfig={updateSubscriptionReferralSelf}
         />
       </div>

@@ -186,10 +186,7 @@ export function buildGroupedReferralSummaries(groups = []) {
 export function buildInvitationDraftPercentInputs(
   currentDrafts = {},
   referralGroups = [],
-  refreshedGroup = '',
 ) {
-  const normalizedRefreshedGroup = String(refreshedGroup || '').trim();
-
   return (referralGroups || []).reduce((drafts, groupSummary) => {
     const group = String(groupSummary?.group || '').trim();
     if (!group) {
@@ -206,10 +203,7 @@ export function buildInvitationDraftPercentInputs(
 
     return {
       ...drafts,
-      [group]:
-        !hasExistingDraft || group === normalizedRefreshedGroup
-          ? persistedPercent
-          : currentDrafts[group],
+      [group]: !hasExistingDraft ? persistedPercent : currentDrafts[group],
     };
   }, {});
 }

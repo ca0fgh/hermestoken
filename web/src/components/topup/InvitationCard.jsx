@@ -46,20 +46,15 @@ const InvitationCard = ({
   affLink,
   handleAffLinkClick,
   referralGroups,
-  referralSavingGroup,
   onSaveReferralConfig,
 }) => {
   const [inviteePercentInputs, setInviteePercentInputs] = useState({});
 
   useEffect(() => {
     setInviteePercentInputs((currentInputs) =>
-      buildInvitationDraftPercentInputs(
-        currentInputs,
-        referralGroups,
-        referralSavingGroup,
-      ),
+      buildInvitationDraftPercentInputs(currentInputs, referralGroups),
     );
-  }, [referralGroups, referralSavingGroup]);
+  }, [referralGroups]);
 
   const updateInviteePercentInput = (group, value) => {
     setInviteePercentInputs((currentInputs) => ({
