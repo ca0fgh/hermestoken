@@ -260,6 +260,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "SubscriptionReferralGroupRates":
+		err = common.UpdateSubscriptionReferralGroupRatesByJSONString(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "订阅返佣分组费率设置失败: " + err.Error(),
+			})
+			return
+		}
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {
