@@ -58,3 +58,33 @@ export function normalizeAdminReferralPayload({ enabled, totalRateBps }) {
     totalRateBps: clampInviteeRateBps(totalRateBps, 10000),
   };
 }
+
+export function parseAdminReferralSettings(payload = {}) {
+  const rawEnabled = payload.enabled;
+  let enabled = false;
+  if (typeof rawEnabled === 'boolean') {
+    enabled = rawEnabled;
+  } else if (typeof rawEnabled === 'number') {
+    enabled = rawEnabled === 1;
+  } else if (typeof rawEnabled === 'string') {
+    const normalizedEnabled = rawEnabled.trim().toLowerCase();
+    enabled = normalizedEnabled === 'true' || normalizedEnabled === '1';
+  }
+
+  const totalRateBps = clampInviteeRateBps(payload.total_rate_bps, 10000);
+  return {
+    enabled,
+    totalRateBps,
+    totalRatePercent: rateBpsToPercentNumber(totalRateBps),
+  };
+}
+
+export function buildAdminReferralFormValues({
+  enabled = false,
+  totalRatePercent = 0,
+} = {}) {
+  return {
+    SubscriptionReferralEnabled: Boolean(enabled),
+    SubscriptionReferralGlobalRateBps: Number(totalRatePercent || 0),
+  };
+}

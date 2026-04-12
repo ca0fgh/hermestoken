@@ -20,10 +20,12 @@ For commercial licensing, please contact support@quantumnous.com
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildAdminReferralFormValues,
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
   normalizeAdminReferralPayload,
+  parseAdminReferralSettings,
 } from '../src/helpers/subscriptionReferral.js';
 
 test('clampInviteeRateBps caps invitee rate to total rate', () => {
@@ -50,6 +52,33 @@ test('normalizeAdminReferralPayload keeps BPS integers within 0-10000', () => {
     {
       enabled: true,
       totalRateBps: 10000,
+    },
+  );
+});
+
+test('parseAdminReferralSettings normalizes admin API payload for local form state', () => {
+  assert.deepEqual(
+    parseAdminReferralSettings({
+      enabled: 1,
+      total_rate_bps: '2500',
+    }),
+    {
+      enabled: true,
+      totalRateBps: 2500,
+      totalRatePercent: 25,
+    },
+  );
+});
+
+test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {
+  assert.deepEqual(
+    buildAdminReferralFormValues({
+      enabled: true,
+      totalRatePercent: 45,
+    }),
+    {
+      SubscriptionReferralEnabled: true,
+      SubscriptionReferralGlobalRateBps: 45,
     },
   );
 });

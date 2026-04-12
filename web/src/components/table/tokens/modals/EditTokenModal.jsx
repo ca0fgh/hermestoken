@@ -131,7 +131,8 @@ const EditTokenModal = (props) => {
     let res = await API.get(`/api/user/self/groups`);
     const { success, message, data } = res.data;
     if (success) {
-      let localGroupOptions = processGroupsData(data);
+      const localGroupOptions =
+        Object.keys(data || {}).length === 0 ? [] : processGroupsData(data);
       if (statusState?.status?.default_use_auto_group) {
         if (localGroupOptions.some((group) => group.value === 'auto')) {
           localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
@@ -368,12 +369,9 @@ const EditTokenModal = (props) => {
                         style={{ width: '100%' }}
                       />
                     ) : (
-                      <Form.Select
-                        placeholder={t('管理员未设置用户可选分组')}
-                        disabled
-                        label={t('令牌分组')}
-                        style={{ width: '100%' }}
-                      />
+                      <Form.Slot label={t('令牌分组')}>
+                        <Text type='tertiary'>{t('没有')}</Text>
+                      </Form.Slot>
                     )}
                   </Col>
                   <Col

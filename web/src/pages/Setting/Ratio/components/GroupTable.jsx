@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   Button,
   Input,
@@ -29,6 +35,7 @@ import {
 import { IconPlus, IconDelete } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import CardTable from '../../../../components/common/ui/CardTable';
+import { getSyncedDraftValue, shouldCommitDraftValue } from './groupTableDraft';
 
 const { Text } = Typography;
 
@@ -62,6 +69,79 @@ function buildRows(groupRatioStr, userUsableGroupsStr) {
   }));
 }
 
+function EditableTextCell({ value, placeholder, status, onCommit }) {
+  const [draftValue, setDraftValue] = useState(value ?? '');
+  const isComposingRef = useRef(false);
+
+  useEffect(() => {
+    setDraftValue((currentDraft) =>
+      getSyncedDraftValue({
+        committedValue: value,
+        draftValue: currentDraft,
+        isComposing: isComposingRef.current,
+      }),
+    );
+  }, [value]);
+
+  const commitValue = useCallback(
+    (nextValue) => {
+      if (
+        shouldCommitDraftValue({
+          committedValue: value,
+          draftValue: nextValue,
+        })
+      ) {
+        onCommit?.(nextValue);
+      }
+    },
+    [onCommit, value],
+  );
+
+  const handleChange = useCallback(
+    (nextValue) => {
+      const normalizedValue = nextValue ?? '';
+      setDraftValue(normalizedValue);
+      if (!isComposingRef.current) {
+        commitValue(normalizedValue);
+      }
+    },
+    [commitValue],
+  );
+
+  const handleCompositionStart = useCallback(() => {
+    isComposingRef.current = true;
+  }, []);
+
+  const handleCompositionEnd = useCallback(
+    (event) => {
+      isComposingRef.current = false;
+      const nextValue = event?.target?.value ?? draftValue;
+      setDraftValue(nextValue);
+      commitValue(nextValue);
+    },
+    [commitValue, draftValue],
+  );
+
+  const handleBlur = useCallback(() => {
+    if (!isComposingRef.current) {
+      commitValue(draftValue);
+    }
+  }, [commitValue, draftValue]);
+
+  return (
+    <Input
+      size='small'
+      value={draftValue}
+      status={status}
+      placeholder={placeholder}
+      onChange={handleChange}
+      onCompositionStart={handleCompositionStart}
+      onCompositionEnd={handleCompositionEnd}
+      onBlur={handleBlur}
+    />
+  );
+}
+
 export function serializeGroupTable(rows) {
   const groupRatio = {};
   const userUsableGroups = {};
@@ -80,11 +160,7 @@ export function serializeGroupTable(rows) {
   };
 }
 
-export default function GroupTable({
-  groupRatio,
-  userUsableGroups,
-  onChange,
-}) {
+export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
   const { t } = useTranslation();
 
   const [rows, setRows] = useState(() =>
@@ -154,11 +230,10 @@ export default function GroupTable({
         key: 'name',
         width: 180,
         render: (_, record) => (
-          <Input
-            size='small'
+          <EditableTextCell
             value={record.name}
             status={duplicateNames.has(record.name) ? 'warning' : undefined}
-            onChange={(v) => updateRow(record._id, 'name', v)}
+            onCommit={(v) => updateRow(record._id, 'name', v)}
           />
         ),
       },
@@ -199,11 +274,10 @@ export default function GroupTable({
         key: 'description',
         render: (_, record) =>
           record.selectable ? (
-            <Input
-              size='small'
+            <EditableTextCell
               value={record.description}
               placeholder={t('分组描述')}
-              onChange={(v) => updateRow(record._id, 'description', v)}
+              onCommit={(v) => updateRow(record._id, 'description', v)}
             />
           ) : (
             <Text type='tertiary' size='small'>
@@ -242,9 +316,7 @@ export default function GroupTable({
         rowKey='_id'
         hidePagination
         size='small'
-        empty={
-          <Text type='tertiary'>{t('暂无分组，点击下方按钮添加')}</Text>
-        }
+        empty={<Text type='tertiary'>{t('暂无分组，点击下方按钮添加')}</Text>}
       />
       <div className='mt-3 flex justify-center'>
         <Button icon={<IconPlus />} theme='outline' onClick={addRow}>
@@ -253,7 +325,8 @@ export default function GroupTable({
       </div>
       {duplicateNames.size > 0 && (
         <Text type='warning' size='small' className='mt-2 block'>
-          {t('存在重复的分组名称：')}{Array.from(duplicateNames).join(', ')}
+          {t('存在重复的分组名称：')}
+          {Array.from(duplicateNames).join(', ')}
         </Text>
       )}
     </div>

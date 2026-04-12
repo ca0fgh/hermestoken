@@ -17,30 +17,65 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, showWarning } from '../../../helpers';
 import {
+  buildAdminReferralFormValues,
   normalizeAdminReferralPayload,
-  rateBpsToPercentNumber,
+  parseAdminReferralSettings,
   percentNumberToRateBps,
 } from '../../../helpers/subscriptionReferral';
 
-export default function SettingsSubscriptionReferral(props) {
+export default function SettingsSubscriptionReferral() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [totalRatePercent, setTotalRatePercent] = useState(0);
   const [snapshot, setSnapshot] = useState({ enabled: false, totalRateBps: 0 });
+  const refForm = useRef(null);
+
+  const formValues = buildAdminReferralFormValues({
+    enabled,
+    totalRatePercent,
+  });
+
+  const applySettings = (payload) => {
+    const nextSettings = parseAdminReferralSettings(payload);
+    setEnabled(nextSettings.enabled);
+    setTotalRatePercent(nextSettings.totalRatePercent);
+    setSnapshot({
+      enabled: nextSettings.enabled,
+      totalRateBps: nextSettings.totalRateBps,
+    });
+  };
 
   useEffect(() => {
-    const nextEnabled = Boolean(props.options?.SubscriptionReferralEnabled);
-    const nextRateBps = Number(props.options?.SubscriptionReferralGlobalRateBps || 0);
-    setEnabled(nextEnabled);
-    setTotalRatePercent(rateBpsToPercentNumber(nextRateBps));
-    setSnapshot({ enabled: nextEnabled, totalRateBps: nextRateBps });
-  }, [props.options]);
+    // Semi Form field components read from form store first, so we must keep
+    // the form API in sync with the externally loaded settings.
+    refForm.current?.setValues(formValues);
+  }, [enabled, totalRatePercent]);
+
+  const loadSettings = async () => {
+    setLoading(true);
+    try {
+      const res = await API.get('/api/subscription/admin/referral/settings');
+      if (res.data?.success) {
+        applySettings(res.data?.data || {});
+      } else {
+        showError(res.data?.message || t('加载失败'));
+      }
+    } catch (error) {
+      showError(t('加载失败'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSettings().then();
+  }, []);
 
   const onSubmit = async () => {
     const nextRateBps = percentNumberToRateBps(totalRatePercent);
@@ -59,8 +94,8 @@ export default function SettingsSubscriptionReferral(props) {
         total_rate_bps: payload.totalRateBps,
       });
       if (res.data?.success) {
+        applySettings(res.data?.data || {});
         showSuccess(t('保存成功'));
-        props.refresh?.();
       } else {
         showError(res.data?.message || t('保存失败，请重试'));
       }
@@ -73,7 +108,13 @@ export default function SettingsSubscriptionReferral(props) {
 
   return (
     <Spin spinning={loading}>
-      <Form style={{ marginBottom: 15 }}>
+      <Form
+        values={formValues}
+        getFormApi={(formApi) => {
+          refForm.current = formApi;
+        }}
+        style={{ marginBottom: 15 }}
+      >
         <Form.Section text={t('订阅返佣设置')}>
           <Row gutter={16}>
             <Col xs={24} sm={12} md={10}>
