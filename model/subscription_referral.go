@@ -155,6 +155,10 @@ func CalculateSubscriptionReferralQuota(orderMoney float64, rateBps int) int {
 }
 
 func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
+	return GetLegacySubscriptionReferralOverrideByUserID(userID)
+}
+
+func GetLegacySubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}

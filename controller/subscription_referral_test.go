@@ -143,28 +143,12 @@ func TestAdminUpsertSubscriptionReferralOverridePersistsOverride(t *testing.T) {
 	}
 }
 
-func TestAdminUpsertSubscriptionReferralOverrideReadsLegacyUngroupedOverride(t *testing.T) {
+func TestAdminGetSubscriptionReferralOverrideReadsDefaultGroupLegacyOverride(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
-	user := seedSubscriptionReferralControllerUser(t, "override-user-legacy-read", 0, dto.UserSetting{})
+	user := seedSubscriptionReferralControllerUser(t, "override-user-default-get", 0, dto.UserSetting{})
 
 	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "default", 4100, 1); err != nil {
 		t.Fatalf("failed to create default-group override: %v", err)
-	}
-
-	upsertCtx, upsertRecorder := newAuthenticatedContext(
-		t,
-		http.MethodPut,
-		"/api/subscription/admin/referral/users/1",
-		AdminUpsertSubscriptionReferralOverrideRequest{TotalRateBps: 3500},
-		1,
-	)
-	upsertCtx.Set("role", common.RoleRootUser)
-	upsertCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
-	AdminUpsertSubscriptionReferralOverride(upsertCtx)
-
-	upsertResp := decodeAPIResponse(t, upsertRecorder)
-	if !upsertResp.Success {
-		t.Fatalf("expected success")
 	}
 
 	getCtx, getRecorder := newAuthenticatedContext(
@@ -192,13 +176,49 @@ func TestAdminUpsertSubscriptionReferralOverrideReadsLegacyUngroupedOverride(t *
 		t.Fatalf("failed to decode response data: %v", err)
 	}
 	if !data.HasOverride {
-		t.Fatal("expected legacy ungrouped override to be reported")
+		t.Fatal("expected default-group legacy override to be reported")
 	}
-	if data.OverrideRateBps != 3500 {
-		t.Fatalf("override_rate_bps = %d, want 3500", data.OverrideRateBps)
+	if data.OverrideRateBps != 4100 {
+		t.Fatalf("override_rate_bps = %d, want 4100", data.OverrideRateBps)
 	}
-	if data.EffectiveTotalRateBps != 3500 {
-		t.Fatalf("effective_total_rate_bps = %d, want 3500", data.EffectiveTotalRateBps)
+	if data.EffectiveTotalRateBps != 4100 {
+		t.Fatalf("effective_total_rate_bps = %d, want 4100", data.EffectiveTotalRateBps)
+	}
+}
+
+func TestAdminUpsertSubscriptionReferralOverrideUpdatesDefaultGroupLegacyOverride(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-default-upsert", 0, dto.UserSetting{})
+
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "default", 4100, 1); err != nil {
+		t.Fatalf("failed to create default-group override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/users/1",
+		AdminUpsertSubscriptionReferralOverrideRequest{TotalRateBps: 3500},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	AdminUpsertSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	defaultOverride, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default")
+	if err != nil {
+		t.Fatalf("failed to load default-group override: %v", err)
+	}
+	if defaultOverride.TotalRateBps != 3500 {
+		t.Fatalf("default override TotalRateBps = %d, want 3500", defaultOverride.TotalRateBps)
+	}
+	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err == nil {
+		t.Fatal("expected no ungrouped override row to be created")
 	}
 }
 
@@ -269,6 +289,48 @@ func TestAdminDeleteSubscriptionReferralOverridePreservesGroupedOverride(t *test
 	}
 	if data.HasOverride {
 		t.Fatal("expected legacy endpoint to report no remaining override")
+	}
+}
+
+func TestAdminDeleteSubscriptionReferralOverrideDeletesDefaultGroupLegacyOverrideOnly(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-default-delete", 0, dto.UserSetting{})
+
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "default", 3500, 1); err != nil {
+		t.Fatalf("failed to create default-group override: %v", err)
+	}
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "vip", 2800, 1); err != nil {
+		t.Fatalf("failed to create grouped override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodDelete,
+		"/api/subscription/admin/referral/users/1",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	AdminDeleteSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default"); err == nil {
+		t.Fatal("expected default-group legacy override to be deleted")
+	}
+	groupedOverride, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("expected grouped override to remain: %v", err)
+	}
+	if groupedOverride.TotalRateBps != 2800 {
+		t.Fatalf("grouped override TotalRateBps = %d, want 2800", groupedOverride.TotalRateBps)
+	}
+	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err == nil {
+		t.Fatal("expected no ungrouped override row after delete")
 	}
 }
 
