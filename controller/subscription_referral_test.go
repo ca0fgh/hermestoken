@@ -134,12 +134,71 @@ func TestAdminUpsertSubscriptionReferralOverridePersistsOverride(t *testing.T) {
 		t.Fatalf("expected success")
 	}
 
-	override, err := model.GetSubscriptionReferralOverrideByUserID(user.Id)
+	override, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "")
 	if err != nil {
 		t.Fatalf("failed to load override: %v", err)
 	}
 	if override.TotalRateBps != 3500 {
 		t.Fatalf("expected persisted override 3500, got %d", override.TotalRateBps)
+	}
+}
+
+func TestAdminUpsertSubscriptionReferralOverrideReadsLegacyUngroupedOverride(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-legacy-read", 0, dto.UserSetting{})
+
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "default", 4100, 1); err != nil {
+		t.Fatalf("failed to create default-group override: %v", err)
+	}
+
+	upsertCtx, upsertRecorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/users/1",
+		AdminUpsertSubscriptionReferralOverrideRequest{TotalRateBps: 3500},
+		1,
+	)
+	upsertCtx.Set("role", common.RoleRootUser)
+	upsertCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	AdminUpsertSubscriptionReferralOverride(upsertCtx)
+
+	upsertResp := decodeAPIResponse(t, upsertRecorder)
+	if !upsertResp.Success {
+		t.Fatalf("expected success")
+	}
+
+	getCtx, getRecorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/users/1",
+		nil,
+		1,
+	)
+	getCtx.Set("role", common.RoleRootUser)
+	getCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	AdminGetSubscriptionReferralOverride(getCtx)
+
+	getResp := decodeAPIResponse(t, getRecorder)
+	if !getResp.Success {
+		t.Fatalf("expected admin get override success")
+	}
+
+	var data struct {
+		HasOverride           bool `json:"has_override"`
+		OverrideRateBps       int  `json:"override_rate_bps"`
+		EffectiveTotalRateBps int  `json:"effective_total_rate_bps"`
+	}
+	if err := common.Unmarshal(getResp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if !data.HasOverride {
+		t.Fatal("expected legacy ungrouped override to be reported")
+	}
+	if data.OverrideRateBps != 3500 {
+		t.Fatalf("override_rate_bps = %d, want 3500", data.OverrideRateBps)
+	}
+	if data.EffectiveTotalRateBps != 3500 {
+		t.Fatalf("effective_total_rate_bps = %d, want 3500", data.EffectiveTotalRateBps)
 	}
 }
 
@@ -160,6 +219,56 @@ func TestAdminUpsertSubscriptionReferralOverrideRejectsMissingUser(t *testing.T)
 	resp := decodeAPIResponse(t, recorder)
 	if resp.Success {
 		t.Fatalf("expected missing user override request to fail")
+	}
+}
+
+func TestAdminDeleteSubscriptionReferralOverridePreservesGroupedOverride(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-delete", 0, dto.UserSetting{})
+
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "", 3500, 1); err != nil {
+		t.Fatalf("failed to create legacy ungrouped override: %v", err)
+	}
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "vip", 2800, 1); err != nil {
+		t.Fatalf("failed to create grouped override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodDelete,
+		"/api/subscription/admin/referral/users/1",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	AdminDeleteSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err == nil {
+		t.Fatal("expected legacy ungrouped override to be deleted")
+	}
+	groupedOverride, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("expected grouped override to remain: %v", err)
+	}
+	if groupedOverride.TotalRateBps != 2800 {
+		t.Fatalf("grouped override TotalRateBps = %d, want 2800", groupedOverride.TotalRateBps)
+	}
+
+	var data struct {
+		HasOverride           bool `json:"has_override"`
+		EffectiveTotalRateBps int  `json:"effective_total_rate_bps"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if data.HasOverride {
+		t.Fatal("expected legacy endpoint to report no remaining override")
 	}
 }
 

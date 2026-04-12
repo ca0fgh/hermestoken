@@ -2,14 +2,75 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
 var _ func(int, string, int, int) (*SubscriptionReferralOverride, error) = UpsertSubscriptionReferralOverride
+
+func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	originalDB := DB
+	originalLogDB := LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalRedisEnabled := common.RedisEnabled
+	originalBatchUpdateEnabled := common.BatchUpdateEnabled
+
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+	common.BatchUpdateEnabled = false
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open sqlite db: %v", err)
+	}
+	DB = db
+	LOG_DB = db
+
+	createTableSQL := `CREATE TABLE ` + "`subscription_referral_overrides`" + ` (
+` + "`id`" + ` integer PRIMARY KEY,
+` + "`user_id`" + ` integer NOT NULL,
+` + "`group`" + ` varchar(64) NOT NULL DEFAULT '',
+` + "`total_rate_bps`" + ` integer NOT NULL DEFAULT 0,
+` + "`created_by`" + ` integer NOT NULL DEFAULT 0,
+` + "`updated_by`" + ` integer NOT NULL DEFAULT 0,
+` + "`created_at`" + ` bigint,
+` + "`updated_at`" + ` bigint
+)`
+	if err := db.Exec(createTableSQL).Error; err != nil {
+		t.Fatalf("failed to create legacy override table: %v", err)
+	}
+	if err := db.Exec("CREATE INDEX `idx_subscription_referral_override_user_group` ON `subscription_referral_overrides`(`user_id`, `group`)").Error; err != nil {
+		t.Fatalf("failed to create legacy override index: %v", err)
+	}
+
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+		DB = originalDB
+		LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.RedisEnabled = originalRedisEnabled
+		common.BatchUpdateEnabled = originalBatchUpdateEnabled
+	})
+
+	return db
+}
 
 func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {
 	tests := []struct {
@@ -232,6 +293,58 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 
 	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 2600 {
 		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 2600", got)
+	}
+}
+
+func TestEnsureSubscriptionReferralOverrideSchemaReconcilesDuplicateGroupedRows(t *testing.T) {
+	db := setupSubscriptionReferralOverrideSchemaDB(t)
+
+	insertSQL := "INSERT INTO `subscription_referral_overrides` (`id`, `user_id`, `group`, `total_rate_bps`, `created_by`, `updated_by`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+	rows := []struct {
+		id           int
+		userID       int
+		groupName    string
+		totalRateBps int
+		updatedAt    int64
+	}{
+		{id: 1, userID: 7, groupName: "vip", totalRateBps: 2200, updatedAt: 100},
+		{id: 2, userID: 7, groupName: "vip", totalRateBps: 2400, updatedAt: 200},
+		{id: 3, userID: 7, groupName: "vip", totalRateBps: 2600, updatedAt: 200},
+		{id: 4, userID: 7, groupName: "", totalRateBps: 1800, updatedAt: 150},
+	}
+	for _, row := range rows {
+		if err := db.Exec(insertSQL, row.id, row.userID, row.groupName, row.totalRateBps, 1, 1, row.updatedAt, row.updatedAt).Error; err != nil {
+			t.Fatalf("failed to seed legacy override row %+v: %v", row, err)
+		}
+	}
+
+	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
+		t.Fatalf("ensureSubscriptionReferralOverrideSchema() error = %v", err)
+	}
+
+	var vipRows []SubscriptionReferralOverride
+	if err := db.Where("user_id = ? AND `group` = ?", 7, "vip").Order("id ASC").Find(&vipRows).Error; err != nil {
+		t.Fatalf("failed to load reconciled vip rows: %v", err)
+	}
+	if len(vipRows) != 1 {
+		t.Fatalf("vip row count = %d, want 1", len(vipRows))
+	}
+	if vipRows[0].Id != 3 {
+		t.Fatalf("reconciled vip row id = %d, want 3", vipRows[0].Id)
+	}
+	if vipRows[0].TotalRateBps != 2600 {
+		t.Fatalf("reconciled vip row TotalRateBps = %d, want 2600", vipRows[0].TotalRateBps)
+	}
+
+	duplicate := &SubscriptionReferralOverride{
+		UserId:       7,
+		Group:        "vip",
+		TotalRateBps: 3000,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}
+	if err := db.Create(duplicate).Error; err == nil {
+		t.Fatal("expected duplicate grouped row insert to fail after schema reconciliation")
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -411,7 +412,43 @@ func ensureSubscriptionReferralOverrideSchema() error {
 			return err
 		}
 	}
+	if err := reconcileSubscriptionReferralOverrideDuplicates(); err != nil {
+		return err
+	}
 	return DB.Migrator().CreateIndex(model, "idx_sub_referral_override_group")
+}
+
+func reconcileSubscriptionReferralOverrideDuplicates() error {
+	type overrideKey struct {
+		UserID int
+		Group  string
+	}
+
+	var overrides []SubscriptionReferralOverride
+	if err := DB.
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "user_id"}}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "updated_at"}, Desc: true}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}, Desc: true}).
+		Find(&overrides).Error; err != nil {
+		return err
+	}
+
+	seen := make(map[overrideKey]struct{}, len(overrides))
+	duplicateIDs := make([]int, 0)
+	for _, override := range overrides {
+		key := overrideKey{UserID: override.UserId, Group: override.Group}
+		if _, ok := seen[key]; ok {
+			duplicateIDs = append(duplicateIDs, override.Id)
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+
+	if len(duplicateIDs) == 0 {
+		return nil
+	}
+	return DB.Where("id IN ?", duplicateIDs).Delete(&SubscriptionReferralOverride{}).Error
 }
 
 type sqliteColumnDef struct {

@@ -121,15 +121,20 @@ func AdminGetSubscriptionReferralOverride(c *gin.Context) {
 		return
 	}
 
-	override, err := model.GetSubscriptionReferralOverrideByUserID(userID)
+	override, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(userID, "")
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		common.ApiError(c, err)
 		return
 	}
 
+	effectiveTotalRateBps := model.NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
+	if override != nil {
+		effectiveTotalRateBps = model.NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
+	}
+
 	response := gin.H{
 		"user_id":                  userID,
-		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID, ""),
+		"effective_total_rate_bps": effectiveTotalRateBps,
 		"has_override":             override != nil,
 		"override_rate_bps":        nil,
 	}
@@ -182,7 +187,7 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteSubscriptionReferralOverrideByUserID(userID); err != nil {
+	if err := model.DeleteSubscriptionReferralOverrideByUserIDAndGroup(userID, ""); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -190,7 +195,7 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"user_id":                  userID,
 		"has_override":             false,
-		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID, ""),
+		"effective_total_rate_bps": model.NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps),
 	})
 }
 
