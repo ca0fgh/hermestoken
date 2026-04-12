@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	logoUploadFormField      = "logo"
-	logoPublicPath           = "/api/logo"
-	maxLogoUploadBytes int64 = 5 << 20
+	logoUploadFormField          = "logo"
+	logoPublicPath               = "/api/logo"
+	maxLogoUploadBytes     int64 = 5 << 20
+	defaultLogoStoragePath       = "data/system-assets/logo-upload.bin"
 )
 
 var (
-	logoStoragePath = filepath.Join("data", "system-assets", "logo-upload.bin")
+	logoStoragePath  = defaultLogoStoragePath
 	allowedLogoMIMEs = map[string]struct{}{
 		"image/gif":  {},
 		"image/jpeg": {},
@@ -28,6 +29,68 @@ var (
 		"image/webp": {},
 	}
 )
+
+func getLogoStoragePath() string {
+	if logoStoragePath != defaultLogoStoragePath {
+		return logoStoragePath
+	}
+
+	if dataDir := os.Getenv("ELECTRON_DATA_DIR"); dataDir != "" {
+		return filepath.Join(dataDir, "system-assets", "logo-upload.bin")
+	}
+
+	workingDir, err := os.Getwd()
+	if err == nil && filepath.Base(filepath.Clean(workingDir)) == "data" {
+		return filepath.Join(workingDir, "system-assets", "logo-upload.bin")
+	}
+
+	return defaultLogoStoragePath
+}
+
+func getLogoReadPaths() []string {
+	primaryPath := getLogoStoragePath()
+	if logoStoragePath != defaultLogoStoragePath {
+		return []string{primaryPath}
+	}
+	if filepath.Clean(primaryPath) == filepath.Clean(defaultLogoStoragePath) {
+		return []string{primaryPath}
+	}
+	return []string{primaryPath, defaultLogoStoragePath}
+}
+
+func readStoredLogo() ([]byte, error) {
+	var lastErr error
+
+	for _, path := range getLogoReadPaths() {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if len(content) == 0 {
+			lastErr = os.ErrNotExist
+			continue
+		}
+		return content, nil
+	}
+
+	if lastErr == nil {
+		lastErr = os.ErrNotExist
+	}
+	return nil, lastErr
+}
+
+func removeLegacyLogoFile(primaryPath string) {
+	if logoStoragePath != defaultLogoStoragePath {
+		return
+	}
+
+	if filepath.Clean(primaryPath) == filepath.Clean(defaultLogoStoragePath) {
+		return
+	}
+
+	_ = os.Remove(defaultLogoStoragePath)
+}
 
 func isAllowedLogoMIME(contentType string) bool {
 	_, ok := allowedLogoMIMEs[contentType]
@@ -81,14 +144,16 @@ func UploadLogo(c *gin.Context) {
 		return
 	}
 
-	if err := os.MkdirAll(filepath.Dir(logoStoragePath), 0o755); err != nil {
+	storagePath := getLogoStoragePath()
+	if err := os.MkdirAll(filepath.Dir(storagePath), 0o755); err != nil {
 		writeLogoError(c, http.StatusInternalServerError, "创建 Logo 存储目录失败")
 		return
 	}
-	if err := os.WriteFile(logoStoragePath, content, 0o644); err != nil {
+	if err := os.WriteFile(storagePath, content, 0o644); err != nil {
 		writeLogoError(c, http.StatusInternalServerError, "保存 Logo 文件失败")
 		return
 	}
+	removeLegacyLogoFile(storagePath)
 
 	logoURL := fmt.Sprintf("%s?v=%d", logoPublicPath, time.Now().UnixNano())
 	if err := model.UpdateOption("Logo", logoURL); err != nil {
@@ -106,7 +171,7 @@ func UploadLogo(c *gin.Context) {
 }
 
 func GetLogo(c *gin.Context) {
-	content, err := os.ReadFile(logoStoragePath)
+	content, err := readStoredLogo()
 	if err != nil || len(content) == 0 {
 		c.Redirect(http.StatusFound, "/logo.png")
 		return

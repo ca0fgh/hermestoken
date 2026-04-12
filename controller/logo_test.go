@@ -20,9 +20,9 @@ import (
 )
 
 type logoUploadResponse struct {
-	Success bool `json:"success"`
+	Success bool   `json:"success"`
 	Message string `json:"message"`
-	Data struct {
+	Data    struct {
 		URL string `json:"url"`
 	} `json:"data"`
 }
@@ -68,6 +68,23 @@ func setTempLogoStoragePath(t *testing.T) string {
 		logoStoragePath = previousPath
 	})
 	return logoStoragePath
+}
+
+func withWorkingDirectory(t *testing.T, dir string) {
+	t.Helper()
+
+	previousDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get current working directory: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("failed to change working directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previousDir); err != nil {
+			t.Fatalf("failed to restore working directory: %v", err)
+		}
+	})
 }
 
 func decodeLogoUploadResponse(t *testing.T, recorder *httptest.ResponseRecorder) logoUploadResponse {
@@ -206,6 +223,51 @@ func TestUploadLogoRejectsInvalidFileType(t *testing.T) {
 	}
 }
 
+func TestUploadLogoStoresImageInMountedDataDirectory(t *testing.T) {
+	setupLogoControllerTestDB(t)
+
+	tempRoot := t.TempDir()
+	dataDir := filepath.Join(tempRoot, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("failed to create mounted data directory: %v", err)
+	}
+	withWorkingDirectory(t, dataDir)
+
+	req, err := createMultipartLogoRequest(
+		t,
+		logoUploadFormField,
+		"logo.png",
+		samplePNGBytes(t),
+	)
+	if err != nil {
+		t.Fatalf("failed to create upload request: %v", err)
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = req
+
+	UploadLogo(ctx)
+
+	response := decodeLogoUploadResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected upload to succeed, got message: %s", response.Message)
+	}
+
+	expectedStoragePath := filepath.Join(dataDir, "system-assets", "logo-upload.bin")
+	storedContent, err := os.ReadFile(expectedStoragePath)
+	if err != nil {
+		t.Fatalf("expected uploaded logo at mounted data directory %q: %v", expectedStoragePath, err)
+	}
+	if !bytes.Equal(storedContent, samplePNGBytes(t)) {
+		t.Fatalf("stored logo bytes did not match uploaded content")
+	}
+
+	legacyStoragePath := filepath.Join(dataDir, "data", "system-assets", "logo-upload.bin")
+	if _, err := os.Stat(legacyStoragePath); err == nil {
+		t.Fatalf("expected no file to be written to legacy nested data directory %q", legacyStoragePath)
+	}
+}
+
 func TestGetLogoServesStoredImage(t *testing.T) {
 	setTempLogoStoragePath(t)
 
@@ -231,5 +293,78 @@ func TestGetLogoServesStoredImage(t *testing.T) {
 	}
 	if !bytes.Equal(recorder.Body.Bytes(), content) {
 		t.Fatalf("served body did not match stored logo bytes")
+	}
+}
+
+func TestGetLogoServesImageFromMountedDataDirectory(t *testing.T) {
+	tempRoot := t.TempDir()
+	dataDir := filepath.Join(tempRoot, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("failed to create mounted data directory: %v", err)
+	}
+	withWorkingDirectory(t, dataDir)
+
+	content := samplePNGBytes(t)
+	expectedStoragePath := filepath.Join(dataDir, "system-assets", "logo-upload.bin")
+	if err := os.MkdirAll(filepath.Dir(expectedStoragePath), 0o755); err != nil {
+		t.Fatalf("failed to create mounted logo storage directory: %v", err)
+	}
+	if err := os.WriteFile(expectedStoragePath, content, 0o644); err != nil {
+		t.Fatalf("failed to write mounted logo file: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/logo", nil)
+
+	GetLogo(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	if contentType := recorder.Header().Get("Content-Type"); contentType != "image/png" {
+		t.Fatalf("expected image/png content type, got %q", contentType)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), content) {
+		t.Fatalf("served body did not match mounted logo bytes")
+	}
+}
+
+func TestGetLogoFallsBackToLegacyNestedDataDirectory(t *testing.T) {
+	tempRoot := t.TempDir()
+	dataDir := filepath.Join(tempRoot, "data")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("failed to create mounted data directory: %v", err)
+	}
+	withWorkingDirectory(t, dataDir)
+
+	content := samplePNGBytes(t)
+	legacyStoragePath := filepath.Join(
+		dataDir,
+		"data",
+		"system-assets",
+		"logo-upload.bin",
+	)
+	if err := os.MkdirAll(filepath.Dir(legacyStoragePath), 0o755); err != nil {
+		t.Fatalf("failed to create legacy logo storage directory: %v", err)
+	}
+	if err := os.WriteFile(legacyStoragePath, content, 0o644); err != nil {
+		t.Fatalf("failed to write legacy logo file: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/logo", nil)
+
+	GetLogo(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	if contentType := recorder.Header().Get("Content-Type"); contentType != "image/png" {
+		t.Fatalf("expected image/png content type, got %q", contentType)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), content) {
+		t.Fatalf("served body did not match legacy logo bytes")
 	}
 }
