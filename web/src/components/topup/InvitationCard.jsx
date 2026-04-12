@@ -34,6 +34,7 @@ import {
   clampInviteeRateBps,
   formatRateBpsPercent,
   percentNumberToRateBps,
+  rateBpsToPercentNumber,
 } from '../../helpers/subscriptionReferral';
 
 const { Text } = Typography;

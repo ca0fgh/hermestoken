@@ -32,7 +32,7 @@ export default function SettingsSubscriptionReferral() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [groupNames, setGroupNames] = useState([]);
+  const [catalogGroupNames, setCatalogGroupNames] = useState([]);
   const [groupRows, setGroupRows] = useState([]);
   const [snapshot, setSnapshot] = useState({ enabled: false, groupRates: {} });
   const refForm = useRef(null);
@@ -48,16 +48,15 @@ export default function SettingsSubscriptionReferral() {
     },
   );
 
-  const applySettings = (payload, nextGroupNames = groupNames) => {
+  const applySettings = (payload, nextCatalogGroupNames = catalogGroupNames) => {
     const nextSettings = parseAdminReferralSettings(payload);
     const nextRows = buildAdminReferralRows(
-      nextGroupNames,
+      nextCatalogGroupNames,
       nextSettings.groupRates,
     );
 
     setEnabled(nextSettings.enabled);
     setGroupRows(nextRows);
-    setGroupNames(nextRows.map((row) => row.group));
     setSnapshot({
       enabled: nextSettings.enabled,
       groupRates: normalizeGroupRateMap(nextSettings.groupRates),
@@ -77,18 +76,19 @@ export default function SettingsSubscriptionReferral() {
       if (settingsRes.data?.success) {
         const settingsPayload = settingsRes.data?.data || {};
         const fallbackSettings = parseAdminReferralSettings(settingsPayload);
-        let nextGroupNames = Object.keys(fallbackSettings.groupRates || {});
+        let nextCatalogGroupNames = Object.keys(fallbackSettings.groupRates || {});
 
         try {
           const groupsRes = await API.get('/api/group/');
           if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
-            nextGroupNames = groupsRes.data.data;
+            nextCatalogGroupNames = groupsRes.data.data;
           }
         } catch (error) {
           // Keep rendering from settings payload when the group catalog is unavailable.
         }
 
-        applySettings(settingsPayload, nextGroupNames);
+        setCatalogGroupNames(nextCatalogGroupNames);
+        applySettings(settingsPayload, nextCatalogGroupNames);
       } else {
         showError(settingsRes.data?.message || t('加载失败'));
       }
@@ -125,7 +125,7 @@ export default function SettingsSubscriptionReferral() {
       ),
     );
     const groupsToCompare = new Set([
-      ...groupNames,
+      ...catalogGroupNames,
       ...Object.keys(snapshot.groupRates || {}),
       ...Object.keys(nextGroupRates),
     ]);
@@ -146,7 +146,21 @@ export default function SettingsSubscriptionReferral() {
         group_rates: nextGroupRates,
       });
       if (res.data?.success) {
-        applySettings(res.data?.data || {}, groupNames);
+        const savedPayload = res.data?.data || {};
+        const savedSettings = parseAdminReferralSettings(savedPayload);
+        let nextCatalogGroupNames = Object.keys(savedSettings.groupRates || {});
+
+        try {
+          const groupsRes = await API.get('/api/group/');
+          if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
+            nextCatalogGroupNames = groupsRes.data.data;
+          }
+        } catch (error) {
+          // Keep rendering from saved settings when the group catalog is unavailable.
+        }
+
+        setCatalogGroupNames(nextCatalogGroupNames);
+        applySettings(savedPayload, nextCatalogGroupNames);
         showSuccess(t('保存成功'));
       } else {
         showError(res.data?.message || t('保存失败，请重试'));

@@ -307,6 +307,41 @@ test('InvitationCard does not reference removed referralSavingGroup state', () =
   assert.equal(invitationCardSource.includes('referralSavingGroup'), false);
 });
 
+test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max validation', () => {
+  const invitationCardSource = readFileSync(
+    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(
+    invitationCardSource,
+    /import\s*{[\s\S]*\brateBpsToPercentNumber\b[\s\S]*}\s*from\s*['"]\.\.\/\.\.\/helpers\/subscriptionReferral['"]/,
+  );
+});
+
+test('SettingsSubscriptionReferral reapplies saved settings from catalog groups instead of stale rendered rows', () => {
+  const settingsSource = readFileSync(
+    new URL(
+      '../src/pages/Setting/Operation/SettingsSubscriptionReferral.jsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(
+    settingsSource,
+    /\[catalogGroupNames,\s*setCatalogGroupNames\]\s*=\s*useState\(\[\]\)/,
+  );
+  assert.equal(
+    settingsSource.includes('setGroupNames(nextRows.map((row) => row.group));'),
+    false,
+  );
+  assert.equal(
+    settingsSource.includes('applySettings(res.data?.data || {}, groupNames);'),
+    false,
+  );
+});
+
 test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {
   assert.deepEqual(
     buildAdminReferralFormValues({
