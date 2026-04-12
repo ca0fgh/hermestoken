@@ -266,3 +266,11 @@ func TestReverseSubscriptionReferralByTradeNoCreatesDebtWhenAffQuotaIsInsufficie
 		t.Fatalf("unexpected reversal state: %+v", inviteeRecord)
 	}
 }
+
+func TestReverseSubscriptionReferralByTradeNoRejectsUnknownTradeNo(t *testing.T) {
+	setupSubscriptionReferralSettlementDB(t)
+
+	if err := ReverseSubscriptionReferralByTradeNo("missing-trade-no", 1); err == nil {
+		t.Fatal("expected missing trade_no to return an error")
+	}
+}

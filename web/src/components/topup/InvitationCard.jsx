@@ -88,7 +88,7 @@ const InvitationCard = ({
           <Typography.Text className='text-lg font-medium'>
             {t('邀请奖励')}
           </Typography.Text>
-          <div className='text-xs'>{t('邀请好友获得额外奖励')}</div>
+          <div className='text-xs'>{t('邀请被邀请人获得额外奖励')}</div>
         </div>
       </div>
 
@@ -324,7 +324,7 @@ const InvitationCard = ({
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
               <Text type='tertiary' className='text-sm'>
-                {t('邀请的好友越多，获得的奖励越多')}
+                {t('邀请的被邀请人越多，获得的奖励越多')}
               </Text>
             </div>
           </div>

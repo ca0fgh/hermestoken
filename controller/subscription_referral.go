@@ -116,6 +116,10 @@ func AdminGetSubscriptionReferralOverride(c *gin.Context) {
 		common.ApiErrorMsg(c, "无效的ID")
 		return
 	}
+	if _, err := model.GetUserById(userID, false); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	override, err := model.GetSubscriptionReferralOverrideByUserID(userID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -140,6 +144,10 @@ func AdminUpsertSubscriptionReferralOverride(c *gin.Context) {
 	userID, _ := strconv.Atoi(c.Param("id"))
 	if userID <= 0 {
 		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+	if _, err := model.GetUserById(userID, false); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 
@@ -167,6 +175,10 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 	userID, _ := strconv.Atoi(c.Param("id"))
 	if userID <= 0 {
 		common.ApiErrorMsg(c, "无效的ID")
+		return
+	}
+	if _, err := model.GetUserById(userID, false); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 

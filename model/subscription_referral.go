@@ -20,6 +20,8 @@ const (
 	SubscriptionReferralBeneficiaryRoleInvitee = "invitee"
 )
 
+var ErrSubscriptionReferralRecordNotFound = errors.New("subscription referral record not found")
+
 type SubscriptionReferralConfig struct {
 	Enabled        bool `json:"enabled"`
 	TotalRateBps   int  `json:"total_rate_bps"`
@@ -145,6 +147,9 @@ func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralO
 func UpsertSubscriptionReferralOverride(userID int, totalRateBps int, operatorID int) (*SubscriptionReferralOverride, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
+	}
+	if _, err := GetUserById(userID, false); err != nil {
+		return nil, err
 	}
 
 	override := &SubscriptionReferralOverride{}
@@ -283,6 +288,9 @@ func ReverseSubscriptionReferralByTradeNo(tradeNo string, operatorId int) error 
 		var records []SubscriptionReferralRecord
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("order_trade_no = ?", tradeNo).Find(&records).Error; err != nil {
 			return err
+		}
+		if len(records) == 0 {
+			return ErrSubscriptionReferralRecordNotFound
 		}
 
 		for i := range records {

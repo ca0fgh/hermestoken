@@ -143,6 +143,26 @@ func TestAdminUpsertSubscriptionReferralOverridePersistsOverride(t *testing.T) {
 	}
 }
 
+func TestAdminUpsertSubscriptionReferralOverrideRejectsMissingUser(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/users/9999",
+		AdminUpsertSubscriptionReferralOverrideRequest{TotalRateBps: 3500},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: "9999"}}
+	AdminUpsertSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if resp.Success {
+		t.Fatalf("expected missing user override request to fail")
+	}
+}
+
 func TestAdminReverseSubscriptionReferralIsIdempotent(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	tradeNo := seedSubscriptionReferralControllerTradeNo(t)
@@ -157,5 +177,25 @@ func TestAdminReverseSubscriptionReferralIsIdempotent(t *testing.T) {
 		if !resp.Success {
 			t.Fatalf("reverse call %d failed: %s", i+1, resp.Message)
 		}
+	}
+}
+
+func TestAdminReverseSubscriptionReferralRejectsUnknownTradeNo(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPost,
+		"/api/subscription/admin/referral/orders/missing/reverse",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "trade_no", Value: "missing"}}
+	AdminReverseSubscriptionReferral(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if resp.Success {
+		t.Fatalf("expected missing trade_no reversal to fail")
 	}
 }
