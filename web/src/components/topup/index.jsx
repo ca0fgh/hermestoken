@@ -39,6 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import { buildReferralRateSummary } from '../../helpers/subscriptionReferral';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -90,6 +91,8 @@ const TopUp = () => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
+  const [referralConfig, setReferralConfig] = useState(null);
+  const [referralSaving, setReferralSaving] = useState(false);
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -388,6 +391,53 @@ const TopUp = () => {
     }
   };
 
+  const getSubscriptionReferralSelf = async () => {
+    try {
+      const res = await API.get('/api/user/referral/subscription');
+      if (res.data?.success) {
+        const data = res.data.data || {};
+        setReferralConfig(
+          buildReferralRateSummary(
+            data.total_rate_bps || 0,
+            data.invitee_rate_bps || 0,
+          ),
+        );
+      }
+    } catch (e) {
+      setReferralConfig(
+        buildReferralRateSummary(
+          referralConfig?.totalRateBps || 0,
+          referralConfig?.inviteeRateBps || 0,
+        ),
+      );
+    }
+  };
+
+  const updateSubscriptionReferralSelf = async (inviteeRateBps) => {
+    setReferralSaving(true);
+    try {
+      const res = await API.put('/api/user/referral/subscription', {
+        invitee_rate_bps: inviteeRateBps,
+      });
+      if (res.data?.success) {
+        const data = res.data.data || {};
+        setReferralConfig(
+          buildReferralRateSummary(
+            data.total_rate_bps || referralConfig?.totalRateBps || 0,
+            data.invitee_rate_bps || inviteeRateBps,
+          ),
+        );
+        showSuccess(t('保存成功'));
+      } else {
+        showError(res.data?.message || t('保存失败'));
+      }
+    } catch (e) {
+      showError(t('保存失败'));
+    } finally {
+      setReferralSaving(false);
+    }
+  };
+
   const updateBillingPreference = async (pref) => {
     const previousPref = billingPreference;
     setBillingPreference(pref);
@@ -608,6 +658,7 @@ const TopUp = () => {
     getTopupInfo().then();
     getSubscriptionPlans().then();
     getSubscriptionSelf().then();
+    getSubscriptionReferralSelf().then();
   }, []);
 
   useEffect(() => {
@@ -846,6 +897,9 @@ const TopUp = () => {
           setOpenTransfer={setOpenTransfer}
           affLink={affLink}
           handleAffLinkClick={handleAffLinkClick}
+          referralConfig={referralConfig}
+          referralSaving={referralSaving}
+          onSaveReferralConfig={updateSubscriptionReferralSelf}
         />
       </div>
     </div>

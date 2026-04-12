@@ -17,17 +17,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Avatar,
   Typography,
   Card,
   Button,
   Input,
+  InputNumber,
   Badge,
   Space,
 } from '@douyinfe/semi-ui';
 import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
+import {
+  buildReferralRateSummary,
+  clampInviteeRateBps,
+  formatRateBpsPercent,
+  percentNumberToRateBps,
+  rateBpsToPercentNumber,
+} from '../../helpers/subscriptionReferral';
 
 const { Text } = Typography;
 
@@ -38,7 +46,37 @@ const InvitationCard = ({
   setOpenTransfer,
   affLink,
   handleAffLinkClick,
+  referralConfig,
+  referralSaving,
+  onSaveReferralConfig,
 }) => {
+  const [inviteePercentInput, setInviteePercentInput] = useState(0);
+
+  useEffect(() => {
+    setInviteePercentInput(
+      rateBpsToPercentNumber(referralConfig?.inviteeRateBps || 0),
+    );
+  }, [referralConfig?.inviteeRateBps]);
+
+  const referralSummary = useMemo(
+    () =>
+      buildReferralRateSummary(
+        referralConfig?.totalRateBps || 0,
+        referralConfig?.inviteeRateBps || 0,
+      ),
+    [referralConfig?.inviteeRateBps, referralConfig?.totalRateBps],
+  );
+
+  const inviteeRateBpsDraft = clampInviteeRateBps(
+    percentNumberToRateBps(inviteePercentInput),
+    referralSummary.totalRateBps,
+  );
+  const hasReferralConfig = Boolean(referralConfig);
+  const canSaveReferral =
+    hasReferralConfig &&
+    !referralSaving &&
+    inviteeRateBpsDraft !== referralSummary.inviteeRateBps;
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -193,6 +231,69 @@ const InvitationCard = ({
           />
         </Card>
 
+        <Card
+          className='!rounded-xl w-full'
+          title={<Text type='tertiary'>{t('订阅返佣分配')}</Text>}
+        >
+          <div className='grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4'>
+            <div className='rounded-xl bg-gray-50 p-3'>
+              <Text type='tertiary' className='text-xs block mb-1'>
+                {t('我的总返佣率')}
+              </Text>
+              <Text strong>
+                {formatRateBpsPercent(referralSummary.totalRateBps)}
+              </Text>
+            </div>
+            <div className='rounded-xl bg-gray-50 p-3'>
+              <Text type='tertiary' className='text-xs block mb-1'>
+                {t('分给被邀请人的比例')}
+              </Text>
+              <Text strong>
+                {formatRateBpsPercent(referralSummary.inviteeRateBps)}
+              </Text>
+            </div>
+            <div className='rounded-xl bg-gray-50 p-3'>
+              <Text type='tertiary' className='text-xs block mb-1'>
+                {t('我实际获得的比例')}
+              </Text>
+              <Text strong>
+                {formatRateBpsPercent(referralSummary.inviterRateBps)}
+              </Text>
+            </div>
+          </div>
+
+          <div className='flex flex-col gap-3'>
+            <div>
+              <Text type='tertiary' className='text-xs block mb-2'>
+                {t('分给被邀请人的比例')}
+              </Text>
+              <InputNumber
+                value={inviteePercentInput}
+                min={0}
+                max={rateBpsToPercentNumber(referralSummary.totalRateBps)}
+                step={0.01}
+                precision={2}
+                style={{ width: '100%' }}
+                suffix='%'
+                onChange={(value) => setInviteePercentInput(Number(value || 0))}
+              />
+            </div>
+            <Text type='tertiary' className='text-xs'>
+              {t('请输入不大于总返佣率的比例')}
+            </Text>
+            <Button
+              type='primary'
+              theme='solid'
+              className='!rounded-lg self-start'
+              loading={referralSaving}
+              disabled={!canSaveReferral}
+              onClick={() => onSaveReferralConfig?.(inviteeRateBpsDraft)}
+            >
+              {t('保存返佣设置')}
+            </Button>
+          </div>
+        </Card>
+
         {/* 奖励说明 */}
         <Card
           className='!rounded-xl w-full'
@@ -202,7 +303,14 @@ const InvitationCard = ({
             <div className='flex items-start gap-2'>
               <Badge dot type='success' />
               <Text type='tertiary' className='text-sm'>
-                {t('邀请好友注册，好友充值后您可获得相应奖励')}
+                {t('被邀请人订阅支付成功后，邀请人和被邀请人可按规则获得奖励')}
+              </Text>
+            </div>
+
+            <div className='flex items-start gap-2'>
+              <Badge dot type='success' />
+              <Text type='tertiary' className='text-sm'>
+                {t('被邀请人获得多少，由邀请人当前设置决定')}
               </Text>
             </div>
 
