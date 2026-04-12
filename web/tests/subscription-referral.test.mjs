@@ -24,6 +24,7 @@ import {
   buildAdminReferralRows,
   buildAdminReferralFormValues,
   buildGroupedReferralSummaries,
+  buildInvitationDraftPercentInputs,
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
@@ -238,6 +239,34 @@ test('buildGroupedReferralSummaries preserves group names for invitation cards',
         inviterRateBps: 4000,
       },
     ],
+  );
+});
+
+test('buildInvitationDraftPercentInputs preserves untouched group drafts when one group refreshes', () => {
+  assert.deepEqual(
+    buildInvitationDraftPercentInputs(
+      {
+        default: 3.5,
+        vip: 12.34,
+      },
+      [
+        {
+          group: 'default',
+          totalRateBps: 4500,
+          inviteeRateBps: 400,
+        },
+        {
+          group: 'vip',
+          totalRateBps: 3000,
+          inviteeRateBps: 500,
+        },
+      ],
+      'default',
+    ),
+    {
+      default: 4,
+      vip: 12.34,
+    },
   );
 });
 

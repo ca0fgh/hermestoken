@@ -30,10 +30,10 @@ import {
 } from '@douyinfe/semi-ui';
 import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
 import {
+  buildInvitationDraftPercentInputs,
   clampInviteeRateBps,
   formatRateBpsPercent,
   percentNumberToRateBps,
-  rateBpsToPercentNumber,
 } from '../../helpers/subscriptionReferral';
 
 const { Text } = Typography;
@@ -52,18 +52,14 @@ const InvitationCard = ({
   const [inviteePercentInputs, setInviteePercentInputs] = useState({});
 
   useEffect(() => {
-    setInviteePercentInputs(
-      (referralGroups || []).reduce(
-        (inputs, groupSummary) => ({
-          ...inputs,
-          [groupSummary.group]: rateBpsToPercentNumber(
-            groupSummary.inviteeRateBps || 0,
-          ),
-        }),
-        {},
+    setInviteePercentInputs((currentInputs) =>
+      buildInvitationDraftPercentInputs(
+        currentInputs,
+        referralGroups,
+        referralSavingGroup,
       ),
     );
-  }, [referralGroups]);
+  }, [referralGroups, referralSavingGroup]);
 
   const updateInviteePercentInput = (group, value) => {
     setInviteePercentInputs((currentInputs) => ({

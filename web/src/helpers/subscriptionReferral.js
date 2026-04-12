@@ -182,3 +182,34 @@ export function buildGroupedReferralSummaries(groups = []) {
     ),
   }));
 }
+
+export function buildInvitationDraftPercentInputs(
+  currentDrafts = {},
+  referralGroups = [],
+  refreshedGroup = '',
+) {
+  const normalizedRefreshedGroup = String(refreshedGroup || '').trim();
+
+  return (referralGroups || []).reduce((drafts, groupSummary) => {
+    const group = String(groupSummary?.group || '').trim();
+    if (!group) {
+      return drafts;
+    }
+
+    const persistedPercent = rateBpsToPercentNumber(
+      groupSummary?.inviteeRateBps || 0,
+    );
+    const hasExistingDraft = Object.prototype.hasOwnProperty.call(
+      currentDrafts,
+      group,
+    );
+
+    return {
+      ...drafts,
+      [group]:
+        !hasExistingDraft || group === normalizedRefreshedGroup
+          ? persistedPercent
+          : currentDrafts[group],
+    };
+  }, {});
+}
