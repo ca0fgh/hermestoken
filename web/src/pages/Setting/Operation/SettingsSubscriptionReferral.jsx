@@ -22,8 +22,8 @@ import { Button, Col, Form, Row, Spin } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, showWarning } from '../../../helpers';
 import {
-  buildAdminReferralFormValues,
-  normalizeAdminReferralPayload,
+  buildAdminReferralRows,
+  normalizeGroupRateMap,
   parseAdminReferralSettings,
   percentNumberToRateBps,
 } from '../../../helpers/subscriptionReferral';
@@ -32,22 +32,36 @@ export default function SettingsSubscriptionReferral() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [totalRatePercent, setTotalRatePercent] = useState(0);
-  const [snapshot, setSnapshot] = useState({ enabled: false, totalRateBps: 0 });
+  const [groupNames, setGroupNames] = useState([]);
+  const [groupRows, setGroupRows] = useState([]);
+  const [snapshot, setSnapshot] = useState({ enabled: false, groupRates: {} });
   const refForm = useRef(null);
 
-  const formValues = buildAdminReferralFormValues({
-    enabled,
-    totalRatePercent,
-  });
+  const formValues = groupRows.reduce(
+    (values, row) => ({
+      ...values,
+      [`SubscriptionReferralGroupEnabled_${row.group}`]: row.enabled,
+      [`SubscriptionReferralGroupRate_${row.group}`]: row.totalRatePercent,
+    }),
+    {
+      SubscriptionReferralEnabled: enabled,
+    },
+  );
 
-  const applySettings = (payload) => {
+  const applySettings = (payload, nextGroupNames = groupNames) => {
     const nextSettings = parseAdminReferralSettings(payload);
+    const resolvedGroupNames =
+      nextGroupNames.length > 0
+        ? nextGroupNames
+        : Object.keys(nextSettings.groupRates || {});
+
     setEnabled(nextSettings.enabled);
-    setTotalRatePercent(nextSettings.totalRatePercent);
+    setGroupRows(
+      buildAdminReferralRows(resolvedGroupNames, nextSettings.groupRates),
+    );
     setSnapshot({
       enabled: nextSettings.enabled,
-      totalRateBps: nextSettings.totalRateBps,
+      groupRates: normalizeGroupRateMap(nextSettings.groupRates),
     });
   };
 
@@ -55,16 +69,25 @@ export default function SettingsSubscriptionReferral() {
     // Semi Form field components read from form store first, so we must keep
     // the form API in sync with the externally loaded settings.
     refForm.current?.setValues(formValues);
-  }, [enabled, totalRatePercent]);
+  }, [enabled, groupRows]);
 
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const res = await API.get('/api/subscription/admin/referral/settings');
-      if (res.data?.success) {
-        applySettings(res.data?.data || {});
+      const [settingsRes, groupsRes] = await Promise.all([
+        API.get('/api/subscription/admin/referral/settings'),
+        API.get('/api/group/'),
+      ]);
+
+      const nextGroupNames = Array.isArray(groupsRes.data?.data)
+        ? groupsRes.data.data
+        : [];
+      setGroupNames(nextGroupNames);
+
+      if (settingsRes.data?.success) {
+        applySettings(settingsRes.data?.data || {}, nextGroupNames);
       } else {
-        showError(res.data?.message || t('加载失败'));
+        showError(settingsRes.data?.message || t('加载失败'));
       }
     } catch (error) {
       showError(t('加载失败'));
@@ -77,24 +100,50 @@ export default function SettingsSubscriptionReferral() {
     loadSettings().then();
   }, []);
 
+  const updateGroupRow = (group, updater) => {
+    setGroupRows((currentRows) =>
+      currentRows.map((row) => {
+        if (row.group !== group) {
+          return row;
+        }
+        return updater(row);
+      }),
+    );
+  };
+
   const onSubmit = async () => {
-    const nextRateBps = percentNumberToRateBps(totalRatePercent);
-    if (enabled === snapshot.enabled && nextRateBps === snapshot.totalRateBps) {
+    const nextGroupRates = normalizeGroupRateMap(
+      groupRows.reduce(
+        (rates, row) => ({
+          ...rates,
+          [row.group]: row.enabled ? percentNumberToRateBps(row.totalRatePercent) : 0,
+        }),
+        {},
+      ),
+    );
+    const groupsToCompare = new Set([
+      ...groupNames,
+      ...Object.keys(snapshot.groupRates || {}),
+      ...Object.keys(nextGroupRates),
+    ]);
+    const hasChanged =
+      enabled !== snapshot.enabled ||
+      Array.from(groupsToCompare).some(
+        (group) => (snapshot.groupRates?.[group] || 0) !== (nextGroupRates[group] || 0),
+      );
+
+    if (!hasChanged) {
       return showWarning(t('你似乎并没有修改什么'));
     }
 
     setLoading(true);
     try {
-      const payload = normalizeAdminReferralPayload({
-        enabled,
-        totalRateBps: nextRateBps,
-      });
       const res = await API.put('/api/subscription/admin/referral/settings', {
-        enabled: payload.enabled,
-        total_rate_bps: payload.totalRateBps,
+        enabled,
+        group_rates: nextGroupRates,
       });
       if (res.data?.success) {
-        applySettings(res.data?.data || {});
+        applySettings(res.data?.data || {}, groupNames);
         showSuccess(t('保存成功'));
       } else {
         showError(res.data?.message || t('保存失败，请重试'));
@@ -125,20 +174,47 @@ export default function SettingsSubscriptionReferral() {
                 onChange={(value) => setEnabled(value)}
               />
             </Col>
-            <Col xs={24} sm={12} md={10}>
-              <Form.InputNumber
-                field='SubscriptionReferralGlobalRateBps'
-                label={t('全局总返佣率')}
-                value={totalRatePercent}
-                min={0}
-                max={100}
-                step={0.01}
-                precision={2}
-                suffix='%'
-                onChange={(value) => setTotalRatePercent(Number(value || 0))}
-              />
-            </Col>
           </Row>
+          {groupRows.map((row) => (
+            <Row gutter={16} key={row.group}>
+              <Col xs={24} sm={12} md={10}>
+                <Form.Switch
+                  field={`SubscriptionReferralGroupEnabled_${row.group}`}
+                  label={`${row.group} ${t('启用返佣')}`}
+                  checked={row.enabled}
+                  onChange={(value) => {
+                    updateGroupRow(row.group, (currentRow) => ({
+                      ...currentRow,
+                      enabled: value,
+                      totalRateBps: value ? currentRow.totalRateBps : 0,
+                      totalRatePercent: value ? currentRow.totalRatePercent : 0,
+                    }));
+                  }}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={10}>
+                <Form.InputNumber
+                  field={`SubscriptionReferralGroupRate_${row.group}`}
+                  label={`${row.group} ${t('总返佣率')}`}
+                  value={row.totalRatePercent}
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  precision={2}
+                  suffix='%'
+                  disabled={!row.enabled}
+                  onChange={(value) => {
+                    const totalRatePercent = Number(value || 0);
+                    updateGroupRow(row.group, (currentRow) => ({
+                      ...currentRow,
+                      totalRateBps: percentNumberToRateBps(totalRatePercent),
+                      totalRatePercent,
+                    }));
+                  }}
+                />
+              </Col>
+            </Row>
+          ))}
           <Row>
             <Button size='default' onClick={onSubmit}>
               {t('保存订阅返佣设置')}

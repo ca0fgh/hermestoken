@@ -20,7 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildAdminReferralRows,
   buildAdminReferralFormValues,
+  buildGroupedReferralSummaries,
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
@@ -56,17 +58,76 @@ test('normalizeAdminReferralPayload keeps BPS integers within 0-10000', () => {
   );
 });
 
-test('parseAdminReferralSettings normalizes admin API payload for local form state', () => {
+test('parseAdminReferralSettings normalizes grouped admin API payload for local form state', () => {
   assert.deepEqual(
     parseAdminReferralSettings({
       enabled: 1,
-      total_rate_bps: '2500',
+      group_rates: {
+        default: '4500',
+        vip: 3000,
+      },
     }),
     {
       enabled: true,
-      totalRateBps: 2500,
-      totalRatePercent: 25,
+      groupRates: {
+        default: 4500,
+        vip: 3000,
+      },
     },
+  );
+});
+
+test('buildAdminReferralRows maps group names and rates into table rows', () => {
+  assert.deepEqual(
+    buildAdminReferralRows(['default', 'vip'], {
+      default: 4500,
+      vip: 3000,
+    }),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'vip',
+        enabled: true,
+        totalRateBps: 3000,
+        totalRatePercent: 30,
+      },
+    ],
+  );
+});
+
+test('buildGroupedReferralSummaries derives inviter rate per group', () => {
+  assert.deepEqual(
+    buildGroupedReferralSummaries([
+      {
+        group: 'default',
+        total_rate_bps: 4500,
+        invitee_rate_bps: 500,
+      },
+      {
+        group: 'vip',
+        total_rate_bps: 3000,
+        invitee_rate_bps: 0,
+      },
+    ]),
+    [
+      {
+        group: 'default',
+        totalRateBps: 4500,
+        inviteeRateBps: 500,
+        inviterRateBps: 4000,
+      },
+      {
+        group: 'vip',
+        totalRateBps: 3000,
+        inviteeRateBps: 0,
+        inviterRateBps: 3000,
+      },
+    ],
   );
 });
 

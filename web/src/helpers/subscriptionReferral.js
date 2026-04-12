@@ -52,10 +52,32 @@ export function percentNumberToRateBps(percentValue) {
   return Math.round(normalized * 100);
 }
 
+export function normalizeRateBps(rateBps) {
+  return clampInviteeRateBps(rateBps, 10000);
+}
+
+export function normalizeGroupRateMap(payload = {}) {
+  if (!payload || typeof payload !== 'object') {
+    return {};
+  }
+
+  return Object.entries(payload).reduce((groupRates, [groupName, rateBps]) => {
+    const normalizedGroup = String(groupName || '').trim();
+    if (!normalizedGroup) {
+      return groupRates;
+    }
+
+    return {
+      ...groupRates,
+      [normalizedGroup]: normalizeRateBps(rateBps),
+    };
+  }, {});
+}
+
 export function normalizeAdminReferralPayload({ enabled, totalRateBps }) {
   return {
     enabled: Boolean(enabled),
-    totalRateBps: clampInviteeRateBps(totalRateBps, 10000),
+    totalRateBps: normalizeRateBps(totalRateBps),
   };
 }
 
@@ -71,11 +93,19 @@ export function parseAdminReferralSettings(payload = {}) {
     enabled = normalizedEnabled === 'true' || normalizedEnabled === '1';
   }
 
-  const totalRateBps = clampInviteeRateBps(payload.total_rate_bps, 10000);
+  const groupRates = normalizeGroupRateMap(payload.group_rates);
+  const legacyTotalRateBps = normalizeRateBps(payload.total_rate_bps);
+  const hasLegacyTotalRate =
+    payload.total_rate_bps !== undefined && payload.total_rate_bps !== null;
+
   return {
     enabled,
-    totalRateBps,
-    totalRatePercent: rateBpsToPercentNumber(totalRateBps),
+    groupRates:
+      Object.keys(groupRates).length > 0
+        ? groupRates
+        : hasLegacyTotalRate
+          ? { default: legacyTotalRateBps }
+          : {},
   };
 }
 
@@ -87,4 +117,34 @@ export function buildAdminReferralFormValues({
     SubscriptionReferralEnabled: Boolean(enabled),
     SubscriptionReferralGlobalRateBps: Number(totalRatePercent || 0),
   };
+}
+
+export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
+  const normalizedGroupRates = normalizeGroupRateMap(groupRates);
+  const orderedGroups = [
+    ...groupNames,
+    ...Object.keys(normalizedGroupRates).filter(
+      (group) => !groupNames.includes(group),
+    ),
+  ];
+
+  return orderedGroups.map((group) => {
+    const totalRateBps = normalizeRateBps(normalizedGroupRates[group] || 0);
+    return {
+      group,
+      enabled: totalRateBps > 0,
+      totalRateBps,
+      totalRatePercent: rateBpsToPercentNumber(totalRateBps),
+    };
+  });
+}
+
+export function buildGroupedReferralSummaries(groups = []) {
+  return groups.map((groupItem) => ({
+    group: groupItem.group || '',
+    ...buildReferralRateSummary(
+      groupItem.total_rate_bps ?? groupItem.totalRateBps,
+      groupItem.invitee_rate_bps ?? groupItem.inviteeRateBps,
+    ),
+  }));
 }
