@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -255,6 +256,35 @@ func DeleteSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string
 		return errors.New("invalid user id")
 	}
 	return DB.Where("user_id = ? AND `group` = ?", userID, strings.TrimSpace(group)).Delete(&SubscriptionReferralOverride{}).Error
+}
+
+func ListSubscriptionReferralOverridesByUserID(userID int) ([]SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var overrides []SubscriptionReferralOverride
+	if err := DB.Where("user_id = ?", userID).Order("`group` ASC").Find(&overrides).Error; err != nil {
+		return nil, err
+	}
+	return overrides, nil
+}
+
+func ListSubscriptionReferralConfiguredGroups() []string {
+	groupRates := common.GetSubscriptionReferralGroupRatesCopy()
+	groups := make([]string, 0, len(groupRates))
+	for group := range groupRates {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		groups = append(groups, trimmedGroup)
+	}
+	sort.Strings(groups)
+	if len(groups) == 0 {
+		return []string{"default"}
+	}
+	return groups
 }
 
 func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {

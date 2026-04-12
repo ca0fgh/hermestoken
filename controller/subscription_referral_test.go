@@ -11,6 +11,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func setSubscriptionReferralGroupRatesForTest(t *testing.T, jsonStr string) {
+	t.Helper()
+
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(jsonStr); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+}
+
 func seedSubscriptionReferralControllerUser(t *testing.T, username string, inviterID int, setting dto.UserSetting) *model.User {
 	t.Helper()
 
@@ -116,6 +129,104 @@ func TestUpdateSubscriptionReferralSelfRejectsInviteeRateOverTotal(t *testing.T)
 	resp := decodeAPIResponse(t, recorder)
 	if resp.Success {
 		t.Fatalf("expected validation failure")
+	}
+}
+
+func TestAdminGetSubscriptionReferralSettingsReturnsGroupedRates(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/settings",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+
+	AdminGetSubscriptionReferralSettings(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		Enabled    bool           `json:"enabled"`
+		GroupRates map[string]int `json:"group_rates"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if !data.Enabled {
+		t.Fatal("expected enabled to be true")
+	}
+	if data.GroupRates["default"] != 4500 || data.GroupRates["vip"] != 3000 {
+		t.Fatalf("unexpected group_rates payload: %+v", data.GroupRates)
+	}
+}
+
+func TestAdminUpsertSubscriptionReferralOverridePersistsGroupSpecificOverride(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-vip", 0, dto.UserSetting{})
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/users/1",
+		map[string]any{"group": "vip", "total_rate_bps": 3500},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	AdminUpsertSubscriptionReferralOverride(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	override, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("failed to load vip override: %v", err)
+	}
+	if override.TotalRateBps != 3500 {
+		t.Fatalf("vip override TotalRateBps = %d, want 3500", override.TotalRateBps)
+	}
+}
+
+func TestUpdateSubscriptionReferralSelfStoresPerGroupInviteeRate(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"vip":4500}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-update-vip", 0, dto.UserSetting{})
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/user/referral/subscription",
+		map[string]any{"group": "vip", "invitee_rate_bps": 500},
+		user.Id,
+	)
+
+	UpdateSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	updatedUser, err := model.GetUserById(user.Id, false)
+	if err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if got := updatedUser.GetSetting().SubscriptionReferralInviteeRateBpsByGroup["vip"]; got != 500 {
+		t.Fatalf("group invitee rate = %d, want 500", got)
 	}
 }
 
