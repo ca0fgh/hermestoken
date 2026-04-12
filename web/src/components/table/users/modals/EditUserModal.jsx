@@ -56,6 +56,7 @@ import {
   IconPlus,
 } from '@douyinfe/semi-icons';
 import UserBindingManagementModal from './UserBindingManagementModal';
+import SubscriptionReferralOverrideSection from './SubscriptionReferralOverrideSection';
 
 const { Text, Title } = Typography;
 
@@ -326,6 +327,8 @@ const EditUserModal = (props) => {
                     </Row>
                   </Card>
                 )}
+
+                {userId && <SubscriptionReferralOverrideSection userId={userId} />}
 
                 {/* 绑定信息入口 */}
                 {userId && (

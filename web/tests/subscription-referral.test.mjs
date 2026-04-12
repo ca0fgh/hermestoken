@@ -4,6 +4,7 @@ import {
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
+  normalizeAdminReferralPayload,
 } from '../src/helpers/subscriptionReferral.js';
 
 test('clampInviteeRateBps caps invitee rate to total rate', () => {
@@ -22,4 +23,14 @@ test('buildReferralRateSummary derives inviter rate from total minus invitee', (
 test('formatRateBpsPercent formats basis points as percent strings', () => {
   assert.equal(formatRateBpsPercent(2000), '20%');
   assert.equal(formatRateBpsPercent(375), '3.75%');
+});
+
+test('normalizeAdminReferralPayload keeps BPS integers within 0-10000', () => {
+  assert.deepEqual(
+    normalizeAdminReferralPayload({ enabled: true, totalRateBps: 12000 }),
+    {
+      enabled: true,
+      totalRateBps: 10000,
+    },
+  );
 });

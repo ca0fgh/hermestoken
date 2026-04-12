@@ -32,3 +32,10 @@ export function percentNumberToRateBps(percentValue) {
   }
   return Math.round(normalized * 100);
 }
+
+export function normalizeAdminReferralPayload({ enabled, totalRateBps }) {
+  return {
+    enabled: Boolean(enabled),
+    totalRateBps: clampInviteeRateBps(totalRateBps, 10000),
+  };
+}
