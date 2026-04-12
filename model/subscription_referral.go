@@ -63,6 +63,7 @@ type SubscriptionReferralRecord struct {
 	OrderId                int     `json:"order_id" gorm:"index;uniqueIndex:idx_sub_referral_once"`
 	OrderTradeNo           string  `json:"order_trade_no" gorm:"type:varchar(255);index"`
 	PlanId                 int     `json:"plan_id" gorm:"index"`
+	ReferralGroup          string  `json:"referral_group" gorm:"type:varchar(64);not null;default:'';index"`
 	PayerUserId            int     `json:"payer_user_id" gorm:"index"`
 	InviterUserId          int     `json:"inviter_user_id" gorm:"index"`
 	BeneficiaryUserId      int     `json:"beneficiary_user_id" gorm:"index;uniqueIndex:idx_sub_referral_once"`
@@ -84,6 +85,7 @@ func (r *SubscriptionReferralRecord) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	r.CreatedAt = now
 	r.UpdatedAt = now
+	r.ReferralGroup = strings.TrimSpace(r.ReferralGroup)
 	r.TotalRateBpsSnapshot = NormalizeSubscriptionReferralRateBps(r.TotalRateBpsSnapshot)
 	r.InviteeRateBpsSnapshot = NormalizeSubscriptionReferralRateBps(r.InviteeRateBpsSnapshot)
 	r.AppliedRateBps = NormalizeSubscriptionReferralRateBps(r.AppliedRateBps)
@@ -95,6 +97,7 @@ func (r *SubscriptionReferralRecord) BeforeCreate(tx *gorm.DB) error {
 
 func (r *SubscriptionReferralRecord) BeforeUpdate(tx *gorm.DB) error {
 	r.UpdatedAt = common.GetTimestamp()
+	r.ReferralGroup = strings.TrimSpace(r.ReferralGroup)
 	return nil
 }
 
@@ -283,8 +286,13 @@ func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int 
 	return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
 }
 
-func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder) error {
-	if tx == nil || order == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
+func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
+	if tx == nil || order == nil || plan == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
+		return nil
+	}
+
+	group := strings.TrimSpace(plan.UpgradeGroup)
+	if group == "" {
 		return nil
 	}
 
@@ -307,8 +315,8 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 		return err
 	}
 
-	totalRateBps := GetEffectiveSubscriptionReferralTotalRateBps(invitee.InviterId, "")
-	inviteeRateBps := GetEffectiveSubscriptionReferralInviteeRateBps(inviter.GetSetting(), "", totalRateBps)
+	totalRateBps := GetEffectiveSubscriptionReferralTotalRateBps(inviter.Id, group)
+	inviteeRateBps := GetEffectiveSubscriptionReferralInviteeRateBps(inviter.GetSetting(), group, totalRateBps)
 	cfg := ResolveSubscriptionReferralConfig(totalRateBps, inviteeRateBps)
 	if !cfg.Enabled {
 		return nil
@@ -319,6 +327,7 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 			OrderId:                order.Id,
 			OrderTradeNo:           order.TradeNo,
 			PlanId:                 order.PlanId,
+			ReferralGroup:          group,
 			PayerUserId:            order.UserId,
 			InviterUserId:          invitee.InviterId,
 			BeneficiaryUserId:      invitee.InviterId,
@@ -335,6 +344,7 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 			OrderId:                order.Id,
 			OrderTradeNo:           order.TradeNo,
 			PlanId:                 order.PlanId,
+			ReferralGroup:          group,
 			PayerUserId:            order.UserId,
 			InviterUserId:          invitee.InviterId,
 			BeneficiaryUserId:      order.UserId,
