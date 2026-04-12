@@ -171,6 +171,18 @@ func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralO
 	return &override, nil
 }
 
+func getLegacyUngroupedSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var override SubscriptionReferralOverride
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, "").First(&override).Error; err != nil {
+		return nil, err
+	}
+	return &override, nil
+}
+
 func GetSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string) (*SubscriptionReferralOverride, error) {
 	trimmedGroup := strings.TrimSpace(group)
 	if trimmedGroup == "" {
@@ -236,6 +248,11 @@ func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int 
 			if err == nil && override != nil {
 				return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
 			}
+
+			override, err = getLegacyUngroupedSubscriptionReferralOverrideByUserID(userID)
+			if err == nil && override != nil {
+				return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
+			}
 		}
 		if common.HasSubscriptionReferralGroupRatesConfigured() {
 			return NormalizeSubscriptionReferralRateBps(common.GetSubscriptionReferralGroupRate(resolvedGroup))
@@ -276,8 +293,8 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 		return err
 	}
 
-	totalRateBps := GetEffectiveSubscriptionReferralTotalRateBps(invitee.InviterId, invitee.Group)
-	inviteeRateBps := GetEffectiveSubscriptionReferralInviteeRateBps(inviter.GetSetting(), invitee.Group, totalRateBps)
+	totalRateBps := GetEffectiveSubscriptionReferralTotalRateBps(invitee.InviterId, "")
+	inviteeRateBps := GetEffectiveSubscriptionReferralInviteeRateBps(inviter.GetSetting(), "", totalRateBps)
 	cfg := ResolveSubscriptionReferralConfig(totalRateBps, inviteeRateBps)
 	if !cfg.Enabled {
 		return nil
