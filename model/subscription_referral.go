@@ -115,7 +115,7 @@ func NormalizeSubscriptionReferralRateBps(rateBps int) int {
 
 func GetEffectiveSubscriptionReferralInviteeRateBps(setting dto.UserSetting, group string, totalRateBps int) int {
 	total := NormalizeSubscriptionReferralRateBps(totalRateBps)
-	invitee := setting.SubscriptionReferralInviteeRateBps
+	invitee := 0
 	if group != "" {
 		if groupedRates := setting.SubscriptionReferralInviteeRateBpsByGroup; groupedRates != nil {
 			if groupedRate, ok := groupedRates[group]; ok {

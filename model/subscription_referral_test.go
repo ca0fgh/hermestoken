@@ -259,7 +259,7 @@ func TestSubscriptionReferralGroupRatesJSONRoundTrip(t *testing.T) {
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupFallsBackToLegacyValue(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralInviteeRateBpsIgnoresLegacyScalarFallback(t *testing.T) {
 	setting := dto.UserSetting{
 		SubscriptionReferralInviteeRateBps:        700,
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 900},
@@ -268,11 +268,14 @@ func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupFallsBackToLegacyV
 	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "vip", 1500); got != 900 {
 		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(vip, 1500) = %d, want 900", got)
 	}
-	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "default", 1500); got != 700 {
-		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(default, 1500) = %d, want 700", got)
+	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "default", 1500); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(default, 1500) = %d, want 0", got)
 	}
 	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "vip", 800); got != 800 {
 		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(vip, 800) = %d, want 800", got)
+	}
+	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "", 1500); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(empty, 1500) = %d, want 0", got)
 	}
 }
 

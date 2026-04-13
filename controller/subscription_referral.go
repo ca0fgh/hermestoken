@@ -100,10 +100,9 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 
 func AdminGetSubscriptionReferralSettings(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
-		"enabled":        common.SubscriptionReferralEnabled,
-		"groups":         model.ListSubscriptionReferralConfiguredGroups(),
-		"group_rates":    common.GetSubscriptionReferralGroupRatesCopy(),
-		"total_rate_bps": model.NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps),
+		"enabled":     common.SubscriptionReferralEnabled,
+		"groups":      model.ListSubscriptionReferralConfiguredGroups(),
+		"group_rates": common.GetSubscriptionReferralGroupRatesCopy(),
 	})
 }
 
@@ -401,30 +400,28 @@ func canDeleteSubscriptionReferralOverrideGroup(userID int, group string) bool {
 }
 
 func resolveSubscriptionReferralSettingsGroupRates(req AdminUpdateSubscriptionReferralSettingsRequest) (map[string]int, error) {
-	if req.GroupRates == nil && req.TotalRateBps == nil {
+	if req.TotalRateBps != nil {
+		return nil, errors.New("参数错误")
+	}
+
+	if req.GroupRates == nil {
 		return nil, nil
 	}
 
-	if req.GroupRates != nil {
-		normalized := make(map[string]int, len(req.GroupRates))
-		for group, rate := range req.GroupRates {
-			trimmedGroup := strings.TrimSpace(group)
-			if trimmedGroup == "" {
+	normalized := make(map[string]int, len(req.GroupRates))
+	for group, rate := range req.GroupRates {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		normalizedRate := model.NormalizeSubscriptionReferralRateBps(rate)
+		if !isValidSubscriptionReferralGroup(trimmedGroup) {
+			if normalizedRate == 0 {
 				continue
 			}
-			normalizedRate := model.NormalizeSubscriptionReferralRateBps(rate)
-			if !isValidSubscriptionReferralGroup(trimmedGroup) {
-				if normalizedRate == 0 {
-					continue
-				}
-				return nil, errors.New("分组不存在")
-			}
-			normalized[trimmedGroup] = normalizedRate
+			return nil, errors.New("分组不存在")
 		}
-		return normalized, nil
+		normalized[trimmedGroup] = normalizedRate
 	}
-
-	groupRates := common.GetSubscriptionReferralGroupRatesCopy()
-	groupRates["default"] = model.NormalizeSubscriptionReferralRateBps(*req.TotalRateBps)
-	return groupRates, nil
+	return normalized, nil
 }

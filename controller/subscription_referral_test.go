@@ -263,8 +263,17 @@ func TestAdminGetSubscriptionReferralSettingsReturnsGroupedRates(t *testing.T) {
 		t.Fatalf("expected success")
 	}
 
+	var payload map[string]json.RawMessage
+	if err := common.Unmarshal(resp.Data, &payload); err != nil {
+		t.Fatalf("failed to decode raw response data: %v", err)
+	}
+	if _, exists := payload["total_rate_bps"]; exists {
+		t.Fatal("expected total_rate_bps to be absent from admin settings response")
+	}
+
 	var data struct {
 		Enabled    bool           `json:"enabled"`
+		Groups     []string       `json:"groups"`
 		GroupRates map[string]int `json:"group_rates"`
 	}
 	if err := common.Unmarshal(resp.Data, &data); err != nil {
@@ -275,6 +284,9 @@ func TestAdminGetSubscriptionReferralSettingsReturnsGroupedRates(t *testing.T) {
 	}
 	if data.GroupRates["default"] != 4500 || data.GroupRates["vip"] != 3000 {
 		t.Fatalf("unexpected group_rates payload: %+v", data.GroupRates)
+	}
+	if len(data.Groups) != 2 || data.Groups[0] != "default" || data.Groups[1] != "vip" {
+		t.Fatalf("unexpected groups payload: %+v", data.Groups)
 	}
 }
 
@@ -321,7 +333,7 @@ func TestAdminGetSubscriptionReferralSettingsIncludesPlanBackedGroups(t *testing
 	}
 }
 
-func TestAdminUpdateSubscriptionReferralSettingsLegacyTotalRateBpsMapsToDefaultGroup(t *testing.T) {
+func TestAdminUpdateSubscriptionReferralSettingsRejectsLegacyTotalRateBpsInput(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	initSubscriptionReferralOptionMapForTest()
 	common.SubscriptionReferralEnabled = true
@@ -340,14 +352,64 @@ func TestAdminUpdateSubscriptionReferralSettingsLegacyTotalRateBpsMapsToDefaultG
 	AdminUpdateSubscriptionReferralSettings(ctx)
 
 	resp := decodeAPIResponse(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success, got message: %s", resp.Message)
+	if resp.Success {
+		t.Fatalf("expected legacy total_rate_bps settings request to fail")
 	}
-	if got := common.GetSubscriptionReferralGroupRate("default"); got != 3600 {
-		t.Fatalf("default group rate = %d, want 3600", got)
+	if got := common.GetSubscriptionReferralGroupRate("default"); got != 4500 {
+		t.Fatalf("default group rate = %d, want 4500", got)
 	}
 	if got := common.GetSubscriptionReferralGroupRate("vip"); got != 3000 {
 		t.Fatalf("vip group rate = %d, want 3000", got)
+	}
+}
+
+func TestAdminUpdateSubscriptionReferralSettingsReturnsGroupedOnlyShape(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	initSubscriptionReferralOptionMapForTest()
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPut,
+		"/api/subscription/admin/referral/settings",
+		map[string]any{"group_rates": map[string]int{"default": 3600, "vip": 2800}},
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+
+	AdminUpdateSubscriptionReferralSettings(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var payload map[string]json.RawMessage
+	if err := common.Unmarshal(resp.Data, &payload); err != nil {
+		t.Fatalf("failed to decode raw response data: %v", err)
+	}
+	if _, exists := payload["total_rate_bps"]; exists {
+		t.Fatal("expected total_rate_bps to be absent from admin settings update response")
+	}
+
+	var data struct {
+		Enabled    bool           `json:"enabled"`
+		Groups     []string       `json:"groups"`
+		GroupRates map[string]int `json:"group_rates"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if !data.Enabled {
+		t.Fatal("expected enabled to be true")
+	}
+	if len(data.Groups) != 2 || data.Groups[0] != "default" || data.Groups[1] != "vip" {
+		t.Fatalf("unexpected groups payload: %+v", data.Groups)
+	}
+	if data.GroupRates["default"] != 3600 || data.GroupRates["vip"] != 2800 {
+		t.Fatalf("unexpected group_rates payload: %+v", data.GroupRates)
 	}
 }
 
