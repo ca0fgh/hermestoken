@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildAdminOverrideRows,
+  buildAdminOverrideGroupOptions,
   buildAdminReferralRows,
   buildAdminReferralFormValues,
   buildGroupedReferralSummaries,
@@ -31,7 +32,73 @@ import {
   formatRateBpsPercent,
   normalizeAdminReferralPayload,
   parseAdminReferralSettings,
+  createAdminOverrideDraftRow,
 } from '../src/helpers/subscriptionReferral.js';
+
+test('buildAdminOverrideRows maps grouped overrides into extensible rows', () => {
+  const rows = buildAdminOverrideRows([
+    {
+      group: 'alpha',
+      effective_total_rate_bps: 4000,
+      has_override: true,
+      override_rate_bps: 3000,
+    },
+    {
+      group: 'beta',
+      effectiveTotalRateBps: 2500,
+      hasOverride: false,
+      overrideRateBps: null,
+    },
+  ]);
+
+  assert.deepEqual(rows, [
+    {
+      id: 'subscription:alpha',
+      type: 'subscription',
+      group: 'alpha',
+      effectiveTotalRateBps: 4000,
+      hasOverride: true,
+      overrideRateBps: 3000,
+      overrideRatePercent: 30,
+      isDraft: false,
+    },
+    {
+      id: 'subscription:beta',
+      type: 'subscription',
+      group: 'beta',
+      effectiveTotalRateBps: 2500,
+      hasOverride: false,
+      overrideRateBps: null,
+      overrideRatePercent: 25,
+      isDraft: false,
+    },
+  ]);
+});
+
+test('createAdminOverrideDraftRow creates a new draft entry with defaults', () => {
+  const draft = createAdminOverrideDraftRow();
+
+  assert.match(draft.id, /^draft:/);
+  assert.equal(draft.type, 'subscription');
+  assert.equal(draft.group, '');
+  assert.equal(draft.overrideRatePercent, 0);
+  assert.equal(draft.isDraft, true);
+  assert.equal(draft.hasOverride, false);
+});
+
+test('buildAdminOverrideGroupOptions disables already used groups for the same type', () => {
+  const rows = [
+    { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
+    { id: 'subscription:beta', type: 'subscription', group: 'beta' },
+  ];
+  const options = buildAdminOverrideGroupOptions(['alpha', 'beta', 'gamma'], rows, rows[0]);
+
+  assert.deepEqual(options, [
+    { label: 'alpha', value: 'alpha', disabled: false },
+    { label: 'beta', value: 'beta', disabled: true },
+    { label: 'gamma', value: 'gamma', disabled: false },
+  ]);
+});
 
 test('clampInviteeRateBps caps invitee rate to total rate', () => {
   assert.equal(clampInviteeRateBps(2600, 2000), 2000);
@@ -257,18 +324,24 @@ test('buildAdminOverrideRows normalizes grouped override API payload', () => {
     ]),
     [
       {
+        id: 'subscription:default',
+        type: 'subscription',
         group: 'default',
         effectiveTotalRateBps: 4500,
         hasOverride: false,
         overrideRateBps: null,
-        inputPercent: 45,
+        overrideRatePercent: 45,
+        isDraft: false,
       },
       {
+        id: 'subscription:vip',
+        type: 'subscription',
         group: 'vip',
         effectiveTotalRateBps: 3000,
         hasOverride: true,
         overrideRateBps: 2500,
-        inputPercent: 25,
+        overrideRatePercent: 25,
+        isDraft: false,
       },
     ],
   );

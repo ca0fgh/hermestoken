@@ -157,24 +157,69 @@ export function buildAdminOverrideRows(groups = []) {
     const effectiveTotalRateBps = normalizeRateBps(
       groupItem?.effective_total_rate_bps ?? groupItem?.effectiveTotalRateBps,
     );
-    const hasOverride = Boolean(groupItem?.has_override ?? groupItem?.hasOverride);
-    const overrideRateBps =
+    const hasOverride = Boolean(
+      groupItem?.has_override ?? groupItem?.hasOverride,
+    );
+    const overrideRateBpsRaw =
       groupItem?.override_rate_bps ?? groupItem?.overrideRateBps;
     const normalizedOverrideRateBps =
-      overrideRateBps === null || overrideRateBps === undefined
+      overrideRateBpsRaw === null || overrideRateBpsRaw === undefined
         ? null
-        : normalizeRateBps(overrideRateBps);
-    const inputRateBps =
-      normalizedOverrideRateBps ?? effectiveTotalRateBps;
+        : normalizeRateBps(overrideRateBpsRaw);
+    const inputRateBps = normalizedOverrideRateBps ?? effectiveTotalRateBps;
 
     return {
+      id: `subscription:${group}`,
+      type: 'subscription',
       group,
       effectiveTotalRateBps,
       hasOverride,
       overrideRateBps: normalizedOverrideRateBps,
-      inputPercent: rateBpsToPercentNumber(inputRateBps),
+      overrideRatePercent: rateBpsToPercentNumber(inputRateBps),
+      isDraft: false,
     };
   });
+}
+
+let adminOverrideDraftCounter = 0;
+
+export function createAdminOverrideDraftRow() {
+  adminOverrideDraftCounter += 1;
+  return {
+    id: `draft:${adminOverrideDraftCounter}`,
+    type: 'subscription',
+    group: '',
+    effectiveTotalRateBps: 0,
+    hasOverride: false,
+    overrideRateBps: null,
+    overrideRatePercent: 0,
+    isDraft: true,
+  };
+}
+
+export function buildAdminOverrideGroupOptions(
+  groupNames = [],
+  overrideRows = [],
+  currentRow = {},
+) {
+  const currentId = String(currentRow.id || '').trim();
+  const currentType = String(currentRow.type || '').trim();
+  const takenGroups = new Set(
+    overrideRows
+      .filter((row) => {
+        const rowId = String(row.id || '').trim();
+        const rowType = String(row.type || '').trim();
+        return rowType === currentType && rowId !== '' && rowId !== currentId;
+      })
+      .map((row) => String(row.group || '').trim())
+      .filter(Boolean),
+  );
+
+  return normalizeGroupNames(groupNames).map((group) => ({
+    label: group,
+    value: group,
+    disabled: takenGroups.has(group),
+  }));
 }
 
 export function buildGroupedReferralSummaries(groups = []) {
