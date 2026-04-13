@@ -225,8 +225,12 @@ const InvitationCard = ({
         >
           <div className='flex flex-col gap-4'>
             {(referralGroups || []).map((referralSummary) => {
+              const group = String(referralSummary?.group || '').trim();
+              if (!group) {
+                return null;
+              }
               const inviteePercentInput =
-                inviteePercentInputs[referralSummary.group] ?? 0;
+                inviteePercentInputs[group] ?? 0;
               const inviteeRateBpsDraft = clampInviteeRateBps(
                 percentNumberToRateBps(inviteePercentInput),
                 referralSummary.totalRateBps,
@@ -237,12 +241,12 @@ const InvitationCard = ({
 
               return (
                 <div
-                  key={referralSummary.group}
+                  key={group}
                   className='rounded-xl border border-gray-100 p-4'
                 >
                   <div className='flex flex-col gap-3'>
                     <div className='flex items-center justify-between gap-3'>
-                      <Text strong>{referralSummary.group}</Text>
+                      <Text strong>{group}</Text>
                       <Text type='tertiary' className='text-xs'>
                         {t('按分组配置被邀请人订阅奖励')}
                       </Text>
@@ -292,7 +296,7 @@ const InvitationCard = ({
                           suffix='%'
                           disabled={referralSaving}
                           onChange={(value) =>
-                            updateInviteePercentInput(referralSummary.group, value)
+                            updateInviteePercentInput(group, value)
                           }
                         />
                       </div>
@@ -304,10 +308,10 @@ const InvitationCard = ({
                         theme='solid'
                         className='!rounded-lg self-start'
                         loading={referralSaving}
-                        disabled={!canSaveReferral}
+                        disabled={!group || !canSaveReferral}
                         onClick={() =>
                           onSaveReferralConfig?.(
-                            referralSummary.group,
+                            group,
                             inviteeRateBpsDraft,
                           )
                         }

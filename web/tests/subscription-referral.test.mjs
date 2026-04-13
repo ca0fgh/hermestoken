@@ -82,6 +82,24 @@ test('parseAdminReferralSettings normalizes grouped admin API payload for local 
   );
 });
 
+test('parseAdminReferralSettings does not synthesize default from legacy total_rate_bps', () => {
+  assert.deepEqual(
+    parseAdminReferralSettings({
+      enabled: true,
+      total_rate_bps: 4500,
+    }),
+    {
+      enabled: true,
+      groups: [],
+      groupRates: {},
+    },
+  );
+});
+
+test('buildAdminReferralRows does not invent default rows when group list is empty', () => {
+  assert.deepEqual(buildAdminReferralRows([], {}), []);
+});
+
 test('buildAdminReferralRows maps group names and rates into table rows', () => {
   assert.deepEqual(
     buildAdminReferralRows(['default', 'vip'], {
@@ -348,7 +366,7 @@ test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max vali
   );
 });
 
-test('SettingsSubscriptionReferral reapplies saved settings from catalog groups instead of stale rendered rows', () => {
+test('SettingsSubscriptionReferral uses grouped settings payloads without catalog fallbacks', () => {
   const settingsSource = readFileSync(
     new URL(
       '../src/pages/Setting/Operation/SettingsSubscriptionReferral.jsx',
@@ -357,19 +375,46 @@ test('SettingsSubscriptionReferral reapplies saved settings from catalog groups 
     'utf8',
   );
 
+  assert.equal(
+    settingsSource.includes("API.get('/api/group/')"),
+    false,
+  );
+  assert.equal(
+    settingsSource.includes('catalogGroupNames'),
+    false,
+  );
   assert.match(
     settingsSource,
-    /\[catalogGroupNames,\s*setCatalogGroupNames\]\s*=\s*useState\(\[\]\)/,
+    /buildAdminReferralRows\(nextSettings\.groups,\s*nextSettings\.groupRates\)/,
   );
-  assert.equal(
-    settingsSource.includes('setGroupNames(nextRows.map((row) => row.group));'),
-    false,
+  assert.match(settingsSource, /applySettings\(res\.data\?\.data \|\| \{\}\);/);
+});
+
+test('SubscriptionReferralOverrideSection renders grouped override rows only', () => {
+  const overrideSource = readFileSync(
+    new URL(
+      '../src/components/table/users/modals/SubscriptionReferralOverrideSection.jsx',
+      import.meta.url,
+    ),
+    'utf8',
   );
-  assert.equal(
-    settingsSource.includes('applySettings(res.data?.data || {}, groupNames);'),
-    false,
+
+  assert.match(
+    overrideSource,
+    /buildAdminOverrideRows\(\s*Array\.isArray\(next\.groups\) \? next\.groups : \[\],\s*\)/,
   );
-  assert.match(settingsSource, /settingsPayload\?\.groups/);
+  assert.equal(overrideSource.includes('const fallbackGroups ='), false);
+});
+
+test('topup self save refreshes grouped referral summaries instead of synthesizing top-level fallbacks', () => {
+  const topupSource = readFileSync(
+    new URL('../src/components/topup/index.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(topupSource, /await getSubscriptionReferralSelf\(\);/);
+  assert.equal(topupSource.includes('data.total_rate_bps'), false);
+  assert.equal(topupSource.includes('data.invitee_rate_bps'), false);
 });
 
 test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {

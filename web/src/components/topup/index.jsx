@@ -413,29 +413,7 @@ const TopUp = () => {
         invitee_rate_bps: inviteeRateBps,
       });
       if (res.data?.success) {
-        const data = res.data.data || {};
-        const nextGroupSummary = buildGroupedReferralSummaries([
-          {
-            group,
-            total_rate_bps:
-              data.total_rate_bps ??
-              referralGroups.find((groupSummary) => groupSummary.group === group)
-                ?.totalRateBps ??
-              0,
-            invitee_rate_bps: data.invitee_rate_bps ?? inviteeRateBps,
-          },
-        ])[0];
-        setReferralGroups((currentGroups) => {
-          const hasGroup = currentGroups.some(
-            (groupSummary) => groupSummary.group === group,
-          );
-          if (!hasGroup) {
-            return [...currentGroups, nextGroupSummary];
-          }
-          return currentGroups.map((groupSummary) =>
-            groupSummary.group === group ? nextGroupSummary : groupSummary,
-          );
-        });
+        await getSubscriptionReferralSelf();
         showSuccess(t('保存成功'));
       } else {
         showError(res.data?.message || t('保存失败'));

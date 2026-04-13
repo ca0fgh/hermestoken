@@ -42,21 +42,9 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
       const res = await API.get(`/api/subscription/admin/referral/users/${userId}`);
       if (res.data?.success) {
         const next = res.data.data || {};
-        const fallbackGroups = next.group
-          ? [
-              {
-                group: next.group,
-                effective_total_rate_bps: next.effective_total_rate_bps,
-                has_override: next.has_override,
-                override_rate_bps: next.override_rate_bps,
-              },
-            ]
-          : [];
         setOverrideRows(
           buildAdminOverrideRows(
-            Array.isArray(next.groups) && next.groups.length > 0
-              ? next.groups
-              : fallbackGroups,
+            Array.isArray(next.groups) ? next.groups : [],
           ),
         );
       } else {
