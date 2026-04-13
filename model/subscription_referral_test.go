@@ -154,6 +154,23 @@ func setupSubscriptionReferralRecordSchemaDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func insertLegacyEmptyGroupSubscriptionReferralOverride(t *testing.T, db *gorm.DB, userID int, totalRateBps int) {
+	t.Helper()
+
+	legacyOverride := &SubscriptionReferralOverride{
+		UserId:       userID,
+		Group:        "",
+		TotalRateBps: totalRateBps,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+		CreatedAt:    common.GetTimestamp(),
+		UpdatedAt:    common.GetTimestamp(),
+	}
+	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(legacyOverride).Error; err != nil {
+		t.Fatalf("failed to seed legacy empty-group override row: %v", err)
+	}
+}
+
 func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -383,9 +400,7 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsIgnoresLegacyUngroupedOverr
 	}
 
 	user := seedReferralUser(t, db, "legacy-ungrouped-override-user", 0, dto.UserSetting{})
-	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 2600, 1); err != nil {
-		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
-	}
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 2600)
 
 	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 3000 {
 		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 3000", got)
@@ -436,9 +451,7 @@ func TestMigrateLegacySubscriptionReferralOverridesMigratesSingleGroupSystem(t *
 	setReferralPlanUpgradeGroup(t, db, plan, "vip")
 
 	user := seedReferralUser(t, db, "migrate-legacy-override-single-group", 0, dto.UserSetting{})
-	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 3200, 1); err != nil {
-		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
-	}
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 3200)
 
 	if err := migrateLegacySubscriptionReferralOverrides(); err != nil {
 		t.Fatalf("migrateLegacySubscriptionReferralOverrides() error = %v", err)
@@ -466,9 +479,7 @@ func TestMigrateLegacySubscriptionReferralOverridesFailsWhenMultipleGroupsExist(
 	setReferralPlanUpgradeGroup(t, db, proPlan, "pro")
 
 	user := seedReferralUser(t, db, "migrate-legacy-override-multi-group", 0, dto.UserSetting{})
-	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 3200, 1); err != nil {
-		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
-	}
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 3200)
 
 	err := migrateLegacySubscriptionReferralOverrides()
 	if err == nil {
@@ -503,6 +514,21 @@ func TestMigrateLegacySubscriptionReferralInviteeRatesMigratesSingleGroupUserSet
 	}
 	if reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup["vip"] != 700 {
 		t.Fatalf("SubscriptionReferralInviteeRateBpsByGroup[vip] = %d, want 700", reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup["vip"])
+	}
+}
+
+func TestValidateNoLegacySubscriptionReferralDataFailsOnEmptyGroupOverride(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "validate-no-legacy-empty-group-override", 0, dto.UserSetting{})
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 3000)
+
+	err := validateNoLegacySubscriptionReferralData()
+	if err == nil {
+		t.Fatal("expected validateNoLegacySubscriptionReferralData() to fail")
+	}
+	if !strings.Contains(err.Error(), "empty-group override") {
+		t.Fatalf("validateNoLegacySubscriptionReferralData() error = %q, want substring %q", err.Error(), "empty-group override")
 	}
 }
 
@@ -685,6 +711,15 @@ func TestUpsertSubscriptionReferralOverridePersistsPerGroup(t *testing.T) {
 	}
 	if err := db.Create(duplicate).Error; err == nil {
 		t.Fatal("expected duplicate (user_id, group) insert to fail")
+	}
+}
+
+func TestUpsertSubscriptionReferralOverrideRejectsEmptyGroup(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "reject-empty-group-upsert-user", 0, dto.UserSetting{})
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 3000, 1); err == nil {
+		t.Fatal("expected UpsertSubscriptionReferralOverride() to fail")
 	}
 }
 

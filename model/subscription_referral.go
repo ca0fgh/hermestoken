@@ -215,6 +215,9 @@ func UpsertSubscriptionReferralOverride(userID int, group string, totalRateBps i
 	}
 
 	group = strings.TrimSpace(group)
+	if group == "" {
+		return nil, errors.New("subscription referral override group is required")
+	}
 
 	override := &SubscriptionReferralOverride{
 		UserId:       userID,
@@ -442,6 +445,39 @@ func migrateLegacySubscriptionReferralInviteeRates() error {
 
 		return nil
 	})
+}
+
+func validateNoLegacySubscriptionReferralData() error {
+	if DB == nil {
+		return nil
+	}
+
+	var emptyGroupOverrideCount int64
+	if err := DB.Model(&SubscriptionReferralOverride{}).
+		Where(commonGroupCol+" = ?", "").
+		Count(&emptyGroupOverrideCount).Error; err != nil {
+		return err
+	}
+	if emptyGroupOverrideCount > 0 {
+		return fmt.Errorf("subscription referral startup validation failed: found %d leftover empty-group override rows", emptyGroupOverrideCount)
+	}
+
+	var users []User
+	if err := DB.Select("id", "setting").Where("setting <> ''").Find(&users).Error; err != nil {
+		return err
+	}
+
+	legacyScalarInviteeRateUsers := 0
+	for _, user := range users {
+		if user.GetSetting().SubscriptionReferralInviteeRateBps > 0 {
+			legacyScalarInviteeRateUsers++
+		}
+	}
+	if legacyScalarInviteeRateUsers > 0 {
+		return fmt.Errorf("subscription referral startup validation failed: found %d users with legacy scalar SubscriptionReferralInviteeRateBps", legacyScalarInviteeRateUsers)
+	}
+
+	return nil
 }
 
 func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {

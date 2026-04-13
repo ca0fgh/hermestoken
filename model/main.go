@@ -405,7 +405,7 @@ func runSubscriptionReferralStartupMigrations() error {
 	if err := migrateLegacySubscriptionReferralInviteeRates(); err != nil {
 		return err
 	}
-	return nil
+	return validateNoLegacySubscriptionReferralData()
 }
 
 func migrateLOGDB() error {
