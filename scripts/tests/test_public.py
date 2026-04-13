@@ -12,6 +12,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import launcher_common
+import local
 import public
 
 
@@ -34,6 +35,60 @@ class PublicLauncherTests(unittest.TestCase):
             healthcheck_timeout_seconds=timeout_seconds,
             healthcheck_interval_seconds=interval_seconds,
         )
+
+    @mock.patch("public._wait_for_public_readiness")
+    @mock.patch("public._start_tunnel_process")
+    @mock.patch("public.validate_cfargotunnel_cname")
+    @mock.patch("public.require_cloudflared")
+    @mock.patch("local.poll_http_until_healthy")
+    @mock.patch("local.run_command")
+    @mock.patch("local.require_docker_and_compose")
+    def test_run_public_stack_delegates_to_local_startup_with_build(
+        self,
+        require_docker_and_compose,
+        run_command,
+        poll_http_until_healthy,
+        require_cloudflared,
+        validate_cfargotunnel_cname,
+        start_tunnel_process,
+        wait_for_public_readiness,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            cloudflared_config = repo_root / "config.yml"
+            cloudflared_config.write_text("tunnel: hermestoken-local\n", encoding="utf-8")
+            config = self._config(str(cloudflared_config))
+
+            tunnel_process = mock.Mock()
+            tunnel_log_path = repo_root / "cloudflared.log"
+            start_tunnel_process.return_value = (tunnel_process, tunnel_log_path)
+
+            stdout = io.StringIO()
+            public.run_public_stack(config, output=stdout, repo_root=repo_root)
+
+        require_cloudflared.assert_called_once_with()
+        require_docker_and_compose.assert_called_once_with()
+        validate_cfargotunnel_cname.assert_called_once_with("pay-local.hermestoken.top")
+        run_command.assert_called_once_with(
+            ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d", "--build"],
+            check=True,
+            stream_output=True,
+            cwd=repo_root,
+            stdout_stream=stdout,
+        )
+        poll_http_until_healthy.assert_called_once_with(
+            "http://localhost:3000",
+            timeout_seconds=30,
+            interval_seconds=1,
+        )
+        start_tunnel_process.assert_called_once_with(
+            config,
+            cloudflared_token=None,
+            cloudflared_config_path=cloudflared_config,
+            repo_root=repo_root,
+        )
+        wait_for_public_readiness.assert_called_once_with(config, tunnel_process)
+        self.assertIn("[ok] Containers started", stdout.getvalue())
 
     @mock.patch("public.poll_http_until_healthy")
     @mock.patch("public.subprocess.Popen")

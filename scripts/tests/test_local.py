@@ -47,7 +47,7 @@ class LocalLauncherTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         require_docker_and_compose.assert_called_once_with()
         run_command.assert_called_once_with(
-            ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d"],
+            ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d", "--build"],
             check=True,
             stream_output=True,
             cwd=repo_root,
@@ -107,7 +107,7 @@ class LocalLauncherTests(unittest.TestCase):
         run_command.assert_has_calls(
             [
                 mock.call(
-                    ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d"],
+                    ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d", "--build"],
                     check=True,
                     stream_output=True,
                     cwd=repo_root,
@@ -184,7 +184,7 @@ class LocalLauncherTests(unittest.TestCase):
         local.run_local_stack(self._config(compose_file=str(absolute_compose)), output=stdout, repo_root=custom_repo_root)
 
         run_command.assert_called_once_with(
-            ["docker", "compose", "-f", str(absolute_compose), "up", "-d"],
+            ["docker", "compose", "-f", str(absolute_compose), "up", "-d", "--build"],
             check=True,
             stream_output=True,
             cwd=custom_repo_root,

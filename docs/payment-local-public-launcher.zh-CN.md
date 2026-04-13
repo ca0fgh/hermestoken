@@ -84,11 +84,19 @@
 python3 scripts/local.py
 ```
 
+说明：
+
+- 默认执行 `docker compose up -d --build`，每次启动都会先重建镜像再后台拉起容器。
+
 ### 2.2 公网模式
 
 ```bash
 python3 scripts/public.py
 ```
+
+说明：
+
+- 会先委托 `scripts/local.py` 启动本地服务，因此同样默认执行 `docker compose up -d --build`，先重建镜像再启动容器。
 
 ## 3. 成功输出示例
 
