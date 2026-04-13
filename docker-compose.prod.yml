@@ -51,7 +51,7 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in .env.production}"
       POSTGRES_DB: new-api
     volumes:
-      - pg_data_prod:/var/lib/postgresql/data
+      - pg_data_prod:/var/lib/postgresql
     networks:
       - hermestoken-prod-network
     healthcheck:

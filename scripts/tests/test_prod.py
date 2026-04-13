@@ -13,6 +13,15 @@ import prod
 
 
 class ProdLauncherTests(unittest.TestCase):
+    def test_prod_compose_uses_parent_postgres_volume_for_latest_image(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        compose_file = repo_root / "docker-compose.prod.yml"
+        compose_text = compose_file.read_text(encoding="utf-8")
+
+        self.assertIn("image: postgres:latest", compose_text)
+        self.assertIn("- pg_data_prod:/var/lib/postgresql", compose_text)
+        self.assertNotIn("- pg_data_prod:/var/lib/postgresql/data", compose_text)
+
     def test_build_local_health_url_uses_port_from_env_file(self):
         self.assertEqual(
             prod.build_local_health_url({"APP_PORT": "4567"}),
