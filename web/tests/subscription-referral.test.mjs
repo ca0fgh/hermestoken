@@ -100,6 +100,7 @@ test('createAdminOverrideDraftRow creates a new draft entry with defaults', () =
   assert.equal(draft.overrideRatePercent, 0);
   assert.equal(draft.isDraft, true);
   assert.equal(draft.hasOverride, false);
+  assert.equal(draft.inputPercent, 0);
 });
 
 test('buildAdminOverrideGroupOptions disables already used groups for the same type', () => {

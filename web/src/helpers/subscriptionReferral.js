@@ -196,6 +196,7 @@ export function createAdminOverrideDraftRow() {
     hasOverride: false,
     overrideRateBps: null,
     overrideRatePercent: 0,
+    inputPercent: 0,
     isDraft: true,
   };
 }
