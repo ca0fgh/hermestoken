@@ -309,6 +309,9 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := runSubscriptionReferralStartupMigrations(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -388,8 +391,21 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := runSubscriptionReferralStartupMigrations(); err != nil {
+		return err
+	}
 	common.SysLog("database migrated")
 	return nil
+}
+
+func runSubscriptionReferralStartupMigrations() error {
+	if err := migrateLegacySubscriptionReferralOverrides(); err != nil {
+		return err
+	}
+	if err := migrateLegacySubscriptionReferralInviteeRates(); err != nil {
+		return err
+	}
+	return validateNoLegacySubscriptionReferralData()
 }
 
 func migrateLOGDB() error {

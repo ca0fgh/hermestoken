@@ -233,6 +233,7 @@ def run_public_stack(config: LauncherConfig, *, output: Optional[TextIO] = None,
         validate_cfargotunnel_cname(public_hostname)
         stream.write(f"[ok] DNS configured for {public_hostname}\n")
 
+    # Reuse the local launcher so public startup inherits the default rebuild behavior.
     local.run_local_stack(config, output=stream, repo_root=effective_repo_root)
 
     tunnel_process: Optional[subprocess.Popen] = None

@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess, showWarning } from '../../../helpers';
 import {
   buildAdminReferralRows,
-  mergeAdminReferralGroupNames,
   normalizeGroupRateMap,
   parseAdminReferralSettings,
   percentNumberToRateBps,
@@ -33,7 +32,6 @@ export default function SettingsSubscriptionReferral() {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [catalogGroupNames, setCatalogGroupNames] = useState([]);
   const [groupRows, setGroupRows] = useState([]);
   const [snapshot, setSnapshot] = useState({ enabled: false, groupRates: {} });
   const refForm = useRef(null);
@@ -49,16 +47,9 @@ export default function SettingsSubscriptionReferral() {
     },
   );
 
-  const applySettings = (payload, nextCatalogGroupNames = catalogGroupNames) => {
+  const applySettings = (payload) => {
     const nextSettings = parseAdminReferralSettings(payload);
-    const resolvedCatalogGroupNames =
-      Array.isArray(nextCatalogGroupNames) && nextCatalogGroupNames.length > 0
-        ? nextCatalogGroupNames
-        : nextSettings.groups;
-    const nextRows = buildAdminReferralRows(
-      resolvedCatalogGroupNames,
-      nextSettings.groupRates,
-    );
+    const nextRows = buildAdminReferralRows(nextSettings.groups, nextSettings.groupRates);
 
     setEnabled(nextSettings.enabled);
     setGroupRows(nextRows);
@@ -79,26 +70,7 @@ export default function SettingsSubscriptionReferral() {
     try {
       const settingsRes = await API.get('/api/subscription/admin/referral/settings');
       if (settingsRes.data?.success) {
-        const settingsPayload = settingsRes.data?.data || {};
-        const fallbackSettings = parseAdminReferralSettings(settingsPayload);
-        let nextCatalogGroupNames = settingsPayload?.groups?.length
-          ? fallbackSettings.groups
-          : Object.keys(fallbackSettings.groupRates || {});
-
-        try {
-          const groupsRes = await API.get('/api/group/');
-          if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
-            nextCatalogGroupNames = mergeAdminReferralGroupNames(
-              nextCatalogGroupNames,
-              groupsRes.data.data,
-            );
-          }
-        } catch (error) {
-          // Keep rendering from settings payload when the group catalog is unavailable.
-        }
-
-        setCatalogGroupNames(nextCatalogGroupNames);
-        applySettings(settingsPayload, nextCatalogGroupNames);
+        applySettings(settingsRes.data?.data || {});
       } else {
         showError(settingsRes.data?.message || t('加载失败'));
       }
@@ -135,7 +107,7 @@ export default function SettingsSubscriptionReferral() {
       ),
     );
     const groupsToCompare = new Set([
-      ...catalogGroupNames,
+      ...groupRows.map((row) => row.group),
       ...Object.keys(snapshot.groupRates || {}),
       ...Object.keys(nextGroupRates),
     ]);
@@ -156,26 +128,7 @@ export default function SettingsSubscriptionReferral() {
         group_rates: nextGroupRates,
       });
       if (res.data?.success) {
-        const savedPayload = res.data?.data || {};
-        const savedSettings = parseAdminReferralSettings(savedPayload);
-        let nextCatalogGroupNames = savedPayload?.groups?.length
-          ? savedSettings.groups
-          : Object.keys(savedSettings.groupRates || {});
-
-        try {
-          const groupsRes = await API.get('/api/group/');
-          if (Array.isArray(groupsRes.data?.data) && groupsRes.data.data.length > 0) {
-            nextCatalogGroupNames = mergeAdminReferralGroupNames(
-              nextCatalogGroupNames,
-              groupsRes.data.data,
-            );
-          }
-        } catch (error) {
-          // Keep rendering from saved settings when the group catalog is unavailable.
-        }
-
-        setCatalogGroupNames(nextCatalogGroupNames);
-        applySettings(savedPayload, nextCatalogGroupNames);
+        applySettings(res.data?.data || {});
         showSuccess(t('保存成功'));
       } else {
         showError(res.data?.message || t('保存失败，请重试'));

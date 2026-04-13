@@ -184,7 +184,7 @@ func TestCompleteSubscriptionOrderWithoutUpgradeGroupSkipsReferralRecords(t *tes
 	common.QuotaPerUnit = 100
 
 	inviter := seedReferralUser(t, db, "inviter-no-upgrade-group", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 500,
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
 	invitee := seedReferralUser(t, db, "invitee-no-upgrade-group", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
@@ -225,7 +225,7 @@ func TestCompleteSubscriptionOrderCreditsInviterAndInviteeReferral(t *testing.T)
 	common.QuotaPerUnit = 100
 
 	inviter := seedReferralUser(t, db, "inviter", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 500,
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
 	invitee := seedReferralUser(t, db, "invitee", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
@@ -399,9 +399,9 @@ func TestCompleteSubscriptionOrderIgnoresInviteeCurrentGroupForReferralRates(t *
 	}
 
 	inviter := seedReferralUser(t, db, "group-agnostic-inviter", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 500,
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
-	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "", 2500, 1); err != nil {
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "default", 2500, 1); err != nil {
 		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
 	}
 
@@ -448,7 +448,7 @@ func TestCompleteSubscriptionOrderIsIdempotentForReferralRecords(t *testing.T) {
 	common.QuotaPerUnit = 100
 
 	inviter := seedReferralUser(t, db, "inviter-idempotent", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 500,
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
 	invitee := seedReferralUser(t, db, "invitee-idempotent", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
@@ -493,7 +493,7 @@ func TestReverseSubscriptionReferralByTradeNoCreatesDebtWhenAffQuotaIsInsufficie
 	common.QuotaPerUnit = 100
 
 	inviter := seedReferralUser(t, db, "inviter-reverse", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 500,
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
 	invitee := seedReferralUser(t, db, "invitee-reverse", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)

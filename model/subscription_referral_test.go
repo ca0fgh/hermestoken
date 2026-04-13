@@ -66,12 +66,14 @@ func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 	originalUsingPostgreSQL := common.UsingPostgreSQL
 	originalRedisEnabled := common.RedisEnabled
 	originalBatchUpdateEnabled := common.BatchUpdateEnabled
+	originalCommonGroupCol := commonGroupCol
 
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
+	commonGroupCol = "`group`"
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -81,8 +83,8 @@ func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 	DB = db
 	LOG_DB = db
 
-	if err := db.AutoMigrate(&legacySubscriptionReferralOverrideSchemaRow{}); err != nil {
-		t.Fatalf("failed to create legacy override table: %v", err)
+	if err := db.AutoMigrate(&legacySubscriptionReferralOverrideSchemaRow{}, &SubscriptionPlan{}); err != nil {
+		t.Fatalf("failed to create legacy override migration tables: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -97,6 +99,7 @@ func setupSubscriptionReferralOverrideSchemaDB(t *testing.T) *gorm.DB {
 		common.UsingPostgreSQL = originalUsingPostgreSQL
 		common.RedisEnabled = originalRedisEnabled
 		common.BatchUpdateEnabled = originalBatchUpdateEnabled
+		commonGroupCol = originalCommonGroupCol
 	})
 
 	return db
@@ -112,12 +115,14 @@ func setupSubscriptionReferralRecordSchemaDB(t *testing.T) *gorm.DB {
 	originalUsingPostgreSQL := common.UsingPostgreSQL
 	originalRedisEnabled := common.RedisEnabled
 	originalBatchUpdateEnabled := common.BatchUpdateEnabled
+	originalCommonGroupCol := commonGroupCol
 
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
+	commonGroupCol = "`group`"
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -143,9 +148,27 @@ func setupSubscriptionReferralRecordSchemaDB(t *testing.T) *gorm.DB {
 		common.UsingPostgreSQL = originalUsingPostgreSQL
 		common.RedisEnabled = originalRedisEnabled
 		common.BatchUpdateEnabled = originalBatchUpdateEnabled
+		commonGroupCol = originalCommonGroupCol
 	})
 
 	return db
+}
+
+func insertLegacyEmptyGroupSubscriptionReferralOverride(t *testing.T, db *gorm.DB, userID int, totalRateBps int) {
+	t.Helper()
+
+	legacyOverride := &SubscriptionReferralOverride{
+		UserId:       userID,
+		Group:        "",
+		TotalRateBps: totalRateBps,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+		CreatedAt:    common.GetTimestamp(),
+		UpdatedAt:    common.GetTimestamp(),
+	}
+	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(legacyOverride).Error; err != nil {
+		t.Fatalf("failed to seed legacy empty-group override row: %v", err)
+	}
 }
 
 func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {
@@ -253,7 +276,7 @@ func TestSubscriptionReferralGroupRatesJSONRoundTrip(t *testing.T) {
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupFallsBackToLegacyValue(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralInviteeRateBpsIgnoresLegacyScalarFallback(t *testing.T) {
 	setting := dto.UserSetting{
 		SubscriptionReferralInviteeRateBps:        700,
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 900},
@@ -262,11 +285,14 @@ func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupFallsBackToLegacyV
 	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "vip", 1500); got != 900 {
 		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(vip, 1500) = %d, want 900", got)
 	}
-	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "default", 1500); got != 700 {
-		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(default, 1500) = %d, want 700", got)
+	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "default", 1500); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(default, 1500) = %d, want 0", got)
 	}
 	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "vip", 800); got != 800 {
 		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(vip, 800) = %d, want 800", got)
+	}
+	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "", 1500); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(empty, 1500) = %d, want 0", got)
 	}
 }
 
@@ -355,7 +381,7 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesNonDefaultGroupedOverri
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedOverride(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralTotalRateBpsIgnoresLegacyUngroupedOverride(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	originalGlobalRate := common.SubscriptionReferralGlobalRateBps
 	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
@@ -374,12 +400,10 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 	}
 
 	user := seedReferralUser(t, db, "legacy-ungrouped-override-user", 0, dto.UserSetting{})
-	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 2600, 1); err != nil {
-		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
-	}
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 2600)
 
-	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 2600 {
-		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 2600", got)
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 3000 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 3000", got)
 	}
 }
 
@@ -407,6 +431,23 @@ func TestListSubscriptionReferralConfiguredGroupsIncludesPlanUpgradeGroups(t *te
 	}
 }
 
+func TestListSubscriptionReferralConfiguredGroupsReturnsEmptyWhenNoRealGroupsExist(t *testing.T) {
+	setupSubscriptionReferralSettlementDB(t)
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	groups := ListSubscriptionReferralConfiguredGroups()
+	if len(groups) != 0 {
+		t.Fatalf("ListSubscriptionReferralConfiguredGroups() = %v, want []", groups)
+	}
+}
+
 func TestIsSubscriptionReferralPlanBackedGroupRecognizesRetiredUpgradeGroup(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	plan := seedReferralPlan(t, db, 19.9)
@@ -417,6 +458,143 @@ func TestIsSubscriptionReferralPlanBackedGroupRecognizesRetiredUpgradeGroup(t *t
 	}
 	if IsSubscriptionReferralPlanBackedGroup("ghost") {
 		t.Fatal("expected unknown non-plan group to be rejected")
+	}
+}
+
+func TestMigrateLegacySubscriptionReferralOverridesMigratesSingleGroupSystem(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	plan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+
+	user := seedReferralUser(t, db, "migrate-legacy-override-single-group", 0, dto.UserSetting{})
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 3200)
+
+	if err := migrateLegacySubscriptionReferralOverrides(); err != nil {
+		t.Fatalf("migrateLegacySubscriptionReferralOverrides() error = %v", err)
+	}
+
+	groupedOverride, err := GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
+	if err != nil {
+		t.Fatalf("GetSubscriptionReferralOverrideByUserIDAndGroup(vip) error = %v", err)
+	}
+	if groupedOverride.TotalRateBps != 3200 {
+		t.Fatalf("groupedOverride.TotalRateBps = %d, want 3200", groupedOverride.TotalRateBps)
+	}
+
+	if _, err := getLegacyUngroupedSubscriptionReferralOverrideByUserID(user.Id); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("getLegacyUngroupedSubscriptionReferralOverrideByUserID() error = %v, want %v", err, gorm.ErrRecordNotFound)
+	}
+}
+
+func TestMigrateLegacySubscriptionReferralOverridesFailsWhenMultipleGroupsExist(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	vipPlan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, vipPlan, "vip")
+	proPlan := seedReferralPlan(t, db, 29.9)
+	setReferralPlanUpgradeGroup(t, db, proPlan, "pro")
+
+	user := seedReferralUser(t, db, "migrate-legacy-override-multi-group", 0, dto.UserSetting{})
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 3200)
+
+	err := migrateLegacySubscriptionReferralOverrides()
+	if err == nil {
+		t.Fatal("expected migrateLegacySubscriptionReferralOverrides() to fail")
+	}
+	if !strings.Contains(err.Error(), "legacy subscription referral override") {
+		t.Fatalf("migrateLegacySubscriptionReferralOverrides() error = %q, want substring %q", err.Error(), "legacy subscription referral override")
+	}
+}
+
+func TestMigrateLegacySubscriptionReferralInviteeRatesMigratesSingleGroupUserSetting(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	plan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+
+	user := seedReferralUser(t, db, "migrate-legacy-invitee-rate-single-group", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 700,
+	})
+
+	if err := migrateLegacySubscriptionReferralInviteeRates(); err != nil {
+		t.Fatalf("migrateLegacySubscriptionReferralInviteeRates() error = %v", err)
+	}
+
+	reloadedUser, err := GetUserById(user.Id, true)
+	if err != nil {
+		t.Fatalf("GetUserById() error = %v", err)
+	}
+	reloadedSetting := reloadedUser.GetSetting()
+	if reloadedSetting.SubscriptionReferralInviteeRateBps != 0 {
+		t.Fatalf("SubscriptionReferralInviteeRateBps = %d, want 0", reloadedSetting.SubscriptionReferralInviteeRateBps)
+	}
+	if reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup["vip"] != 700 {
+		t.Fatalf("SubscriptionReferralInviteeRateBpsByGroup[vip] = %d, want 700", reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup["vip"])
+	}
+}
+
+func TestRunSubscriptionReferralStartupMigrationsFailsOnAmbiguousLegacyScalarInviteeRate(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	vipPlan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, vipPlan, "vip")
+	proPlan := seedReferralPlan(t, db, 29.9)
+	setReferralPlanUpgradeGroup(t, db, proPlan, "pro")
+
+	user := seedReferralUser(t, db, "startup-legacy-invitee-rate-multi-group", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 700,
+	})
+
+	err := runSubscriptionReferralStartupMigrations()
+	if err == nil {
+		t.Fatal("expected runSubscriptionReferralStartupMigrations() to fail")
+	}
+	if !strings.Contains(err.Error(), "legacy subscription referral invitee rate settings require exactly one real group for migration") {
+		t.Fatalf("runSubscriptionReferralStartupMigrations() error = %q, want substring %q", err.Error(), "legacy subscription referral invitee rate settings require exactly one real group for migration")
+	}
+
+	reloadedUser, reloadErr := GetUserById(user.Id, true)
+	if reloadErr != nil {
+		t.Fatalf("GetUserById() error = %v", reloadErr)
+	}
+	reloadedSetting := reloadedUser.GetSetting()
+	if reloadedSetting.SubscriptionReferralInviteeRateBps != 700 {
+		t.Fatalf("SubscriptionReferralInviteeRateBps = %d, want 700 after failed startup migration", reloadedSetting.SubscriptionReferralInviteeRateBps)
+	}
+	if len(reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup) != 0 {
+		t.Fatalf("SubscriptionReferralInviteeRateBpsByGroup = %+v, want empty after failed startup migration", reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup)
+	}
+}
+
+func TestValidateNoLegacySubscriptionReferralDataFailsOnEmptyGroupOverride(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "validate-no-legacy-empty-group-override", 0, dto.UserSetting{})
+	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 3000)
+
+	err := validateNoLegacySubscriptionReferralData()
+	if err == nil {
+		t.Fatal("expected validateNoLegacySubscriptionReferralData() to fail")
+	}
+	if !strings.Contains(err.Error(), "empty-group override") {
+		t.Fatalf("validateNoLegacySubscriptionReferralData() error = %q, want substring %q", err.Error(), "empty-group override")
+	}
+}
+
+func TestValidateNoLegacySubscriptionReferralDataFailsOnLegacyScalarInviteeRate(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	seedReferralUser(t, db, "validate-no-legacy-scalar-invitee-rate", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 700,
+	})
+
+	err := validateNoLegacySubscriptionReferralData()
+	if err == nil {
+		t.Fatal("expected validateNoLegacySubscriptionReferralData() to fail")
+	}
+	if !strings.Contains(err.Error(), "legacy scalar SubscriptionReferralInviteeRateBps") {
+		t.Fatalf("validateNoLegacySubscriptionReferralData() error = %q, want substring %q", err.Error(), "legacy scalar SubscriptionReferralInviteeRateBps")
 	}
 }
 
@@ -474,6 +652,8 @@ func TestEnsureSubscriptionReferralOverrideSchemaReconcilesDuplicateGroupedRows(
 
 func TestSubscriptionReferralOverrideMigrationStartupPathHandlesDuplicateGroupedRows(t *testing.T) {
 	db := setupSubscriptionReferralOverrideSchemaDB(t)
+	plan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
 
 	insertSQL := "INSERT INTO `subscription_referral_overrides` (`id`, `user_id`, `group`, `total_rate_bps`, `created_by`, `updated_by`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 	rows := []struct {
@@ -483,8 +663,8 @@ func TestSubscriptionReferralOverrideMigrationStartupPathHandlesDuplicateGrouped
 		totalRateBps int
 		updatedAt    int64
 	}{
-		{id: 11, userID: 9, groupName: "default", totalRateBps: 2000, updatedAt: 100},
-		{id: 12, userID: 9, groupName: "default", totalRateBps: 2300, updatedAt: 200},
+		{id: 11, userID: 9, groupName: "vip", totalRateBps: 2000, updatedAt: 100},
+		{id: 12, userID: 9, groupName: "vip", totalRateBps: 2300, updatedAt: 200},
 		{id: 13, userID: 9, groupName: "", totalRateBps: 1700, updatedAt: 150},
 	}
 	for _, row := range rows {
@@ -497,23 +677,27 @@ func TestSubscriptionReferralOverrideMigrationStartupPathHandlesDuplicateGrouped
 		t.Fatalf("migrateDB() error = %v", err)
 	}
 
-	var defaultRows []SubscriptionReferralOverride
-	if err := db.Where("user_id = ? AND `group` = ?", 9, "default").Order("id ASC").Find(&defaultRows).Error; err != nil {
-		t.Fatalf("failed to load migrated default rows: %v", err)
+	var vipRows []SubscriptionReferralOverride
+	if err := db.Where("user_id = ? AND `group` = ?", 9, "vip").Order("id ASC").Find(&vipRows).Error; err != nil {
+		t.Fatalf("failed to load migrated vip rows: %v", err)
 	}
-	if len(defaultRows) != 1 {
-		t.Fatalf("default row count = %d, want 1", len(defaultRows))
+	if len(vipRows) != 1 {
+		t.Fatalf("vip row count = %d, want 1", len(vipRows))
 	}
-	if defaultRows[0].Id != 12 {
-		t.Fatalf("retained default row id = %d, want 12", defaultRows[0].Id)
+	if vipRows[0].Id != 12 {
+		t.Fatalf("retained vip row id = %d, want 12", vipRows[0].Id)
 	}
-	if defaultRows[0].TotalRateBps != 2300 {
-		t.Fatalf("retained default row TotalRateBps = %d, want 2300", defaultRows[0].TotalRateBps)
+	if vipRows[0].TotalRateBps != 2300 {
+		t.Fatalf("retained vip row TotalRateBps = %d, want 2300", vipRows[0].TotalRateBps)
+	}
+
+	if _, err := getLegacyUngroupedSubscriptionReferralOverrideByUserID(9); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("getLegacyUngroupedSubscriptionReferralOverrideByUserID() error = %v, want %v", err, gorm.ErrRecordNotFound)
 	}
 
 	duplicate := &SubscriptionReferralOverride{
 		UserId:       9,
-		Group:        "default",
+		Group:        "vip",
 		TotalRateBps: 2600,
 		CreatedBy:    1,
 		UpdatedBy:    1,
@@ -593,6 +777,15 @@ func TestUpsertSubscriptionReferralOverridePersistsPerGroup(t *testing.T) {
 	}
 	if err := db.Create(duplicate).Error; err == nil {
 		t.Fatal("expected duplicate (user_id, group) insert to fail")
+	}
+}
+
+func TestUpsertSubscriptionReferralOverrideRejectsEmptyGroup(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	user := seedReferralUser(t, db, "reject-empty-group-upsert-user", 0, dto.UserSetting{})
+	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 3000, 1); err == nil {
+		t.Fatal("expected UpsertSubscriptionReferralOverride() to fail")
 	}
 }
 

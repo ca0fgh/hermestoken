@@ -117,27 +117,12 @@ export function parseAdminReferralSettings(payload = {}) {
   }
 
   const groupRates = normalizeGroupRateMap(payload.group_rates);
-  const legacyTotalRateBps = normalizeRateBps(payload.total_rate_bps);
-  const hasLegacyTotalRate =
-    payload.total_rate_bps !== undefined && payload.total_rate_bps !== null;
   const groups = normalizeGroupNames(payload.groups);
 
   return {
     enabled,
-    groups:
-      groups.length > 0
-        ? groups
-        : Object.keys(groupRates).length > 0
-          ? normalizeGroupNames(Object.keys(groupRates))
-          : hasLegacyTotalRate
-            ? ['default']
-            : [],
-    groupRates:
-      Object.keys(groupRates).length > 0
-        ? groupRates
-        : hasLegacyTotalRate
-          ? { default: legacyTotalRateBps }
-          : {},
+    groups,
+    groupRates,
   };
 }
 
@@ -154,14 +139,8 @@ export function buildAdminReferralFormValues({
 export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
   const normalizedGroupRates = normalizeGroupRateMap(groupRates);
   const normalizedGroupNames = normalizeGroupNames(groupNames);
-  const orderedGroups = [
-    ...normalizedGroupNames,
-    ...Object.keys(normalizedGroupRates).filter(
-      (group) => !normalizedGroupNames.includes(group),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
 
-  return orderedGroups.map((group) => {
+  return normalizedGroupNames.map((group) => {
     const totalRateBps = normalizeRateBps(normalizedGroupRates[group] || 0);
     return {
       group,
@@ -199,13 +178,23 @@ export function buildAdminOverrideRows(groups = []) {
 }
 
 export function buildGroupedReferralSummaries(groups = []) {
-  return groups.map((groupItem) => ({
-    ...buildReferralRateSummary(
-      groupItem.total_rate_bps ?? groupItem.totalRateBps,
-      groupItem.invitee_rate_bps ?? groupItem.inviteeRateBps,
-      groupItem.group || '',
-    ),
-  }));
+  return groups.reduce((summaries, groupItem) => {
+    const group = String(groupItem?.group || '').trim();
+    if (!group) {
+      return summaries;
+    }
+
+    return [
+      ...summaries,
+      {
+        ...buildReferralRateSummary(
+          groupItem.total_rate_bps ?? groupItem.totalRateBps,
+          groupItem.invitee_rate_bps ?? groupItem.inviteeRateBps,
+          group,
+        ),
+      },
+    ];
+  }, []);
 }
 
 export function buildInvitationDraftPercentInputs(

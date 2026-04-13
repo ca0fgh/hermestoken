@@ -59,7 +59,7 @@ def run_local_stack(config: LauncherConfig, *, output: Optional[TextIO] = None, 
     stream.write("[ok] Docker available\n")
 
     run_command(
-        ["docker", "compose", "-f", str(compose_file_path), "up", "-d"],
+        ["docker", "compose", "-f", str(compose_file_path), "up", "-d", "--build"],
         check=True,
         stream_output=True,
         cwd=effective_repo_root,
