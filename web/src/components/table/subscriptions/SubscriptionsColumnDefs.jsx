@@ -97,6 +97,12 @@ const renderPlanTitle = (text, record, t) => {
             ? plan.max_purchase_per_user
             : t('不限')}
         </Text>
+        <Text type='tertiary'>{t('库存')}</Text>
+        {Number(plan?.stock_total || 0) > 0 ? (
+          <Text>{`${t('剩余')} ${Number(plan?.stock_available || 0)} / ${t('总库存')} ${Number(plan?.stock_total || 0)}`}</Text>
+        ) : (
+          <Text>{t('不限')}</Text>
+        )}
         <Text type='tertiary'>{t('有效期')}</Text>
         <Text>{formatDuration(plan, t)}</Text>
         <Text type='tertiary'>{t('重置')}</Text>
@@ -139,6 +145,24 @@ const renderPurchaseLimit = (text, record, t) => {
     <Text type={limit > 0 ? 'secondary' : 'tertiary'}>
       {limit > 0 ? limit : t('不限')}
     </Text>
+  );
+};
+
+const renderStock = (text, record, t) => {
+  const total = Number(record?.plan?.stock_total || 0);
+  const locked = Number(record?.plan?.stock_locked || 0);
+  const sold = Number(record?.plan?.stock_sold || 0);
+  const available = Number(record?.plan?.stock_available || 0);
+  if (total <= 0) {
+    return <Text type='tertiary'>{t('不限')}</Text>;
+  }
+  return (
+    <div>
+      <Text type='secondary'>{`${t('剩余')} ${available} / ${t('总库存')} ${total}`}</Text>
+      <Text type='tertiary' size='small' style={{ display: 'block' }}>
+        {`${t('已售')} ${sold} · ${t('锁定')} ${locked}`}
+      </Text>
+    </div>
   );
 };
 
@@ -329,6 +353,11 @@ export const getSubscriptionsColumns = ({
       title: t('购买上限'),
       width: 90,
       render: (text, record) => renderPurchaseLimit(text, record, t),
+    },
+    {
+      title: t('库存'),
+      width: 160,
+      render: (text, record) => renderStock(text, record, t),
     },
     {
       title: t('优先级'),

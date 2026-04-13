@@ -93,6 +93,10 @@ const AddEditSubscriptionModal = ({
     enabled: true,
     sort_order: 0,
     max_purchase_per_user: 0,
+    stock_total: 0,
+    stock_locked: 0,
+    stock_sold: 0,
+    stock_available: 0,
     total_amount: 0,
     upgrade_group: '',
     stripe_price_id: '',
@@ -117,6 +121,10 @@ const AddEditSubscriptionModal = ({
       enabled: p.enabled !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
+      stock_total: Number(p.stock_total || 0),
+      stock_locked: Number(p.stock_locked || 0),
+      stock_sold: Number(p.stock_sold || 0),
+      stock_available: Number(p.stock_available || 0),
       total_amount: Number(
         quotaToDisplayAmount(p.total_amount || 0).toFixed(2),
       ),
@@ -162,6 +170,7 @@ const AddEditSubscriptionModal = ({
               : 0,
           sort_order: Number(values.sort_order || 0),
           max_purchase_per_user: Number(values.max_purchase_per_user || 0),
+          stock_total: Number(values.stock_total || 0),
           total_amount: displayAmountToQuota(values.total_amount),
           upgrade_group: values.upgrade_group || '',
         },
@@ -366,7 +375,18 @@ const AddEditSubscriptionModal = ({
                         label={t('购买上限')}
                         min={0}
                         precision={0}
-                        extraText={t('0 表示不限')}
+                        extraText={t('每个用户最多购买次数，0 表示不限')}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
+
+                    <Col span={12}>
+                      <Form.InputNumber
+                        field='stock_total'
+                        label={t('库存')}
+                        min={0}
+                        precision={0}
+                        extraText={`${t('套餐总库存，0 表示不限')} ${t('库存从开启后开始统计，历史销售不计入')}`}
                         style={{ width: '100%' }}
                       />
                     </Col>
@@ -377,6 +397,36 @@ const AddEditSubscriptionModal = ({
                         label={t('启用状态')}
                         size='large'
                       />
+                    </Col>
+
+                    <Col span={24}>
+                      <div className='grid grid-cols-3 gap-3'>
+                        <Card className='!rounded-xl border border-slate-100 shadow-none'>
+                          <Text type='tertiary'>{t('已售')}</Text>
+                          <Title heading={5} className='!mb-0'>
+                            {values.stock_sold || 0}
+                          </Title>
+                        </Card>
+                        <Card className='!rounded-xl border border-slate-100 shadow-none'>
+                          <Text type='tertiary'>{t('锁定')}</Text>
+                          <Title heading={5} className='!mb-0'>
+                            {values.stock_locked || 0}
+                          </Title>
+                        </Card>
+                        <Card className='!rounded-xl border border-slate-100 shadow-none'>
+                          <Text type='tertiary'>{t('剩余')}</Text>
+                          <Title heading={5} className='!mb-0'>
+                            {values.stock_total > 0
+                              ? Math.max(
+                                  Number(values.stock_total || 0) -
+                                    Number(values.stock_locked || 0) -
+                                    Number(values.stock_sold || 0),
+                                  0,
+                                )
+                              : t('不限')}
+                          </Title>
+                        </Card>
+                      </div>
                     </Col>
                   </Row>
                 </Card>

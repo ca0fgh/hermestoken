@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -31,6 +32,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		p.PopulateStockAvailable()
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -96,6 +98,7 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		p.PopulateStockAvailable()
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})
@@ -140,6 +143,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if req.Plan.StockTotal < 0 {
+		common.ApiErrorMsg(c, model.ErrSubscriptionPlanStockNegative.Error())
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -156,6 +163,8 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
+	req.Plan.StockLocked = 0
+	req.Plan.StockSold = 0
 	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
@@ -203,6 +212,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "购买上限不能为负数")
 		return
 	}
+	if req.Plan.StockTotal < 0 {
+		common.ApiErrorMsg(c, model.ErrSubscriptionPlanStockNegative.Error())
+		return
+	}
 	if req.Plan.TotalAmount < 0 {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
@@ -221,6 +234,14 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var current model.SubscriptionPlan
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id).First(&current).Error; err != nil {
+			return err
+		}
+		nextLocked, nextSold, err := model.PrepareSubscriptionPlanStockUpdateTx(tx, &current, req.Plan.StockTotal)
+		if err != nil {
+			return err
+		}
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]interface{}{
 			"title":                      req.Plan.Title,
@@ -235,6 +256,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"stripe_price_id":            req.Plan.StripePriceId,
 			"creem_product_id":           req.Plan.CreemProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
+			"stock_total":                req.Plan.StockTotal,
+			"stock_locked":               nextLocked,
+			"stock_sold":                 nextSold,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
@@ -247,6 +271,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		return nil
 	})
 	if err != nil {
+		if errors.Is(err, model.ErrSubscriptionPlanStockNegative) ||
+			errors.Is(err, model.ErrSubscriptionPlanStockBlocked) ||
+			errors.Is(err, model.ErrSubscriptionPlanStockTooSmall) {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
