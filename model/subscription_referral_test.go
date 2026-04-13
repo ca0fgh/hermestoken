@@ -532,6 +532,22 @@ func TestValidateNoLegacySubscriptionReferralDataFailsOnEmptyGroupOverride(t *te
 	}
 }
 
+func TestValidateNoLegacySubscriptionReferralDataFailsOnLegacyScalarInviteeRate(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	seedReferralUser(t, db, "validate-no-legacy-scalar-invitee-rate", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 700,
+	})
+
+	err := validateNoLegacySubscriptionReferralData()
+	if err == nil {
+		t.Fatal("expected validateNoLegacySubscriptionReferralData() to fail")
+	}
+	if !strings.Contains(err.Error(), "legacy scalar SubscriptionReferralInviteeRateBps") {
+		t.Fatalf("validateNoLegacySubscriptionReferralData() error = %q, want substring %q", err.Error(), "legacy scalar SubscriptionReferralInviteeRateBps")
+	}
+}
+
 func TestEnsureSubscriptionReferralOverrideSchemaReconcilesDuplicateGroupedRows(t *testing.T) {
 	db := setupSubscriptionReferralOverrideSchemaDB(t)
 

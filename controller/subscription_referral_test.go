@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func setSubscriptionReferralGroupRatesForTest(t *testing.T, jsonStr string) {
@@ -44,6 +45,23 @@ func seedSubscriptionReferralControllerUser(t *testing.T, username string, invit
 		t.Fatalf("failed to create user: %v", err)
 	}
 	return user
+}
+
+func insertLegacyEmptyGroupSubscriptionReferralOverrideForControllerTest(t *testing.T, userID int, totalRateBps int) {
+	t.Helper()
+
+	legacyOverride := &model.SubscriptionReferralOverride{
+		UserId:       userID,
+		Group:        "",
+		TotalRateBps: totalRateBps,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+		CreatedAt:    common.GetTimestamp(),
+		UpdatedAt:    common.GetTimestamp(),
+	}
+	if err := model.DB.Session(&gorm.Session{SkipHooks: true}).Create(legacyOverride).Error; err != nil {
+		t.Fatalf("failed to create legacy empty-group override: %v", err)
+	}
 }
 
 func seedSubscriptionReferralControllerTradeNo(t *testing.T) string {
@@ -794,9 +812,7 @@ func TestAdminGetSubscriptionReferralOverrideIgnoresLegacyEmptyGroupOverride(t *
 	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-legacy-default-with-vip", 0, dto.UserSetting{})
 
-	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "", 4100, 1); err != nil {
-		t.Fatalf("failed to create legacy empty-group override: %v", err)
-	}
+	insertLegacyEmptyGroupSubscriptionReferralOverrideForControllerTest(t, user.Id, 4100)
 
 	getCtx, getRecorder := newAuthenticatedContext(
 		t,
@@ -988,9 +1004,7 @@ func TestAdminDeleteSubscriptionReferralOverrideRejectsMissingGroup(t *testing.T
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-delete", 0, dto.UserSetting{})
 
-	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "", 3500, 1); err != nil {
-		t.Fatalf("failed to create legacy ungrouped override: %v", err)
-	}
+	insertLegacyEmptyGroupSubscriptionReferralOverrideForControllerTest(t, user.Id, 3500)
 	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "vip", 2800, 1); err != nil {
 		t.Fatalf("failed to create grouped override: %v", err)
 	}
