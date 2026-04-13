@@ -4028,6 +4028,16 @@
     "组织级使用、多模型路由与 Agent 持续调用同时出现，使用权开始需要统一执行与结算边界。": "Việc sử dụng ở cấp tổ chức, định tuyến đa mô hình và các lời gọi Agent liên tục đang cùng xuất hiện, nên quyền sử dụng bắt đầu cần một ranh giới thực thi và quyết toán thống nhất.",
     "协作结构": "Cấu trúc cộng tác",
     "买方、卖方、Agent 在同一结构里协作": "Bên mua, bên bán và Agent phối hợp trong cùng một cấu trúc",
-    "平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。": "Nền tảng không xử lý Key thô mà xử lý năng lực truy cập có quy tắc, để việc khám phá, thực thi và quyết toán đi vào cùng một cấu trúc."
+    "平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。": "Nền tảng không xử lý Key thô mà xử lý năng lực truy cập có quy tắc, để việc khám phá, thực thi và quyết toán đi vào cùng một cấu trúc.",
+    "新增覆盖": "Add override",
+    "返佣类型": "Referral type",
+    "订阅返佣": "Subscription referral",
+    "暂无覆盖时使用默认返佣规则": "Default referral rules apply when no override is set",
+    "暂无覆盖项，未设置时使用默认返佣规则": "No override items yet. Default referral rules apply",
+    "当前默认总返佣率": "Current default total referral rate",
+    "请选择返佣类型": "Please select a referral type",
+    "该返佣类型和分组组合已存在": "This referral type and group combination already exists",
+    "覆盖总返佣率必须为数字": "The override total referral rate must be a number",
+    "覆盖总返佣率必须在 0 到 100 之间": "The override total referral rate must be between 0 and 100"
   }
 }

@@ -3,12 +3,15 @@ ARG NPM_REGISTRY=https://registry.npmmirror.com
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 WORKDIR /build
-COPY web/package.json .
-COPY web/bun.lock .
-RUN bun install --registry ${NPM_REGISTRY}
-COPY ./web .
-COPY ./VERSION .
-RUN DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat VERSION) bun run build
+COPY . .
+RUN if [ -d web/dist ] && [ -n "$(ls -A web/dist 2>/dev/null)" ]; then \
+      mkdir -p /build/dist && cp -R web/dist/. /build/dist/; \
+    else \
+      cd web && \
+      bun install --registry ${NPM_REGISTRY} && \
+      DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build && \
+      mkdir -p /build/dist && cp -R dist/. /build/dist/; \
+    fi
 
 FROM mirror.gcr.io/library/golang:1.26.1-alpine AS builder2
 ENV GO111MODULE=on CGO_ENABLED=0
