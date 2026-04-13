@@ -24,6 +24,10 @@ import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useSetTheme, useTheme, useActualTheme } from '../../context/Theme';
 import { API, getLogo, showSuccess } from '../../helpers';
+import {
+  getPricingRequireAuth,
+  normalizeHeaderNavModules,
+} from '../../helpers/headerNavModules';
 import { normalizeLanguage } from '../../i18n/language';
 import { useIsMobile } from './useIsMobile';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
@@ -57,35 +61,12 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
 
   // 使用useMemo确保headerNavModules正确响应statusState变化
   const headerNavModules = useMemo(() => {
-    if (headerNavModulesConfig) {
-      try {
-        const modules = JSON.parse(headerNavModulesConfig);
-
-        // 处理向后兼容性：如果pricing是boolean，转换为对象格式
-        if (typeof modules.pricing === 'boolean') {
-          modules.pricing = {
-            enabled: modules.pricing,
-            requireAuth: false, // 默认不需要登录鉴权
-          };
-        }
-
-        return modules;
-      } catch (error) {
-        console.error('解析顶栏模块配置失败:', error);
-        return null;
-      }
-    }
-    return null;
+    return normalizeHeaderNavModules(headerNavModulesConfig);
   }, [headerNavModulesConfig]);
 
   // 获取模型广场权限配置
   const pricingRequireAuth = useMemo(() => {
-    if (headerNavModules?.pricing) {
-      return typeof headerNavModules.pricing === 'object'
-        ? headerNavModules.pricing.requireAuth
-        : false; // 默认不需要登录
-    }
-    return false; // 默认不需要登录
+    return getPricingRequireAuth(headerNavModules);
   }, [headerNavModules]);
 
   const isConsoleRoute = location.pathname.startsWith('/console');

@@ -361,7 +361,9 @@ const EditTokenModal = (props) => {
                       <Form.Select
                         field='group'
                         label={t('令牌分组')}
-                        placeholder={t('令牌分组，默认为用户的分组')}
+                        placeholder={t(
+                          '请选择用户可选分组；留空仅在默认分组属于用户可选时生效',
+                        )}
                         optionList={groups}
                         renderOptionItem={renderGroupOption}
                         filter={selectFilter}

@@ -12,6 +12,9 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -46,6 +49,7 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
+	model.InitColumnMetadata()
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -55,7 +59,7 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	if err := db.AutoMigrate(&model.Token{}); err != nil {
+	if err := db.AutoMigrate(&model.Token{}, &model.User{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
 
@@ -67,6 +71,46 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func seedUser(t *testing.T, db *gorm.DB, userID int, group string) *model.User {
+	t.Helper()
+
+	user := &model.User{
+		Id:       userID,
+		Username: fmt.Sprintf("user_%d", userID),
+		Password: "password123",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    group,
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+	return user
+}
+
+func withTokenGroupSettings(t *testing.T, usableJSON string, specialJSON string) {
+	t.Helper()
+
+	originalUsable := setting.UserUsableGroups2JSONString()
+	originalSpecial := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.MarshalJSONString()
+
+	if err := setting.UpdateUserUsableGroupsByJSONString(usableJSON); err != nil {
+		t.Fatalf("failed to set usable groups: %v", err)
+	}
+	if err := types.LoadFromJsonString(ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup, specialJSON); err != nil {
+		t.Fatalf("failed to set special usable groups: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := setting.UpdateUserUsableGroupsByJSONString(originalUsable); err != nil {
+			t.Fatalf("failed to restore usable groups: %v", err)
+		}
+		if err := types.LoadFromJsonString(ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup, originalSpecial); err != nil {
+			t.Fatalf("failed to restore special usable groups: %v", err)
+		}
+	})
 }
 
 func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
@@ -206,6 +250,7 @@ func TestGetTokenMasksKeyInResponse(t *testing.T) {
 
 func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
 	token := seedToken(t, db, 1, "editable-token", "yzab1234cdef5678")
 
 	body := map[string]any{
@@ -237,6 +282,34 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestAddTokenRejectsBlankGroupWhenUserDefaultGroupIsNotSelectable(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
+
+	body := map[string]any{
+		"name":                 "new-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected token creation to fail when implicit user group is not selectable")
+	}
+	if !strings.Contains(response.Message, "用户可选分组") {
+		t.Fatalf("expected selectable-group validation message, got %q", response.Message)
 	}
 }
 

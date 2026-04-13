@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,19 @@ func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+func validateTokenGroupSelection(c *gin.Context, userID int, tokenGroup string) bool {
+	userGroup, err := model.GetUserGroup(userID, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	if err := service.ValidateTokenSelectableGroup(userGroup, tokenGroup); err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	return true
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -222,6 +236,9 @@ func AddToken(c *gin.Context) {
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
+	if !validateTokenGroupSelection(c, cleanToken.UserId, cleanToken.Group) {
+		return
+	}
 	err = cleanToken.Insert()
 	if err != nil {
 		common.ApiError(c, err)
@@ -299,6 +316,9 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		if !validateTokenGroupSelection(c, userId, cleanToken.Group) {
+			return
+		}
 	}
 	err = cleanToken.Update()
 	if err != nil {
