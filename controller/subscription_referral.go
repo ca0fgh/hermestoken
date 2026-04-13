@@ -350,9 +350,6 @@ func collectSubscriptionReferralResponseGroups(configuredGroups []string, overri
 		}
 		groupSet[trimmedGroup] = struct{}{}
 	}
-	if len(groupSet) == 0 {
-		groupSet["default"] = struct{}{}
-	}
 	groups := make([]string, 0, len(groupSet))
 	for group := range groupSet {
 		groups = append(groups, group)

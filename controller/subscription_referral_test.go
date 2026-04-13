@@ -198,6 +198,35 @@ func TestGetSubscriptionReferralSelfIncludesPlanUpgradeGroupWithoutConfiguredRat
 	}
 }
 
+func TestGetSubscriptionReferralSelfReturnsEmptyGroupsWhenNoRealGroupsExist(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-user-no-real-groups", 0, dto.UserSetting{})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		Groups []struct {
+			Group string `json:"group"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 0 {
+		t.Fatalf("groups length = %d, want 0 (%+v)", len(data.Groups), data.Groups)
+	}
+}
+
 func TestUpdateSubscriptionReferralSelfRejectsInviteeRateOverTotal(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true
@@ -348,6 +377,39 @@ func TestAdminGetSubscriptionReferralSettingsIncludesPlanBackedGroups(t *testing
 	}
 	if data.Groups[0] != "default" || data.Groups[1] != "retired" {
 		t.Fatalf("groups = %v, want [default retired]", data.Groups)
+	}
+}
+
+func TestAdminGetSubscriptionReferralSettingsReturnsEmptyGroupsWhenNoRealGroupsExist(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/settings",
+		nil,
+		1,
+	)
+	ctx.Set("role", common.RoleRootUser)
+
+	AdminGetSubscriptionReferralSettings(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		Groups []string `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 0 {
+		t.Fatalf("groups length = %d, want 0 (%v)", len(data.Groups), data.Groups)
 	}
 }
 
@@ -944,6 +1006,41 @@ func TestAdminGetSubscriptionReferralOverrideIncludesPlanUpgradeGroupWithoutConf
 	}
 }
 
+func TestAdminGetSubscriptionReferralOverrideReturnsEmptyGroupsWhenNoRealGroupsExist(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-no-real-groups", 0, dto.UserSetting{})
+
+	getCtx, getRecorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/subscription/admin/referral/users/1",
+		nil,
+		1,
+	)
+	getCtx.Set("role", common.RoleRootUser)
+	getCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+
+	AdminGetSubscriptionReferralOverride(getCtx)
+
+	getResp := decodeAPIResponse(t, getRecorder)
+	if !getResp.Success {
+		t.Fatalf("expected admin get override success")
+	}
+
+	var data struct {
+		Groups []struct {
+			Group string `json:"group"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(getResp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 0 {
+		t.Fatalf("groups length = %d, want 0 (%+v)", len(data.Groups), data.Groups)
+	}
+}
+
 func TestAdminUpsertSubscriptionReferralOverrideRejectsMissingGroupWithoutMutatingExistingOverride(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-default-upsert", 0, dto.UserSetting{})
@@ -1104,39 +1201,22 @@ func TestAdminDeleteSubscriptionReferralOverrideReturnsGroupedOnlyShape(t *testi
 	if data.UserID != user.Id {
 		t.Fatalf("user_id = %d, want %d", data.UserID, user.Id)
 	}
-	if len(data.Groups) != 2 {
-		t.Fatalf("groups length = %d, want 2 (%+v)", len(data.Groups), data.Groups)
+	if len(data.Groups) != 1 {
+		t.Fatalf("groups length = %d, want 1 (%+v)", len(data.Groups), data.Groups)
 	}
 
-	var foundDefault, foundVIP bool
-	for _, group := range data.Groups {
-		switch group.Group {
-		case "default":
-			foundDefault = true
-			if group.HasOverride {
-				t.Fatal("expected default group override to be removed")
-			}
-			if group.OverrideRateBps != nil {
-				t.Fatalf("expected nil default override rate after delete, got %v", *group.OverrideRateBps)
-			}
-			if group.EffectiveTotalRateBps != 2000 {
-				t.Fatalf("default effective_total_rate_bps = %d, want 2000", group.EffectiveTotalRateBps)
-			}
-		case "vip":
-			foundVIP = true
-			if !group.HasOverride {
-				t.Fatal("expected vip group override to remain")
-			}
-			if group.OverrideRateBps == nil || *group.OverrideRateBps != 2800 {
-				t.Fatalf("vip override_rate_bps = %v, want 2800", group.OverrideRateBps)
-			}
-			if group.EffectiveTotalRateBps != 2800 {
-				t.Fatalf("vip effective_total_rate_bps = %d, want 2800", group.EffectiveTotalRateBps)
-			}
-		}
+	group := data.Groups[0]
+	if group.Group != "vip" {
+		t.Fatalf("group = %q, want vip", group.Group)
 	}
-	if !foundDefault || !foundVIP {
-		t.Fatalf("expected default and vip groups in %+v", data.Groups)
+	if !group.HasOverride {
+		t.Fatal("expected vip group override to remain")
+	}
+	if group.OverrideRateBps == nil || *group.OverrideRateBps != 2800 {
+		t.Fatalf("vip override_rate_bps = %v, want 2800", group.OverrideRateBps)
+	}
+	if group.EffectiveTotalRateBps != 2800 {
+		t.Fatalf("vip effective_total_rate_bps = %d, want 2800", group.EffectiveTotalRateBps)
 	}
 }
 

@@ -294,9 +294,6 @@ func ListSubscriptionReferralConfiguredGroups() []string {
 		groups = append(groups, group)
 	}
 	sort.Strings(groups)
-	if len(groups) == 0 {
-		return []string{"default"}
-	}
 	return groups
 }
 

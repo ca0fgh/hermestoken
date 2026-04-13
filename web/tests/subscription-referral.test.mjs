@@ -101,6 +101,10 @@ test('buildAdminReferralRows does not invent default rows when group list is emp
   assert.deepEqual(buildAdminReferralRows([], {}), []);
 });
 
+test('buildAdminOverrideRows returns no rows when grouped override payload is empty', () => {
+  assert.deepEqual(buildAdminOverrideRows([]), []);
+});
+
 test('buildAdminReferralRows maps group names and rates into table rows', () => {
   assert.deepEqual(
     buildAdminReferralRows(['default', 'vip'], {
@@ -229,6 +233,10 @@ test('buildGroupedReferralSummaries derives inviter rate per group', () => {
       },
     ],
   );
+});
+
+test('buildGroupedReferralSummaries returns no cards when grouped payload is empty', () => {
+  assert.deepEqual(buildGroupedReferralSummaries([]), []);
 });
 
 test('buildAdminOverrideRows normalizes grouped override API payload', () => {

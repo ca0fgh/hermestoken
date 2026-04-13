@@ -431,6 +431,23 @@ func TestListSubscriptionReferralConfiguredGroupsIncludesPlanUpgradeGroups(t *te
 	}
 }
 
+func TestListSubscriptionReferralConfiguredGroupsReturnsEmptyWhenNoRealGroupsExist(t *testing.T) {
+	setupSubscriptionReferralSettlementDB(t)
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	groups := ListSubscriptionReferralConfiguredGroups()
+	if len(groups) != 0 {
+		t.Fatalf("ListSubscriptionReferralConfiguredGroups() = %v, want []", groups)
+	}
+}
+
 func TestIsSubscriptionReferralPlanBackedGroupRecognizesRetiredUpgradeGroup(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	plan := seedReferralPlan(t, db, 19.9)
@@ -514,6 +531,39 @@ func TestMigrateLegacySubscriptionReferralInviteeRatesMigratesSingleGroupUserSet
 	}
 	if reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup["vip"] != 700 {
 		t.Fatalf("SubscriptionReferralInviteeRateBpsByGroup[vip] = %d, want 700", reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup["vip"])
+	}
+}
+
+func TestRunSubscriptionReferralStartupMigrationsFailsOnAmbiguousLegacyScalarInviteeRate(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+
+	vipPlan := seedReferralPlan(t, db, 19.9)
+	setReferralPlanUpgradeGroup(t, db, vipPlan, "vip")
+	proPlan := seedReferralPlan(t, db, 29.9)
+	setReferralPlanUpgradeGroup(t, db, proPlan, "pro")
+
+	user := seedReferralUser(t, db, "startup-legacy-invitee-rate-multi-group", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 700,
+	})
+
+	err := runSubscriptionReferralStartupMigrations()
+	if err == nil {
+		t.Fatal("expected runSubscriptionReferralStartupMigrations() to fail")
+	}
+	if !strings.Contains(err.Error(), "legacy subscription referral invitee rate settings require exactly one real group for migration") {
+		t.Fatalf("runSubscriptionReferralStartupMigrations() error = %q, want substring %q", err.Error(), "legacy subscription referral invitee rate settings require exactly one real group for migration")
+	}
+
+	reloadedUser, reloadErr := GetUserById(user.Id, true)
+	if reloadErr != nil {
+		t.Fatalf("GetUserById() error = %v", reloadErr)
+	}
+	reloadedSetting := reloadedUser.GetSetting()
+	if reloadedSetting.SubscriptionReferralInviteeRateBps != 700 {
+		t.Fatalf("SubscriptionReferralInviteeRateBps = %d, want 700 after failed startup migration", reloadedSetting.SubscriptionReferralInviteeRateBps)
+	}
+	if len(reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup) != 0 {
+		t.Fatalf("SubscriptionReferralInviteeRateBpsByGroup = %+v, want empty after failed startup migration", reloadedSetting.SubscriptionReferralInviteeRateBpsByGroup)
 	}
 }
 
