@@ -348,6 +348,7 @@ test('buildAdminOverrideRows normalizes grouped override API payload', () => {
         hasOverride: false,
         overrideRateBps: null,
         overrideRatePercent: 45,
+        inputPercent: 45,
         isDraft: false,
       },
       {
@@ -358,6 +359,7 @@ test('buildAdminOverrideRows normalizes grouped override API payload', () => {
         hasOverride: true,
         overrideRateBps: 2500,
         overrideRatePercent: 25,
+        inputPercent: 25,
         isDraft: false,
       },
     ],
@@ -460,31 +462,7 @@ test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max vali
   );
 });
 
-test('SettingsSubscriptionReferral uses grouped settings payloads without catalog fallbacks', () => {
-  const settingsSource = readFileSync(
-    new URL(
-      '../src/pages/Setting/Operation/SettingsSubscriptionReferral.jsx',
-      import.meta.url,
-    ),
-    'utf8',
-  );
-
-  assert.equal(
-    settingsSource.includes("API.get('/api/group/')"),
-    false,
-  );
-  assert.equal(
-    settingsSource.includes('catalogGroupNames'),
-    false,
-  );
-  assert.match(
-    settingsSource,
-    /buildAdminReferralRows\(nextSettings\.groups,\s*nextSettings\.groupRates\)/,
-  );
-  assert.match(settingsSource, /applySettings\(res\.data\?\.data \|\| \{\}\);/);
-});
-
-test('SubscriptionReferralOverrideSection renders grouped override rows only', () => {
+test('SubscriptionReferralOverrideSection renders grouped list editor without legacy fallback fields', () => {
   const overrideSource = readFileSync(
     new URL(
       '../src/components/table/users/modals/SubscriptionReferralOverrideSection.jsx',
@@ -495,9 +473,12 @@ test('SubscriptionReferralOverrideSection renders grouped override rows only', (
 
   assert.match(
     overrideSource,
-    /buildAdminOverrideRows\(\s*Array\.isArray\(next\.groups\) \? next\.groups : \[\],\s*\)/,
+    /buildAdminOverrideRows\(\s*Array\.isArray\(userData\.groups\) \? userData\.groups : \[\],\s*\)/,
   );
+  assert.match(overrideSource, /API\.get\('\/api\/subscription\/admin\/referral\/settings'\)/);
+  assert.match(overrideSource, /\.filter\(\(row\) => row\.hasOverride\)/);
   assert.equal(overrideSource.includes('const fallbackGroups ='), false);
+  assert.equal(overrideSource.includes('settingsData.total_rate_bps'), false);
 });
 
 test('topup self save refreshes grouped referral summaries instead of synthesizing top-level fallbacks', () => {
