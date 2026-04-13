@@ -29,40 +29,36 @@ const componentSource = readFileSync(
   'utf8',
 );
 
-test('SubscriptionReferralOverrideSection source uses list-based override editor contracts', () => {
+test('SubscriptionReferralOverrideSection source uses grouped list-based override editor contracts', () => {
   assert.match(
     componentSource,
-    /API\.get\(`\/api\/subscription\/admin\/referral\/users\/\$\{userId\}`\)/,
+    /API\.get\(['"`]\/api\/subscription\/admin\/referral\/settings['"`]\)/,
+  );
+  assert.match(componentSource, /t\('新增覆盖'\)/);
+  assert.match(componentSource, /t\('返佣类型'\)/);
+  assert.match(componentSource, /t\('订阅返佣'\)/);
+  assert.match(componentSource, /overrideRows\.length === 0/);
+  assert.match(componentSource, /t\('暂无覆盖项，未设置时使用默认返佣规则'\)/);
+  assert.match(componentSource, /row\.isDraft \? t\('取消'\) : t\('删除'\)/);
+  assert.match(componentSource, /settingsData\.group_rates/);
+  assert.match(componentSource, /\.filter\(\(row\) => row\.hasOverride\)/);
+  assert.match(
+    componentSource,
+    /onChange=\{\(value\)\s*=>\s*updateRow\(row\.id,\s*\{\s*group:\s*value,\s*effectiveTotalRateBps:\s*getDefaultRateBpsByGroup\(value\)/,
   );
   assert.match(
     componentSource,
-    /buildAdminOverrideRows\(\s*Array\.isArray\(next\.groups\) \? next\.groups : \[\],\s*\)/,
-  );
-  assert.match(componentSource, /group,\s*total_rate_bps:\s*totalRateBps/);
-  assert.match(componentSource, /params:\s*\{\s*group\s*\}/);
-  assert.match(componentSource, /t\('当前生效总返佣率'\)/);
-  assert.match(componentSource, /t\('覆盖总返佣率'\)/);
-  assert.match(componentSource, /t\('清除覆盖'\)/);
-  assert.match(
-    componentSource,
-    /onChange=\{\(value\) => updateInputPercent\(row\.group,\s*value\)\}/,
-  );
-  assert.doesNotMatch(componentSource, /API\.get\(['"`]\/api\/group\/?['"`]\)/);
-  assert.doesNotMatch(componentSource, /<Select/);
-  assert.doesNotMatch(componentSource, /t\('新增覆盖'\)/);
-});
-
-test('SubscriptionReferralOverrideSection source keeps override row controls within the modal width', () => {
-  assert.match(
-    componentSource,
-    /className='flex flex-col gap-3'/,
+    /value=\{row\.type\}[\s\S]*?disabled=\{!row\.isDraft \|\| loading \|\| isSaving\}/,
   );
   assert.match(
     componentSource,
-    /className='rounded-xl border border-gray-100 p-4'/,
+    /value=\{row\.group \|\| undefined\}[\s\S]*?disabled=\{!row\.isDraft \|\| loading \|\| isSaving\}/,
   );
   assert.match(
     componentSource,
-    /<InputNumber[\s\S]*?style=\{\{ width: '100%' \}\}/,
+    /disabled=\{\s*\(!row\.isDraft && !row\.hasOverride\)\s*\|\|\s*loading\s*\|\|\s*isSaving\s*\}/,
   );
+  assert.doesNotMatch(componentSource, /const fallbackGroups =/);
+  assert.doesNotMatch(componentSource, /settingsData\.total_rate_bps/);
+  assert.doesNotMatch(componentSource, /t\('清除覆盖'\)/);
 });
