@@ -35,6 +35,9 @@ const (
 var (
 	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+	ErrSubscriptionPlanOutOfStock     = errors.New("库存不足")
+	ErrSubscriptionPlanStockBlocked   = errors.New("存在待支付订单，暂不允许切换库存周期")
+	ErrSubscriptionPlanStockTooSmall  = errors.New("库存不能小于已锁定和已售数量")
 )
 
 const (
@@ -165,6 +168,18 @@ type SubscriptionPlan struct {
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
 
+	// Total package stock (0 = unlimited)
+	StockTotal int `json:"stock_total" gorm:"type:int;default:0"`
+
+	// Pending-order reserved stock
+	StockLocked int `json:"stock_locked" gorm:"type:int;default:0"`
+
+	// Successfully sold stock
+	StockSold int `json:"stock_sold" gorm:"type:int;default:0"`
+
+	// Derived, not persisted
+	StockAvailable int `json:"stock_available" gorm:"-"`
+
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 
@@ -204,6 +219,7 @@ type SubscriptionOrder struct {
 	Status        string `json:"status"`
 	CreateTime    int64  `json:"create_time"`
 	CompleteTime  int64  `json:"complete_time"`
+	StockReserved int    `json:"stock_reserved" gorm:"type:int;default:0"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
 }
@@ -228,6 +244,85 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 		return nil
 	}
 	return &order
+}
+
+func (p *SubscriptionPlan) HasStockLimit() bool {
+	return p != nil && p.StockTotal > 0
+}
+
+func (p *SubscriptionPlan) GetStockAvailable() int {
+	if p == nil || p.StockTotal <= 0 {
+		return 0
+	}
+	available := p.StockTotal - p.StockLocked - p.StockSold
+	if available < 0 {
+		return 0
+	}
+	return available
+}
+
+func (p *SubscriptionPlan) PopulateStockAvailable() {
+	if p == nil {
+		return
+	}
+	p.StockAvailable = p.GetStockAvailable()
+}
+
+func reserveSubscriptionPlanStockTx(tx *gorm.DB, plan *SubscriptionPlan, amount int) error {
+	if tx == nil || plan == nil || amount <= 0 || !plan.HasStockLimit() {
+		return nil
+	}
+	if plan.GetStockAvailable() < amount {
+		return ErrSubscriptionPlanOutOfStock
+	}
+	plan.StockLocked += amount
+	return tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_locked", plan.StockLocked).Error
+}
+
+func releaseReservedSubscriptionOrderStockTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
+	if tx == nil || order == nil || plan == nil || order.StockReserved <= 0 {
+		return nil
+	}
+	if plan.StockLocked < order.StockReserved {
+		plan.StockLocked = 0
+	} else {
+		plan.StockLocked -= order.StockReserved
+	}
+	order.StockReserved = 0
+	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_locked", plan.StockLocked).Error; err != nil {
+		return err
+	}
+	return tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 0).Error
+}
+
+func consumeReservedSubscriptionOrderStockTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
+	if tx == nil || order == nil || plan == nil || order.StockReserved <= 0 {
+		return nil
+	}
+	if plan.StockLocked < order.StockReserved {
+		return ErrSubscriptionPlanOutOfStock
+	}
+	plan.StockLocked -= order.StockReserved
+	plan.StockSold += order.StockReserved
+	order.StockReserved = 0
+	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_locked": plan.StockLocked,
+		"stock_sold":   plan.StockSold,
+	}).Error; err != nil {
+		return err
+	}
+	return tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 0).Error
+}
+
+func consumeSubscriptionPlanStockDirectTx(tx *gorm.DB, plan *SubscriptionPlan, amount int) error {
+	if tx == nil || plan == nil || amount <= 0 || !plan.HasStockLimit() {
+		return nil
+	}
+	if plan.GetStockAvailable() < amount {
+		return ErrSubscriptionPlanOutOfStock
+	}
+	plan.StockSold += amount
+	return tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_sold", plan.StockSold).Error
 }
 
 // User subscription instance
@@ -633,6 +728,15 @@ func ExpireSubscriptionOrder(tradeNo string) error {
 		}
 		if order.Status != common.TopUpStatusPending {
 			return nil
+		}
+		if order.StockReserved > 0 {
+			plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId, true)
+			if err != nil {
+				return err
+			}
+			if err := releaseReservedSubscriptionOrderStockTx(tx, &order, plan); err != nil {
+				return err
+			}
 		}
 		order.Status = common.TopUpStatusExpired
 		order.CompleteTime = common.GetTimestamp()

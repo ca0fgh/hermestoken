@@ -304,6 +304,9 @@ func migrateDB() error {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
 		}
+		if err := ensureSubscriptionOrderStockReservedSQLite(); err != nil {
+			return err
+		}
 	} else {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
@@ -384,6 +387,9 @@ func migrateDBFast() error {
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
+			return err
+		}
+		if err := ensureSubscriptionOrderStockReservedSQLite(); err != nil {
 			return err
 		}
 	} else {
@@ -555,6 +561,9 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`stripe_price_id`" + ` varchar(128) DEFAULT '',
 ` + "`creem_product_id`" + ` varchar(128) DEFAULT '',
 ` + "`max_purchase_per_user`" + ` integer DEFAULT 0,
+` + "`stock_total`" + ` integer DEFAULT 0,
+` + "`stock_locked`" + ` integer DEFAULT 0,
+` + "`stock_sold`" + ` integer DEFAULT 0,
 ` + "`upgrade_group`" + ` varchar(64) DEFAULT '',
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
@@ -588,6 +597,9 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "stripe_price_id", DDL: "`stripe_price_id` varchar(128) DEFAULT ''"},
 		{Name: "creem_product_id", DDL: "`creem_product_id` varchar(128) DEFAULT ''"},
 		{Name: "max_purchase_per_user", DDL: "`max_purchase_per_user` integer DEFAULT 0"},
+		{Name: "stock_total", DDL: "`stock_total` integer DEFAULT 0"},
+		{Name: "stock_locked", DDL: "`stock_locked` integer DEFAULT 0"},
+		{Name: "stock_sold", DDL: "`stock_sold` integer DEFAULT 0"},
 		{Name: "upgrade_group", DDL: "`upgrade_group` varchar(64) DEFAULT ''"},
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
@@ -604,6 +616,16 @@ PRIMARY KEY (` + "`id`" + `)
 		}
 	}
 	return nil
+}
+
+func ensureSubscriptionOrderStockReservedSQLite() error {
+	if !common.UsingSQLite {
+		return nil
+	}
+	if DB.Migrator().HasColumn(&SubscriptionOrder{}, "StockReserved") {
+		return nil
+	}
+	return DB.Migrator().AddColumn(&SubscriptionOrder{}, "StockReserved")
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text
