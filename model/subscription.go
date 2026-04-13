@@ -39,6 +39,7 @@ var (
 	ErrSubscriptionPlanStockBlocked   = errors.New("存在待支付订单，暂不允许切换库存周期")
 	ErrSubscriptionPlanStockTooSmall  = errors.New("库存不能小于已锁定和已售数量")
 	ErrSubscriptionPlanStockInvariant = errors.New("订阅库存状态不一致")
+	ErrSubscriptionPlanStockNegative  = errors.New("库存不能为负数")
 )
 
 const (
@@ -537,6 +538,47 @@ func getSubscriptionPlanByIdTx(tx *gorm.DB, id int, includeDeleted bool) (*Subsc
 		_ = getSubscriptionPlanCache().SetWithTTL(key, plan, subscriptionPlanCacheTTL())
 	}
 	return &plan, nil
+}
+
+func sumReservedSubscriptionOrdersByPlanTx(tx *gorm.DB, planId int) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("tx is nil")
+	}
+	if planId <= 0 {
+		return 0, errors.New("invalid plan id")
+	}
+	var reserved int64
+	err := tx.Model(&SubscriptionOrder{}).
+		Where("plan_id = ? AND status = ? AND stock_reserved > 0", planId, common.TopUpStatusPending).
+		Select("COALESCE(SUM(stock_reserved), 0)").
+		Scan(&reserved).Error
+	return reserved, err
+}
+
+func PrepareSubscriptionPlanStockUpdateTx(tx *gorm.DB, current *SubscriptionPlan, nextTotal int) (int, int, error) {
+	if nextTotal < 0 {
+		return 0, 0, ErrSubscriptionPlanStockNegative
+	}
+	if current == nil {
+		return 0, 0, nil
+	}
+	reserved, err := sumReservedSubscriptionOrdersByPlanTx(tx, current.Id)
+	if err != nil {
+		return 0, 0, err
+	}
+	if current.StockTotal == 0 && nextTotal == 0 {
+		return 0, 0, nil
+	}
+	if (current.StockTotal == 0 && nextTotal > 0) || (current.StockTotal > 0 && nextTotal == 0) {
+		if reserved > 0 {
+			return 0, 0, ErrSubscriptionPlanStockBlocked
+		}
+		return 0, 0, nil
+	}
+	if nextTotal > 0 && nextTotal < current.StockLocked+current.StockSold {
+		return 0, 0, ErrSubscriptionPlanStockTooSmall
+	}
+	return current.StockLocked, current.StockSold, nil
 }
 
 func CountUserSubscriptionsByPlan(userId int, planId int) (int64, error) {

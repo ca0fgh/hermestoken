@@ -340,3 +340,146 @@ func TestCreatePendingSubscriptionOrderRejectsSoldOutPlan(t *testing.T) {
 		t.Fatalf("expected ErrSubscriptionPlanOutOfStock, got %v", err)
 	}
 }
+
+func TestAdminCreateSubscriptionPlanRejectsNegativeStock(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	body := AdminUpsertSubscriptionPlanRequest{
+		Plan: model.SubscriptionPlan{
+			Title:         "negative-stock-plan",
+			PriceAmount:   9.9,
+			Currency:      "USD",
+			DurationUnit:  model.SubscriptionDurationMonth,
+			DurationValue: 1,
+			StockTotal:    -1,
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/admin/plans", body, 1)
+
+	AdminCreateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success || response.Message != "库存不能为负数" {
+		t.Fatalf("expected 库存不能为负数, got success=%v message=%s", response.Success, response.Message)
+	}
+}
+
+func TestAdminUpdateSubscriptionPlanResetsStockCycleWhenEnablingFromZero(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "stock-cycle-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  0,
+		"stock_locked": 3,
+		"stock_sold":   4,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed stock counters: %v", err)
+	}
+
+	body := AdminUpsertSubscriptionPlanRequest{
+		Plan: model.SubscriptionPlan{
+			Title:         "stock-cycle-plan",
+			PriceAmount:   9.9,
+			Currency:      "USD",
+			DurationUnit:  model.SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			StockTotal:    20,
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/subscription/admin/plans/"+strconv.Itoa(plan.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(plan.Id)}}
+
+	AdminUpdateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var after model.SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&after).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if after.StockTotal != 20 || after.StockLocked != 0 || after.StockSold != 0 {
+		t.Fatalf("expected total=20 locked=0 sold=0, got total=%d locked=%d sold=%d", after.StockTotal, after.StockLocked, after.StockSold)
+	}
+}
+
+func TestAdminUpdateSubscriptionPlanRejectsDisablingStockWhenReservedOrderExists(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "stock-block-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  5,
+		"stock_locked": 1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed stock counters: %v", err)
+	}
+	order := &model.SubscriptionOrder{
+		UserId:        1,
+		PlanId:        plan.Id,
+		Money:         9.9,
+		TradeNo:       "trade-stock-block",
+		PaymentMethod: "epay",
+		Status:        common.TopUpStatusPending,
+		CreateTime:    1,
+		StockReserved: 1,
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatalf("failed to seed reserved order: %v", err)
+	}
+
+	body := AdminUpsertSubscriptionPlanRequest{
+		Plan: model.SubscriptionPlan{
+			Title:         "stock-block-plan",
+			PriceAmount:   9.9,
+			Currency:      "USD",
+			DurationUnit:  model.SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			StockTotal:    0,
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/subscription/admin/plans/"+strconv.Itoa(plan.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(plan.Id)}}
+
+	AdminUpdateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success || response.Message != "存在待支付订单，暂不允许切换库存周期" {
+		t.Fatalf("expected blocked stock transition, got success=%v message=%s", response.Success, response.Message)
+	}
+}
+
+func TestGetSubscriptionPlansIncludesStockAvailable(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "stock-api-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  10,
+		"stock_locked": 2,
+		"stock_sold":   3,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed stock counters: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/plans", nil, 1)
+	GetSubscriptionPlans(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var plans []SubscriptionPlanDTO
+	if err := common.Unmarshal(response.Data, &plans); err != nil {
+		t.Fatalf("failed to decode plan response: %v", err)
+	}
+	if len(plans) == 0 {
+		t.Fatal("expected at least one subscription plan")
+	}
+	if plans[0].Plan.StockAvailable != 5 {
+		t.Fatalf("expected stock_available=5, got %d", plans[0].Plan.StockAvailable)
+	}
+}
