@@ -20,6 +20,29 @@ type UserSetting struct {
 	Language                                  string         `json:"language,omitempty"`                                        // Language 用户语言偏好 (zh, en)
 }
 
+func (s UserSetting) Clone() UserSetting {
+	cloned := s
+	if s.SubscriptionReferralInviteeRateBpsByGroup != nil {
+		cloned.SubscriptionReferralInviteeRateBpsByGroup = make(map[string]int, len(s.SubscriptionReferralInviteeRateBpsByGroup))
+		for group, rate := range s.SubscriptionReferralInviteeRateBpsByGroup {
+			cloned.SubscriptionReferralInviteeRateBpsByGroup[group] = rate
+		}
+	}
+	return cloned
+}
+
+func (s UserSetting) WithMigratedSubscriptionReferralInviteeRate(group string) UserSetting {
+	cloned := s.Clone()
+	if cloned.SubscriptionReferralInviteeRateBpsByGroup == nil {
+		cloned.SubscriptionReferralInviteeRateBpsByGroup = make(map[string]int, 1)
+	}
+	if _, exists := cloned.SubscriptionReferralInviteeRateBpsByGroup[group]; !exists && cloned.SubscriptionReferralInviteeRateBps > 0 {
+		cloned.SubscriptionReferralInviteeRateBpsByGroup[group] = cloned.SubscriptionReferralInviteeRateBps
+	}
+	cloned.SubscriptionReferralInviteeRateBps = 0
+	return cloned
+}
+
 var (
 	NotifyTypeEmail   = "email"   // Email 邮件
 	NotifyTypeWebhook = "webhook" // Webhook

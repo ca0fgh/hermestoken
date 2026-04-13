@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -297,12 +298,16 @@ func ListSubscriptionReferralConfiguredGroups() []string {
 }
 
 func listSubscriptionPlanUpgradeGroups() []string {
-	if DB == nil {
+	return listSubscriptionPlanUpgradeGroupsWithDB(DB)
+}
+
+func listSubscriptionPlanUpgradeGroupsWithDB(tx *gorm.DB) []string {
+	if tx == nil {
 		return nil
 	}
 
 	var rawGroups []string
-	if err := DB.Model(&SubscriptionPlan{}).
+	if err := tx.Model(&SubscriptionPlan{}).
 		Distinct("upgrade_group").
 		Where("upgrade_group <> ''").
 		Pluck("upgrade_group", &rawGroups).Error; err != nil {
@@ -326,6 +331,22 @@ func listSubscriptionPlanUpgradeGroups() []string {
 	return groups
 }
 
+func getSingleSubscriptionReferralGroupForMigration() (string, error) {
+	return getSingleSubscriptionReferralGroupForMigrationWithDB(DB)
+}
+
+func getSingleSubscriptionReferralGroupForMigrationWithDB(tx *gorm.DB) (string, error) {
+	groups := listSubscriptionPlanUpgradeGroupsWithDB(tx)
+	switch len(groups) {
+	case 1:
+		return groups[0], nil
+	case 0:
+		return "", errors.New("no real subscription referral groups are configured")
+	default:
+		return "", fmt.Errorf("multiple real subscription referral groups are configured: %s", strings.Join(groups, ", "))
+	}
+}
+
 func IsSubscriptionReferralPlanBackedGroup(group string) bool {
 	trimmedGroup := strings.TrimSpace(group)
 	if trimmedGroup == "" {
@@ -338,6 +359,89 @@ func IsSubscriptionReferralPlanBackedGroup(group string) bool {
 		}
 	}
 	return false
+}
+
+func migrateLegacySubscriptionReferralOverrides() error {
+	if DB == nil {
+		return nil
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var legacyOverrides []SubscriptionReferralOverride
+		if err := tx.Where(commonGroupCol+" = ?", "").Order("id ASC").Find(&legacyOverrides).Error; err != nil {
+			return err
+		}
+		if len(legacyOverrides) == 0 {
+			return nil
+		}
+
+		targetGroup, err := getSingleSubscriptionReferralGroupForMigrationWithDB(tx)
+		if err != nil {
+			return fmt.Errorf("legacy subscription referral override rows require exactly one real group for migration: %w", err)
+		}
+
+		for _, legacyOverride := range legacyOverrides {
+			var existingOverride SubscriptionReferralOverride
+			findErr := tx.Where("user_id = ? AND "+commonGroupCol+" = ?", legacyOverride.UserId, targetGroup).First(&existingOverride).Error
+			switch {
+			case findErr == nil:
+				if err := tx.Delete(&SubscriptionReferralOverride{}, legacyOverride.Id).Error; err != nil {
+					return err
+				}
+			case errors.Is(findErr, gorm.ErrRecordNotFound):
+				if err := tx.Model(&SubscriptionReferralOverride{}).
+					Where("id = ?", legacyOverride.Id).
+					Updates(map[string]interface{}{
+						"group":      targetGroup,
+						"updated_at": common.GetTimestamp(),
+					}).Error; err != nil {
+					return err
+				}
+			default:
+				return findErr
+			}
+		}
+
+		return nil
+	})
+}
+
+func migrateLegacySubscriptionReferralInviteeRates() error {
+	if DB == nil {
+		return nil
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var users []User
+		if err := tx.Select("id", "setting").Where("setting <> ''").Find(&users).Error; err != nil {
+			return err
+		}
+
+		legacyUsers := make([]User, 0, len(users))
+		for _, user := range users {
+			if user.GetSetting().SubscriptionReferralInviteeRateBps > 0 {
+				legacyUsers = append(legacyUsers, user)
+			}
+		}
+		if len(legacyUsers) == 0 {
+			return nil
+		}
+
+		targetGroup, err := getSingleSubscriptionReferralGroupForMigrationWithDB(tx)
+		if err != nil {
+			return fmt.Errorf("legacy subscription referral invitee rate settings require exactly one real group for migration: %w", err)
+		}
+
+		for _, user := range legacyUsers {
+			migratedSetting := user.GetSetting().WithMigratedSubscriptionReferralInviteeRate(targetGroup)
+			user.SetSetting(migratedSetting)
+			if err := tx.Model(&User{}).Where("id = ?", user.Id).Update("setting", user.Setting).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {
