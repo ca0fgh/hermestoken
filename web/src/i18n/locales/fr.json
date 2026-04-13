@@ -2396,6 +2396,7 @@
     "禁用全部": "Désactiver tout",
     "禁用原因": "Raison de la désactivation",
     "禁用后用户端不再展示，但历史订单不受影响。是否继续？": "Après désactivation, il ne sera plus affiché côté utilisateur, mais les commandes historiques ne sont pas affectées. Continuer ?",
+    "删除会软删除该套餐：用户端和管理列表将不再显示，但历史订单和用户订阅记录会保留。是否继续？": "La suppression archivera ce forfait par suppression logique : il ne sera plus affiché côté utilisateur ni dans la liste d'administration, mais les commandes historiques et les abonnements utilisateur seront conservés. Continuer ?",
     "禁用后的影响：": "Impact après la désactivation :",
     "禁用密钥失败": "Échec de la désactivation de la clé",
     "禁用思考处理的模型列表": "Liste noire des modèles pour le traitement thinking",

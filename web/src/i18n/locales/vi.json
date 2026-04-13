@@ -2615,6 +2615,7 @@
     "禁用全部": "Vô hiệu hóa tất cả",
     "禁用原因": "Lý do vô hiệu hóa",
     "禁用后用户端不再展示，但历史订单不受影响。是否继续？": "Sau khi tắt, gói sẽ không hiển thị cho người dùng nhưng lịch sử đơn hàng không bị ảnh hưởng. Tiếp tục?",
+    "删除会软删除该套餐：用户端和管理列表将不再显示，但历史订单和用户订阅记录会保留。是否继续？": "Thao tác này sẽ xóa mềm gói đăng ký: gói sẽ không còn hiển thị ở phía người dùng và danh sách quản trị, nhưng lịch sử đơn hàng và đăng ký của người dùng vẫn được giữ lại. Tiếp tục?",
     "禁用后的影响：": "Tác động sau khi vô hiệu hóa:",
     "禁用密钥失败": "Vô hiệu hóa khóa thất bại",
     "禁用思考处理的模型列表": "Danh sách mô hình bỏ qua xử lý tư duy",

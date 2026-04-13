@@ -99,11 +99,19 @@ func TestAdminDeleteSubscriptionPlanDeletesUnreferencedPlan(t *testing.T) {
 		t.Fatalf("failed to count subscription plans: %v", err)
 	}
 	if count != 0 {
-		t.Fatalf("expected plan to be deleted, found %d rows", count)
+		t.Fatalf("expected plan to be hidden after soft delete, found %d visible rows", count)
+	}
+
+	var deleted model.SubscriptionPlan
+	if err := db.Unscoped().Where("id = ?", plan.Id).First(&deleted).Error; err != nil {
+		t.Fatalf("expected soft-deleted plan to remain in database: %v", err)
+	}
+	if !deleted.DeletedAt.Valid {
+		t.Fatalf("expected plan deleted_at to be set")
 	}
 }
 
-func TestAdminDeleteSubscriptionPlanRejectsReferencedOrder(t *testing.T) {
+func TestAdminDeleteSubscriptionPlanSoftDeletesReferencedOrder(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	plan := seedSubscriptionPlan(t, db, "plan-with-order")
 
@@ -133,20 +141,28 @@ func TestAdminDeleteSubscriptionPlanRejectsReferencedOrder(t *testing.T) {
 	AdminDeleteSubscriptionPlan(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	if response.Success {
-		t.Fatalf("expected delete to be rejected for referenced order")
+	if !response.Success {
+		t.Fatalf("expected delete to soft-delete referenced order plan, got message: %s", response.Message)
 	}
 
 	var count int64
 	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Count(&count).Error; err != nil {
 		t.Fatalf("failed to count subscription plans: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("expected plan to remain after failed delete, found %d rows", count)
+	if count != 0 {
+		t.Fatalf("expected plan to disappear from default queries after soft delete, found %d rows", count)
+	}
+
+	var deleted model.SubscriptionPlan
+	if err := db.Unscoped().Where("id = ?", plan.Id).First(&deleted).Error; err != nil {
+		t.Fatalf("expected soft-deleted referenced plan to remain in database: %v", err)
+	}
+	if !deleted.DeletedAt.Valid {
+		t.Fatalf("expected referenced plan deleted_at to be set")
 	}
 }
 
-func TestAdminDeleteSubscriptionPlanRejectsReferencedUserSubscription(t *testing.T) {
+func TestAdminDeleteSubscriptionPlanSoftDeletesReferencedUserSubscription(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	plan := seedSubscriptionPlan(t, db, "plan-with-subscription")
 
@@ -176,16 +192,24 @@ func TestAdminDeleteSubscriptionPlanRejectsReferencedUserSubscription(t *testing
 	AdminDeleteSubscriptionPlan(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	if response.Success {
-		t.Fatalf("expected delete to be rejected for referenced user subscription")
+	if !response.Success {
+		t.Fatalf("expected delete to soft-delete referenced user subscription plan, got message: %s", response.Message)
 	}
 
 	var count int64
 	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Count(&count).Error; err != nil {
 		t.Fatalf("failed to count subscription plans: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("expected plan to remain after failed delete, found %d rows", count)
+	if count != 0 {
+		t.Fatalf("expected plan to disappear from default queries after soft delete, found %d rows", count)
+	}
+
+	var deleted model.SubscriptionPlan
+	if err := db.Unscoped().Where("id = ?", plan.Id).First(&deleted).Error; err != nil {
+		t.Fatalf("expected soft-deleted referenced plan to remain in database: %v", err)
+	}
+	if !deleted.DeletedAt.Valid {
+		t.Fatalf("expected referenced plan deleted_at to be set")
 	}
 }
 

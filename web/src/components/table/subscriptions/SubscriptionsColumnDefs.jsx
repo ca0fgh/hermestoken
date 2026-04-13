@@ -285,7 +285,7 @@ const renderOperations = (
           Modal.confirm({
             title: t('确认删除'),
             content: t(
-              '仅当该套餐没有任何历史订单或用户订阅记录时才可删除，否则请改为禁用。是否继续？',
+              '删除会软删除该套餐：用户端和管理列表将不再显示，但历史订单和用户订阅记录会保留。是否继续？',
             ),
             centered: true,
             okType: 'danger',

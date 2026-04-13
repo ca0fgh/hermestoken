@@ -177,6 +177,7 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
 func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
@@ -347,15 +348,19 @@ func calcNextResetTime(base time.Time, plan *SubscriptionPlan, endUnix int64) in
 }
 
 func GetSubscriptionPlanById(id int) (*SubscriptionPlan, error) {
-	return getSubscriptionPlanByIdTx(nil, id)
+	return getSubscriptionPlanByIdTx(nil, id, false)
 }
 
-func getSubscriptionPlanByIdTx(tx *gorm.DB, id int) (*SubscriptionPlan, error) {
+func GetSubscriptionPlanByIdIncludingDeleted(id int) (*SubscriptionPlan, error) {
+	return getSubscriptionPlanByIdTx(nil, id, true)
+}
+
+func getSubscriptionPlanByIdTx(tx *gorm.DB, id int, includeDeleted bool) (*SubscriptionPlan, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid plan id")
 	}
 	key := subscriptionPlanCacheKey(id)
-	if key != "" {
+	if !includeDeleted && key != "" {
 		if cached, found, err := getSubscriptionPlanCache().Get(key); err == nil && found {
 			return &cached, nil
 		}
@@ -365,10 +370,15 @@ func getSubscriptionPlanByIdTx(tx *gorm.DB, id int) (*SubscriptionPlan, error) {
 	if tx != nil {
 		query = tx
 	}
+	if includeDeleted {
+		query = query.Unscoped()
+	}
 	if err := query.Where("id = ?", id).First(&plan).Error; err != nil {
 		return nil, err
 	}
-	_ = getSubscriptionPlanCache().SetWithTTL(key, plan, subscriptionPlanCacheTTL())
+	if !includeDeleted {
+		_ = getSubscriptionPlanCache().SetWithTTL(key, plan, subscriptionPlanCacheTTL())
+	}
 	return &plan, nil
 }
 
@@ -529,7 +539,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
+		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId, true)
 		if err != nil {
 			return err
 		}
@@ -800,7 +810,7 @@ func AdminDeleteUserSubscription(userSubscriptionId int) (string, error) {
 	return "", nil
 }
 
-// AdminDeleteSubscriptionPlan hard-deletes a subscription plan only when it has no historical references.
+// AdminDeleteSubscriptionPlan soft-deletes a subscription plan so historical references remain readable.
 func AdminDeleteSubscriptionPlan(planId int) (string, error) {
 	if planId <= 0 {
 		return "", errors.New("invalid planId")
@@ -812,27 +822,6 @@ func AdminDeleteSubscriptionPlan(planId int) (string, error) {
 			Where("id = ?", planId).First(&plan).Error; err != nil {
 			return err
 		}
-
-		var orderCount int64
-		if err := tx.Model(&SubscriptionOrder{}).
-			Where("plan_id = ?", planId).
-			Count(&orderCount).Error; err != nil {
-			return err
-		}
-		if orderCount > 0 {
-			return errors.New("套餐已存在历史订单，无法删除，请改为禁用")
-		}
-
-		var subscriptionCount int64
-		if err := tx.Model(&UserSubscription{}).
-			Where("plan_id = ?", planId).
-			Count(&subscriptionCount).Error; err != nil {
-			return err
-		}
-		if subscriptionCount > 0 {
-			return errors.New("套餐已存在用户订阅记录，无法删除，请改为禁用")
-		}
-
 		if err := tx.Where("id = ?", planId).Delete(&SubscriptionPlan{}).Error; err != nil {
 			return err
 		}
@@ -1051,7 +1040,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		}
 		for _, candidate := range subs {
 			sub := candidate
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId, true)
 			if err != nil {
 				return err
 			}
@@ -1151,7 +1140,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	resetCount := 0
 	for _, sub := range subs {
 		subCopy := sub
-		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId, true)
 		if err != nil || plan == nil {
 			continue
 		}
@@ -1202,7 +1191,7 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 	if err := DB.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 		return nil, err
 	}
-	plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+	plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId, true)
 	if err != nil {
 		return nil, err
 	}

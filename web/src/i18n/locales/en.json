@@ -2420,6 +2420,7 @@
     "禁用全部": "Disable all",
     "禁用原因": "Disable reason",
     "禁用后用户端不再展示，但历史订单不受影响。是否继续？": "After disabling, it will no longer be shown to users, but historical orders are not affected. Continue?",
+    "删除会软删除该套餐：用户端和管理列表将不再显示，但历史订单和用户订阅记录会保留。是否继续？": "Deleting will soft-delete this plan: it will no longer appear to users or in the admin list, but historical orders and user subscriptions will be preserved. Continue?",
     "禁用后的影响：": "Impact after disabling:",
     "禁用密钥失败": "Failed to disable key",
     "禁用思考处理的模型列表": "Models skipping thinking handling",
