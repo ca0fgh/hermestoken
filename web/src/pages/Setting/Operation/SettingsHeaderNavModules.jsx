@@ -175,7 +175,7 @@ export default function SettingsHeaderNavModules(props) {
     {
       key: 'pricing',
       title: t('模型广场'),
-      description: t('模型定价，需要登录访问'),
+      description: t('关闭后游客按 default 分组浏览模型广场'),
       hasSubConfig: true, // 标识该模块有子配置
     },
     {
@@ -295,7 +295,20 @@ export default function SettingsHeaderNavModules(props) {
                               display: 'block',
                             }}
                           >
-                            {t('开启后未登录用户无法访问模型广场')}
+                            {t('关闭后游客按 default 分组浏览模型广场')}
+                          </Text>
+                          <Text
+                            type='secondary'
+                            size='small'
+                            style={{
+                              fontSize: '11px',
+                              color: 'var(--semi-color-text-2)',
+                              lineHeight: '1.4',
+                              display: 'block',
+                              marginTop: '4px',
+                            }}
+                          >
+                            {t('default 是游客和新注册用户的公开基础分组')}
                           </Text>
                         </div>
                         <div style={{ marginLeft: '16px' }}>
