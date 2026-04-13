@@ -168,6 +168,8 @@ export function buildAdminOverrideRows(groups = []) {
         : normalizeRateBps(overrideRateBpsRaw);
     const inputRateBps = normalizedOverrideRateBps ?? effectiveTotalRateBps;
 
+    const overrideRatePercent = rateBpsToPercentNumber(inputRateBps);
+
     return {
       id: `subscription:${group}`,
       type: 'subscription',
@@ -175,7 +177,8 @@ export function buildAdminOverrideRows(groups = []) {
       effectiveTotalRateBps,
       hasOverride,
       overrideRateBps: normalizedOverrideRateBps,
-      overrideRatePercent: rateBpsToPercentNumber(inputRateBps),
+      overrideRatePercent,
+      inputPercent: overrideRatePercent,
       isDraft: false,
     };
   });
@@ -204,6 +207,7 @@ export function buildAdminOverrideGroupOptions(
 ) {
   const currentId = String(currentRow.id || '').trim();
   const currentType = String(currentRow.type || '').trim();
+  const currentGroup = String(currentRow.group || '').trim();
   const takenGroups = new Set(
     overrideRows
       .filter((row) => {
@@ -214,8 +218,12 @@ export function buildAdminOverrideGroupOptions(
       .map((row) => String(row.group || '').trim())
       .filter(Boolean),
   );
+  let catalogGroups = normalizeGroupNames(groupNames);
+  if (currentGroup && !catalogGroups.includes(currentGroup)) {
+    catalogGroups = normalizeGroupNames([...catalogGroups, currentGroup]);
+  }
 
-  return normalizeGroupNames(groupNames).map((group) => ({
+  return catalogGroups.map((group) => ({
     label: group,
     value: group,
     disabled: takenGroups.has(group),

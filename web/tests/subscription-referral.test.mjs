@@ -60,6 +60,7 @@ test('buildAdminOverrideRows maps grouped overrides into extensible rows', () =>
       hasOverride: true,
       overrideRateBps: 3000,
       overrideRatePercent: 30,
+      inputPercent: 30,
       isDraft: false,
     },
     {
@@ -70,8 +71,23 @@ test('buildAdminOverrideRows maps grouped overrides into extensible rows', () =>
       hasOverride: false,
       overrideRateBps: null,
       overrideRatePercent: 25,
+      inputPercent: 25,
       isDraft: false,
     },
+  ]);
+});
+
+test('buildAdminOverrideGroupOptions retains legacy group even when missing from catalog', () => {
+  const rows = [
+    { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
+    { id: 'subscription:legacy', type: 'subscription', group: 'legacy' },
+  ];
+  const options = buildAdminOverrideGroupOptions(['alpha', 'beta'], rows, rows[1]);
+
+  assert.deepEqual(options, [
+    { label: 'alpha', value: 'alpha', disabled: true },
+    { label: 'beta', value: 'beta', disabled: false },
+    { label: 'legacy', value: 'legacy', disabled: false },
   ]);
 });
 
