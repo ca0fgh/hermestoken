@@ -168,13 +168,13 @@ func GetLegacySubscriptionReferralOverrideByUserID(userID int) (*SubscriptionRef
 	}
 
 	var override SubscriptionReferralOverride
-	if err := DB.Where("user_id = ? AND `group` = ?", userID, "default").First(&override).Error; err == nil {
+	if err := DB.Where("user_id = ? AND "+commonGroupCol+" = ?", userID, "default").First(&override).Error; err == nil {
 		return &override, nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 
-	if err := DB.Where("user_id = ? AND `group` = ?", userID, "").First(&override).Error; err != nil {
+	if err := DB.Where("user_id = ? AND "+commonGroupCol+" = ?", userID, "").First(&override).Error; err != nil {
 		return nil, err
 	}
 	return &override, nil
@@ -186,7 +186,7 @@ func getLegacyUngroupedSubscriptionReferralOverrideByUserID(userID int) (*Subscr
 	}
 
 	var override SubscriptionReferralOverride
-	if err := DB.Where("user_id = ? AND `group` = ?", userID, "").First(&override).Error; err != nil {
+	if err := DB.Where("user_id = ? AND "+commonGroupCol+" = ?", userID, "").First(&override).Error; err != nil {
 		return nil, err
 	}
 	return &override, nil
@@ -199,7 +199,7 @@ func GetSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string) (
 
 	var override SubscriptionReferralOverride
 	trimmedGroup := strings.TrimSpace(group)
-	if err := DB.Where("user_id = ? AND `group` = ?", userID, trimmedGroup).First(&override).Error; err != nil {
+	if err := DB.Where("user_id = ? AND "+commonGroupCol+" = ?", userID, trimmedGroup).First(&override).Error; err != nil {
 		return nil, err
 	}
 	return &override, nil
@@ -236,7 +236,7 @@ func UpsertSubscriptionReferralOverride(userID int, group string, totalRateBps i
 		}).Create(override).Error; err != nil {
 			return err
 		}
-		return tx.Where("user_id = ? AND `group` = ?", userID, group).First(override).Error
+		return tx.Where("user_id = ? AND "+commonGroupCol+" = ?", userID, group).First(override).Error
 	})
 	if err != nil {
 		return nil, err
@@ -255,7 +255,7 @@ func DeleteSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string
 	if userID <= 0 {
 		return errors.New("invalid user id")
 	}
-	return DB.Where("user_id = ? AND `group` = ?", userID, strings.TrimSpace(group)).Delete(&SubscriptionReferralOverride{}).Error
+	return DB.Where("user_id = ? AND "+commonGroupCol+" = ?", userID, strings.TrimSpace(group)).Delete(&SubscriptionReferralOverride{}).Error
 }
 
 func ListSubscriptionReferralOverridesByUserID(userID int) ([]SubscriptionReferralOverride, error) {
@@ -264,7 +264,7 @@ func ListSubscriptionReferralOverridesByUserID(userID int) ([]SubscriptionReferr
 	}
 
 	var overrides []SubscriptionReferralOverride
-	if err := DB.Where("user_id = ?", userID).Order("`group` ASC").Find(&overrides).Error; err != nil {
+	if err := DB.Where("user_id = ?", userID).Order(commonGroupCol + " ASC").Find(&overrides).Error; err != nil {
 		return nil, err
 	}
 	return overrides, nil

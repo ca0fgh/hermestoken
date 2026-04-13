@@ -3,6 +3,8 @@ package model
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -166,6 +168,17 @@ func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {
 				t.Fatalf("NormalizeSubscriptionReferralRateBps(%d) = %d, want %d", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSubscriptionReferralQueriesUseDialectAwareGroupColumn(t *testing.T) {
+	source, err := os.ReadFile("subscription_referral.go")
+	if err != nil {
+		t.Fatalf("ReadFile(subscription_referral.go) error = %v", err)
+	}
+
+	if strings.Contains(string(source), "`group`") {
+		t.Fatal("subscription_referral.go still contains hard-coded `group` quoting")
 	}
 }
 
