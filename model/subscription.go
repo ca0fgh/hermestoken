@@ -288,12 +288,16 @@ func lockSubscriptionPlanForStockTx(tx *gorm.DB, planID int, includeDeleted bool
 }
 
 func reserveSubscriptionPlanStockTx(tx *gorm.DB, plan *SubscriptionPlan, amount int) error {
-	if tx == nil || plan == nil || amount <= 0 || !plan.HasStockLimit() {
+	if tx == nil || plan == nil || amount <= 0 {
 		return nil
 	}
 	lockedPlan, err := lockSubscriptionPlanForStockTx(tx, plan.Id, false)
 	if err != nil {
 		return err
+	}
+	if !lockedPlan.HasStockLimit() {
+		*plan = *lockedPlan
+		return nil
 	}
 	if lockedPlan.GetStockAvailable() < amount {
 		return ErrSubscriptionPlanOutOfStock
@@ -357,12 +361,16 @@ func consumeReservedSubscriptionOrderStockTx(tx *gorm.DB, order *SubscriptionOrd
 }
 
 func consumeSubscriptionPlanStockDirectTx(tx *gorm.DB, plan *SubscriptionPlan, amount int) error {
-	if tx == nil || plan == nil || amount <= 0 || !plan.HasStockLimit() {
+	if tx == nil || plan == nil || amount <= 0 {
 		return nil
 	}
 	lockedPlan, err := lockSubscriptionPlanForStockTx(tx, plan.Id, false)
 	if err != nil {
 		return err
+	}
+	if !lockedPlan.HasStockLimit() {
+		*plan = *lockedPlan
+		return nil
 	}
 	if lockedPlan.GetStockAvailable() < amount {
 		return ErrSubscriptionPlanOutOfStock

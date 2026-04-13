@@ -73,6 +73,25 @@ func TestReserveSubscriptionPlanStockTxReloadsLatestPlanState(t *testing.T) {
 	}
 }
 
+func TestReserveSubscriptionPlanStockTxUsesFreshLimitWhenCallerLooksUnlimited(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 9.9)
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  1,
+		"stock_locked": 1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+
+	stalePlan := &SubscriptionPlan{Id: plan.Id}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		return reserveSubscriptionPlanStockTx(tx, stalePlan, 1)
+	})
+	if err != ErrSubscriptionPlanOutOfStock {
+		t.Fatalf("expected ErrSubscriptionPlanOutOfStock, got %v", err)
+	}
+}
+
 func TestReleaseReservedSubscriptionOrderStockTxClearsReservedCount(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	plan := seedReferralPlan(t, db, 9.9)
@@ -130,5 +149,58 @@ func TestReleaseReservedSubscriptionOrderStockTxRejectsInvariantMismatch(t *test
 	})
 	if err != ErrSubscriptionPlanStockInvariant {
 		t.Fatalf("expected ErrSubscriptionPlanStockInvariant, got %v", err)
+	}
+}
+
+func TestConsumeReservedSubscriptionOrderStockTxUsesFreshPlanState(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 9.9)
+	order := seedPendingReferralOrder(t, db, 1, plan.Id, "stock-consume-reserved-order", 9.9)
+
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  5,
+		"stock_locked": 1,
+		"stock_sold":   0,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+	if err := db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 1).Error; err != nil {
+		t.Fatalf("failed to seed order stock_reserved: %v", err)
+	}
+	order.StockReserved = 1
+	stalePlan := &SubscriptionPlan{Id: plan.Id}
+
+	err := db.Transaction(func(tx *gorm.DB) error {
+		return consumeReservedSubscriptionOrderStockTx(tx, order, stalePlan)
+	})
+	if err != nil {
+		t.Fatalf("consumeReservedSubscriptionOrderStockTx() error = %v", err)
+	}
+
+	var afterPlan SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&afterPlan).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if afterPlan.StockLocked != 0 || afterPlan.StockSold != 1 {
+		t.Fatalf("expected locked=0 sold=1, got locked=%d sold=%d", afterPlan.StockLocked, afterPlan.StockSold)
+	}
+}
+
+func TestConsumeSubscriptionPlanStockDirectTxUsesFreshLimitWhenCallerLooksUnlimited(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 9.9)
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total": 1,
+		"stock_sold":  1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+
+	stalePlan := &SubscriptionPlan{Id: plan.Id}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		return consumeSubscriptionPlanStockDirectTx(tx, stalePlan, 1)
+	})
+	if err != ErrSubscriptionPlanOutOfStock {
+		t.Fatalf("expected ErrSubscriptionPlanOutOfStock, got %v", err)
 	}
 }
