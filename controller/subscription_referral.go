@@ -42,14 +42,9 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		return
 	}
 
-	totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(userID, "")
-	cfg := model.ResolveSubscriptionReferralConfig(totalRateBps, user.GetSetting().SubscriptionReferralInviteeRateBps)
 	groupViews := buildSubscriptionReferralSelfGroupViews(user)
 	common.ApiSuccess(c, gin.H{
 		"enabled":              common.SubscriptionReferralEnabled,
-		"total_rate_bps":       cfg.TotalRateBps,
-		"invitee_rate_bps":     cfg.InviteeRateBps,
-		"inviter_rate_bps":     cfg.InviterRateBps,
 		"groups":               groupViews,
 		"pending_reward_quota": user.AffQuota,
 		"history_reward_quota": user.AffHistoryQuota,
@@ -64,7 +59,11 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	req.Group = normalizeSubscriptionReferralRequestGroup(req.Group)
+	req.Group = strings.TrimSpace(req.Group)
+	if req.Group == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
 	if !isValidSubscriptionReferralGroup(req.Group) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
@@ -184,23 +183,16 @@ func AdminUpsertSubscriptionReferralOverride(c *gin.Context) {
 		return
 	}
 	req.Group = strings.TrimSpace(req.Group)
-	if req.Group != "" && !isValidSubscriptionReferralGroup(req.Group) {
+	if req.Group == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if !isValidSubscriptionReferralGroup(req.Group) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
 
-	targetGroup := req.Group
-	if targetGroup == "" {
-		if override, err := model.GetLegacySubscriptionReferralOverrideByUserID(userID); err == nil && override != nil {
-			targetGroup = override.Group
-		} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			common.ApiError(c, err)
-			return
-		}
-	}
-
-	override, err := model.UpsertSubscriptionReferralOverride(userID, targetGroup, req.TotalRateBps, c.GetInt("id"))
-	if err != nil {
+	if _, err := model.UpsertSubscriptionReferralOverride(userID, req.Group, req.TotalRateBps, c.GetInt("id")); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -210,10 +202,6 @@ func AdminUpsertSubscriptionReferralOverride(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	response["group"] = targetGroup
-	response["has_override"] = true
-	response["override_rate_bps"] = override.TotalRateBps
-	response["effective_total_rate_bps"] = model.GetEffectiveSubscriptionReferralTotalRateBps(userID, targetGroup)
 	common.ApiSuccess(c, response)
 }
 
@@ -329,11 +317,6 @@ func buildAdminSubscriptionReferralOverrideResponse(userID int) (gin.H, error) {
 		overrideByGroup[trimmedGroup] = override
 	}
 
-	legacyOverride, err := model.GetLegacySubscriptionReferralOverrideByUserID(userID)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
-	}
-
 	groups := collectSubscriptionReferralResponseGroups(model.ListSubscriptionReferralConfiguredGroups(), overrides)
 	groupViews := make([]gin.H, 0, len(groups))
 	for _, group := range groups {
@@ -341,9 +324,6 @@ func buildAdminSubscriptionReferralOverrideResponse(userID int) (gin.H, error) {
 		overrideRateBps := interface{}(nil)
 		if hasOverride {
 			overrideRateBps = override.TotalRateBps
-		} else if group == "default" && legacyOverride != nil && strings.TrimSpace(legacyOverride.Group) == "" {
-			hasOverride = true
-			overrideRateBps = legacyOverride.TotalRateBps
 		}
 		groupViews = append(groupViews, gin.H{
 			"group":                    group,
@@ -353,17 +333,10 @@ func buildAdminSubscriptionReferralOverrideResponse(userID int) (gin.H, error) {
 		})
 	}
 
-	response := gin.H{
-		"user_id":                  userID,
-		"groups":                   groupViews,
-		"effective_total_rate_bps": model.GetEffectiveSubscriptionReferralTotalRateBps(userID, ""),
-		"has_override":             legacyOverride != nil,
-		"override_rate_bps":        nil,
-	}
-	if legacyOverride != nil {
-		response["override_rate_bps"] = legacyOverride.TotalRateBps
-	}
-	return response, nil
+	return gin.H{
+		"user_id": userID,
+		"groups":  groupViews,
+	}, nil
 }
 
 func collectSubscriptionReferralResponseGroups(configuredGroups []string, overrides []model.SubscriptionReferralOverride) []string {
@@ -378,7 +351,6 @@ func collectSubscriptionReferralResponseGroups(configuredGroups []string, overri
 	for _, override := range overrides {
 		trimmedGroup := strings.TrimSpace(override.Group)
 		if trimmedGroup == "" {
-			groupSet["default"] = struct{}{}
 			continue
 		}
 		groupSet[trimmedGroup] = struct{}{}
@@ -413,14 +385,6 @@ func resolveSubscriptionReferralOverrideDeleteGroup(c *gin.Context, userID int) 
 		return "", err
 	}
 	return "", nil
-}
-
-func normalizeSubscriptionReferralRequestGroup(group string) string {
-	trimmedGroup := strings.TrimSpace(group)
-	if trimmedGroup == "" {
-		return "default"
-	}
-	return trimmedGroup
 }
 
 func isValidSubscriptionReferralGroup(group string) bool {

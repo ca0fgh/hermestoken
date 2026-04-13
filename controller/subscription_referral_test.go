@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"testing"
@@ -80,18 +81,14 @@ func seedSubscriptionReferralControllerTradeNo(t *testing.T) string {
 	return order.TradeNo
 }
 
-func TestGetSubscriptionReferralSelfReturnsEffectiveRates(t *testing.T) {
-	db := setupSubscriptionControllerTestDB(t)
-	_ = db
+func TestGetSubscriptionReferralSelfReturnsGroupedOnlyShape(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true
-	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"vip":4500}`)
 
-	user := seedSubscriptionReferralControllerUser(t, "self-user", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 500,
+	user := seedSubscriptionReferralControllerUser(t, "self-user-grouped-only", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
 	})
-	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "", 3500, 1); err != nil {
-		t.Fatalf("failed to create override: %v", err)
-	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
 	GetSubscriptionReferralSelf(ctx)
@@ -101,17 +98,41 @@ func TestGetSubscriptionReferralSelfReturnsEffectiveRates(t *testing.T) {
 		t.Fatalf("expected success")
 	}
 
-	var data struct {
-		Enabled        bool `json:"enabled"`
-		TotalRateBps   int  `json:"total_rate_bps"`
-		InviteeRateBps int  `json:"invitee_rate_bps"`
-		InviterRateBps int  `json:"inviter_rate_bps"`
-	}
-	if err := common.Unmarshal(resp.Data, &data); err != nil {
+	var payload map[string]json.RawMessage
+	if err := common.Unmarshal(resp.Data, &payload); err != nil {
 		t.Fatalf("failed to decode response data: %v", err)
 	}
-	if !data.Enabled || data.TotalRateBps != 3500 || data.InviteeRateBps != 500 || data.InviterRateBps != 3000 {
-		t.Fatalf("unexpected referral self payload: %+v", data)
+	if _, exists := payload["total_rate_bps"]; exists {
+		t.Fatal("expected total_rate_bps to be absent from self response")
+	}
+	if _, exists := payload["invitee_rate_bps"]; exists {
+		t.Fatal("expected invitee_rate_bps to be absent from self response")
+	}
+
+	var data struct {
+		Enabled bool `json:"enabled"`
+		Groups  []struct {
+			Group          string `json:"group"`
+			TotalRateBps   int    `json:"total_rate_bps"`
+			InviteeRateBps int    `json:"invitee_rate_bps"`
+			InviterRateBps int    `json:"inviter_rate_bps"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode grouped self response: %v", err)
+	}
+	if !data.Enabled {
+		t.Fatal("expected enabled to be true")
+	}
+	if len(data.Groups) != 1 {
+		t.Fatalf("groups length = %d, want 1 (%+v)", len(data.Groups), data.Groups)
+	}
+	group := data.Groups[0]
+	if group.Group != "vip" {
+		t.Fatalf("group = %q, want vip", group.Group)
+	}
+	if group.TotalRateBps != 4500 || group.InviteeRateBps != 500 || group.InviterRateBps != 4000 {
+		t.Fatalf("unexpected grouped self payload: %+v", group)
 	}
 }
 
@@ -169,7 +190,7 @@ func TestUpdateSubscriptionReferralSelfRejectsInviteeRateOverTotal(t *testing.T)
 		t,
 		http.MethodPut,
 		"/api/user/referral/subscription",
-		UpdateSubscriptionReferralSelfRequest{InviteeRateBps: 2100},
+		UpdateSubscriptionReferralSelfRequest{Group: "default", InviteeRateBps: 2100},
 		user.Id,
 	)
 	UpdateSubscriptionReferralSelf(ctx)
@@ -553,15 +574,13 @@ func TestUpdateSubscriptionReferralSelfStoresPerGroupInviteeRate(t *testing.T) {
 	}
 }
 
-func TestUpdateSubscriptionReferralSelfWithoutGroupStoresDefaultGroupInviteeRate(t *testing.T) {
+func TestUpdateSubscriptionReferralSelfRejectsMissingGroup(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true
 	common.SubscriptionReferralGlobalRateBps = 2000
 	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
 
-	user := seedSubscriptionReferralControllerUser(t, "self-update-default-group", 0, dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 700,
-	})
+	user := seedSubscriptionReferralControllerUser(t, "self-update-missing-group", 0, dto.UserSetting{})
 	ctx, recorder := newAuthenticatedContext(
 		t,
 		http.MethodPut,
@@ -573,8 +592,8 @@ func TestUpdateSubscriptionReferralSelfWithoutGroupStoresDefaultGroupInviteeRate
 	UpdateSubscriptionReferralSelf(ctx)
 
 	resp := decodeAPIResponse(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success, got message: %s", resp.Message)
+	if resp.Success {
+		t.Fatalf("expected missing-group update to fail")
 	}
 
 	updatedUser, err := model.GetUserById(user.Id, false)
@@ -582,11 +601,8 @@ func TestUpdateSubscriptionReferralSelfWithoutGroupStoresDefaultGroupInviteeRate
 		t.Fatalf("failed to reload user: %v", err)
 	}
 	setting := updatedUser.GetSetting()
-	if setting.SubscriptionReferralInviteeRateBps != 700 {
-		t.Fatalf("legacy scalar rate = %d, want 700", setting.SubscriptionReferralInviteeRateBps)
-	}
-	if got := setting.SubscriptionReferralInviteeRateBpsByGroup["default"]; got != 500 {
-		t.Fatalf("default group invitee rate = %d, want 500", got)
+	if len(setting.SubscriptionReferralInviteeRateBpsByGroup) != 0 {
+		t.Fatalf("expected grouped invitee rates to remain empty, got %+v", setting.SubscriptionReferralInviteeRateBpsByGroup)
 	}
 }
 
@@ -613,7 +629,7 @@ func TestUpdateSubscriptionReferralSelfRejectsUnknownGroup(t *testing.T) {
 	}
 }
 
-func TestAdminUpsertSubscriptionReferralOverridePersistsOverride(t *testing.T) {
+func TestAdminUpsertSubscriptionReferralOverrideRejectsMissingGroup(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user", 0, dto.UserSetting{})
 
@@ -629,25 +645,26 @@ func TestAdminUpsertSubscriptionReferralOverridePersistsOverride(t *testing.T) {
 	AdminUpsertSubscriptionReferralOverride(ctx)
 
 	resp := decodeAPIResponse(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success")
+	if resp.Success {
+		t.Fatalf("expected missing-group override upsert to fail")
 	}
 
-	override, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "")
-	if err != nil {
-		t.Fatalf("failed to load override: %v", err)
+	var count int64
+	if err := model.DB.Model(&model.SubscriptionReferralOverride{}).Where("user_id = ?", user.Id).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count override rows: %v", err)
 	}
-	if override.TotalRateBps != 3500 {
-		t.Fatalf("expected persisted override 3500, got %d", override.TotalRateBps)
+	if count != 0 {
+		t.Fatalf("override row count = %d, want 0", count)
 	}
 }
 
-func TestAdminGetSubscriptionReferralOverrideReadsDefaultGroupLegacyOverride(t *testing.T) {
+func TestAdminGetSubscriptionReferralOverrideReturnsGroupedOnlyShape(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
-	user := seedSubscriptionReferralControllerUser(t, "override-user-default-get", 0, dto.UserSetting{})
+	setSubscriptionReferralGroupRatesForTest(t, `{"vip":4500}`)
+	user := seedSubscriptionReferralControllerUser(t, "override-user-grouped-only-get", 0, dto.UserSetting{})
 
-	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "default", 4100, 1); err != nil {
-		t.Fatalf("failed to create default-group override: %v", err)
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "vip", 3500, 1); err != nil {
+		t.Fatalf("failed to create grouped override: %v", err)
 	}
 
 	getCtx, getRecorder := newAuthenticatedContext(
@@ -666,26 +683,51 @@ func TestAdminGetSubscriptionReferralOverrideReadsDefaultGroupLegacyOverride(t *
 		t.Fatalf("expected admin get override success")
 	}
 
+	var payload map[string]json.RawMessage
+	if err := common.Unmarshal(getResp.Data, &payload); err != nil {
+		t.Fatalf("failed to decode raw response data: %v", err)
+	}
+	if _, exists := payload["effective_total_rate_bps"]; exists {
+		t.Fatal("expected effective_total_rate_bps to be absent from admin get override response")
+	}
+	if _, exists := payload["has_override"]; exists {
+		t.Fatal("expected has_override to be absent from admin get override response")
+	}
+
 	var data struct {
-		HasOverride           bool `json:"has_override"`
-		OverrideRateBps       int  `json:"override_rate_bps"`
-		EffectiveTotalRateBps int  `json:"effective_total_rate_bps"`
+		UserID int `json:"user_id"`
+		Groups []struct {
+			Group                 string `json:"group"`
+			EffectiveTotalRateBps int    `json:"effective_total_rate_bps"`
+			HasOverride           bool   `json:"has_override"`
+			OverrideRateBps       *int   `json:"override_rate_bps"`
+		} `json:"groups"`
 	}
 	if err := common.Unmarshal(getResp.Data, &data); err != nil {
 		t.Fatalf("failed to decode response data: %v", err)
 	}
-	if !data.HasOverride {
-		t.Fatal("expected default-group legacy override to be reported")
+	if data.UserID != user.Id {
+		t.Fatalf("user_id = %d, want %d", data.UserID, user.Id)
 	}
-	if data.OverrideRateBps != 4100 {
-		t.Fatalf("override_rate_bps = %d, want 4100", data.OverrideRateBps)
+	if len(data.Groups) != 1 {
+		t.Fatalf("groups length = %d, want 1 (%+v)", len(data.Groups), data.Groups)
 	}
-	if data.EffectiveTotalRateBps != 4100 {
-		t.Fatalf("effective_total_rate_bps = %d, want 4100", data.EffectiveTotalRateBps)
+	group := data.Groups[0]
+	if group.Group != "vip" {
+		t.Fatalf("group = %q, want vip", group.Group)
+	}
+	if !group.HasOverride {
+		t.Fatal("expected vip group to report override")
+	}
+	if group.OverrideRateBps == nil || *group.OverrideRateBps != 3500 {
+		t.Fatalf("override_rate_bps = %v, want 3500", group.OverrideRateBps)
+	}
+	if group.EffectiveTotalRateBps != 3500 {
+		t.Fatalf("effective_total_rate_bps = %d, want 3500", group.EffectiveTotalRateBps)
 	}
 }
 
-func TestAdminGetSubscriptionReferralOverrideRepresentsLegacyEmptyGroupOverrideAsDefaultAlongsideOtherGroups(t *testing.T) {
+func TestAdminGetSubscriptionReferralOverrideIgnoresLegacyEmptyGroupOverride(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	setSubscriptionReferralGroupRatesForTest(t, `{"default":4500,"vip":3000}`)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-legacy-default-with-vip", 0, dto.UserSetting{})
@@ -749,14 +791,14 @@ func TestAdminGetSubscriptionReferralOverrideRepresentsLegacyEmptyGroupOverrideA
 	if !foundDefault {
 		t.Fatalf("expected default group entry in %+v", data.Groups)
 	}
-	if !defaultHasOverride {
-		t.Fatal("expected default group to report legacy override")
+	if defaultHasOverride {
+		t.Fatal("expected legacy empty-group override to be ignored for default group")
 	}
-	if defaultOverrideRate == nil || *defaultOverrideRate != 4100 {
-		t.Fatalf("default override rate = %v, want 4100", defaultOverrideRate)
+	if defaultOverrideRate != nil {
+		t.Fatalf("expected nil default override rate, got %v", *defaultOverrideRate)
 	}
-	if defaultEffectiveTotal != 4100 {
-		t.Fatalf("default effective_total_rate_bps = %d, want 4100", defaultEffectiveTotal)
+	if defaultEffectiveTotal != 4500 {
+		t.Fatalf("default effective_total_rate_bps = %d, want 4500", defaultEffectiveTotal)
 	}
 	if !foundVIP {
 		t.Fatalf("expected vip group entry in %+v", data.Groups)
@@ -824,7 +866,7 @@ func TestAdminGetSubscriptionReferralOverrideIncludesPlanUpgradeGroupWithoutConf
 	}
 }
 
-func TestAdminUpsertSubscriptionReferralOverrideUpdatesDefaultGroupLegacyOverride(t *testing.T) {
+func TestAdminUpsertSubscriptionReferralOverrideRejectsMissingGroupWithoutMutatingExistingOverride(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-default-upsert", 0, dto.UserSetting{})
 
@@ -844,16 +886,16 @@ func TestAdminUpsertSubscriptionReferralOverrideUpdatesDefaultGroupLegacyOverrid
 	AdminUpsertSubscriptionReferralOverride(ctx)
 
 	resp := decodeAPIResponse(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success")
+	if resp.Success {
+		t.Fatalf("expected missing-group override update to fail")
 	}
 
 	defaultOverride, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default")
 	if err != nil {
 		t.Fatalf("failed to load default-group override: %v", err)
 	}
-	if defaultOverride.TotalRateBps != 3500 {
-		t.Fatalf("default override TotalRateBps = %d, want 3500", defaultOverride.TotalRateBps)
+	if defaultOverride.TotalRateBps != 4100 {
+		t.Fatalf("default override TotalRateBps = %d, want 4100", defaultOverride.TotalRateBps)
 	}
 	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err == nil {
 		t.Fatal("expected no ungrouped override row to be created")

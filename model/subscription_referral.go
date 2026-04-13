@@ -446,29 +446,18 @@ func migrateLegacySubscriptionReferralInviteeRates() error {
 
 func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {
 	resolvedGroup := strings.TrimSpace(group)
-	if resolvedGroup != "" {
-		if userID > 0 {
-			override, err := GetSubscriptionReferralOverrideByUserIDAndGroup(userID, resolvedGroup)
-			if err == nil && override != nil {
-				return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
-			}
-
-			override, err = getLegacyUngroupedSubscriptionReferralOverrideByUserID(userID)
-			if err == nil && override != nil {
-				return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
-			}
-		}
-		if common.HasSubscriptionReferralGroupRatesConfigured() {
-			return NormalizeSubscriptionReferralRateBps(common.GetSubscriptionReferralGroupRate(resolvedGroup))
-		}
+	if resolvedGroup == "" {
 		return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
 	}
 
 	if userID > 0 {
-		override, err := GetSubscriptionReferralOverrideByUserID(userID)
+		override, err := GetSubscriptionReferralOverrideByUserIDAndGroup(userID, resolvedGroup)
 		if err == nil && override != nil {
 			return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
 		}
+	}
+	if common.HasSubscriptionReferralGroupRatesConfigured() {
+		return NormalizeSubscriptionReferralRateBps(common.GetSubscriptionReferralGroupRate(resolvedGroup))
 	}
 	return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
 }

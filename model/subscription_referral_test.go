@@ -361,7 +361,7 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesNonDefaultGroupedOverri
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedOverride(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralTotalRateBpsIgnoresLegacyUngroupedOverride(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	originalGlobalRate := common.SubscriptionReferralGlobalRateBps
 	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
@@ -384,8 +384,8 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
 	}
 
-	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 2600 {
-		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 2600", got)
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 3000 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 3000", got)
 	}
 }
 
