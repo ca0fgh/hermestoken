@@ -922,7 +922,7 @@ func TestAdminUpsertSubscriptionReferralOverrideRejectsMissingUser(t *testing.T)
 	}
 }
 
-func TestAdminDeleteSubscriptionReferralOverridePreservesGroupedOverride(t *testing.T) {
+func TestAdminDeleteSubscriptionReferralOverrideRejectsMissingGroup(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionReferralControllerUser(t, "override-user-delete", 0, dto.UserSetting{})
 
@@ -945,12 +945,12 @@ func TestAdminDeleteSubscriptionReferralOverridePreservesGroupedOverride(t *test
 	AdminDeleteSubscriptionReferralOverride(ctx)
 
 	resp := decodeAPIResponse(t, recorder)
-	if !resp.Success {
-		t.Fatalf("expected success")
+	if resp.Success {
+		t.Fatalf("expected delete without group to fail")
 	}
 
-	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err == nil {
-		t.Fatal("expected legacy ungrouped override to be deleted")
+	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err != nil {
+		t.Fatalf("expected legacy ungrouped override to remain: %v", err)
 	}
 	groupedOverride, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "vip")
 	if err != nil {
@@ -959,21 +959,11 @@ func TestAdminDeleteSubscriptionReferralOverridePreservesGroupedOverride(t *test
 	if groupedOverride.TotalRateBps != 2800 {
 		t.Fatalf("grouped override TotalRateBps = %d, want 2800", groupedOverride.TotalRateBps)
 	}
-
-	var data struct {
-		HasOverride           bool `json:"has_override"`
-		EffectiveTotalRateBps int  `json:"effective_total_rate_bps"`
-	}
-	if err := common.Unmarshal(resp.Data, &data); err != nil {
-		t.Fatalf("failed to decode response data: %v", err)
-	}
-	if data.HasOverride {
-		t.Fatal("expected legacy endpoint to report no remaining override")
-	}
 }
 
-func TestAdminDeleteSubscriptionReferralOverrideDeletesDefaultGroupLegacyOverrideOnly(t *testing.T) {
+func TestAdminDeleteSubscriptionReferralOverrideReturnsGroupedOnlyShape(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralGlobalRateBps = 2000
 	user := seedSubscriptionReferralControllerUser(t, "override-user-default-delete", 0, dto.UserSetting{})
 
 	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "default", 3500, 1); err != nil {
@@ -986,7 +976,7 @@ func TestAdminDeleteSubscriptionReferralOverrideDeletesDefaultGroupLegacyOverrid
 	ctx, recorder := newAuthenticatedContext(
 		t,
 		http.MethodDelete,
-		"/api/subscription/admin/referral/users/1",
+		"/api/subscription/admin/referral/users/1?group=default",
 		nil,
 		1,
 	)
@@ -997,6 +987,16 @@ func TestAdminDeleteSubscriptionReferralOverrideDeletesDefaultGroupLegacyOverrid
 	resp := decodeAPIResponse(t, recorder)
 	if !resp.Success {
 		t.Fatalf("expected success")
+	}
+
+	var payload map[string]json.RawMessage
+	if err := common.Unmarshal(resp.Data, &payload); err != nil {
+		t.Fatalf("failed to decode raw response data: %v", err)
+	}
+	for _, field := range []string{"group", "has_override", "override_rate_bps", "effective_total_rate_bps"} {
+		if _, exists := payload[field]; exists {
+			t.Fatalf("expected %s to be absent from delete response", field)
+		}
 	}
 
 	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, "default"); err == nil {
@@ -1011,6 +1011,56 @@ func TestAdminDeleteSubscriptionReferralOverrideDeletesDefaultGroupLegacyOverrid
 	}
 	if _, err := model.GetSubscriptionReferralOverrideByUserIDAndGroup(user.Id, ""); err == nil {
 		t.Fatal("expected no ungrouped override row after delete")
+	}
+
+	var data struct {
+		UserID int `json:"user_id"`
+		Groups []struct {
+			Group                 string `json:"group"`
+			EffectiveTotalRateBps int    `json:"effective_total_rate_bps"`
+			HasOverride           bool   `json:"has_override"`
+			OverrideRateBps       *int   `json:"override_rate_bps"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode grouped delete response: %v", err)
+	}
+	if data.UserID != user.Id {
+		t.Fatalf("user_id = %d, want %d", data.UserID, user.Id)
+	}
+	if len(data.Groups) != 2 {
+		t.Fatalf("groups length = %d, want 2 (%+v)", len(data.Groups), data.Groups)
+	}
+
+	var foundDefault, foundVIP bool
+	for _, group := range data.Groups {
+		switch group.Group {
+		case "default":
+			foundDefault = true
+			if group.HasOverride {
+				t.Fatal("expected default group override to be removed")
+			}
+			if group.OverrideRateBps != nil {
+				t.Fatalf("expected nil default override rate after delete, got %v", *group.OverrideRateBps)
+			}
+			if group.EffectiveTotalRateBps != 2000 {
+				t.Fatalf("default effective_total_rate_bps = %d, want 2000", group.EffectiveTotalRateBps)
+			}
+		case "vip":
+			foundVIP = true
+			if !group.HasOverride {
+				t.Fatal("expected vip group override to remain")
+			}
+			if group.OverrideRateBps == nil || *group.OverrideRateBps != 2800 {
+				t.Fatalf("vip override_rate_bps = %v, want 2800", group.OverrideRateBps)
+			}
+			if group.EffectiveTotalRateBps != 2800 {
+				t.Fatalf("vip effective_total_rate_bps = %d, want 2800", group.EffectiveTotalRateBps)
+			}
+		}
+	}
+	if !foundDefault || !foundVIP {
+		t.Fatalf("expected default and vip groups in %+v", data.Groups)
 	}
 }
 

@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type UpdateSubscriptionReferralSelfRequest struct {
@@ -216,12 +215,16 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 		return
 	}
 
-	targetGroup, err := resolveSubscriptionReferralOverrideDeleteGroup(c, userID)
+	targetGroup, err := resolveSubscriptionReferralOverrideDeleteGroup(c)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if targetGroup != "" && !canDeleteSubscriptionReferralOverrideGroup(userID, targetGroup) {
+	if targetGroup == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if !canDeleteSubscriptionReferralOverrideGroup(userID, targetGroup) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
@@ -236,13 +239,6 @@ func AdminDeleteSubscriptionReferralOverride(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	response["group"] = targetGroup
-	if targetGroup != "" {
-		response["has_override"] = false
-		response["override_rate_bps"] = nil
-		response["effective_total_rate_bps"] = model.GetEffectiveSubscriptionReferralTotalRateBps(userID, targetGroup)
-	}
-
 	common.ApiSuccess(c, response)
 }
 
@@ -366,7 +362,7 @@ func collectSubscriptionReferralResponseGroups(configuredGroups []string, overri
 	return groups
 }
 
-func resolveSubscriptionReferralOverrideDeleteGroup(c *gin.Context, userID int) (string, error) {
+func resolveSubscriptionReferralOverrideDeleteGroup(c *gin.Context) (string, error) {
 	group := strings.TrimSpace(c.Query("group"))
 	if group != "" {
 		return group, nil
@@ -377,12 +373,6 @@ func resolveSubscriptionReferralOverrideDeleteGroup(c *gin.Context, userID int) 
 			return "", err
 		}
 		return strings.TrimSpace(req.Group), nil
-	}
-
-	if override, err := model.GetLegacySubscriptionReferralOverrideByUserID(userID); err == nil && override != nil {
-		return override.Group, nil
-	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", err
 	}
 	return "", nil
 }
