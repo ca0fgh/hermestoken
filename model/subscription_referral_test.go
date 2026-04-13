@@ -183,21 +183,7 @@ func TestSubscriptionReferralQueriesUseDialectAwareGroupColumn(t *testing.T) {
 }
 
 func TestResolveSubscriptionReferralConfigPrefersOverrideAndClampsInviteeRate(t *testing.T) {
-	originalEnabled := common.SubscriptionReferralEnabled
-	originalGlobal := common.SubscriptionReferralGlobalRateBps
-	t.Cleanup(func() {
-		common.SubscriptionReferralEnabled = originalEnabled
-		common.SubscriptionReferralGlobalRateBps = originalGlobal
-	})
-
-	common.SubscriptionReferralEnabled = true
-	common.SubscriptionReferralGlobalRateBps = 2000
-
-	setting := dto.UserSetting{
-		SubscriptionReferralInviteeRateBps: 7000,
-	}
-
-	cfg := ResolveSubscriptionReferralConfig(3500, setting.SubscriptionReferralInviteeRateBps)
+	cfg := ResolveSubscriptionReferralConfig(3500, 7000)
 	if !cfg.Enabled {
 		t.Fatal("expected referral config to stay enabled")
 	}
@@ -211,7 +197,7 @@ func TestResolveSubscriptionReferralConfigPrefersOverrideAndClampsInviteeRate(t 
 		t.Fatalf("unexpected inviter rate: %d", cfg.InviterRateBps)
 	}
 
-	cfg = ResolveSubscriptionReferralConfig(1800, setting.SubscriptionReferralInviteeRateBps)
+	cfg = ResolveSubscriptionReferralConfig(1800, 7000)
 	if cfg.InviteeRateBps != 1800 || cfg.InviterRateBps != 0 {
 		t.Fatalf("expected clamped config, got %+v", cfg)
 	}
@@ -253,7 +239,7 @@ func TestSubscriptionReferralGroupRatesJSONRoundTrip(t *testing.T) {
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupFallsBackToLegacyValue(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupOnlyUsesGroupedValue(t *testing.T) {
 	setting := dto.UserSetting{
 		SubscriptionReferralInviteeRateBps:        700,
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 900},
@@ -262,32 +248,16 @@ func TestGetEffectiveSubscriptionReferralInviteeRateBpsByGroupFallsBackToLegacyV
 	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "vip", 1500); got != 900 {
 		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(vip, 1500) = %d, want 900", got)
 	}
-	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "default", 1500); got != 700 {
-		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(default, 1500) = %d, want 700", got)
+	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "default", 1500); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(default, 1500) = %d, want 0", got)
 	}
 	if got := GetEffectiveSubscriptionReferralInviteeRateBps(setting, "vip", 800); got != 800 {
 		t.Fatalf("GetEffectiveSubscriptionReferralInviteeRateBps(vip, 800) = %d, want 800", got)
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesGroupedOverrideAndGroupDefaults(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesGroupedOverrideOnly(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
-	originalGlobalRate := common.SubscriptionReferralGlobalRateBps
-	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
-		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
-	}
-	t.Cleanup(func() {
-		common.SubscriptionReferralGlobalRateBps = originalGlobalRate
-		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
-			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
-		}
-	})
-
-	common.SubscriptionReferralGlobalRateBps = 1800
-	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"default":4500}`); err != nil {
-		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
-	}
-
 	user := seedReferralUser(t, db, "grouped-referral-user", 0, dto.UserSetting{})
 	override, err := UpsertSubscriptionReferralOverride(user.Id, "default", 3200, 1)
 	if err != nil {
@@ -302,13 +272,6 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesGroupedOverrideAndGroup
 	}
 	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 0 {
 		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 0", got)
-	}
-
-	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
-		t.Fatalf("clear UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
-	}
-	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 1800 {
-		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) after clear = %d, want 1800", got)
 	}
 }
 
@@ -355,7 +318,7 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesNonDefaultGroupedOverri
 	}
 }
 
-func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedOverride(t *testing.T) {
+func TestGetEffectiveSubscriptionReferralTotalRateBpsRequiresExplicitUserOverride(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	originalGlobalRate := common.SubscriptionReferralGlobalRateBps
 	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
@@ -369,17 +332,41 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsFallsBackToLegacyUngroupedO
 	})
 
 	common.SubscriptionReferralGlobalRateBps = 1800
-	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"default":4500,"vip":3000}`); err != nil {
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"vip":4500}`); err != nil {
 		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
 	}
 
-	user := seedReferralUser(t, db, "legacy-ungrouped-override-user", 0, dto.UserSetting{})
+	user := seedReferralUser(t, db, "explicit-user-override-required", 0, dto.UserSetting{})
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 0", got)
+	}
+}
+
+func TestGetEffectiveSubscriptionReferralTotalRateBpsIgnoresLegacyUngroupedOverride(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalGlobalRate := common.SubscriptionReferralGlobalRateBps
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralGlobalRateBps = originalGlobalRate
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralGlobalRateBps = 1800
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"vip":4500}`); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+
+	user := seedReferralUser(t, db, "ignore-legacy-ungrouped-override", 0, dto.UserSetting{})
 	if _, err := UpsertSubscriptionReferralOverride(user.Id, "", 2600, 1); err != nil {
 		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
 	}
 
-	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 2600 {
-		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 2600", got)
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 0", got)
 	}
 }
 

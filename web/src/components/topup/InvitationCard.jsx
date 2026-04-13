@@ -219,108 +219,110 @@ const InvitationCard = ({
           />
         </Card>
 
-        <Card
-          className='!rounded-xl w-full'
-          title={<Text type='tertiary'>{t('订阅返佣分配')}</Text>}
-        >
-          <div className='flex flex-col gap-4'>
-            {(referralGroups || []).map((referralSummary) => {
-              const inviteePercentInput =
-                inviteePercentInputs[referralSummary.group] ?? 0;
-              const inviteeRateBpsDraft = clampInviteeRateBps(
-                percentNumberToRateBps(inviteePercentInput),
-                referralSummary.totalRateBps,
-              );
-              const canSaveReferral =
-                !referralSaving &&
-                inviteeRateBpsDraft !== referralSummary.inviteeRateBps;
+        {(referralGroups || []).length > 0 && (
+          <Card
+            className='!rounded-xl w-full'
+            title={<Text type='tertiary'>{t('订阅返佣分配')}</Text>}
+          >
+            <div className='flex flex-col gap-4'>
+              {(referralGroups || []).map((referralSummary) => {
+                const inviteePercentInput =
+                  inviteePercentInputs[referralSummary.group] ?? 0;
+                const inviteeRateBpsDraft = clampInviteeRateBps(
+                  percentNumberToRateBps(inviteePercentInput),
+                  referralSummary.totalRateBps,
+                );
+                const canSaveReferral =
+                  !referralSaving &&
+                  inviteeRateBpsDraft !== referralSummary.inviteeRateBps;
 
-              return (
-                <div
-                  key={referralSummary.group}
-                  className='rounded-xl border border-gray-100 p-4'
-                >
-                  <div className='flex flex-col gap-3'>
-                    <div className='flex items-center justify-between gap-3'>
-                      <Text strong>{referralSummary.group}</Text>
-                      <Text type='tertiary' className='text-xs'>
-                        {t('按分组配置被邀请人订阅奖励')}
-                      </Text>
-                    </div>
-
-                    <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
-                      <div className='rounded-xl bg-gray-50 p-3'>
-                        <Text type='tertiary' className='text-xs block mb-1'>
-                          {t('我的总返佣率')}
-                        </Text>
-                        <Text strong>
-                          {formatRateBpsPercent(referralSummary.totalRateBps)}
-                        </Text>
-                      </div>
-                      <div className='rounded-xl bg-gray-50 p-3'>
-                        <Text type='tertiary' className='text-xs block mb-1'>
-                          {t('分给被邀请人的比例')}
-                        </Text>
-                        <Text strong>
-                          {formatRateBpsPercent(referralSummary.inviteeRateBps)}
-                        </Text>
-                      </div>
-                      <div className='rounded-xl bg-gray-50 p-3'>
-                        <Text type='tertiary' className='text-xs block mb-1'>
-                          {t('我实际获得的比例')}
-                        </Text>
-                        <Text strong>
-                          {formatRateBpsPercent(referralSummary.inviterRateBps)}
-                        </Text>
-                      </div>
-                    </div>
-
+                return (
+                  <div
+                    key={referralSummary.group}
+                    className='rounded-xl border border-gray-100 p-4'
+                  >
                     <div className='flex flex-col gap-3'>
-                      <div>
-                        <Text type='tertiary' className='text-xs block mb-2'>
-                          {t('分给被邀请人的比例')}
+                      <div className='flex items-center justify-between gap-3'>
+                        <Text strong>{referralSummary.group}</Text>
+                        <Text type='tertiary' className='text-xs'>
+                          {t('按分组配置被邀请人订阅奖励')}
                         </Text>
-                        <InputNumber
-                          value={inviteePercentInput}
-                          min={0}
-                          max={rateBpsToPercentNumber(
-                            referralSummary.totalRateBps,
-                          )}
-                          step={0.01}
-                          precision={2}
-                          style={{ width: '100%' }}
-                          suffix='%'
-                          disabled={referralSaving}
-                          onChange={(value) =>
-                            updateInviteePercentInput(referralSummary.group, value)
-                          }
-                        />
                       </div>
-                      <Text type='tertiary' className='text-xs'>
-                        {t('请输入不大于总返佣率的比例')}
-                      </Text>
-                      <Button
-                        type='primary'
-                        theme='solid'
-                        className='!rounded-lg self-start'
-                        loading={referralSaving}
-                        disabled={!canSaveReferral}
-                        onClick={() =>
-                          onSaveReferralConfig?.(
-                            referralSummary.group,
-                            inviteeRateBpsDraft,
-                          )
-                        }
-                      >
-                        {t('保存返佣设置')}
-                      </Button>
+
+                      <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+                        <div className='rounded-xl bg-gray-50 p-3'>
+                          <Text type='tertiary' className='text-xs block mb-1'>
+                            {t('我的总返佣率')}
+                          </Text>
+                          <Text strong>
+                            {formatRateBpsPercent(referralSummary.totalRateBps)}
+                          </Text>
+                        </div>
+                        <div className='rounded-xl bg-gray-50 p-3'>
+                          <Text type='tertiary' className='text-xs block mb-1'>
+                            {t('分给被邀请人的比例')}
+                          </Text>
+                          <Text strong>
+                            {formatRateBpsPercent(referralSummary.inviteeRateBps)}
+                          </Text>
+                        </div>
+                        <div className='rounded-xl bg-gray-50 p-3'>
+                          <Text type='tertiary' className='text-xs block mb-1'>
+                            {t('我实际获得的比例')}
+                          </Text>
+                          <Text strong>
+                            {formatRateBpsPercent(referralSummary.inviterRateBps)}
+                          </Text>
+                        </div>
+                      </div>
+
+                      <div className='flex flex-col gap-3'>
+                        <div>
+                          <Text type='tertiary' className='text-xs block mb-2'>
+                            {t('分给被邀请人的比例')}
+                          </Text>
+                          <InputNumber
+                            value={inviteePercentInput}
+                            min={0}
+                            max={rateBpsToPercentNumber(
+                              referralSummary.totalRateBps,
+                            )}
+                            step={0.01}
+                            precision={2}
+                            style={{ width: '100%' }}
+                            suffix='%'
+                            disabled={referralSaving}
+                            onChange={(value) =>
+                              updateInviteePercentInput(referralSummary.group, value)
+                            }
+                          />
+                        </div>
+                        <Text type='tertiary' className='text-xs'>
+                          {t('请输入不大于总返佣率的比例')}
+                        </Text>
+                        <Button
+                          type='primary'
+                          theme='solid'
+                          className='!rounded-lg self-start'
+                          loading={referralSaving}
+                          disabled={!canSaveReferral}
+                          onClick={() =>
+                            onSaveReferralConfig?.(
+                              referralSummary.group,
+                              inviteeRateBpsDraft,
+                            )
+                          }
+                        >
+                          {t('保存返佣设置')}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
         {/* 奖励说明 */}
         <Card

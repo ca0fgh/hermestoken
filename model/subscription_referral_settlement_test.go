@@ -374,6 +374,93 @@ func TestCompleteSubscriptionOrderUsesGroupedOverrideRate(t *testing.T) {
 	}
 }
 
+func TestCompleteSubscriptionOrderWithoutUserOverrideSkipsReferralEvenWhenGlobalSettingsExist(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalRate := common.SubscriptionReferralGlobalRateBps
+	originalQuotaPerUnit := common.QuotaPerUnit
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalRate
+		common.QuotaPerUnit = originalQuotaPerUnit
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	common.QuotaPerUnit = 100
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"vip":4500}`); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+
+	inviter := seedReferralUser(t, db, "no-user-override-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
+	})
+	invitee := seedReferralUser(t, db, "no-user-override-invitee", inviter.Id, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-no-user-override", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	inviterAfter, _ := GetUserById(inviter.Id, true)
+	inviteeAfter, _ := GetUserById(invitee.Id, true)
+	if inviterAfter.AffQuota != 0 || inviteeAfter.AffQuota != 0 {
+		t.Fatalf("expected no referral quota without explicit user override, got inviter=%d invitee=%d", inviterAfter.AffQuota, inviteeAfter.AffQuota)
+	}
+}
+
+func TestCompleteSubscriptionOrderGroupedOverrideCreditsReferralWhenGlobalSwitchDisabled(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalRate := common.SubscriptionReferralGlobalRateBps
+	originalQuotaPerUnit := common.QuotaPerUnit
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalRate
+		common.QuotaPerUnit = originalQuotaPerUnit
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralEnabled = false
+	common.SubscriptionReferralGlobalRateBps = 0
+	common.QuotaPerUnit = 100
+
+	inviter := seedReferralUser(t, db, "override-only-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
+	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "vip", 2000, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
+
+	invitee := seedReferralUser(t, db, "override-only-invitee", inviter.Id, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-override-only", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	inviterAfter, _ := GetUserById(inviter.Id, true)
+	inviteeAfter, _ := GetUserById(invitee.Id, true)
+	if inviterAfter.AffQuota != 150 || inviteeAfter.AffQuota != 50 {
+		t.Fatalf("unexpected quotas inviter=%d invitee=%d", inviterAfter.AffQuota, inviteeAfter.AffQuota)
+	}
+}
+
 func TestCompleteSubscriptionOrderIgnoresInviteeCurrentGroupForReferralRates(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	originalEnabled := common.SubscriptionReferralEnabled

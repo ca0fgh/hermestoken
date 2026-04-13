@@ -27,7 +27,6 @@ import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
 import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
 import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
 import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
-import SettingsSubscriptionReferral from '../../pages/Setting/Operation/SettingsSubscriptionReferral';
 import { API, showError, toBoolean } from '../../helpers';
 
 const OperationSetting = () => {
@@ -37,8 +36,6 @@ const OperationSetting = () => {
     PreConsumedQuota: 0,
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
-    SubscriptionReferralEnabled: false,
-    SubscriptionReferralGlobalRateBps: 0,
     'quota_setting.enable_free_model_pre_consume': true,
 
     /* 通用设置 */
@@ -152,9 +149,6 @@ const OperationSetting = () => {
         {/* 额度设置 */}
         <Card style={{ marginTop: '10px' }}>
           <SettingsCreditLimit options={inputs} refresh={onRefresh} />
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsSubscriptionReferral options={inputs} refresh={onRefresh} />
         </Card>
         {/* 签到设置 */}
         <Card style={{ marginTop: '10px' }}>

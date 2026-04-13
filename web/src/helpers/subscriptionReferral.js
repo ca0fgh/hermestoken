@@ -85,11 +85,7 @@ export function normalizeGroupNames(groups = []) {
   }
 
   return Array.from(
-    new Set(
-      groups
-        .map((group) => String(group || '').trim())
-        .filter(Boolean),
-    ),
+    new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
 }
 
@@ -178,24 +174,78 @@ export function buildAdminOverrideRows(groups = []) {
     const effectiveTotalRateBps = normalizeRateBps(
       groupItem?.effective_total_rate_bps ?? groupItem?.effectiveTotalRateBps,
     );
-    const hasOverride = Boolean(groupItem?.has_override ?? groupItem?.hasOverride);
-    const overrideRateBps =
+    const hasOverride = Boolean(
+      groupItem?.has_override ?? groupItem?.hasOverride,
+    );
+    const overrideRateBpsRaw =
       groupItem?.override_rate_bps ?? groupItem?.overrideRateBps;
     const normalizedOverrideRateBps =
-      overrideRateBps === null || overrideRateBps === undefined
+      overrideRateBpsRaw === null || overrideRateBpsRaw === undefined
         ? null
-        : normalizeRateBps(overrideRateBps);
-    const inputRateBps =
-      normalizedOverrideRateBps ?? effectiveTotalRateBps;
+        : normalizeRateBps(overrideRateBpsRaw);
+    const inputRateBps = normalizedOverrideRateBps ?? effectiveTotalRateBps;
+
+    const overrideRatePercent = rateBpsToPercentNumber(inputRateBps);
 
     return {
+      id: `subscription:${group}`,
+      type: 'subscription',
       group,
       effectiveTotalRateBps,
       hasOverride,
       overrideRateBps: normalizedOverrideRateBps,
-      inputPercent: rateBpsToPercentNumber(inputRateBps),
+      overrideRatePercent,
+      inputPercent: overrideRatePercent,
+      isDraft: false,
     };
   });
+}
+
+let adminOverrideDraftCounter = 0;
+
+export function createAdminOverrideDraftRow() {
+  adminOverrideDraftCounter += 1;
+  return {
+    id: `draft:${adminOverrideDraftCounter}`,
+    type: 'subscription',
+    group: '',
+    effectiveTotalRateBps: 0,
+    hasOverride: false,
+    overrideRateBps: null,
+    overrideRatePercent: 0,
+    inputPercent: 0,
+    isDraft: true,
+  };
+}
+
+export function buildAdminOverrideGroupOptions(
+  groupNames = [],
+  overrideRows = [],
+  currentRow = {},
+) {
+  const currentId = String(currentRow.id || '').trim();
+  const currentType = String(currentRow.type || '').trim();
+  const currentGroup = String(currentRow.group || '').trim();
+  const takenGroups = new Set(
+    overrideRows
+      .filter((row) => {
+        const rowId = String(row.id || '').trim();
+        const rowType = String(row.type || '').trim();
+        return rowType === currentType && rowId !== '' && rowId !== currentId;
+      })
+      .map((row) => String(row.group || '').trim())
+      .filter(Boolean),
+  );
+  let catalogGroups = normalizeGroupNames(groupNames);
+  if (currentGroup && !catalogGroups.includes(currentGroup)) {
+    catalogGroups = normalizeGroupNames([...catalogGroups, currentGroup]);
+  }
+
+  return catalogGroups.map((group) => ({
+    label: group,
+    value: group,
+    disabled: takenGroups.has(group),
+  }));
 }
 
 export function buildGroupedReferralSummaries(groups = []) {

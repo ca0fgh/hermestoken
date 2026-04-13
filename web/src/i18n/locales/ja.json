@@ -3460,6 +3460,16 @@
     "组织级使用、多模型路由与 Agent 持续调用同时出现，使用权开始需要统一执行与结算边界。": "組織レベルの利用、マルチモデルルーティング、そしてAgentの継続的な呼び出しが同時に進み、利用権には統一された実行と決済の境界が必要になっています。",
     "协作结构": "協調構造",
     "买方、卖方、Agent 在同一结构里协作": "買い手、売り手、Agent は同じ構造の中で協調します",
-    "平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。": "プラットフォームが扱うのは生のKeyではなく、ルールを伴うアクセス能力であり、発見・実行・決済を同じ構造に収めます。"
+    "平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。": "プラットフォームが扱うのは生のKeyではなく、ルールを伴うアクセス能力であり、発見・実行・決済を同じ構造に収めます。",
+    "新增覆盖": "Add override",
+    "返佣类型": "Referral type",
+    "订阅返佣": "Subscription referral",
+    "暂无覆盖时使用默认返佣规则": "Default referral rules apply when no override is set",
+    "暂无覆盖项，未设置时使用默认返佣规则": "No override items yet. Default referral rules apply",
+    "当前默认总返佣率": "Current default total referral rate",
+    "请选择返佣类型": "Please select a referral type",
+    "该返佣类型和分组组合已存在": "This referral type and group combination already exists",
+    "覆盖总返佣率必须为数字": "The override total referral rate must be a number",
+    "覆盖总返佣率必须在 0 到 100 之间": "The override total referral rate must be between 0 and 100"
   }
 }

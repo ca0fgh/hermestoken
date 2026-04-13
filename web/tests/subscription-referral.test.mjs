@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   buildAdminOverrideRows,
+  buildAdminOverrideGroupOptions,
   buildAdminReferralRows,
   buildAdminReferralFormValues,
   buildGroupedReferralSummaries,
@@ -31,7 +32,98 @@ import {
   formatRateBpsPercent,
   normalizeAdminReferralPayload,
   parseAdminReferralSettings,
+  createAdminOverrideDraftRow,
 } from '../src/helpers/subscriptionReferral.js';
+
+test('buildAdminOverrideRows maps grouped overrides into extensible rows', () => {
+  const rows = buildAdminOverrideRows([
+    {
+      group: 'alpha',
+      effective_total_rate_bps: 4000,
+      has_override: true,
+      override_rate_bps: 3000,
+    },
+    {
+      group: 'beta',
+      effectiveTotalRateBps: 2500,
+      hasOverride: false,
+      overrideRateBps: null,
+    },
+  ]);
+
+  assert.deepEqual(rows, [
+    {
+      id: 'subscription:alpha',
+      type: 'subscription',
+      group: 'alpha',
+      effectiveTotalRateBps: 4000,
+      hasOverride: true,
+      overrideRateBps: 3000,
+      overrideRatePercent: 30,
+      inputPercent: 30,
+      isDraft: false,
+    },
+    {
+      id: 'subscription:beta',
+      type: 'subscription',
+      group: 'beta',
+      effectiveTotalRateBps: 2500,
+      hasOverride: false,
+      overrideRateBps: null,
+      overrideRatePercent: 25,
+      inputPercent: 25,
+      isDraft: false,
+    },
+  ]);
+});
+
+test('buildAdminOverrideGroupOptions retains legacy group even when missing from catalog', () => {
+  const rows = [
+    { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
+    { id: 'subscription:legacy', type: 'subscription', group: 'legacy' },
+  ];
+  const options = buildAdminOverrideGroupOptions(
+    ['alpha', 'beta'],
+    rows,
+    rows[1],
+  );
+
+  assert.deepEqual(options, [
+    { label: 'alpha', value: 'alpha', disabled: true },
+    { label: 'beta', value: 'beta', disabled: false },
+    { label: 'legacy', value: 'legacy', disabled: false },
+  ]);
+});
+
+test('createAdminOverrideDraftRow creates a new draft entry with defaults', () => {
+  const draft = createAdminOverrideDraftRow();
+
+  assert.match(draft.id, /^draft:/);
+  assert.equal(draft.type, 'subscription');
+  assert.equal(draft.group, '');
+  assert.equal(draft.overrideRatePercent, 0);
+  assert.equal(draft.isDraft, true);
+  assert.equal(draft.hasOverride, false);
+  assert.equal(draft.inputPercent, 0);
+});
+
+test('buildAdminOverrideGroupOptions disables already used groups for the same type', () => {
+  const rows = [
+    { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
+    { id: 'subscription:beta', type: 'subscription', group: 'beta' },
+  ];
+  const options = buildAdminOverrideGroupOptions(
+    ['alpha', 'beta', 'gamma'],
+    rows,
+    rows[0],
+  );
+
+  assert.deepEqual(options, [
+    { label: 'alpha', value: 'alpha', disabled: false },
+    { label: 'beta', value: 'beta', disabled: true },
+    { label: 'gamma', value: 'gamma', disabled: false },
+  ]);
+});
 
 test('clampInviteeRateBps caps invitee rate to total rate', () => {
   assert.equal(clampInviteeRateBps(2600, 2000), 2000);
@@ -217,41 +309,6 @@ test('buildGroupedReferralSummaries derives inviter rate per group', () => {
   );
 });
 
-test('buildAdminOverrideRows normalizes grouped override API payload', () => {
-  assert.deepEqual(
-    buildAdminOverrideRows([
-      {
-        group: 'default',
-        effective_total_rate_bps: 4500,
-        has_override: false,
-        override_rate_bps: null,
-      },
-      {
-        group: 'vip',
-        effective_total_rate_bps: 3000,
-        has_override: true,
-        override_rate_bps: 2500,
-      },
-    ]),
-    [
-      {
-        group: 'default',
-        effectiveTotalRateBps: 4500,
-        hasOverride: false,
-        overrideRateBps: null,
-        inputPercent: 45,
-      },
-      {
-        group: 'vip',
-        effectiveTotalRateBps: 3000,
-        hasOverride: true,
-        overrideRateBps: 2500,
-        inputPercent: 25,
-      },
-    ],
-  );
-});
-
 test('buildGroupedReferralSummaries preserves group names for invitation cards', () => {
   assert.deepEqual(
     buildGroupedReferralSummaries([
@@ -346,30 +403,6 @@ test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max vali
     invitationCardSource,
     /import\s*{[\s\S]*\brateBpsToPercentNumber\b[\s\S]*}\s*from\s*['"]\.\.\/\.\.\/helpers\/subscriptionReferral['"]/,
   );
-});
-
-test('SettingsSubscriptionReferral reapplies saved settings from catalog groups instead of stale rendered rows', () => {
-  const settingsSource = readFileSync(
-    new URL(
-      '../src/pages/Setting/Operation/SettingsSubscriptionReferral.jsx',
-      import.meta.url,
-    ),
-    'utf8',
-  );
-
-  assert.match(
-    settingsSource,
-    /\[catalogGroupNames,\s*setCatalogGroupNames\]\s*=\s*useState\(\[\]\)/,
-  );
-  assert.equal(
-    settingsSource.includes('setGroupNames(nextRows.map((row) => row.group));'),
-    false,
-  );
-  assert.equal(
-    settingsSource.includes('applySettings(res.data?.data || {}, groupNames);'),
-    false,
-  );
-  assert.match(settingsSource, /settingsPayload\?\.groups/);
 });
 
 test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {
