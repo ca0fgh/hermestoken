@@ -487,6 +487,13 @@ const SubscriptionPlansCard = ({
                 const isPopular = index === 0 && plans.length > 1;
                 const limit = Number(plan?.max_purchase_per_user || 0);
                 const limitLabel = limit > 0 ? `${t('限购')} ${limit}` : null;
+                const totalStock = Number(plan?.stock_total || 0);
+                const availableStock = Number(plan?.stock_available || 0);
+                const hasStockLimit = totalStock > 0;
+                const soldOut = hasStockLimit && availableStock <= 0;
+                const stockLabel = hasStockLimit
+                  ? `${t('剩余库存')} ${availableStock}`
+                  : null;
                 const totalLabel =
                   totalAmount > 0
                     ? `${t('总额度')}: ${renderQuota(totalAmount)}`
@@ -509,6 +516,7 @@ const SubscriptionPlansCard = ({
                         tooltip: `${t('原生额度')}：${totalAmount}`,
                       }
                     : { label: totalLabel },
+                  stockLabel ? { label: stockLabel } : null,
                   limitLabel ? { label: limitLabel } : null,
                   upgradeLabel ? { label: upgradeLabel } : null,
                 ].filter(Boolean);
@@ -600,23 +608,30 @@ const SubscriptionPlansCard = ({
                         {(() => {
                           const count = getPlanPurchaseCount(p?.plan?.id);
                           const reached = limit > 0 && count >= limit;
-                          const tip = reached
-                            ? t('已达到购买上限') + ` (${count}/${limit})`
-                            : '';
+                          const disabled = soldOut || reached;
+                          const tip = soldOut
+                            ? t('已售罄')
+                            : reached
+                              ? t('已达到购买上限') + ` (${count}/${limit})`
+                              : '';
                           const buttonEl = (
                             <Button
                               theme='outline'
                               type='primary'
                               block
-                              disabled={reached}
+                              disabled={disabled}
                               onClick={() => {
-                                if (!reached) openBuy(p);
+                                if (!disabled) openBuy(p);
                               }}
                             >
-                              {reached ? t('已达上限') : t('立即订阅')}
+                              {soldOut
+                                ? t('已售罄')
+                                : reached
+                                  ? t('已达上限')
+                                  : t('立即订阅')}
                             </Button>
                           );
-                          return reached ? (
+                          return disabled ? (
                             <Tooltip content={tip} position='top'>
                               {buttonEl}
                             </Tooltip>

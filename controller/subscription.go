@@ -98,6 +98,7 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
+		p.PopulateStockAvailable()
 		result = append(result, SubscriptionPlanDTO{
 			Plan: p,
 		})

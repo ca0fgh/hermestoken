@@ -74,6 +74,9 @@ const SubscriptionPurchaseModal = ({
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
+  const stockTotal = Number(plan?.stock_total || 0);
+  const stockAvailable = Number(plan?.stock_available || 0);
+  const soldOut = stockTotal > 0 && stockAvailable <= 0;
 
   return (
     <Modal
@@ -156,6 +159,16 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               ) : null}
+              {stockTotal > 0 && (
+                <div className='flex justify-between items-center'>
+                  <Text strong className='text-slate-700 dark:text-slate-200'>
+                    {t('剩余库存')}：
+                  </Text>
+                  <Text className='text-slate-900 dark:text-slate-100'>
+                    {stockAvailable}
+                  </Text>
+                </div>
+              )}
               <Divider margin={8} />
               <div className='flex justify-between items-center'>
                 <Text strong className='text-slate-700 dark:text-slate-200'>
@@ -170,7 +183,16 @@ const SubscriptionPurchaseModal = ({
           </Card>
 
           {/* 支付方式 */}
-          {purchaseLimitReached && (
+          {soldOut && (
+            <Banner
+              type='warning'
+              description={t('已售罄')}
+              className='!rounded-xl'
+              closeIcon={null}
+            />
+          )}
+
+          {!soldOut && purchaseLimitReached && (
             <Banner
               type='warning'
               description={`${t('已达到购买上限')} (${purchaseCount}/${purchaseLimit})`}
@@ -195,7 +217,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<SiStripe size={14} color='#635BFF' />}
                       onClick={onPayStripe}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={purchaseLimitReached || soldOut}
                     >
                       Stripe
                     </Button>
@@ -207,7 +229,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<IconCreditCard />}
                       onClick={onPayCreem}
                       loading={paying}
-                      disabled={purchaseLimitReached}
+                      disabled={purchaseLimitReached || soldOut}
                     >
                       Creem
                     </Button>
@@ -228,14 +250,16 @@ const SubscriptionPurchaseModal = ({
                       value: m.type,
                       label: m.name || m.type,
                     }))}
-                    disabled={purchaseLimitReached}
+                    disabled={purchaseLimitReached || soldOut}
                   />
                   <Button
                     theme='solid'
                     type='primary'
                     onClick={onPayEpay}
                     loading={paying}
-                    disabled={!selectedEpayMethod || purchaseLimitReached}
+                    disabled={
+                      !selectedEpayMethod || purchaseLimitReached || soldOut
+                    }
                   >
                     {t('支付')}
                   </Button>
