@@ -121,12 +121,7 @@ export function parseAdminReferralSettings(payload = {}) {
 
   return {
     enabled,
-    groups:
-      groups.length > 0
-        ? groups
-        : Object.keys(groupRates).length > 0
-          ? normalizeGroupNames(Object.keys(groupRates))
-          : [],
+    groups,
     groupRates,
   };
 }
@@ -144,14 +139,8 @@ export function buildAdminReferralFormValues({
 export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
   const normalizedGroupRates = normalizeGroupRateMap(groupRates);
   const normalizedGroupNames = normalizeGroupNames(groupNames);
-  const orderedGroups = [
-    ...normalizedGroupNames,
-    ...Object.keys(normalizedGroupRates).filter(
-      (group) => !normalizedGroupNames.includes(group),
-    ),
-  ].sort((left, right) => left.localeCompare(right));
 
-  return orderedGroups.map((group) => {
+  return normalizedGroupNames.map((group) => {
     const totalRateBps = normalizeRateBps(normalizedGroupRates[group] || 0);
     return {
       group,

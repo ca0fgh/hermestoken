@@ -66,6 +66,7 @@ test('parseAdminReferralSettings normalizes grouped admin API payload for local 
   assert.deepEqual(
     parseAdminReferralSettings({
       enabled: 1,
+      groups: ['default', 'vip'],
       group_rates: {
         default: '4500',
         vip: 3000,
@@ -132,47 +133,42 @@ test('buildAdminReferralRows sorts rows alphabetically and includes rates missin
     }),
     [
       {
-        group: 'default',
-        enabled: true,
-        totalRateBps: 4500,
-        totalRatePercent: 45,
-      },
-      {
         group: 'vip',
         enabled: true,
         totalRateBps: 3000,
         totalRatePercent: 30,
-      },
-      {
-        group: 'zeta',
-        enabled: true,
-        totalRateBps: 1200,
-        totalRatePercent: 12,
       },
     ],
   );
 });
 
-test('buildAdminReferralRows renders from group_rates when no explicit group list is available', () => {
+test('parseAdminReferralSettings does not synthesize groups from group_rates when payload.groups is empty', () => {
+  assert.deepEqual(
+    parseAdminReferralSettings({
+      enabled: true,
+      group_rates: {
+        vip: 3000,
+        default: 4500,
+      },
+    }),
+    {
+      enabled: true,
+      groups: [],
+      groupRates: {
+        default: 4500,
+        vip: 3000,
+      },
+    },
+  );
+});
+
+test('buildAdminReferralRows ignores rates for groups not present in the provided group list', () => {
   assert.deepEqual(
     buildAdminReferralRows([], {
       vip: 3000,
       default: 4500,
     }),
-    [
-      {
-        group: 'default',
-        enabled: true,
-        totalRateBps: 4500,
-        totalRatePercent: 45,
-      },
-      {
-        group: 'vip',
-        enabled: true,
-        totalRateBps: 3000,
-        totalRatePercent: 30,
-      },
-    ],
+    [],
   );
 });
 
