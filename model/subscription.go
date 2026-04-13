@@ -383,6 +383,10 @@ func consumeSubscriptionPlanStockDirectTx(tx *gorm.DB, plan *SubscriptionPlan, a
 	return nil
 }
 
+func ReserveSubscriptionPlanStockForPendingOrderTx(tx *gorm.DB, plan *SubscriptionPlan) error {
+	return reserveSubscriptionPlanStockTx(tx, plan, 1)
+}
+
 // User subscription instance
 type UserSubscription struct {
 	Id     int `json:"id"`
@@ -699,6 +703,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
 		}
+		if err := consumeReservedSubscriptionOrderStockTx(tx, &order, plan); err != nil {
+			return err
+		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
 		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
 		if err != nil {
@@ -812,7 +819,14 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return "", err
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
+		var lockedPlan SubscriptionPlan
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", plan.Id).First(&lockedPlan).Error; err != nil {
+			return err
+		}
+		if err := consumeSubscriptionPlanStockDirectTx(tx, &lockedPlan, 1); err != nil {
+			return err
+		}
+		_, err := CreateUserSubscriptionFromPlanTx(tx, userId, &lockedPlan, "admin")
 		return err
 	})
 	if err != nil {

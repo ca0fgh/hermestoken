@@ -276,3 +276,67 @@ func TestCreatePendingSubscriptionOrderRejectsDisabledPlan(t *testing.T) {
 		t.Fatalf("expected no order for disabled plan, found %d", orderCount)
 	}
 }
+
+func TestCreatePendingSubscriptionOrderReservesStock(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "stocked-checkout-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_total", 2).Error; err != nil {
+		t.Fatalf("failed to seed stock_total: %v", err)
+	}
+
+	_, err := createPendingSubscriptionOrder(
+		1,
+		plan.Id,
+		"trade-stock-lock",
+		"epay",
+		func(currentPlan *model.SubscriptionPlan) error {
+			if !currentPlan.Enabled {
+				return errors.New("套餐未启用")
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected order creation to succeed, got %v", err)
+	}
+
+	var locked model.SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&locked).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if locked.StockLocked != 1 {
+		t.Fatalf("expected stock_locked=1, got %d", locked.StockLocked)
+	}
+
+	var order model.SubscriptionOrder
+	if err := db.Where("trade_no = ?", "trade-stock-lock").First(&order).Error; err != nil {
+		t.Fatalf("failed to reload order: %v", err)
+	}
+	if order.StockReserved != 1 {
+		t.Fatalf("expected stock_reserved=1, got %d", order.StockReserved)
+	}
+}
+
+func TestCreatePendingSubscriptionOrderRejectsSoldOutPlan(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "sold-out-checkout-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  1,
+		"stock_locked": 1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed stock state: %v", err)
+	}
+
+	_, err := createPendingSubscriptionOrder(
+		1,
+		plan.Id,
+		"trade-stock-sold-out",
+		"epay",
+		func(currentPlan *model.SubscriptionPlan) error {
+			return nil
+		},
+	)
+	if !errors.Is(err, model.ErrSubscriptionPlanOutOfStock) {
+		t.Fatalf("expected ErrSubscriptionPlanOutOfStock, got %v", err)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"gorm.io/gorm"
 )
 
@@ -202,5 +203,63 @@ func TestConsumeSubscriptionPlanStockDirectTxUsesFreshLimitWhenCallerLooksUnlimi
 	})
 	if err != ErrSubscriptionPlanOutOfStock {
 		t.Fatalf("expected ErrSubscriptionPlanOutOfStock, got %v", err)
+	}
+}
+
+func TestCompleteSubscriptionOrderMovesReservedStockToSold(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	user := seedReferralUser(t, db, "stock-complete-user", 0, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 18)
+	order := seedPendingReferralOrder(t, db, user.Id, plan.Id, "trade-stock-complete", 18)
+
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  5,
+		"stock_locked": 1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+	if err := db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 1).Error; err != nil {
+		t.Fatalf("failed to seed order stock_reserved: %v", err)
+	}
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder() error = %v", err)
+	}
+
+	var afterPlan SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&afterPlan).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if afterPlan.StockLocked != 0 || afterPlan.StockSold != 1 {
+		t.Fatalf("expected locked=0 sold=1, got locked=%d sold=%d", afterPlan.StockLocked, afterPlan.StockSold)
+	}
+
+	var afterOrder SubscriptionOrder
+	if err := db.Where("id = ?", order.Id).First(&afterOrder).Error; err != nil {
+		t.Fatalf("failed to reload order: %v", err)
+	}
+	if afterOrder.StockReserved != 0 || afterOrder.Status != common.TopUpStatusSuccess {
+		t.Fatalf("expected success order with stock_reserved=0, got status=%s reserved=%d", afterOrder.Status, afterOrder.StockReserved)
+	}
+}
+
+func TestAdminBindSubscriptionConsumesStockDirectly(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	user := seedReferralUser(t, db, "stock-admin-bind-user", 0, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 18)
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_total", 2).Error; err != nil {
+		t.Fatalf("failed to seed stock_total: %v", err)
+	}
+
+	if _, err := AdminBindSubscription(user.Id, plan.Id, ""); err != nil {
+		t.Fatalf("AdminBindSubscription() error = %v", err)
+	}
+
+	var afterPlan SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&afterPlan).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if afterPlan.StockSold != 1 || afterPlan.StockLocked != 0 {
+		t.Fatalf("expected sold=1 locked=0, got sold=%d locked=%d", afterPlan.StockSold, afterPlan.StockLocked)
 	}
 }

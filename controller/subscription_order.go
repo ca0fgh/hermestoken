@@ -43,6 +43,14 @@ func createPendingSubscriptionOrder(
 				return errSubscriptionPurchaseLimitReached
 			}
 		}
+		if err := model.ReserveSubscriptionPlanStockForPendingOrderTx(tx, &lockedPlan); err != nil {
+			return err
+		}
+
+		stockReserved := 0
+		if lockedPlan.HasStockLimit() {
+			stockReserved = 1
+		}
 
 		order := &model.SubscriptionOrder{
 			UserId:        userId,
@@ -52,6 +60,7 @@ func createPendingSubscriptionOrder(
 			PaymentMethod: paymentMethod,
 			CreateTime:    time.Now().Unix(),
 			Status:        "pending",
+			StockReserved: stockReserved,
 		}
 		if err := tx.Create(order).Error; err != nil {
 			return err
