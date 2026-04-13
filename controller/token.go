@@ -38,7 +38,7 @@ func validateTokenGroupSelection(c *gin.Context, userID int, tokenGroup string) 
 		common.ApiError(c, err)
 		return false
 	}
-	if err := service.ValidateTokenSelectableGroup(userGroup, tokenGroup); err != nil {
+	if err := service.ValidateTokenSelectableGroupForUser(userID, userGroup, tokenGroup); err != nil {
 		common.ApiError(c, err)
 		return false
 	}

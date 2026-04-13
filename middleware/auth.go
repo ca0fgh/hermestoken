@@ -343,7 +343,7 @@ func TokenAuth() func(c *gin.Context) {
 
 		userGroup := userCache.Group
 		tokenGroup := token.Group
-		usingGroup, err := service.ResolveTokenGroupForRequest(userGroup, tokenGroup)
+		usingGroup, err := service.ResolveTokenGroupForUserRequest(token.UserId, userGroup, tokenGroup)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 			return

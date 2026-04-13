@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -911,6 +912,36 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
+	if userId <= 0 {
+		return []string{}, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	var rawGroups []string
+	if err := DB.Model(&UserSubscription{}).
+		Distinct("upgrade_group").
+		Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''", userId, "active", now).
+		Pluck("upgrade_group", &rawGroups).Error; err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{}, len(rawGroups))
+	groups := make([]string, 0, len(rawGroups))
+	for _, group := range rawGroups {
+		trimmed := strings.TrimSpace(group)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		groups = append(groups, trimmed)
+	}
+	sort.Strings(groups)
+	return groups, nil
 }
 
 // GetAllUserSubscriptions returns all subscriptions (active and expired) for a user.

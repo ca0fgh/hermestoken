@@ -2,7 +2,9 @@ package service
 
 import (
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -29,6 +31,63 @@ func withSelectableGroupSettings(t *testing.T, usableJSON string, specialJSON st
 			t.Fatalf("failed to restore special usable groups: %v", err)
 		}
 	})
+}
+
+func withSelectableGroupSettingsAndRatios(t *testing.T, usableJSON string, specialJSON string, ratioJSON string) {
+	t.Helper()
+
+	originalRatios := ratio_setting.GroupRatio2JSONString()
+	withSelectableGroupSettings(t, usableJSON, specialJSON)
+
+	if err := ratio_setting.UpdateGroupRatioByJSONString(ratioJSON); err != nil {
+		t.Fatalf("failed to set group ratios: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := ratio_setting.UpdateGroupRatioByJSONString(originalRatios); err != nil {
+			t.Fatalf("failed to restore group ratios: %v", err)
+		}
+	})
+}
+
+func seedGroupTestUser(t *testing.T, id int, group string) {
+	t.Helper()
+
+	user := &model.User{
+		Id:          id,
+		Username:    "group_test_user",
+		Password:    "password123",
+		DisplayName: "group_test_user",
+		Group:       group,
+		Status:      1,
+		Role:        1,
+	}
+	if err := model.DB.Create(user).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+}
+
+func seedGroupTestSubscription(t *testing.T, userID int, upgradeGroup string, status string, endTime int64) {
+	t.Helper()
+
+	now := time.Now().Unix()
+	sub := &model.UserSubscription{
+		UserId:        userID,
+		PlanId:        1,
+		AmountTotal:   100,
+		AmountUsed:    0,
+		StartTime:     now,
+		EndTime:       endTime,
+		Status:        status,
+		Source:        "test",
+		UpgradeGroup:  upgradeGroup,
+		PrevUserGroup: "default",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := model.DB.Create(sub).Error; err != nil {
+		t.Fatalf("failed to seed subscription: %v", err)
+	}
 }
 
 func TestGetUserSelectableGroupsDoesNotAutoIncludeAssignedGroup(t *testing.T) {
@@ -81,5 +140,65 @@ func TestResolveTokenGroupForRequestRejectsBlankFallbackWhenUserGroupIsNotSelect
 
 	if err == nil {
 		t.Fatalf("expected runtime fallback to be rejected when user group is not selectable")
+	}
+}
+
+func TestGetUserSelectableGroupsForUserIncludesActiveSubscriptionUpgradeGroup(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{}`,
+		`{"default":1,"standard":1,"codex-5.4":1}`,
+	)
+	seedGroupTestUser(t, 101, "default")
+	seedGroupTestSubscription(t, 101, "codex-5.4", "active", time.Now().Add(time.Hour).Unix())
+
+	groups := GetUserSelectableGroupsForUser(101, "default")
+
+	if got := groups["codex-5.4"]; got != "codex-5.4" {
+		t.Fatalf("expected active subscription upgrade group to be selectable, got %q", got)
+	}
+}
+
+func TestValidateTokenSelectableGroupForUserAllowsSubscriptionBackedFallback(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{}`,
+		`{"standard":1,"codex-5.4":1}`,
+	)
+	seedGroupTestUser(t, 102, "codex-5.4")
+	seedGroupTestSubscription(t, 102, "codex-5.4", "active", time.Now().Add(time.Hour).Unix())
+
+	if err := ValidateTokenSelectableGroupForUser(102, "codex-5.4", ""); err != nil {
+		t.Fatalf("expected implicit fallback to active subscription group to pass, got %v", err)
+	}
+
+	resolvedGroup, err := ResolveTokenGroupForUserRequest(102, "codex-5.4", "")
+	if err != nil {
+		t.Fatalf("expected runtime fallback to active subscription group to pass, got %v", err)
+	}
+	if resolvedGroup != "codex-5.4" {
+		t.Fatalf("expected resolved group codex-5.4, got %q", resolvedGroup)
+	}
+}
+
+func TestGetUserSelectableGroupsForUserSkipsExpiredSubscriptionUpgradeGroup(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{}`,
+		`{"default":1,"standard":1,"codex-5.4":1}`,
+	)
+	seedGroupTestUser(t, 103, "default")
+	seedGroupTestSubscription(t, 103, "codex-5.4", "active", time.Now().Add(-time.Hour).Unix())
+
+	groups := GetUserSelectableGroupsForUser(103, "default")
+
+	if _, ok := groups["codex-5.4"]; ok {
+		t.Fatalf("expected expired subscription upgrade group to stay hidden")
 	}
 }
