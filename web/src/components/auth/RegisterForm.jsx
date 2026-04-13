@@ -26,7 +26,6 @@ import {
   showInfo,
   showSuccess,
   updateAPI,
-  getSystemName,
   getOAuthProviderIcon,
   setUserData,
   onDiscordOAuthClicked,
@@ -64,6 +63,7 @@ import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
+import BrandWordmark from '../common/BrandWordmark';
 
 const RegisterForm = () => {
   let navigate = useNavigate();
@@ -110,9 +110,7 @@ const RegisterForm = () => {
   const [githubButtonDisabled, setGithubButtonDisabled] = useState(false);
   const githubTimeoutRef = useRef(null);
   const githubButtonText = t(githubButtonTextKeyByState[githubButtonState]);
-
   const logo = getLogo();
-  const systemName = getSystemName();
 
   let affCode = new URLSearchParams(window.location.search).get('aff');
   if (affCode) {
@@ -395,11 +393,15 @@ const RegisterForm = () => {
     return (
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
-          <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
-            <Title heading={3} className='!text-gray-800'>
-              {systemName}
-            </Title>
+          <div className='flex items-center justify-center mb-6 gap-3'>
+            {logo ? (
+              <img
+                src={logo}
+                alt='Logo'
+                className='h-10 w-10 rounded-full object-cover'
+              />
+            ) : null}
+            <BrandWordmark variant='auth' />
           </div>
 
           <Card className='border-0 !rounded-2xl overflow-hidden'>
@@ -558,11 +560,15 @@ const RegisterForm = () => {
     return (
       <div className='flex flex-col items-center'>
         <div className='w-full max-w-md'>
-          <div className='flex items-center justify-center mb-6 gap-2'>
-            <img src={logo} alt='Logo' className='h-10 rounded-full' />
-            <Title heading={3} className='!text-gray-800'>
-              {systemName}
-            </Title>
+          <div className='flex items-center justify-center mb-6 gap-3'>
+            {logo ? (
+              <img
+                src={logo}
+                alt='Logo'
+                className='h-10 w-10 rounded-full object-cover'
+              />
+            ) : null}
+            <BrandWordmark variant='auth' />
           </div>
 
           <Card className='border-0 !rounded-2xl overflow-hidden'>
@@ -781,8 +787,7 @@ const RegisterForm = () => {
         style={{ top: '50%', left: '-120px' }}
       />
       <div className='w-full max-w-sm mt-[60px]'>
-        {showEmailRegister ||
-        !hasOAuthRegisterOptions
+        {showEmailRegister || !hasOAuthRegisterOptions
           ? renderEmailRegisterForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}

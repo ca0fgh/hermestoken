@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -173,16 +174,37 @@ func UploadLogo(c *gin.Context) {
 func GetLogo(c *gin.Context) {
 	content, err := readStoredLogo()
 	if err != nil || len(content) == 0 {
-		c.Redirect(http.StatusFound, "/logo.png")
+		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 
 	contentType := http.DetectContentType(content)
 	if !isAllowedLogoMIME(contentType) {
-		c.Redirect(http.StatusFound, "/logo.png")
+		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 
 	c.Header("Cache-Control", "no-cache")
 	c.Data(http.StatusOK, contentType, content)
+}
+
+func resolveLogoOptionValue() string {
+	logo := strings.TrimSpace(common.Logo)
+	if logo == "" || logo == "/logo.png" {
+		return ""
+	}
+
+	if strings.HasPrefix(logo, logoPublicPath) {
+		content, err := readStoredLogo()
+		if err != nil || len(content) == 0 {
+			return ""
+		}
+
+		contentType := http.DetectContentType(content)
+		if !isAllowedLogoMIME(contentType) {
+			return ""
+		}
+	}
+
+	return logo
 }

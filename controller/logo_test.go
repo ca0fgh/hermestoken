@@ -368,3 +368,48 @@ func TestGetLogoFallsBackToLegacyNestedDataDirectory(t *testing.T) {
 		t.Fatalf("served body did not match legacy logo bytes")
 	}
 }
+
+func TestGetLogoReturnsNotFoundWithoutStoredImage(t *testing.T) {
+	setTempLogoStoragePath(t)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/logo", nil)
+
+	GetLogo(ctx)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", recorder.Code)
+	}
+}
+
+func TestResolveLogoOptionValueHidesDefaultFallbackAndMissingUpload(t *testing.T) {
+	setTempLogoStoragePath(t)
+
+	originalLogo := common.Logo
+	t.Cleanup(func() {
+		common.Logo = originalLogo
+	})
+
+	common.Logo = "/logo.png"
+	if got := resolveLogoOptionValue(); got != "" {
+		t.Fatalf("expected default logo fallback to be hidden, got %q", got)
+	}
+
+	common.Logo = "/api/logo?v=123"
+	if got := resolveLogoOptionValue(); got != "" {
+		t.Fatalf("expected missing uploaded logo to be hidden, got %q", got)
+	}
+
+	content := samplePNGBytes(t)
+	if err := os.MkdirAll(filepath.Dir(logoStoragePath), 0o755); err != nil {
+		t.Fatalf("failed to create temp logo storage directory: %v", err)
+	}
+	if err := os.WriteFile(logoStoragePath, content, 0o644); err != nil {
+		t.Fatalf("failed to write stored logo: %v", err)
+	}
+
+	if got := resolveLogoOptionValue(); got != common.Logo {
+		t.Fatalf("expected uploaded logo URL to be preserved, got %q", got)
+	}
+}
