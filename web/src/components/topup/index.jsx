@@ -39,7 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
-import { buildReferralRateSummary } from '../../helpers/subscriptionReferral';
+import { buildGroupedReferralSummaries } from '../../helpers/subscriptionReferral';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -91,8 +91,8 @@ const TopUp = () => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
-  const [referralConfig, setReferralConfig] = useState(null);
-  const [referralSaving, setReferralSaving] = useState(false);
+  const [referralGroups, setReferralGroups] = useState([]);
+  const [referralSavingGroup, setReferralSavingGroup] = useState('');
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -396,37 +396,46 @@ const TopUp = () => {
       const res = await API.get('/api/user/referral/subscription');
       if (res.data?.success) {
         const data = res.data.data || {};
-        setReferralConfig(
-          buildReferralRateSummary(
-            data.total_rate_bps || 0,
-            data.invitee_rate_bps || 0,
-          ),
-        );
+        setReferralGroups(buildGroupedReferralSummaries(data.groups || []));
       }
     } catch (e) {
-      setReferralConfig(
-        buildReferralRateSummary(
-          referralConfig?.totalRateBps || 0,
-          referralConfig?.inviteeRateBps || 0,
-        ),
+      setReferralGroups((currentGroups) =>
+        buildGroupedReferralSummaries(currentGroups),
       );
     }
   };
 
-  const updateSubscriptionReferralSelf = async (inviteeRateBps) => {
-    setReferralSaving(true);
+  const updateSubscriptionReferralSelf = async (group, inviteeRateBps) => {
+    setReferralSavingGroup(group);
     try {
       const res = await API.put('/api/user/referral/subscription', {
+        group,
         invitee_rate_bps: inviteeRateBps,
       });
       if (res.data?.success) {
         const data = res.data.data || {};
-        setReferralConfig(
-          buildReferralRateSummary(
-            data.total_rate_bps || referralConfig?.totalRateBps || 0,
-            data.invitee_rate_bps || inviteeRateBps,
-          ),
-        );
+        const nextGroupSummary = buildGroupedReferralSummaries([
+          {
+            group,
+            total_rate_bps:
+              data.total_rate_bps ??
+              referralGroups.find((groupSummary) => groupSummary.group === group)
+                ?.totalRateBps ??
+              0,
+            invitee_rate_bps: data.invitee_rate_bps ?? inviteeRateBps,
+          },
+        ])[0];
+        setReferralGroups((currentGroups) => {
+          const hasGroup = currentGroups.some(
+            (groupSummary) => groupSummary.group === group,
+          );
+          if (!hasGroup) {
+            return [...currentGroups, nextGroupSummary];
+          }
+          return currentGroups.map((groupSummary) =>
+            groupSummary.group === group ? nextGroupSummary : groupSummary,
+          );
+        });
         showSuccess(t('保存成功'));
       } else {
         showError(res.data?.message || t('保存失败'));
@@ -434,7 +443,7 @@ const TopUp = () => {
     } catch (e) {
       showError(t('保存失败'));
     } finally {
-      setReferralSaving(false);
+      setReferralSavingGroup('');
     }
   };
 
@@ -897,8 +906,8 @@ const TopUp = () => {
           setOpenTransfer={setOpenTransfer}
           affLink={affLink}
           handleAffLinkClick={handleAffLinkClick}
-          referralConfig={referralConfig}
-          referralSaving={referralSaving}
+          referralGroups={referralGroups}
+          referralSaving={Boolean(referralSavingGroup)}
           onSaveReferralConfig={updateSubscriptionReferralSelf}
         />
       </div>

@@ -552,7 +552,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		if err := tx.Save(&order).Error; err != nil {
 			return err
 		}
-		if err := ApplySubscriptionReferralOnOrderSuccessTx(tx, &order); err != nil {
+		if err := ApplySubscriptionReferralOnOrderSuccessTx(tx, &order, plan); err != nil {
 			return err
 		}
 		logUserId = order.UserId

@@ -2,11 +2,14 @@ package model
 
 import (
 	"errors"
+	"sort"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -30,25 +33,28 @@ type SubscriptionReferralConfig struct {
 }
 
 type SubscriptionReferralOverride struct {
-	Id           int   `json:"id"`
-	UserId       int   `json:"user_id" gorm:"uniqueIndex"`
-	TotalRateBps int   `json:"total_rate_bps" gorm:"type:int;not null;default:0"`
-	CreatedBy    int   `json:"created_by" gorm:"type:int;not null;default:0"`
-	UpdatedBy    int   `json:"updated_by" gorm:"type:int;not null;default:0"`
-	CreatedAt    int64 `json:"created_at" gorm:"bigint"`
-	UpdatedAt    int64 `json:"updated_at" gorm:"bigint"`
+	Id           int    `json:"id"`
+	UserId       int    `json:"user_id" gorm:"uniqueIndex:idx_sub_referral_override_group"`
+	Group        string `json:"group" gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_sub_referral_override_group"`
+	TotalRateBps int    `json:"total_rate_bps" gorm:"type:int;not null;default:0"`
+	CreatedBy    int    `json:"created_by" gorm:"type:int;not null;default:0"`
+	UpdatedBy    int    `json:"updated_by" gorm:"type:int;not null;default:0"`
+	CreatedAt    int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt    int64  `json:"updated_at" gorm:"bigint"`
 }
 
 func (o *SubscriptionReferralOverride) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	o.CreatedAt = now
 	o.UpdatedAt = now
+	o.Group = strings.TrimSpace(o.Group)
 	o.TotalRateBps = NormalizeSubscriptionReferralRateBps(o.TotalRateBps)
 	return nil
 }
 
 func (o *SubscriptionReferralOverride) BeforeUpdate(tx *gorm.DB) error {
 	o.UpdatedAt = common.GetTimestamp()
+	o.Group = strings.TrimSpace(o.Group)
 	o.TotalRateBps = NormalizeSubscriptionReferralRateBps(o.TotalRateBps)
 	return nil
 }
@@ -58,6 +64,7 @@ type SubscriptionReferralRecord struct {
 	OrderId                int     `json:"order_id" gorm:"index;uniqueIndex:idx_sub_referral_once"`
 	OrderTradeNo           string  `json:"order_trade_no" gorm:"type:varchar(255);index"`
 	PlanId                 int     `json:"plan_id" gorm:"index"`
+	ReferralGroup          string  `json:"referral_group" gorm:"type:varchar(64);not null;default:'';index"`
 	PayerUserId            int     `json:"payer_user_id" gorm:"index"`
 	InviterUserId          int     `json:"inviter_user_id" gorm:"index"`
 	BeneficiaryUserId      int     `json:"beneficiary_user_id" gorm:"index;uniqueIndex:idx_sub_referral_once"`
@@ -79,6 +86,7 @@ func (r *SubscriptionReferralRecord) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	r.CreatedAt = now
 	r.UpdatedAt = now
+	r.ReferralGroup = strings.TrimSpace(r.ReferralGroup)
 	r.TotalRateBpsSnapshot = NormalizeSubscriptionReferralRateBps(r.TotalRateBpsSnapshot)
 	r.InviteeRateBpsSnapshot = NormalizeSubscriptionReferralRateBps(r.InviteeRateBpsSnapshot)
 	r.AppliedRateBps = NormalizeSubscriptionReferralRateBps(r.AppliedRateBps)
@@ -90,6 +98,7 @@ func (r *SubscriptionReferralRecord) BeforeCreate(tx *gorm.DB) error {
 
 func (r *SubscriptionReferralRecord) BeforeUpdate(tx *gorm.DB) error {
 	r.UpdatedAt = common.GetTimestamp()
+	r.ReferralGroup = strings.TrimSpace(r.ReferralGroup)
 	return nil
 }
 
@@ -103,9 +112,26 @@ func NormalizeSubscriptionReferralRateBps(rateBps int) int {
 	return rateBps
 }
 
-func ResolveSubscriptionReferralConfig(totalRateBps int, setting dto.UserSetting) SubscriptionReferralConfig {
+func GetEffectiveSubscriptionReferralInviteeRateBps(setting dto.UserSetting, group string, totalRateBps int) int {
 	total := NormalizeSubscriptionReferralRateBps(totalRateBps)
-	invitee := NormalizeSubscriptionReferralRateBps(setting.SubscriptionReferralInviteeRateBps)
+	invitee := setting.SubscriptionReferralInviteeRateBps
+	if group != "" {
+		if groupedRates := setting.SubscriptionReferralInviteeRateBpsByGroup; groupedRates != nil {
+			if groupedRate, ok := groupedRates[group]; ok {
+				invitee = groupedRate
+			}
+		}
+	}
+	invitee = NormalizeSubscriptionReferralRateBps(invitee)
+	if invitee > total {
+		invitee = total
+	}
+	return invitee
+}
+
+func ResolveSubscriptionReferralConfig(totalRateBps int, inviteeRateBps int) SubscriptionReferralConfig {
+	total := NormalizeSubscriptionReferralRateBps(totalRateBps)
+	invitee := NormalizeSubscriptionReferralRateBps(inviteeRateBps)
 	if invitee > total {
 		invitee = total
 	}
@@ -133,18 +159,53 @@ func CalculateSubscriptionReferralQuota(orderMoney float64, rateBps int) int {
 }
 
 func GetSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
+	return GetLegacySubscriptionReferralOverrideByUserID(userID)
+}
+
+func GetLegacySubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}
 
 	var override SubscriptionReferralOverride
-	if err := DB.Where("user_id = ?", userID).First(&override).Error; err != nil {
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, "default").First(&override).Error; err == nil {
+		return &override, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, "").First(&override).Error; err != nil {
 		return nil, err
 	}
 	return &override, nil
 }
 
-func UpsertSubscriptionReferralOverride(userID int, totalRateBps int, operatorID int) (*SubscriptionReferralOverride, error) {
+func getLegacyUngroupedSubscriptionReferralOverrideByUserID(userID int) (*SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var override SubscriptionReferralOverride
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, "").First(&override).Error; err != nil {
+		return nil, err
+	}
+	return &override, nil
+}
+
+func GetSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string) (*SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var override SubscriptionReferralOverride
+	trimmedGroup := strings.TrimSpace(group)
+	if err := DB.Where("user_id = ? AND `group` = ?", userID, trimmedGroup).First(&override).Error; err != nil {
+		return nil, err
+	}
+	return &override, nil
+}
+
+func UpsertSubscriptionReferralOverride(userID int, group string, totalRateBps int, operatorID int) (*SubscriptionReferralOverride, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}
@@ -152,18 +213,30 @@ func UpsertSubscriptionReferralOverride(userID int, totalRateBps int, operatorID
 		return nil, err
 	}
 
-	override := &SubscriptionReferralOverride{}
+	group = strings.TrimSpace(group)
+
+	override := &SubscriptionReferralOverride{
+		UserId:       userID,
+		Group:        group,
+		TotalRateBps: NormalizeSubscriptionReferralRateBps(totalRateBps),
+		CreatedBy:    operatorID,
+		UpdatedBy:    operatorID,
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("user_id = ?", userID).First(override).Error; err != nil {
-			if !errors.Is(err, gorm.ErrRecordNotFound) {
-				return err
-			}
-			override.UserId = userID
-			override.CreatedBy = operatorID
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "user_id"},
+				{Name: "group"},
+			},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"total_rate_bps": override.TotalRateBps,
+				"updated_by":     operatorID,
+				"updated_at":     common.GetTimestamp(),
+			}),
+		}).Create(override).Error; err != nil {
+			return err
 		}
-		override.TotalRateBps = NormalizeSubscriptionReferralRateBps(totalRateBps)
-		override.UpdatedBy = operatorID
-		return tx.Save(override).Error
+		return tx.Where("user_id = ? AND `group` = ?", userID, group).First(override).Error
 	})
 	if err != nil {
 		return nil, err
@@ -178,7 +251,115 @@ func DeleteSubscriptionReferralOverrideByUserID(userID int) error {
 	return DB.Where("user_id = ?", userID).Delete(&SubscriptionReferralOverride{}).Error
 }
 
-func GetEffectiveSubscriptionReferralTotalRateBps(userID int) int {
+func DeleteSubscriptionReferralOverrideByUserIDAndGroup(userID int, group string) error {
+	if userID <= 0 {
+		return errors.New("invalid user id")
+	}
+	return DB.Where("user_id = ? AND `group` = ?", userID, strings.TrimSpace(group)).Delete(&SubscriptionReferralOverride{}).Error
+}
+
+func ListSubscriptionReferralOverridesByUserID(userID int) ([]SubscriptionReferralOverride, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var overrides []SubscriptionReferralOverride
+	if err := DB.Where("user_id = ?", userID).Order("`group` ASC").Find(&overrides).Error; err != nil {
+		return nil, err
+	}
+	return overrides, nil
+}
+
+func ListSubscriptionReferralConfiguredGroups() []string {
+	groupRates := common.GetSubscriptionReferralGroupRatesCopy()
+	groupSet := make(map[string]struct{}, len(groupRates))
+	for group := range groupRates {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		groupSet[trimmedGroup] = struct{}{}
+	}
+
+	for _, group := range listSubscriptionPlanUpgradeGroups() {
+		groupSet[group] = struct{}{}
+	}
+
+	groups := make([]string, 0, len(groupSet))
+	for group := range groupSet {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	if len(groups) == 0 {
+		return []string{"default"}
+	}
+	return groups
+}
+
+func listSubscriptionPlanUpgradeGroups() []string {
+	if DB == nil {
+		return nil
+	}
+
+	var rawGroups []string
+	if err := DB.Model(&SubscriptionPlan{}).
+		Distinct("upgrade_group").
+		Where("upgrade_group <> ''").
+		Pluck("upgrade_group", &rawGroups).Error; err != nil {
+		return nil
+	}
+
+	groupSet := make(map[string]struct{}, len(rawGroups))
+	groups := make([]string, 0, len(rawGroups))
+	for _, group := range rawGroups {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		if _, exists := groupSet[trimmedGroup]; exists {
+			continue
+		}
+		groupSet[trimmedGroup] = struct{}{}
+		groups = append(groups, trimmedGroup)
+	}
+	sort.Strings(groups)
+	return groups
+}
+
+func IsSubscriptionReferralPlanBackedGroup(group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+
+	for _, configuredGroup := range listSubscriptionPlanUpgradeGroups() {
+		if configuredGroup == trimmedGroup {
+			return true
+		}
+	}
+	return false
+}
+
+func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {
+	resolvedGroup := strings.TrimSpace(group)
+	if resolvedGroup != "" {
+		if userID > 0 {
+			override, err := GetSubscriptionReferralOverrideByUserIDAndGroup(userID, resolvedGroup)
+			if err == nil && override != nil {
+				return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
+			}
+
+			override, err = getLegacyUngroupedSubscriptionReferralOverrideByUserID(userID)
+			if err == nil && override != nil {
+				return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
+			}
+		}
+		if common.HasSubscriptionReferralGroupRatesConfigured() {
+			return NormalizeSubscriptionReferralRateBps(common.GetSubscriptionReferralGroupRate(resolvedGroup))
+		}
+		return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
+	}
+
 	if userID > 0 {
 		override, err := GetSubscriptionReferralOverrideByUserID(userID)
 		if err == nil && override != nil {
@@ -188,8 +369,13 @@ func GetEffectiveSubscriptionReferralTotalRateBps(userID int) int {
 	return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
 }
 
-func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder) error {
-	if tx == nil || order == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
+func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
+	if tx == nil || order == nil || plan == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
+		return nil
+	}
+
+	group := strings.TrimSpace(plan.UpgradeGroup)
+	if group == "" {
 		return nil
 	}
 
@@ -212,15 +398,9 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 		return err
 	}
 
-	totalRateBps := common.SubscriptionReferralGlobalRateBps
-	var override SubscriptionReferralOverride
-	if err := tx.Where("user_id = ?", invitee.InviterId).First(&override).Error; err == nil {
-		totalRateBps = override.TotalRateBps
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-
-	cfg := ResolveSubscriptionReferralConfig(totalRateBps, inviter.GetSetting())
+	totalRateBps := GetEffectiveSubscriptionReferralTotalRateBps(inviter.Id, group)
+	inviteeRateBps := GetEffectiveSubscriptionReferralInviteeRateBps(inviter.GetSetting(), group, totalRateBps)
+	cfg := ResolveSubscriptionReferralConfig(totalRateBps, inviteeRateBps)
 	if !cfg.Enabled {
 		return nil
 	}
@@ -230,6 +410,7 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 			OrderId:                order.Id,
 			OrderTradeNo:           order.TradeNo,
 			PlanId:                 order.PlanId,
+			ReferralGroup:          group,
 			PayerUserId:            order.UserId,
 			InviterUserId:          invitee.InviterId,
 			BeneficiaryUserId:      invitee.InviterId,
@@ -246,6 +427,7 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 			OrderId:                order.Id,
 			OrderTradeNo:           order.TradeNo,
 			PlanId:                 order.PlanId,
+			ReferralGroup:          group,
 			PayerUserId:            order.UserId,
 			InviterUserId:          invitee.InviterId,
 			BeneficiaryUserId:      order.UserId,

@@ -19,8 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
+  buildAdminOverrideRows,
+  buildAdminReferralRows,
   buildAdminReferralFormValues,
+  buildGroupedReferralSummaries,
+  buildInvitationDraftPercentInputs,
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
@@ -35,6 +40,7 @@ test('clampInviteeRateBps caps invitee rate to total rate', () => {
 
 test('buildReferralRateSummary derives inviter rate from total minus invitee', () => {
   assert.deepEqual(buildReferralRateSummary(2000, 500), {
+    group: '',
     totalRateBps: 2000,
     inviteeRateBps: 500,
     inviterRateBps: 1500,
@@ -56,18 +62,314 @@ test('normalizeAdminReferralPayload keeps BPS integers within 0-10000', () => {
   );
 });
 
-test('parseAdminReferralSettings normalizes admin API payload for local form state', () => {
+test('parseAdminReferralSettings normalizes grouped admin API payload for local form state', () => {
   assert.deepEqual(
     parseAdminReferralSettings({
       enabled: 1,
-      total_rate_bps: '2500',
+      group_rates: {
+        default: '4500',
+        vip: 3000,
+      },
     }),
     {
       enabled: true,
-      totalRateBps: 2500,
-      totalRatePercent: 25,
+      groups: ['default', 'vip'],
+      groupRates: {
+        default: 4500,
+        vip: 3000,
+      },
     },
   );
+});
+
+test('buildAdminReferralRows maps group names and rates into table rows', () => {
+  assert.deepEqual(
+    buildAdminReferralRows(['default', 'vip'], {
+      default: 4500,
+      vip: 3000,
+    }),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'vip',
+        enabled: true,
+        totalRateBps: 3000,
+        totalRatePercent: 30,
+      },
+    ],
+  );
+});
+
+test('buildAdminReferralRows sorts rows alphabetically and includes rates missing from explicit group list', () => {
+  assert.deepEqual(
+    buildAdminReferralRows(['vip'], {
+      zeta: 1200,
+      default: 4500,
+      vip: 3000,
+    }),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'vip',
+        enabled: true,
+        totalRateBps: 3000,
+        totalRatePercent: 30,
+      },
+      {
+        group: 'zeta',
+        enabled: true,
+        totalRateBps: 1200,
+        totalRatePercent: 12,
+      },
+    ],
+  );
+});
+
+test('buildAdminReferralRows renders from group_rates when no explicit group list is available', () => {
+  assert.deepEqual(
+    buildAdminReferralRows([], {
+      vip: 3000,
+      default: 4500,
+    }),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'vip',
+        enabled: true,
+        totalRateBps: 3000,
+        totalRatePercent: 30,
+      },
+    ],
+  );
+});
+
+test('plan-backed settings groups render rows even when missing from group_rates', () => {
+  const parsedSettings = parseAdminReferralSettings({
+    enabled: true,
+    groups: ['default', 'retired'],
+    group_rates: {
+      default: 4500,
+    },
+  });
+
+  assert.deepEqual(
+    buildAdminReferralRows(parsedSettings.groups, parsedSettings.groupRates),
+    [
+      {
+        group: 'default',
+        enabled: true,
+        totalRateBps: 4500,
+        totalRatePercent: 45,
+      },
+      {
+        group: 'retired',
+        enabled: false,
+        totalRateBps: 0,
+        totalRatePercent: 0,
+      },
+    ],
+  );
+});
+
+test('buildGroupedReferralSummaries derives inviter rate per group', () => {
+  assert.deepEqual(
+    buildGroupedReferralSummaries([
+      {
+        group: 'default',
+        total_rate_bps: 4500,
+        invitee_rate_bps: 500,
+      },
+      {
+        group: 'vip',
+        total_rate_bps: 3000,
+        invitee_rate_bps: 0,
+      },
+    ]),
+    [
+      {
+        group: 'default',
+        totalRateBps: 4500,
+        inviteeRateBps: 500,
+        inviterRateBps: 4000,
+      },
+      {
+        group: 'vip',
+        totalRateBps: 3000,
+        inviteeRateBps: 0,
+        inviterRateBps: 3000,
+      },
+    ],
+  );
+});
+
+test('buildAdminOverrideRows normalizes grouped override API payload', () => {
+  assert.deepEqual(
+    buildAdminOverrideRows([
+      {
+        group: 'default',
+        effective_total_rate_bps: 4500,
+        has_override: false,
+        override_rate_bps: null,
+      },
+      {
+        group: 'vip',
+        effective_total_rate_bps: 3000,
+        has_override: true,
+        override_rate_bps: 2500,
+      },
+    ]),
+    [
+      {
+        group: 'default',
+        effectiveTotalRateBps: 4500,
+        hasOverride: false,
+        overrideRateBps: null,
+        inputPercent: 45,
+      },
+      {
+        group: 'vip',
+        effectiveTotalRateBps: 3000,
+        hasOverride: true,
+        overrideRateBps: 2500,
+        inputPercent: 25,
+      },
+    ],
+  );
+});
+
+test('buildGroupedReferralSummaries preserves group names for invitation cards', () => {
+  assert.deepEqual(
+    buildGroupedReferralSummaries([
+      {
+        group: 'default',
+        total_rate_bps: 4500,
+        invitee_rate_bps: 500,
+      },
+    ]),
+    [
+      {
+        group: 'default',
+        totalRateBps: 4500,
+        inviteeRateBps: 500,
+        inviterRateBps: 4000,
+      },
+    ],
+  );
+});
+
+test('buildInvitationDraftPercentInputs preserves existing drafts when persisted groups refresh', () => {
+  assert.deepEqual(
+    buildInvitationDraftPercentInputs(
+      {
+        default: 3.5,
+        vip: 12.34,
+      },
+      [
+        {
+          group: 'default',
+          totalRateBps: 4500,
+          inviteeRateBps: 400,
+        },
+        {
+          group: 'vip',
+          totalRateBps: 3000,
+          inviteeRateBps: 500,
+        },
+      ],
+    ),
+    {
+      default: 3.5,
+      vip: 12.34,
+    },
+  );
+});
+
+test('buildInvitationDraftPercentInputs preserves the saving group draft when persisted data has not changed', () => {
+  assert.deepEqual(
+    buildInvitationDraftPercentInputs(
+      {
+        default: 7.25,
+        vip: 12.34,
+      },
+      [
+        {
+          group: 'default',
+          totalRateBps: 4500,
+          inviteeRateBps: 500,
+        },
+        {
+          group: 'vip',
+          totalRateBps: 3000,
+          inviteeRateBps: 500,
+        },
+      ],
+      'default',
+    ),
+    {
+      default: 7.25,
+      vip: 12.34,
+    },
+  );
+});
+
+test('InvitationCard does not reference removed referralSavingGroup state', () => {
+  const invitationCardSource = readFileSync(
+    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.equal(invitationCardSource.includes('referralSavingGroup'), false);
+});
+
+test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max validation', () => {
+  const invitationCardSource = readFileSync(
+    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(
+    invitationCardSource,
+    /import\s*{[\s\S]*\brateBpsToPercentNumber\b[\s\S]*}\s*from\s*['"]\.\.\/\.\.\/helpers\/subscriptionReferral['"]/,
+  );
+});
+
+test('SettingsSubscriptionReferral reapplies saved settings from catalog groups instead of stale rendered rows', () => {
+  const settingsSource = readFileSync(
+    new URL(
+      '../src/pages/Setting/Operation/SettingsSubscriptionReferral.jsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(
+    settingsSource,
+    /\[catalogGroupNames,\s*setCatalogGroupNames\]\s*=\s*useState\(\[\]\)/,
+  );
+  assert.equal(
+    settingsSource.includes('setGroupNames(nextRows.map((row) => row.group));'),
+    false,
+  );
+  assert.equal(
+    settingsSource.includes('applySettings(res.data?.data || {}, groupNames);'),
+    false,
+  );
+  assert.match(settingsSource, /settingsPayload\?\.groups/);
 });
 
 test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {

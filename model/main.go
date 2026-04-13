@@ -15,6 +15,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -59,6 +60,10 @@ func initCol() {
 	}
 	// log sql type and database type
 	//common.SysLog("Using Log SQL Type: " + common.LogSqlType)
+}
+
+func InitColumnMetadata() {
+	initCol()
 }
 
 var DB *gorm.DB
@@ -254,6 +259,9 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	if err := prepareSubscriptionReferralOverrideSchemaBeforeAutoMigrate(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -286,6 +294,12 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
+		return err
+	}
+	if err := ensureSubscriptionReferralRecordSchema(); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -299,6 +313,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := prepareSubscriptionReferralOverrideSchemaBeforeAutoMigrate(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -356,6 +373,12 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := ensureSubscriptionReferralOverrideSchema(); err != nil {
+		return err
+	}
+	if err := ensureSubscriptionReferralRecordSchema(); err != nil {
+		return err
+	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
 			return err
@@ -375,6 +398,120 @@ func migrateLOGDB() error {
 		return err
 	}
 	return nil
+}
+
+func prepareSubscriptionReferralOverrideSchemaBeforeAutoMigrate() error {
+	model := &SubscriptionReferralOverride{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+	if err := ensureSubscriptionReferralOverrideGroupColumn(); err != nil {
+		return err
+	}
+	if err := reconcileSubscriptionReferralOverrideDuplicates(); err != nil {
+		return err
+	}
+	return dropSubscriptionReferralOverrideIndexes(false)
+}
+
+func ensureSubscriptionReferralOverrideSchema() error {
+	model := &SubscriptionReferralOverride{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+	if err := ensureSubscriptionReferralOverrideGroupColumn(); err != nil {
+		return err
+	}
+	if err := reconcileSubscriptionReferralOverrideDuplicates(); err != nil {
+		return err
+	}
+	if err := dropSubscriptionReferralOverrideIndexes(true); err != nil {
+		return err
+	}
+	return DB.Migrator().CreateIndex(model, "idx_sub_referral_override_group")
+}
+
+func reconcileSubscriptionReferralOverrideDuplicates() error {
+	type overrideKey struct {
+		UserID int
+		Group  string
+	}
+
+	var overrides []SubscriptionReferralOverride
+	if err := DB.
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "user_id"}}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "group"}}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "updated_at"}, Desc: true}).
+		Order(clause.OrderByColumn{Column: clause.Column{Name: "id"}, Desc: true}).
+		Find(&overrides).Error; err != nil {
+		return err
+	}
+
+	seen := make(map[overrideKey]struct{}, len(overrides))
+	duplicateIDs := make([]int, 0)
+	for _, override := range overrides {
+		key := overrideKey{UserID: override.UserId, Group: override.Group}
+		if _, ok := seen[key]; ok {
+			duplicateIDs = append(duplicateIDs, override.Id)
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+
+	if len(duplicateIDs) == 0 {
+		return nil
+	}
+	return DB.Where("id IN ?", duplicateIDs).Delete(&SubscriptionReferralOverride{}).Error
+}
+
+func ensureSubscriptionReferralOverrideGroupColumn() error {
+	model := &SubscriptionReferralOverride{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+	if DB.Migrator().HasColumn(model, "Group") {
+		return nil
+	}
+	return DB.Migrator().AddColumn(model, "Group")
+}
+
+func dropSubscriptionReferralOverrideIndexes(includeTargetIndex bool) error {
+	model := &SubscriptionReferralOverride{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+
+	indexNames := []string{
+		"idx_subscription_referral_overrides_user_id",
+		"idx_subscription_referral_override_user_group",
+	}
+	if includeTargetIndex {
+		indexNames = append(indexNames, "idx_sub_referral_override_group")
+	}
+	for _, indexName := range indexNames {
+		if DB.Migrator().HasIndex(model, indexName) {
+			if err := DB.Migrator().DropIndex(model, indexName); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func ensureSubscriptionReferralRecordSchema() error {
+	model := &SubscriptionReferralRecord{}
+	if !DB.Migrator().HasTable(model) {
+		return nil
+	}
+	if !DB.Migrator().HasColumn(model, "ReferralGroup") {
+		if err := DB.Migrator().AddColumn(model, "ReferralGroup"); err != nil {
+			return err
+		}
+	}
+	if DB.Migrator().HasIndex(model, "ReferralGroup") {
+		return nil
+	}
+	return DB.Migrator().CreateIndex(model, "ReferralGroup")
 }
 
 type sqliteColumnDef struct {

@@ -20,12 +20,14 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 	originalUsingPostgreSQL := common.UsingPostgreSQL
 	originalRedisEnabled := common.RedisEnabled
 	originalBatchUpdateEnabled := common.BatchUpdateEnabled
+	originalCommonGroupCol := commonGroupCol
 
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
+	commonGroupCol = "`group`"
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -60,6 +62,7 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 		common.UsingPostgreSQL = originalUsingPostgreSQL
 		common.RedisEnabled = originalRedisEnabled
 		common.BatchUpdateEnabled = originalBatchUpdateEnabled
+		commonGroupCol = originalCommonGroupCol
 	})
 
 	return db
@@ -98,6 +101,16 @@ func seedReferralPlan(t *testing.T, db *gorm.DB, price float64) *SubscriptionPla
 	}
 	InvalidateSubscriptionPlanCache(plan.Id)
 	return plan
+}
+
+func setReferralPlanUpgradeGroup(t *testing.T, db *gorm.DB, plan *SubscriptionPlan, group string) {
+	t.Helper()
+
+	plan.UpgradeGroup = group
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update plan upgrade group: %v", err)
+	}
+	InvalidateSubscriptionPlanCache(plan.Id)
 }
 
 func seedPendingReferralOrder(t *testing.T, db *gorm.DB, userID, planID int, tradeNo string, money float64) *SubscriptionOrder {
@@ -155,6 +168,47 @@ func TestCompleteSubscriptionOrderWithoutInviterSkipsReferralRecords(t *testing.
 	}
 }
 
+func TestCompleteSubscriptionOrderWithoutUpgradeGroupSkipsReferralRecords(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalRate := common.SubscriptionReferralGlobalRateBps
+	originalQuotaPerUnit := common.QuotaPerUnit
+	t.Cleanup(func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalRate
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	common.QuotaPerUnit = 100
+
+	inviter := seedReferralUser(t, db, "inviter-no-upgrade-group", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 500,
+	})
+	invitee := seedReferralUser(t, db, "invitee-no-upgrade-group", inviter.Id, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 10)
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-no-upgrade-group", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	inviterAfter, _ := GetUserById(inviter.Id, true)
+	inviteeAfter, _ := GetUserById(invitee.Id, true)
+	if inviterAfter.AffQuota != 0 || inviteeAfter.AffQuota != 0 {
+		t.Fatalf("expected no referral quota when plan upgrade group is empty, got inviter=%d invitee=%d", inviterAfter.AffQuota, inviteeAfter.AffQuota)
+	}
+
+	var count int64
+	if err := db.Model(&SubscriptionReferralRecord{}).Where("order_trade_no = ?", order.TradeNo).Count(&count).Error; err != nil {
+		t.Fatalf("failed to count referral records: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected 0 referral records, got %d", count)
+	}
+}
+
 func TestCompleteSubscriptionOrderCreditsInviterAndInviteeReferral(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	originalEnabled := common.SubscriptionReferralEnabled
@@ -175,6 +229,7 @@ func TestCompleteSubscriptionOrderCreditsInviterAndInviteeReferral(t *testing.T)
 	})
 	invitee := seedReferralUser(t, db, "invitee", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "default")
 	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-1", 10)
 
 	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
@@ -193,6 +248,187 @@ func TestCompleteSubscriptionOrderCreditsInviterAndInviteeReferral(t *testing.T)
 	}
 	if count != 2 {
 		t.Fatalf("expected 2 referral records, got %d", count)
+	}
+}
+
+func TestCompleteSubscriptionOrderCreditsConfiguredGroupReferral(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalRate := common.SubscriptionReferralGlobalRateBps
+	originalQuotaPerUnit := common.QuotaPerUnit
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalRate
+		common.QuotaPerUnit = originalQuotaPerUnit
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	common.QuotaPerUnit = 100
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"vip":4500}`); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+
+	inviter := seedReferralUser(t, db, "group-config-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
+	})
+	invitee := seedReferralUser(t, db, "group-config-invitee", inviter.Id, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-group-configured", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	inviterAfter, _ := GetUserById(inviter.Id, true)
+	inviteeAfter, _ := GetUserById(invitee.Id, true)
+	if inviterAfter.AffQuota != 400 || inviteeAfter.AffQuota != 50 {
+		t.Fatalf("unexpected quotas inviter=%d invitee=%d", inviterAfter.AffQuota, inviteeAfter.AffQuota)
+	}
+
+	var records []SubscriptionReferralRecord
+	if err := db.Where("order_trade_no = ?", order.TradeNo).Order("beneficiary_role asc").Find(&records).Error; err != nil {
+		t.Fatalf("failed to load referral records: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 referral records, got %d", len(records))
+	}
+	for _, record := range records {
+		if record.ReferralGroup != "vip" {
+			t.Fatalf("ReferralGroup = %q, want vip", record.ReferralGroup)
+		}
+		if record.TotalRateBpsSnapshot != 4500 {
+			t.Fatalf("TotalRateBpsSnapshot = %d, want 4500", record.TotalRateBpsSnapshot)
+		}
+		if record.InviteeRateBpsSnapshot != 500 {
+			t.Fatalf("InviteeRateBpsSnapshot = %d, want 500", record.InviteeRateBpsSnapshot)
+		}
+	}
+}
+
+func TestCompleteSubscriptionOrderUsesGroupedOverrideRate(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalRate := common.SubscriptionReferralGlobalRateBps
+	originalQuotaPerUnit := common.QuotaPerUnit
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalRate
+		common.QuotaPerUnit = originalQuotaPerUnit
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	common.QuotaPerUnit = 100
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"vip":4500}`); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+
+	inviter := seedReferralUser(t, db, "group-override-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
+	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "vip", 2000, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
+
+	invitee := seedReferralUser(t, db, "group-override-invitee", inviter.Id, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-group-override", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	inviterAfter, _ := GetUserById(inviter.Id, true)
+	inviteeAfter, _ := GetUserById(invitee.Id, true)
+	if inviterAfter.AffQuota != 150 || inviteeAfter.AffQuota != 50 {
+		t.Fatalf("unexpected quotas inviter=%d invitee=%d", inviterAfter.AffQuota, inviteeAfter.AffQuota)
+	}
+
+	var inviterRecord SubscriptionReferralRecord
+	if err := db.Where("order_trade_no = ? AND beneficiary_role = ?", order.TradeNo, SubscriptionReferralBeneficiaryRoleInviter).First(&inviterRecord).Error; err != nil {
+		t.Fatalf("failed to load inviter referral record: %v", err)
+	}
+	if inviterRecord.ReferralGroup != "vip" {
+		t.Fatalf("ReferralGroup = %q, want vip", inviterRecord.ReferralGroup)
+	}
+	if inviterRecord.TotalRateBpsSnapshot != 2000 {
+		t.Fatalf("TotalRateBpsSnapshot = %d, want 2000", inviterRecord.TotalRateBpsSnapshot)
+	}
+	if inviterRecord.InviteeRateBpsSnapshot != 500 {
+		t.Fatalf("InviteeRateBpsSnapshot = %d, want 500", inviterRecord.InviteeRateBpsSnapshot)
+	}
+}
+
+func TestCompleteSubscriptionOrderIgnoresInviteeCurrentGroupForReferralRates(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalRate := common.SubscriptionReferralGlobalRateBps
+	originalQuotaPerUnit := common.QuotaPerUnit
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+		t.Fatalf("reset UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+	t.Cleanup(func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalRate
+		common.QuotaPerUnit = originalQuotaPerUnit
+		if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
+			t.Fatalf("cleanup UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+		}
+	})
+
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	common.QuotaPerUnit = 100
+	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{"vip":3000}`); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
+	}
+
+	inviter := seedReferralUser(t, db, "group-agnostic-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBps: 500,
+	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "", 2500, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
+
+	invitee := seedReferralUser(t, db, "group-agnostic-invitee", inviter.Id, dto.UserSetting{})
+	if err := db.Model(&User{}).Where("id = ?", invitee.Id).Update("group", "vip").Error; err != nil {
+		t.Fatalf("failed to update invitee group: %v", err)
+	}
+	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "default")
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-ignore-current-group", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	var inviterRecord SubscriptionReferralRecord
+	if err := db.Where("order_trade_no = ? AND beneficiary_role = ?", order.TradeNo, SubscriptionReferralBeneficiaryRoleInviter).First(&inviterRecord).Error; err != nil {
+		t.Fatalf("failed to load inviter referral record: %v", err)
+	}
+	if inviterRecord.TotalRateBpsSnapshot != 2500 {
+		t.Fatalf("TotalRateBpsSnapshot = %d, want 2500", inviterRecord.TotalRateBpsSnapshot)
+	}
+	if inviterRecord.AppliedRateBps != 2000 {
+		t.Fatalf("AppliedRateBps = %d, want 2000", inviterRecord.AppliedRateBps)
+	}
+	if inviterRecord.RewardQuota != 200 {
+		t.Fatalf("RewardQuota = %d, want 200", inviterRecord.RewardQuota)
 	}
 }
 
@@ -216,6 +452,7 @@ func TestCompleteSubscriptionOrderIsIdempotentForReferralRecords(t *testing.T) {
 	})
 	invitee := seedReferralUser(t, db, "invitee-idempotent", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "default")
 	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-2", 10)
 
 	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
@@ -260,6 +497,7 @@ func TestReverseSubscriptionReferralByTradeNoCreatesDebtWhenAffQuotaIsInsufficie
 	})
 	invitee := seedReferralUser(t, db, "invitee-reverse", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "default")
 	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-3", 10)
 
 	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
