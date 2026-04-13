@@ -38,6 +38,7 @@ var (
 	ErrSubscriptionPlanOutOfStock     = errors.New("库存不足")
 	ErrSubscriptionPlanStockBlocked   = errors.New("存在待支付订单，暂不允许切换库存周期")
 	ErrSubscriptionPlanStockTooSmall  = errors.New("库存不能小于已锁定和已售数量")
+	ErrSubscriptionPlanStockInvariant = errors.New("订阅库存状态不一致")
 )
 
 const (
@@ -268,61 +269,110 @@ func (p *SubscriptionPlan) PopulateStockAvailable() {
 	p.StockAvailable = p.GetStockAvailable()
 }
 
+func lockSubscriptionPlanForStockTx(tx *gorm.DB, planID int, includeDeleted bool) (*SubscriptionPlan, error) {
+	if tx == nil {
+		return nil, errors.New("tx is nil")
+	}
+	if planID <= 0 {
+		return nil, errors.New("invalid plan id")
+	}
+	query := tx.Set("gorm:query_option", "FOR UPDATE")
+	if includeDeleted {
+		query = query.Unscoped()
+	}
+	var lockedPlan SubscriptionPlan
+	if err := query.Where("id = ?", planID).First(&lockedPlan).Error; err != nil {
+		return nil, err
+	}
+	return &lockedPlan, nil
+}
+
 func reserveSubscriptionPlanStockTx(tx *gorm.DB, plan *SubscriptionPlan, amount int) error {
 	if tx == nil || plan == nil || amount <= 0 || !plan.HasStockLimit() {
 		return nil
 	}
-	if plan.GetStockAvailable() < amount {
+	lockedPlan, err := lockSubscriptionPlanForStockTx(tx, plan.Id, false)
+	if err != nil {
+		return err
+	}
+	if lockedPlan.GetStockAvailable() < amount {
 		return ErrSubscriptionPlanOutOfStock
 	}
-	plan.StockLocked += amount
-	return tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_locked", plan.StockLocked).Error
+	lockedPlan.StockLocked += amount
+	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", lockedPlan.Id).Update("stock_locked", lockedPlan.StockLocked).Error; err != nil {
+		return err
+	}
+	*plan = *lockedPlan
+	return nil
 }
 
 func releaseReservedSubscriptionOrderStockTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
 	if tx == nil || order == nil || plan == nil || order.StockReserved <= 0 {
 		return nil
 	}
-	if plan.StockLocked < order.StockReserved {
-		plan.StockLocked = 0
-	} else {
-		plan.StockLocked -= order.StockReserved
-	}
-	order.StockReserved = 0
-	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_locked", plan.StockLocked).Error; err != nil {
+	lockedPlan, err := lockSubscriptionPlanForStockTx(tx, plan.Id, true)
+	if err != nil {
 		return err
 	}
-	return tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 0).Error
+	if lockedPlan.StockLocked < order.StockReserved {
+		return ErrSubscriptionPlanStockInvariant
+	}
+	lockedPlan.StockLocked -= order.StockReserved
+	order.StockReserved = 0
+	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", lockedPlan.Id).Update("stock_locked", lockedPlan.StockLocked).Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 0).Error; err != nil {
+		return err
+	}
+	*plan = *lockedPlan
+	return nil
 }
 
 func consumeReservedSubscriptionOrderStockTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
 	if tx == nil || order == nil || plan == nil || order.StockReserved <= 0 {
 		return nil
 	}
-	if plan.StockLocked < order.StockReserved {
-		return ErrSubscriptionPlanOutOfStock
+	lockedPlan, err := lockSubscriptionPlanForStockTx(tx, plan.Id, true)
+	if err != nil {
+		return err
 	}
-	plan.StockLocked -= order.StockReserved
-	plan.StockSold += order.StockReserved
+	if lockedPlan.StockLocked < order.StockReserved {
+		return ErrSubscriptionPlanStockInvariant
+	}
+	lockedPlan.StockLocked -= order.StockReserved
+	lockedPlan.StockSold += order.StockReserved
 	order.StockReserved = 0
-	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
-		"stock_locked": plan.StockLocked,
-		"stock_sold":   plan.StockSold,
+	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", lockedPlan.Id).Updates(map[string]interface{}{
+		"stock_locked": lockedPlan.StockLocked,
+		"stock_sold":   lockedPlan.StockSold,
 	}).Error; err != nil {
 		return err
 	}
-	return tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 0).Error
+	if err := tx.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Update("stock_reserved", 0).Error; err != nil {
+		return err
+	}
+	*plan = *lockedPlan
+	return nil
 }
 
 func consumeSubscriptionPlanStockDirectTx(tx *gorm.DB, plan *SubscriptionPlan, amount int) error {
 	if tx == nil || plan == nil || amount <= 0 || !plan.HasStockLimit() {
 		return nil
 	}
-	if plan.GetStockAvailable() < amount {
+	lockedPlan, err := lockSubscriptionPlanForStockTx(tx, plan.Id, false)
+	if err != nil {
+		return err
+	}
+	if lockedPlan.GetStockAvailable() < amount {
 		return ErrSubscriptionPlanOutOfStock
 	}
-	plan.StockSold += amount
-	return tx.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Update("stock_sold", plan.StockSold).Error
+	lockedPlan.StockSold += amount
+	if err := tx.Model(&SubscriptionPlan{}).Where("id = ?", lockedPlan.Id).Update("stock_sold", lockedPlan.StockSold).Error; err != nil {
+		return err
+	}
+	*plan = *lockedPlan
+	return nil
 }
 
 // User subscription instance
