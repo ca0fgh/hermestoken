@@ -384,6 +384,7 @@ func (user *User) Insert(inviterId int) error {
 			return err
 		}
 	}
+	user.normalizeGroupForCreate()
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
@@ -443,6 +444,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 	}
+	user.normalizeGroupForCreate()
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
 
@@ -458,6 +460,12 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	}
 
 	return nil
+}
+
+func (user *User) normalizeGroupForCreate() {
+	if strings.TrimSpace(user.Group) == "" {
+		user.Group = "default"
+	}
 }
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
