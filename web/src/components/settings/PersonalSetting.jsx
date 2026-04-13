@@ -89,7 +89,22 @@ const PersonalSetting = () => {
     upstreamModelUpdateNotifyEnabled: false,
     acceptUnsetModelRatioModel: false,
     recordIpLog: false,
+    quotaTopupEnabled: true,
   });
+
+  const parseUserSetting = (rawSetting) => {
+    if (!rawSetting) {
+      return {};
+    }
+    if (typeof rawSetting === 'object') {
+      return rawSetting;
+    }
+    try {
+      return JSON.parse(rawSetting);
+    } catch (error) {
+      return {};
+    }
+  };
 
   useEffect(() => {
     let saved = localStorage.getItem('status');
@@ -147,7 +162,7 @@ const PersonalSetting = () => {
 
   useEffect(() => {
     if (userState?.user?.setting) {
-      const settings = JSON.parse(userState.user.setting);
+      const settings = parseUserSetting(userState.user.setting);
       setNotificationSettings({
         warningType: settings.notify_type || 'email',
         warningThreshold: settings.quota_warning_threshold || 500000,
@@ -164,6 +179,7 @@ const PersonalSetting = () => {
         acceptUnsetModelRatioModel:
           settings.accept_unset_model_ratio_model || false,
         recordIpLog: settings.record_ip_log || false,
+        quotaTopupEnabled: settings.quota_topup_enabled ?? true,
       });
     }
   }, [userState?.user?.setting]);
@@ -435,6 +451,7 @@ const PersonalSetting = () => {
         accept_unset_model_ratio_model:
           notificationSettings.acceptUnsetModelRatioModel,
         record_ip_log: notificationSettings.recordIpLog,
+        quota_topup_enabled: notificationSettings.quotaTopupEnabled,
       });
 
       if (res.data.success) {

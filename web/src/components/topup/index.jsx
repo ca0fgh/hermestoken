@@ -104,6 +104,7 @@ const TopUp = () => {
     useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
   const [allSubscriptions, setAllSubscriptions] = useState([]);
+  const [quotaTopupEnabled, setQuotaTopupEnabled] = useState(true);
 
   // 预设充值额度选项
   const [presetAmounts, setPresetAmounts] = useState([]);
@@ -149,6 +150,19 @@ const TopUp = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const getQuotaTopupEnabledFromUser = (userData) => {
+    let parsedSetting = {};
+    try {
+      parsedSetting =
+        typeof userData?.setting === 'string'
+          ? JSON.parse(userData.setting || '{}')
+          : userData?.setting || {};
+    } catch (error) {
+      parsedSetting = {};
+    }
+    return parsedSetting.quota_topup_enabled ?? true;
   };
 
   const openTopUpLink = () => {
@@ -314,32 +328,32 @@ const TopUp = () => {
 
   const waffoTopUp = async (payMethodIndex) => {
     try {
-        if (topUpCount < waffoMinTopUp) {
-            showError(t('充值数量不能小于') + waffoMinTopUp);
-            return;
-        }
-        setPaymentLoading(true);
-        const requestBody = {
-            amount: parseInt(topUpCount),
-        };
-        if (payMethodIndex != null) {
-            requestBody.pay_method_index = payMethodIndex;
-        }
-        const res = await API.post('/api/user/waffo/pay', requestBody);
-        if (res !== undefined) {
-            const { message, data } = res.data;
-            if (message === 'success' && data?.payment_url) {
-                window.open(data.payment_url, '_blank');
-            } else {
-                showError(data || t('支付请求失败'));
-            }
+      if (topUpCount < waffoMinTopUp) {
+        showError(t('充值数量不能小于') + waffoMinTopUp);
+        return;
+      }
+      setPaymentLoading(true);
+      const requestBody = {
+        amount: parseInt(topUpCount),
+      };
+      if (payMethodIndex != null) {
+        requestBody.pay_method_index = payMethodIndex;
+      }
+      const res = await API.post('/api/user/waffo/pay', requestBody);
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success' && data?.payment_url) {
+          window.open(data.payment_url, '_blank');
         } else {
-            showError(res);
+          showError(data || t('支付请求失败'));
         }
+      } else {
+        showError(res);
+      }
     } catch (e) {
-        showError(t('支付请求失败'));
+      showError(t('支付请求失败'));
     } finally {
-        setPaymentLoading(false);
+      setPaymentLoading(false);
     }
   };
 
@@ -353,6 +367,7 @@ const TopUp = () => {
     const { success, message, data } = res.data;
     if (success) {
       userDispatch({ type: 'login', payload: data });
+      setQuotaTopupEnabled(getQuotaTopupEnabledFromUser(data));
     } else {
       showError(message);
     }
@@ -635,6 +650,10 @@ const TopUp = () => {
   }, []);
 
   useEffect(() => {
+    setQuotaTopupEnabled(getQuotaTopupEnabledFromUser(userState?.user));
+  }, [userState?.user?.setting]);
+
+  useEffect(() => {
     if (affFetchedRef.current) return;
     affFetchedRef.current = true;
     getAffLink().then();
@@ -833,6 +852,7 @@ const TopUp = () => {
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
         <RechargeCard
           t={t}
+          quotaTopupEnabled={quotaTopupEnabled}
           enableOnlineTopUp={enableOnlineTopUp}
           enableStripeTopUp={enableStripeTopUp}
           enableCreemTopUp={enableCreemTopUp}

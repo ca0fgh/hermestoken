@@ -15,6 +15,7 @@ type UserSetting struct {
 	RecordIpLog                               bool           `json:"record_ip_log,omitempty"`                                   // 是否记录请求和错误日志IP
 	SidebarModules                            string         `json:"sidebar_modules,omitempty"`                                 // SidebarModules 左侧边栏模块配置
 	BillingPreference                         string         `json:"billing_preference,omitempty"`                              // BillingPreference 扣费策略（订阅/钱包）
+	QuotaTopupEnabled                         *bool          `json:"quota_topup_enabled,omitempty"`                             // QuotaTopupEnabled 是否显示钱包管理中的额度充值
 	SubscriptionReferralInviteeRateBps        int            `json:"subscription_referral_invitee_rate_bps,omitempty"`          // 邀请人分给被邀请人的订阅返佣比例（BPS）
 	SubscriptionReferralInviteeRateBpsByGroup map[string]int `json:"subscription_referral_invitee_rate_bps_by_group,omitempty"` // 按分组配置的被邀请人订阅返佣比例（BPS）
 	Language                                  string         `json:"language,omitempty"`                                        // Language 用户语言偏好 (zh, en)
@@ -22,6 +23,10 @@ type UserSetting struct {
 
 func (s UserSetting) Clone() UserSetting {
 	cloned := s
+	if s.QuotaTopupEnabled != nil {
+		enabled := *s.QuotaTopupEnabled
+		cloned.QuotaTopupEnabled = &enabled
+	}
 	if s.SubscriptionReferralInviteeRateBpsByGroup != nil {
 		cloned.SubscriptionReferralInviteeRateBpsByGroup = make(map[string]int, len(s.SubscriptionReferralInviteeRateBpsByGroup))
 		for group, rate := range s.SubscriptionReferralInviteeRateBpsByGroup {
@@ -41,6 +46,13 @@ func (s UserSetting) WithMigratedSubscriptionReferralInviteeRate(group string) U
 	}
 	cloned.SubscriptionReferralInviteeRateBps = 0
 	return cloned
+}
+
+func (s UserSetting) IsQuotaTopupEnabled() bool {
+	if s.QuotaTopupEnabled == nil {
+		return true
+	}
+	return *s.QuotaTopupEnabled
 }
 
 var (
