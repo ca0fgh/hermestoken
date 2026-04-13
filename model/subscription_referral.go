@@ -137,7 +137,7 @@ func ResolveSubscriptionReferralConfig(totalRateBps int, inviteeRateBps int) Sub
 		invitee = total
 	}
 	return SubscriptionReferralConfig{
-		Enabled:        common.SubscriptionReferralEnabled && total > 0,
+		Enabled:        total > 0,
 		TotalRateBps:   total,
 		InviteeRateBps: invitee,
 		InviterRateBps: total - invitee,
@@ -275,26 +275,7 @@ func ListSubscriptionReferralOverridesByUserID(userID int) ([]SubscriptionReferr
 }
 
 func ListSubscriptionReferralConfiguredGroups() []string {
-	groupRates := common.GetSubscriptionReferralGroupRatesCopy()
-	groupSet := make(map[string]struct{}, len(groupRates))
-	for group := range groupRates {
-		trimmedGroup := strings.TrimSpace(group)
-		if trimmedGroup == "" {
-			continue
-		}
-		groupSet[trimmedGroup] = struct{}{}
-	}
-
-	for _, group := range listSubscriptionPlanUpgradeGroups() {
-		groupSet[group] = struct{}{}
-	}
-
-	groups := make([]string, 0, len(groupSet))
-	for group := range groupSet {
-		groups = append(groups, group)
-	}
-	sort.Strings(groups)
-	return groups
+	return listSubscriptionPlanUpgradeGroups()
 }
 
 func listSubscriptionPlanUpgradeGroups() []string {
@@ -479,24 +460,19 @@ func validateNoLegacySubscriptionReferralData() error {
 
 func GetEffectiveSubscriptionReferralTotalRateBps(userID int, group string) int {
 	resolvedGroup := strings.TrimSpace(group)
-	if resolvedGroup == "" {
-		return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
+	if resolvedGroup == "" || userID <= 0 {
+		return 0
 	}
 
-	if userID > 0 {
-		override, err := GetSubscriptionReferralOverrideByUserIDAndGroup(userID, resolvedGroup)
-		if err == nil && override != nil {
-			return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
-		}
+	override, err := GetSubscriptionReferralOverrideByUserIDAndGroup(userID, resolvedGroup)
+	if err == nil && override != nil {
+		return NormalizeSubscriptionReferralRateBps(override.TotalRateBps)
 	}
-	if common.HasSubscriptionReferralGroupRatesConfigured() {
-		return NormalizeSubscriptionReferralRateBps(common.GetSubscriptionReferralGroupRate(resolvedGroup))
-	}
-	return NormalizeSubscriptionReferralRateBps(common.SubscriptionReferralGlobalRateBps)
+	return 0
 }
 
 func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
-	if tx == nil || order == nil || plan == nil || !common.SubscriptionReferralEnabled || order.Money <= 0 {
+	if tx == nil || order == nil || plan == nil || order.Money <= 0 {
 		return nil
 	}
 

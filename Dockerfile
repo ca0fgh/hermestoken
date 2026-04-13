@@ -1,17 +1,29 @@
 FROM mirror.gcr.io/oven/bun:1 AS builder
 ARG NPM_REGISTRY=https://registry.npmmirror.com
+ARG WEB_DIST_STRATEGY=build
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 WORKDIR /build
 COPY . .
-RUN if [ -d web/dist ] && [ -n "$(ls -A web/dist 2>/dev/null)" ]; then \
-      mkdir -p /build/dist && cp -R web/dist/. /build/dist/; \
-    else \
-      cd web && \
-      bun install --registry ${NPM_REGISTRY} && \
-      DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build && \
-      mkdir -p /build/dist && cp -R dist/. /build/dist/; \
-    fi
+RUN case "$WEB_DIST_STRATEGY" in \
+      build) \
+        cd web && \
+        bun install --registry ${NPM_REGISTRY} && \
+        DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build && \
+        mkdir -p /build/dist && cp -R dist/. /build/dist/; \
+        ;; \
+      prebuilt) \
+        if [ ! -d web/dist ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then \
+          echo "web/dist is empty; use WEB_DIST_STRATEGY=build or provide a prebuilt dist" >&2; \
+          exit 1; \
+        fi && \
+        mkdir -p /build/dist && cp -R web/dist/. /build/dist/; \
+        ;; \
+      *) \
+        echo "Unsupported WEB_DIST_STRATEGY: $WEB_DIST_STRATEGY" >&2; \
+        exit 1; \
+        ;; \
+    esac
 
 FROM mirror.gcr.io/library/golang:1.26.1-alpine AS builder2
 ENV GO111MODULE=on CGO_ENABLED=0

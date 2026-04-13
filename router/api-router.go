@@ -158,8 +158,6 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.DELETE("/plans/:id", controller.AdminDeleteSubscriptionPlan)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
-			subscriptionAdminRoute.GET("/referral/settings", controller.AdminGetSubscriptionReferralSettings)
-			subscriptionAdminRoute.PUT("/referral/settings", controller.AdminUpdateSubscriptionReferralSettings)
 			subscriptionAdminRoute.GET("/referral/users/:id", controller.AdminGetSubscriptionReferralOverride)
 			subscriptionAdminRoute.PUT("/referral/users/:id", controller.AdminUpsertSubscriptionReferralOverride)
 			subscriptionAdminRoute.DELETE("/referral/users/:id", controller.AdminDeleteSubscriptionReferralOverride)

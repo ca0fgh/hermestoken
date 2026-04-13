@@ -333,8 +333,8 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsUsesGroupedOverrideAndGroup
 	if err := common.UpdateSubscriptionReferralGroupRatesByJSONString(`{}`); err != nil {
 		t.Fatalf("clear UpdateSubscriptionReferralGroupRatesByJSONString() error = %v", err)
 	}
-	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 1800 {
-		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) after clear = %d, want 1800", got)
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) after clear = %d, want 0", got)
 	}
 }
 
@@ -402,8 +402,8 @@ func TestGetEffectiveSubscriptionReferralTotalRateBpsIgnoresLegacyUngroupedOverr
 	user := seedReferralUser(t, db, "legacy-ungrouped-override-user", 0, dto.UserSetting{})
 	insertLegacyEmptyGroupSubscriptionReferralOverride(t, db, user.Id, 2600)
 
-	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 3000 {
-		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 3000", got)
+	if got := GetEffectiveSubscriptionReferralTotalRateBps(user.Id, "vip"); got != 0 {
+		t.Fatalf("GetEffectiveSubscriptionReferralTotalRateBps(vip) = %d, want 0", got)
 	}
 }
 

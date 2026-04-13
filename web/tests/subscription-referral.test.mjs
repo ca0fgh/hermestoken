@@ -462,7 +462,33 @@ test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max vali
   );
 });
 
-test('SubscriptionReferralOverrideSection renders grouped list editor without legacy fallback fields', () => {
+test('InvitationCard only renders the subscription referral card when grouped rebates exist', () => {
+  const invitationCardSource = readFileSync(
+    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(
+    invitationCardSource,
+    /const visibleReferralGroups = \(referralGroups \|\| \[\]\)\.filter/,
+  );
+  assert.match(
+    invitationCardSource,
+    /\{visibleReferralGroups\.length > 0 && \(/,
+  );
+});
+
+test('OperationSetting no longer mounts the global subscription referral settings card', () => {
+  const operationSettingSource = readFileSync(
+    new URL('../src/components/settings/OperationSetting.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.equal(operationSettingSource.includes('SettingsSubscriptionReferral'), false);
+  assert.equal(operationSettingSource.includes('SubscriptionReferralEnabled'), false);
+});
+
+test('SubscriptionReferralOverrideSection keeps the extensible override list workflow', () => {
   const overrideSource = readFileSync(
     new URL(
       '../src/components/table/users/modals/SubscriptionReferralOverrideSection.jsx',
@@ -473,12 +499,20 @@ test('SubscriptionReferralOverrideSection renders grouped list editor without le
 
   assert.match(
     overrideSource,
-    /buildAdminOverrideRows\(\s*Array\.isArray\(userData\.groups\) \? userData\.groups : \[\],\s*\)/,
+    /buildAdminOverrideRows\(\s*Array\.isArray\(next\.groups\) \? next\.groups : \[\],\s*\)/,
   );
-  assert.match(overrideSource, /API\.get\('\/api\/subscription\/admin\/referral\/settings'\)/);
-  assert.match(overrideSource, /\.filter\(\(row\) => row\.hasOverride\)/);
-  assert.equal(overrideSource.includes('const fallbackGroups ='), false);
-  assert.equal(overrideSource.includes('settingsData.total_rate_bps'), false);
+  assert.match(
+    overrideSource,
+    /API\.get\(`\/api\/subscription\/admin\/referral\/users\/\$\{userId\}`\)/,
+  );
+  assert.match(overrideSource, /API\.get\(['"`]\/api\/group\/['"`]\)/);
+  assert.match(overrideSource, /createAdminOverrideDraftRow\(\)/);
+  assert.match(overrideSource, /buildAdminOverrideGroupOptions\(/);
+  assert.match(overrideSource, /t\('新增覆盖'\)/);
+  assert.equal(
+    overrideSource.includes("/api/subscription/admin/referral/settings"),
+    false,
+  );
 });
 
 test('topup self save refreshes grouped referral summaries instead of synthesizing top-level fallbacks', () => {

@@ -35,12 +35,26 @@ import {
   buildAdminOverrideRows,
   createAdminOverrideDraftRow,
   formatRateBpsPercent,
-  normalizeGroupRateMap,
   normalizeGroupNames,
   percentNumberToRateBps,
 } from '../../../../helpers/subscriptionReferral';
 
 const { Text } = Typography;
+
+const buildGroupDefaultRates = (groups = []) =>
+  groups.reduce((rateMap, groupItem) => {
+    const group = String(groupItem?.group || '').trim();
+    if (!group) {
+      return rateMap;
+    }
+
+    return {
+      ...rateMap,
+      [group]: Number(
+        groupItem?.effective_total_rate_bps ?? groupItem?.effectiveTotalRateBps ?? 0,
+      ),
+    };
+  }, {});
 
 const SubscriptionReferralOverrideSection = ({ userId }) => {
   const { t } = useTranslation();
@@ -95,13 +109,13 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
     if (!userId) return;
     setLoading(true);
     try {
-      const [settingsRes, userRes] = await Promise.all([
-        API.get('/api/subscription/admin/referral/settings'),
+      const [groupRes, userRes] = await Promise.all([
+        API.get('/api/group/'),
         API.get(`/api/subscription/admin/referral/users/${userId}`),
       ]);
 
-      if (!settingsRes.data?.success) {
-        showError(settingsRes.data?.message || t('加载失败'));
+      if (!groupRes.data?.success) {
+        showError(groupRes.data?.message || t('加载失败'));
         return;
       }
       if (!userRes.data?.success) {
@@ -109,41 +123,20 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
         return;
       }
 
-      const settingsData = settingsRes.data.data || {};
-      const userData = userRes.data.data || {};
-      const normalizedGroupRates = normalizeGroupRateMap(
-        settingsData.group_rates,
+      const next = userRes.data?.data || {};
+      const responseGroups = Array.isArray(next.groups) ? next.groups : [];
+      const persistedOverrideRows = buildAdminOverrideRows(
+        Array.isArray(next.groups) ? next.groups : [],
+      ).filter(
+        (row) => row.hasOverride,
       );
-      const normalizedSettingGroups = normalizeGroupNames([
-        ...(Array.isArray(settingsData.groups) ? settingsData.groups : []),
-        ...Object.keys(normalizedGroupRates),
+      const nextAvailableGroups = normalizeGroupNames([
+        ...(Array.isArray(groupRes.data?.data) ? groupRes.data.data : []),
+        ...persistedOverrideRows.map((row) => row.group),
       ]);
-      const nextOverrideRows = buildAdminOverrideRows(
-        Array.isArray(userData.groups) ? userData.groups : [],
-      );
-      const persistedOverrideRows = nextOverrideRows
-        .filter((row) => row.hasOverride)
-        .map((row) => {
-          const groupName = String(row.group || '').trim();
-          const hasDefaultRate = Object.prototype.hasOwnProperty.call(
-            normalizedGroupRates,
-            groupName,
-          );
-          return {
-            ...row,
-            effectiveTotalRateBps: hasDefaultRate
-              ? Number(normalizedGroupRates[groupName] || 0)
-              : row.effectiveTotalRateBps,
-          };
-        });
 
-      setGroupDefaultRates(normalizedGroupRates);
-      setAvailableGroups(
-        normalizeGroupNames([
-          ...normalizedSettingGroups,
-          ...persistedOverrideRows.map((row) => row.group),
-        ]),
-      );
+      setGroupDefaultRates(buildGroupDefaultRates(responseGroups));
+      setAvailableGroups(nextAvailableGroups);
       setOverrideRows(persistedOverrideRows);
       setRowErrors({});
     } catch (error) {
@@ -242,6 +235,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
     if (!targetRow) {
       return;
     }
+
     if (targetRow.isDraft) {
       setOverrideRows((currentRows) =>
         currentRows.filter((row) => row.id !== rowId),
@@ -249,6 +243,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
       clearRowError(rowId);
       return;
     }
+
     if (!targetRow.hasOverride) {
       return;
     }
@@ -323,36 +318,37 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
                   key={row.id}
                   className='rounded-xl border border-gray-200 p-4'
                 >
-                  <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
-                    <div>
+                  <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
+                    <div className='min-w-0'>
                       <Text type='tertiary' className='text-xs block mb-2'>
                         {t('返佣类型')}
                       </Text>
                       <Select
                         value={row.type}
                         optionList={referralTypeOptions}
+                        style={{ width: '100%' }}
                         disabled={!row.isDraft || loading || isSaving}
                         onChange={(value) => updateRow(row.id, { type: value })}
                       />
                     </div>
-                    <div>
+                    <div className='min-w-0'>
                       <Text type='tertiary' className='text-xs block mb-2'>
                         {t('分组')}
                       </Text>
                       <Select
                         value={row.group || undefined}
                         optionList={groupOptions}
+                        style={{ width: '100%' }}
                         disabled={!row.isDraft || loading || isSaving}
                         onChange={(value) =>
                           updateRow(row.id, {
                             group: value,
-                            effectiveTotalRateBps:
-                              getDefaultRateBpsByGroup(value),
+                            effectiveTotalRateBps: getDefaultRateBpsByGroup(value),
                           })
                         }
                       />
                     </div>
-                    <div>
+                    <div className='min-w-0 lg:col-span-2'>
                       <Text type='tertiary' className='text-xs block mb-2'>
                         {t('覆盖总返佣率')}
                       </Text>
@@ -399,9 +395,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
                     <Button
                       theme='light'
                       disabled={
-                        (!row.isDraft && !row.hasOverride) ||
-                        loading ||
-                        isSaving
+                        (!row.isDraft && !row.hasOverride) || loading || isSaving
                       }
                       onClick={() => removeOverride(row.id)}
                     >

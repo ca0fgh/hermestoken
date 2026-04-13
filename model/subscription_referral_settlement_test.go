@@ -227,6 +227,9 @@ func TestCompleteSubscriptionOrderCreditsInviterAndInviteeReferral(t *testing.T)
 	inviter := seedReferralUser(t, db, "inviter", 0, dto.UserSetting{
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "default", 2000, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
 	invitee := seedReferralUser(t, db, "invitee", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
 	setReferralPlanUpgradeGroup(t, db, plan, "default")
@@ -278,6 +281,9 @@ func TestCompleteSubscriptionOrderCreditsConfiguredGroupReferral(t *testing.T) {
 	inviter := seedReferralUser(t, db, "group-config-inviter", 0, dto.UserSetting{
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
 	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "vip", 4500, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
 	invitee := seedReferralUser(t, db, "group-config-invitee", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
 	setReferralPlanUpgradeGroup(t, db, plan, "vip")
@@ -450,6 +456,9 @@ func TestCompleteSubscriptionOrderIsIdempotentForReferralRecords(t *testing.T) {
 	inviter := seedReferralUser(t, db, "inviter-idempotent", 0, dto.UserSetting{
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "default", 2000, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
 	invitee := seedReferralUser(t, db, "invitee-idempotent", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
 	setReferralPlanUpgradeGroup(t, db, plan, "default")
@@ -495,6 +504,9 @@ func TestReverseSubscriptionReferralByTradeNoCreatesDebtWhenAffQuotaIsInsufficie
 	inviter := seedReferralUser(t, db, "inviter-reverse", 0, dto.UserSetting{
 		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"default": 500},
 	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "default", 2000, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
 	invitee := seedReferralUser(t, db, "invitee-reverse", inviter.Id, dto.UserSetting{})
 	plan := seedReferralPlan(t, db, 10)
 	setReferralPlanUpgradeGroup(t, db, plan, "default")
