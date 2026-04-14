@@ -75,6 +75,11 @@ test('sidebar defaults include the invite section and rebate module', () => {
 });
 
 test('personal sidebar settings expose the invite section and rebate toggle', () => {
+  assert.match(notificationSettingsSource, /const mergeSidebarModulesWithDefaults =/);
+  assert.match(
+    notificationSettingsSource,
+    /mergedModules\[sectionKey\]\s*=\s*\{\s*\.\.\.\(defaults\[sectionKey\] \|\| \{\}\),\s*\.\.\.sectionValue,\s*\}/s,
+  );
   assert.match(notificationSettingsSource, /key:\s*'invite'/);
   assert.match(notificationSettingsSource, /title:\s*t\('邀请管理'\)/);
   assert.match(notificationSettingsSource, /description:\s*t\('邀请返佣入口显示控制'\)/);

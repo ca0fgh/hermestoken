@@ -84,6 +84,28 @@ const getDefaultSidebarModules = () => ({
   },
 });
 
+const mergeSidebarModulesWithDefaults = (savedModules) => {
+  const defaults = getDefaultSidebarModules();
+  if (!savedModules || typeof savedModules !== 'object') {
+    return defaults;
+  }
+
+  const mergedModules = { ...defaults };
+  Object.entries(savedModules).forEach(([sectionKey, sectionValue]) => {
+    if (!sectionValue || typeof sectionValue !== 'object') {
+      mergedModules[sectionKey] = sectionValue;
+      return;
+    }
+
+    mergedModules[sectionKey] = {
+      ...(defaults[sectionKey] || {}),
+      ...sectionValue,
+    };
+  });
+
+  return mergedModules;
+};
+
 const NotificationSettings = ({
   t,
   notificationSettings,
@@ -193,10 +215,7 @@ const NotificationSettings = ({
           } else {
             userConf = userRes.data.data.sidebar_modules;
           }
-          setSidebarModulesUser({
-            ...getDefaultSidebarModules(),
-            ...userConf,
-          });
+          setSidebarModulesUser(mergeSidebarModulesWithDefaults(userConf));
         }
       } catch (error) {
         console.error('加载边栏配置失败:', error);
