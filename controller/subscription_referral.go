@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
@@ -57,7 +58,7 @@ func UpdateSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiErrorMsg(c, "分组不能为空")
 		return
 	}
-	if !isValidSubscriptionReferralGroup(req.Group) {
+	if !canMutateSubscriptionReferralSelfGroup(userID, req.Group) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
@@ -107,20 +108,22 @@ func DeleteSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiErrorMsg(c, "分组不能为空")
 		return
 	}
-	if !isValidSubscriptionReferralGroup(targetGroup) {
+	if !canDeleteSubscriptionReferralSelfGroup(userID, targetGroup) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
-	if model.GetEffectiveSubscriptionReferralTotalRateBps(userID, targetGroup) <= 0 {
-		common.ApiErrorMsg(c, "该分组未启用订阅返佣")
-		return
-	}
-
 	user, err := model.GetUserById(userID, true)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	if model.GetEffectiveSubscriptionReferralTotalRateBps(userID, targetGroup) <= 0 {
+		if !subscriptionReferralSelfSettingContainsGroup(user.GetSetting(), targetGroup) {
+			common.ApiErrorMsg(c, "该分组未启用订阅返佣")
+			return
+		}
+	}
+
 	setting := user.GetSetting()
 	nextByGroup := copySubscriptionReferralInviteeRatesByGroup(setting.SubscriptionReferralInviteeRateBpsByGroup)
 	delete(nextByGroup, strings.TrimSpace(targetGroup))
@@ -217,7 +220,7 @@ func UpsertSubscriptionReferralInviteeOverride(c *gin.Context) {
 		common.ApiErrorMsg(c, "分组不能为空")
 		return
 	}
-	if !isValidSubscriptionReferralGroup(req.Group) {
+	if !canMutateSubscriptionReferralInviteeGroup(userID, invitee.Id, req.Group) {
 		common.ApiErrorMsg(c, "分组不存在")
 		return
 	}
@@ -527,6 +530,64 @@ func canDeleteSubscriptionReferralOverrideGroup(userID int, group string) bool {
 	return err == nil && override != nil
 }
 
+func canMutateSubscriptionReferralSelfGroup(userID int, group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+	if isValidSubscriptionReferralGroup(trimmedGroup) {
+		return true
+	}
+	if model.GetEffectiveSubscriptionReferralTotalRateBps(userID, trimmedGroup) > 0 {
+		return true
+	}
+	user, err := model.GetUserById(userID, true)
+	if err != nil {
+		return false
+	}
+	return subscriptionReferralSelfSettingContainsGroup(user.GetSetting(), trimmedGroup)
+}
+
+func canDeleteSubscriptionReferralSelfGroup(userID int, group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+	return canMutateSubscriptionReferralSelfGroup(userID, trimmedGroup)
+}
+
+func subscriptionReferralSelfSettingContainsGroup(setting dto.UserSetting, group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+	_, exists := setting.SubscriptionReferralInviteeRateBpsByGroup[trimmedGroup]
+	return exists
+}
+
+func canMutateSubscriptionReferralInviteeGroup(inviterUserID int, inviteeUserID int, group string) bool {
+	trimmedGroup := strings.TrimSpace(group)
+	if trimmedGroup == "" {
+		return false
+	}
+	if isValidSubscriptionReferralGroup(trimmedGroup) {
+		return true
+	}
+	if model.GetEffectiveSubscriptionReferralTotalRateBps(inviterUserID, trimmedGroup) > 0 {
+		return true
+	}
+	overrides, err := model.ListSubscriptionReferralInviteeOverrides(inviterUserID, inviteeUserID)
+	if err != nil {
+		return false
+	}
+	for _, override := range overrides {
+		if strings.TrimSpace(override.Group) == trimmedGroup {
+			return true
+		}
+	}
+	return false
+}
+
 func getOwnedSubscriptionReferralInvitee(c *gin.Context, inviterUserID int) (*model.User, bool) {
 	inviteeID, _ := strconv.Atoi(c.Param("invitee_id"))
 	if inviteeID <= 0 {
@@ -540,7 +601,7 @@ func getOwnedSubscriptionReferralInvitee(c *gin.Context, inviterUserID int) (*mo
 			common.ApiErrorMsg(c, "被邀请人不存在")
 			return nil, false
 		}
-		common.ApiErrorMsg(c, "被邀请人不存在")
+		common.ApiError(c, err)
 		return nil, false
 	}
 	if invitee.InviterId != inviterUserID {

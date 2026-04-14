@@ -269,3 +269,36 @@ func TestGetSubscriptionReferralInviteeHidesNonexistentInviteeIDs(t *testing.T) 
 		t.Fatalf("message = %q, want %q", resp.Message, "被邀请人不存在")
 	}
 }
+
+func TestGetSubscriptionReferralInviteeSurfacesRealLookupErrors(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	ensureSubscriptionReferralInviteeOverrideTable(t)
+	common.SubscriptionReferralEnabled = true
+
+	inviter := seedSubscriptionReferralControllerUser(t, "invitee-db-error-owner", 0, dto.UserSetting{})
+	sqlDB, err := model.DB.DB()
+	if err != nil {
+		t.Fatalf("failed to access sql db handle: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("failed to close sql db handle: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/user/referral/subscription/invitees/1",
+		nil,
+		inviter.Id,
+	)
+	ctx.Params = gin.Params{{Key: "invitee_id", Value: "1"}}
+	GetSubscriptionReferralInvitee(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if resp.Success {
+		t.Fatal("expected invitee lookup to fail after database close")
+	}
+	if resp.Message == "被邀请人不存在" {
+		t.Fatalf("expected real db error to surface, got normalized not-found message")
+	}
+}
