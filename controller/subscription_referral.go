@@ -143,6 +143,9 @@ func GetSubscriptionReferralInvitees(c *gin.Context) {
 	userID := c.GetInt("id")
 	keyword := strings.TrimSpace(c.Query("keyword"))
 	pageInfo := common.GetPageQuery(c)
+	if page, err := strconv.Atoi(strings.TrimSpace(c.Query("page"))); err == nil && page > 0 {
+		pageInfo.Page = page
+	}
 
 	summaries, total, contributionTotal, err := model.ListSubscriptionReferralInviteeContributionSummaries(userID, keyword, pageInfo)
 	if err != nil {
@@ -153,9 +156,15 @@ func GetSubscriptionReferralInvitees(c *gin.Context) {
 	overrideCountByInviteeID := listSubscriptionReferralInviteeOverrideCounts(userID, summaries)
 	items := make([]gin.H, 0, len(summaries))
 	for _, summary := range summaries {
+		inviteeGroup := ""
+		invitee, err := model.GetUserById(summary.InviteeUserId, false)
+		if err == nil {
+			inviteeGroup = invitee.Group
+		}
 		items = append(items, gin.H{
 			"id":                   summary.InviteeUserId,
 			"username":             summary.InviteeUsername,
+			"group":                inviteeGroup,
 			"contribution_quota":   summary.ContributionQuota,
 			"reward_quota":         summary.RewardQuota,
 			"reversed_quota":       summary.ReversedQuota,
@@ -591,6 +600,7 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		"invitee": gin.H{
 			"id":       invitee.Id,
 			"username": invitee.Username,
+			"group":    invitee.Group,
 		},
 		"available_groups":                  availableGroups,
 		"default_invitee_rate_bps_by_group": defaultInviteeRateBpsByGroup,

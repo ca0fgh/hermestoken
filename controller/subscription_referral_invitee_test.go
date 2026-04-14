@@ -26,14 +26,24 @@ func TestGetSubscriptionReferralInviteesReturnsOnlyOwnedInvitees(t *testing.T) {
 	common.SubscriptionReferralGlobalRateBps = 2000
 
 	inviter := seedSubscriptionReferralControllerUser(t, "invitee-list-owner", 0, dto.UserSetting{})
-	ownedInvitee := seedSubscriptionReferralControllerUser(t, "invitee-list-owned", inviter.Id, dto.UserSetting{})
+	firstOwnedInvitee := seedSubscriptionReferralControllerUser(t, "invitee-list-owned-1", inviter.Id, dto.UserSetting{})
+	secondOwnedInvitee := seedSubscriptionReferralControllerUser(t, "invitee-list-owned-2", inviter.Id, dto.UserSetting{})
 	otherInviter := seedSubscriptionReferralControllerUser(t, "invitee-list-other-owner", 0, dto.UserSetting{})
 	foreignInvitee := seedSubscriptionReferralControllerUser(t, "invitee-list-foreign", otherInviter.Id, dto.UserSetting{})
+	if err := model.DB.Model(&model.User{}).Where("id = ?", firstOwnedInvitee.Id).Update("group", "starter").Error; err != nil {
+		t.Fatalf("failed to update first invitee group: %v", err)
+	}
+	if err := model.DB.Model(&model.User{}).Where("id = ?", secondOwnedInvitee.Id).Update("group", "vip").Error; err != nil {
+		t.Fatalf("failed to update second invitee group: %v", err)
+	}
+	if err := model.DB.Model(&model.User{}).Where("id = ?", foreignInvitee.Id).Update("group", "enterprise").Error; err != nil {
+		t.Fatalf("failed to update foreign invitee group: %v", err)
+	}
 
 	ctx, recorder := newAuthenticatedContext(
 		t,
 		http.MethodGet,
-		"/api/user/referral/subscription/invitees?page_size=10",
+		"/api/user/referral/subscription/invitees?page=2&page_size=1",
 		nil,
 		inviter.Id,
 	)
@@ -48,16 +58,25 @@ func TestGetSubscriptionReferralInviteesReturnsOnlyOwnedInvitees(t *testing.T) {
 		Items []struct {
 			ID       int    `json:"id"`
 			Username string `json:"username"`
+			Group    string `json:"group"`
 		} `json:"items"`
 		InviteeCount           int64 `json:"invitee_count"`
 		TotalContributionQuota int64 `json:"total_contribution_quota"`
+		Page                   int   `json:"page"`
+		PageSize               int   `json:"page_size"`
 	}
 	if err := common.Unmarshal(resp.Data, &data); err != nil {
 		t.Fatalf("failed to decode response data: %v", err)
 	}
 
-	if data.InviteeCount != 1 {
-		t.Fatalf("invitee_count = %d, want 1", data.InviteeCount)
+	if data.Page != 2 {
+		t.Fatalf("page = %d, want 2", data.Page)
+	}
+	if data.PageSize != 1 {
+		t.Fatalf("page_size = %d, want 1", data.PageSize)
+	}
+	if data.InviteeCount != 2 {
+		t.Fatalf("invitee_count = %d, want 2", data.InviteeCount)
 	}
 	if data.TotalContributionQuota != 0 {
 		t.Fatalf("total_contribution_quota = %d, want 0", data.TotalContributionQuota)
@@ -65,14 +84,64 @@ func TestGetSubscriptionReferralInviteesReturnsOnlyOwnedInvitees(t *testing.T) {
 	if len(data.Items) != 1 {
 		t.Fatalf("items length = %d, want 1", len(data.Items))
 	}
-	if data.Items[0].ID != ownedInvitee.Id {
-		t.Fatalf("item id = %d, want %d", data.Items[0].ID, ownedInvitee.Id)
+	if data.Items[0].ID != secondOwnedInvitee.Id {
+		t.Fatalf("item id = %d, want %d", data.Items[0].ID, secondOwnedInvitee.Id)
 	}
-	if data.Items[0].Username != ownedInvitee.Username {
-		t.Fatalf("item username = %q, want %q", data.Items[0].Username, ownedInvitee.Username)
+	if data.Items[0].Username != secondOwnedInvitee.Username {
+		t.Fatalf("item username = %q, want %q", data.Items[0].Username, secondOwnedInvitee.Username)
+	}
+	if data.Items[0].Group != "vip" {
+		t.Fatalf("item group = %q, want vip", data.Items[0].Group)
 	}
 	if data.Items[0].ID == foreignInvitee.Id {
 		t.Fatalf("unexpected foreign invitee %d in response", foreignInvitee.Id)
+	}
+}
+
+func TestGetSubscriptionReferralInviteeIncludesInviteeGroup(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	ensureSubscriptionReferralInviteeOverrideTable(t)
+	common.SubscriptionReferralEnabled = true
+
+	inviter := seedSubscriptionReferralControllerUser(t, "invitee-detail-owner", 0, dto.UserSetting{})
+	invitee := seedSubscriptionReferralControllerUser(t, "invitee-detail-user", inviter.Id, dto.UserSetting{})
+	if err := model.DB.Model(&model.User{}).Where("id = ?", invitee.Id).Update("group", "vip").Error; err != nil {
+		t.Fatalf("failed to update invitee group: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/user/referral/subscription/invitees/"+strconv.Itoa(invitee.Id),
+		nil,
+		inviter.Id,
+	)
+	ctx.Params = gin.Params{{Key: "invitee_id", Value: strconv.Itoa(invitee.Id)}}
+	GetSubscriptionReferralInvitee(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var data struct {
+		Invitee struct {
+			ID       int    `json:"id"`
+			Username string `json:"username"`
+			Group    string `json:"group"`
+		} `json:"invitee"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if data.Invitee.ID != invitee.Id {
+		t.Fatalf("invitee.id = %d, want %d", data.Invitee.ID, invitee.Id)
+	}
+	if data.Invitee.Username != invitee.Username {
+		t.Fatalf("invitee.username = %q, want %q", data.Invitee.Username, invitee.Username)
+	}
+	if data.Invitee.Group != "vip" {
+		t.Fatalf("invitee.group = %q, want vip", data.Invitee.Group)
 	}
 }
 
