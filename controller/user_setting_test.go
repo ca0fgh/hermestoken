@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -57,5 +58,28 @@ func TestUpdateUserSettingPreservesExistingSettingFieldsAndSavesQuotaTopupToggle
 	}
 	if setting.SidebarModules == "" {
 		t.Fatal("expected sidebar modules to be preserved")
+	}
+}
+
+func TestGenerateDefaultSidebarConfigIncludesInviteRebateForCommonUser(t *testing.T) {
+	configJSON := generateDefaultSidebarConfig(common.RoleCommonUser)
+	if configJSON == "" {
+		t.Fatal("expected default sidebar config JSON")
+	}
+
+	var config map[string]map[string]bool
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		t.Fatalf("failed to decode sidebar config: %v", err)
+	}
+
+	inviteConfig, ok := config["invite"]
+	if !ok {
+		t.Fatal("expected invite section in default sidebar config")
+	}
+	if !inviteConfig["enabled"] {
+		t.Fatal("expected invite section to be enabled")
+	}
+	if !inviteConfig["rebate"] {
+		t.Fatal("expected invite rebate module to be enabled")
 	}
 }
