@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+function readSource(relativePath) {
+  return readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+}
+
+test('InviteRebate route renders the dedicated page shell', () => {
+  const pageSource = readSource('src/pages/InviteRebate/index.js');
+
+  assert.match(
+    pageSource,
+    /from ['"]..\/..\/components\/invite-rebate\/InviteRebatePage['"]/,
+  );
+  assert.match(pageSource, /<InviteRebatePage \/>/);
+});
+
+test('InviteRebatePage composes summary, default rules, invitee list, and override panel', () => {
+  const pageSource = readSource(
+    'src/components/invite-rebate/InviteRebatePage.jsx',
+  );
+
+  assert.match(pageSource, /InviteRebateSummary/);
+  assert.match(pageSource, /InviteDefaultRuleSection/);
+  assert.match(pageSource, /InviteeListPanel/);
+  assert.match(pageSource, /InviteeOverridePanel/);
+  assert.match(pageSource, /normalizeInviteeContributionPage/);
+  assert.match(pageSource, /buildInviteDefaultRuleRows/);
+  assert.match(pageSource, /buildInviteeOverrideRows/);
+  assert.match(pageSource, /API\.get\('\/api\/user\/referral\/subscription'\)/);
+  assert.match(
+    pageSource,
+    /API\.get\('\/api\/user\/referral\/subscription\/invitees'/,
+  );
+  assert.match(
+    pageSource,
+    /API\.get\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{inviteeId\}`\s*,?\s*\)/,
+  );
+});
+
+test('invite rebate panels implement grouped editing, search, pagination, and delete flows', () => {
+  const defaultRuleSource = readSource(
+    'src/components/invite-rebate/InviteDefaultRuleSection.jsx',
+  );
+  const listSource = readSource(
+    'src/components/invite-rebate/InviteeListPanel.jsx',
+  );
+  const overrideSource = readSource(
+    'src/components/invite-rebate/InviteeOverridePanel.jsx',
+  );
+  const summarySource = readSource(
+    'src/components/invite-rebate/InviteRebateSummary.jsx',
+  );
+
+  assert.match(summarySource, /t\('被邀请人数'\)/);
+  assert.match(summarySource, /t\('累计返佣收益'\)/);
+
+  assert.match(defaultRuleSource, /t\('默认返佣规则'\)/);
+  assert.match(defaultRuleSource, /t\('返佣类型'\)/);
+  assert.match(defaultRuleSource, /t\('分组'\)/);
+  assert.match(defaultRuleSource, /t\('被邀请人返佣比例'\)/);
+  assert.match(
+    defaultRuleSource,
+    /API\.delete\('\/api\/user\/referral\/subscription', \{\s*params: \{ group \}/,
+  );
+
+  assert.match(listSource, /t\('邀请用户'\)/);
+  assert.match(listSource, /t\('搜索用户名'\)/);
+  assert.match(listSource, /keyword/);
+  assert.match(listSource, /page_size/);
+  assert.match(listSource, /Pagination/);
+  assert.match(listSource, /t\('暂无邀请用户'\)/);
+
+  assert.match(overrideSource, /t\('邀请用户独立返佣'\)/);
+  assert.match(overrideSource, /t\('未选择邀请用户'\)/);
+  assert.match(overrideSource, /t\('未设置独立返佣时，使用默认规则'\)/);
+  assert.match(overrideSource, /t\('当前默认返佣率'\)/);
+  assert.match(
+    overrideSource,
+    /API\.put\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{invitee\.id\}`,\s*\{/,
+  );
+  assert.match(
+    overrideSource,
+    /API\.delete\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{invitee\.id\}`,\s*\{\s*params: \{ group \}/,
+  );
+});
