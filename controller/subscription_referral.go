@@ -538,30 +538,15 @@ func getOwnedSubscriptionReferralInvitee(c *gin.Context, inviterUserID int) (*mo
 
 func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries []*model.SubscriptionReferralInviteeContributionSummary) map[int]int64 {
 	counts := make(map[int]int64, len(summaries))
-	inviteeIDs := make([]int, 0, len(summaries))
 	for _, summary := range summaries {
 		if summary == nil || summary.InviteeUserId <= 0 {
 			continue
 		}
-		inviteeIDs = append(inviteeIDs, summary.InviteeUserId)
-	}
-	if len(inviteeIDs) == 0 {
-		return counts
-	}
-
-	rows := make([]struct {
-		InviteeUserID      int   `gorm:"column:invitee_user_id"`
-		OverrideGroupCount int64 `gorm:"column:override_group_count"`
-	}, 0, len(inviteeIDs))
-	if err := model.DB.Model(&model.SubscriptionReferralInviteeOverride{}).
-		Select("invitee_user_id, COUNT(*) AS override_group_count").
-		Where("inviter_user_id = ? AND invitee_user_id IN ?", inviterUserID, inviteeIDs).
-		Group("invitee_user_id").
-		Scan(&rows).Error; err != nil {
-		return counts
-	}
-	for _, row := range rows {
-		counts[row.InviteeUserID] = row.OverrideGroupCount
+		overrides, err := model.ListSubscriptionReferralInviteeOverrides(inviterUserID, summary.InviteeUserId)
+		if err != nil {
+			continue
+		}
+		counts[summary.InviteeUserId] = int64(len(overrides))
 	}
 	return counts
 }
