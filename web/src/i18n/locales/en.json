@@ -3547,6 +3547,20 @@
     "请选择返佣类型": "Please select a referral type",
     "该返佣类型和分组组合已存在": "This referral type and group combination already exists",
     "覆盖总返佣率必须为数字": "The override total referral rate must be a number",
-    "覆盖总返佣率必须在 0 到 100 之间": "The override total referral rate must be between 0 and 100"
+    "覆盖总返佣率必须在 0 到 100 之间": "The override total referral rate must be between 0 and 100",
+    "邀请返佣": "Invite rebate",
+    "被邀请人数": "Invitee count",
+    "累计返佣收益": "Total rebate earnings",
+    "默认返佣规则": "Default rebate rules",
+    "邀请用户": "Invited users",
+    "邀请用户独立返佣": "Invitee-specific rebate",
+    "未选择邀请用户": "No invited user selected",
+    "暂无邀请用户": "No invited users yet",
+    "搜索用户名": "Search username",
+    "分组": "Group",
+    "被邀请人返佣比例": "Invitee rebate rate",
+    "未设置独立返佣时，使用默认规则": "Default rules apply when no invitee-specific rebate is set",
+    "当前默认返佣率": "Current default rebate rate",
+    "按分组维护默认返佣规则，并为指定邀请用户设置独立返佣。": "Manage default rebate rules by group and set invitee-specific rebates for selected users."
   }
 }

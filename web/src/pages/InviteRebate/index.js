@@ -18,24 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { Card, Typography } from '@douyinfe/semi-ui';
+import InviteRebatePage from '../../components/invite-rebate/InviteRebatePage';
 
 const InviteRebate = () => {
-  const { t } = useTranslation();
-
-  return (
-    <div className='mt-[60px] px-2'>
-      <Card className='!rounded-2xl shadow-sm border-0'>
-        <Typography.Title heading={4} style={{ marginBottom: 8 }}>
-          {t('邀请返佣')}
-        </Typography.Title>
-        <Typography.Text type='secondary'>
-          {t('邀请返佣功能正在建设中，后续将在这里提供自助管理入口。')}
-        </Typography.Text>
-      </Card>
-    </div>
-  );
+  return <InviteRebatePage />;
 };
 
 export default InviteRebate;
