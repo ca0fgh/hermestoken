@@ -145,6 +145,68 @@ func TestGetSubscriptionReferralInviteeIncludesInviteeGroup(t *testing.T) {
 	}
 }
 
+func TestGetSubscriptionReferralInviteeIncludesEnabledRatioSettingGroupsWithoutInviteeOverride(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	ensureSubscriptionReferralInviteeOverrideTable(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"vip":4500}`)
+
+	inviter := seedSubscriptionReferralControllerUser(t, "invitee-detail-ratio-owner", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 900},
+	})
+	invitee := seedSubscriptionReferralControllerUser(t, "invitee-detail-ratio-user", inviter.Id, dto.UserSetting{})
+	if _, err := model.UpsertSubscriptionReferralOverride(inviter.Id, "vip", 4500, 1); err != nil {
+		t.Fatalf("failed to create inviter vip override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/user/referral/subscription/invitees/"+strconv.Itoa(invitee.Id),
+		nil,
+		inviter.Id,
+	)
+	ctx.Params = gin.Params{{Key: "invitee_id", Value: strconv.Itoa(invitee.Id)}}
+	GetSubscriptionReferralInvitee(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var data struct {
+		AvailableGroups              []string       `json:"available_groups"`
+		DefaultInviteeRateBpsByGroup map[string]int `json:"default_invitee_rate_bps_by_group"`
+		EffectiveTotalRateBpsByGroup map[string]int `json:"effective_total_rate_bps_by_group"`
+		Overrides                    []struct {
+			Group string `json:"group"`
+		} `json:"overrides"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Overrides) != 0 {
+		t.Fatalf("expected no invitee-specific overrides, got %+v", data.Overrides)
+	}
+	foundVIP := false
+	for _, group := range data.AvailableGroups {
+		if group == "vip" {
+			foundVIP = true
+			break
+		}
+	}
+	if !foundVIP {
+		t.Fatalf("available_groups = %v, want vip included", data.AvailableGroups)
+	}
+	if data.DefaultInviteeRateBpsByGroup["vip"] != 900 {
+		t.Fatalf("default_invitee_rate_bps_by_group[vip] = %d, want 900", data.DefaultInviteeRateBpsByGroup["vip"])
+	}
+	if data.EffectiveTotalRateBpsByGroup["vip"] != 4500 {
+		t.Fatalf("effective_total_rate_bps_by_group[vip] = %d, want 4500", data.EffectiveTotalRateBpsByGroup["vip"])
+	}
+}
+
 func TestUpsertSubscriptionReferralInviteeOverrideRejectsForeignInvitee(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	ensureSubscriptionReferralInviteeOverrideTable(t)

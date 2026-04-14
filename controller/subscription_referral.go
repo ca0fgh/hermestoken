@@ -583,16 +583,17 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 	for _, override := range overrides {
 		overrideGroups = append(overrideGroups, model.SubscriptionReferralOverride{Group: override.Group})
 	}
-	groups := collectSubscriptionReferralResponseGroups(model.ListSubscriptionReferralConfiguredGroups(), overrideGroups)
+	groups := collectSubscriptionReferralResponseGroups(listAllSubscriptionReferralGroups(), overrideGroups)
 	availableGroups := make([]string, 0, len(groups))
 	defaultInviteeRateBpsByGroup := make(map[string]int, len(groups))
 	effectiveTotalRateBpsByGroup := make(map[string]int, len(groups))
 	inviterSetting := inviter.GetSetting()
 	for _, group := range groups {
 		totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(inviterUserID, group)
-		if totalRateBps > 0 {
-			availableGroups = append(availableGroups, group)
+		if totalRateBps <= 0 {
+			continue
 		}
+		availableGroups = append(availableGroups, group)
 		effectiveTotalRateBpsByGroup[group] = totalRateBps
 		defaultInviteeRateBpsByGroup[group] = model.GetEffectiveSubscriptionReferralInviteeRateBps(inviterSetting, group, totalRateBps)
 	}
@@ -616,6 +617,26 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		"effective_total_rate_bps_by_group": effectiveTotalRateBpsByGroup,
 		"overrides":                         overrideViews,
 	}, nil
+}
+
+func listAllSubscriptionReferralGroups() []string {
+	configuredRatioGroups := ratio_setting.GetGroupRatioCopy()
+	groups := make([]string, 0, len(configuredRatioGroups)+len(model.ListSubscriptionReferralConfiguredGroups()))
+	for group := range configuredRatioGroups {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		groups = append(groups, trimmedGroup)
+	}
+	for _, group := range model.ListSubscriptionReferralConfiguredGroups() {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			continue
+		}
+		groups = append(groups, trimmedGroup)
+	}
+	return collectSubscriptionReferralResponseGroups(groups, nil)
 }
 
 func canDeleteSubscriptionReferralInviteeOverrideGroup(inviterUserID int, inviteeUserID int, group string) bool {
