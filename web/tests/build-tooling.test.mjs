@@ -72,13 +72,9 @@ test('vite build keeps only the safe dedicated chunks and avoids startup cycle c
 
   assert.match(source, /id\.includes\('i18next'\)[\s\S]*return 'react-core';/);
   assert.doesNotMatch(source, /id\.includes\('i18next'\)[\s\S]*return 'i18n';/);
-  assert.doesNotMatch(
-    source,
-    /id\.includes\('@douyinfe\/semi-ui'\)[\s\S]*return 'react-core';/,
-  );
   assert.match(
     source,
-    /id\.includes\('@douyinfe\/semi-ui'\)[\s\S]*return 'semi-core';/,
+    /id\.includes\('@douyinfe\/semi-ui'\)[\s\S]*return 'react-core';/,
   );
   assert.doesNotMatch(source, /return 'brand-icons';/);
   assert.doesNotMatch(source, /return 'rich-content';/);
