@@ -15,6 +15,7 @@ from launcher_common import (
     poll_http_until_healthy,
     print_actionable_error,
     require_cloudflared,
+    run_browser_smoke_check,
     validate_cfargotunnel_cname,
 )
 
@@ -248,6 +249,7 @@ def run_public_stack(config: LauncherConfig, *, output: Optional[TextIO] = None,
         stream.write(f"[ok] Tunnel started: {config.cloudflared_tunnel_name}\n")
 
         _wait_for_public_readiness(config, tunnel_process)
+        run_browser_smoke_check(config.public_url, output=stream)
         stream.write(f"[ok] Public service healthy: {config.public_url}\n")
         stream.write(f"[ok] Local URL:  {config.local_url}\n")
         stream.write(f"[ok] Public URL: {config.public_url}\n")

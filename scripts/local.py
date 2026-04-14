@@ -9,6 +9,7 @@ from launcher_common import (
     poll_http_until_healthy,
     print_actionable_error,
     require_docker_and_compose,
+    run_browser_smoke_check,
     run_command,
 )
 
@@ -73,6 +74,7 @@ def run_local_stack(config: LauncherConfig, *, output: Optional[TextIO] = None, 
             timeout_seconds=config.healthcheck_timeout_seconds,
             interval_seconds=config.healthcheck_interval_seconds,
         )
+        run_browser_smoke_check(config.local_url, output=stream)
     except LauncherError:
         _print_recent_container_status(compose_file_path, output=stream, repo_root=effective_repo_root)
         raise

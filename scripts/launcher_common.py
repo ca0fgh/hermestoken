@@ -1,10 +1,15 @@
+import base64
+import hashlib
 import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +22,15 @@ class LauncherError(RuntimeError):
 
 
 DEFAULT_HEALTHCHECK_USER_AGENT = "hermestoken-launcher/1.0 (+https://pay-local.hermestoken.top)"
+DEFAULT_BROWSER_SETTLE_WINDOW_SECONDS = 0.5
+DEFAULT_BROWSER_CANDIDATES = (
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    "google-chrome",
+    "chromium",
+    "chromium-browser",
+    "chrome",
+)
 
 
 @dataclass(frozen=True)
@@ -30,6 +44,18 @@ class LauncherConfig:
     healthcheck_interval_seconds: float
     cloudflared_tunnel_token: Optional[str] = None
     cloudflared_tunnel_token_path: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class BrowserSmokeCheckResult:
+    status: str
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class _DevToolsTarget:
+    port: int
+    websocket_url: str
 
 
 def _build_actionable_message(problem: str, action: Optional[str] = None) -> str:
@@ -191,6 +217,18 @@ def require_executable(binary_name: str, install_hint: Optional[str] = None) -> 
     raise LauncherError(_build_actionable_message(f"Missing required executable: {binary_name}", hint))
 
 
+def find_browser_executable(candidates: Sequence[str] = DEFAULT_BROWSER_CANDIDATES) -> Optional[str]:
+    for candidate in candidates:
+        expanded = os.path.expanduser(candidate)
+        if os.path.isabs(expanded) and os.path.isfile(expanded) and os.access(expanded, os.X_OK):
+            return expanded
+
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+    return None
+
+
 def require_docker_and_compose() -> None:
     require_executable(
         "docker",
@@ -350,6 +388,460 @@ def poll_http_until_healthy(
             f"Service never became healthy within {timeout_seconds}s. Last error: {last_error or 'no response'}",
         )
     )
+
+
+def _extract_exception_detail(message: Mapping[str, Any]) -> str:
+    params = message.get("params")
+    if not isinstance(params, Mapping):
+        return ""
+
+    details = params.get("exceptionDetails")
+    if not isinstance(details, Mapping):
+        return ""
+
+    exception = details.get("exception")
+    if isinstance(exception, Mapping):
+        description = exception.get("description")
+        if isinstance(description, str) and description.strip():
+            return description.strip()
+
+    text = details.get("text")
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+
+    return ""
+
+
+def _extract_target_from_devtools_list(payload: Any, *, port: int, target_type: Optional[str] = None) -> Optional[_DevToolsTarget]:
+    if not isinstance(payload, list):
+        return None
+
+    for entry in payload:
+        if not isinstance(entry, Mapping):
+            continue
+        if target_type is not None and entry.get("type") != target_type:
+            continue
+        websocket_url = entry.get("webSocketDebuggerUrl")
+        if isinstance(websocket_url, str) and websocket_url.strip():
+            return _DevToolsTarget(port=port, websocket_url=websocket_url)
+    return None
+
+
+def _read_json_url(url: str, *, timeout_seconds: float) -> Any:
+    request = urllib.request.Request(url=url, method="GET", headers={"Accept": "application/json"})
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _wait_for_devtools_target(profile_dir: Path, *, chrome_process: subprocess.Popen, timeout_seconds: float) -> _DevToolsTarget:
+    deadline = time.monotonic() + timeout_seconds
+    last_error = "browser debugging endpoint did not become ready"
+    devtools_port_file = profile_dir / "DevToolsActivePort"
+
+    while True:
+        exit_code = chrome_process.poll()
+        if exit_code is not None:
+            raise LauncherError(f"browser exited before the debugging endpoint became ready (exit code {exit_code})")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise LauncherError(last_error)
+
+        try:
+            if devtools_port_file.is_file():
+                lines = [line.strip() for line in devtools_port_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+                if len(lines) >= 2:
+                    port = int(lines[0])
+                    websocket_path = lines[1]
+                    websocket_url = websocket_path
+                    if not websocket_url.startswith("ws://") and not websocket_url.startswith("wss://"):
+                        websocket_url = f"ws://127.0.0.1:{port}{websocket_path}"
+                    return _DevToolsTarget(port=port, websocket_url=websocket_url)
+                last_error = "browser debugging endpoint file was incomplete"
+        except (OSError, ValueError) as exc:
+            last_error = f"browser debugging endpoint not ready: {exc}"
+
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+
+
+def _create_page_target(port: int, *, timeout_seconds: float) -> Optional[_DevToolsTarget]:
+    request = urllib.request.Request(
+        url=f"http://127.0.0.1:{port}/json/new?about:blank",
+        method="PUT",
+        headers={"Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if isinstance(payload, Mapping):
+        websocket_url = payload.get("webSocketDebuggerUrl")
+        if isinstance(websocket_url, str) and websocket_url.strip():
+            return _DevToolsTarget(port=port, websocket_url=websocket_url)
+    return None
+
+
+def _wait_for_page_target(port: int, *, chrome_process: subprocess.Popen, timeout_seconds: float) -> _DevToolsTarget:
+    deadline = time.monotonic() + timeout_seconds
+    last_error = "browser debugging endpoint did not expose a page target"
+
+    while True:
+        exit_code = chrome_process.poll()
+        if exit_code is not None:
+            raise LauncherError(f"browser exited before a page target became ready (exit code {exit_code})")
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise LauncherError(last_error)
+
+        try:
+            payload = _read_json_url(
+                f"http://127.0.0.1:{port}/json/list",
+                timeout_seconds=min(1.0, remaining),
+            )
+            target = _extract_target_from_devtools_list(payload, port=port, target_type="page")
+            if target is not None:
+                return target
+
+            target = _create_page_target(port, timeout_seconds=min(1.0, remaining))
+            if target is not None:
+                return target
+            last_error = "browser debugging endpoint did not expose or create a page target"
+        except (HTTPError, URLError, OSError, json.JSONDecodeError) as exc:
+            last_error = f"browser debugging endpoint page target not ready: {exc}"
+
+        time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+
+
+def _send_websocket_frame(sock: socket.socket, payload: str) -> None:
+    _send_masked_websocket_frame(sock, opcode=0x1, payload=payload.encode("utf-8"))
+
+
+def _send_masked_websocket_frame(sock: socket.socket, *, opcode: int, payload: bytes) -> None:
+    header = bytearray([0x80 | (opcode & 0x0F)])
+    payload_length = len(payload)
+    if payload_length < 126:
+        header.append(0x80 | payload_length)
+    elif payload_length < (1 << 16):
+        header.append(0x80 | 126)
+        header.extend(payload_length.to_bytes(2, "big"))
+    else:
+        header.append(0x80 | 127)
+        header.extend(payload_length.to_bytes(8, "big"))
+
+    mask = os.urandom(4)
+    header.extend(mask)
+    masked_payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+    sock.sendall(bytes(header) + masked_payload)
+
+
+def _recv_exact(sock: socket.socket, size: int) -> bytes:
+    chunks = bytearray()
+    while len(chunks) < size:
+        chunk = sock.recv(size - len(chunks))
+        if not chunk:
+            raise LauncherError("browser debugging connection closed unexpectedly")
+        chunks.extend(chunk)
+    return bytes(chunks)
+
+
+def _recv_websocket_frame(sock: socket.socket) -> str:
+    while True:
+        first, second = _recv_exact(sock, 2)
+        opcode = first & 0x0F
+        masked = bool(second & 0x80)
+        payload_length = second & 0x7F
+
+        if payload_length == 126:
+            payload_length = int.from_bytes(_recv_exact(sock, 2), "big")
+        elif payload_length == 127:
+            payload_length = int.from_bytes(_recv_exact(sock, 8), "big")
+
+        mask = _recv_exact(sock, 4) if masked else b""
+        payload = _recv_exact(sock, payload_length) if payload_length else b""
+        if masked:
+            payload = bytes(byte ^ mask[index % 4] for index, byte in enumerate(payload))
+
+        if opcode == 0x8:
+            raise LauncherError("browser debugging connection closed unexpectedly")
+        if opcode == 0x9:
+            _send_masked_websocket_frame(sock, opcode=0xA, payload=payload)
+            continue
+        if opcode != 0x1:
+            continue
+        return payload.decode("utf-8")
+
+
+def _connect_to_devtools(websocket_url: str, *, timeout_seconds: float) -> socket.socket:
+    parsed = urllib.parse.urlparse(websocket_url)
+    if parsed.scheme not in {"ws", "wss"}:
+        raise LauncherError(f"Unsupported DevTools websocket URL: {websocket_url}")
+
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "wss" else 80)
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+
+    sock = socket.create_connection((host, port), timeout=timeout_seconds)
+    sock.settimeout(timeout_seconds)
+
+    websocket_key = base64.b64encode(os.urandom(16)).decode("ascii")
+    request = (
+        f"GET {path} HTTP/1.1\r\n"
+        f"Host: {host}:{port}\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {websocket_key}\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n"
+    )
+    sock.sendall(request.encode("ascii"))
+
+    response = bytearray()
+    while b"\r\n\r\n" not in response:
+        chunk = sock.recv(4096)
+        if not chunk:
+            sock.close()
+            raise LauncherError("browser debugging handshake failed")
+        response.extend(chunk)
+
+    header_text = response.split(b"\r\n\r\n", 1)[0].decode("utf-8", errors="replace")
+    if "101" not in header_text.splitlines()[0]:
+        sock.close()
+        raise LauncherError("browser debugging handshake failed")
+
+    expected_accept = base64.b64encode(
+        hashlib.sha1((websocket_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
+    ).decode("ascii")
+    if f"Sec-WebSocket-Accept: {expected_accept}" not in header_text:
+        sock.close()
+        raise LauncherError("browser debugging handshake was rejected")
+
+    return sock
+
+
+def _cdp_send(sock: socket.socket, message_id: int, method: str, params: Optional[Mapping[str, Any]] = None) -> None:
+    payload = {"id": message_id, "method": method}
+    if params:
+        payload["params"] = dict(params)
+    _send_websocket_frame(sock, json.dumps(payload))
+
+
+def _cdp_wait_for_message(
+    sock: socket.socket,
+    *,
+    timeout_seconds: float,
+    expected_id: Optional[int] = None,
+    expected_method: Optional[str] = None,
+) -> Mapping[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise LauncherError("timed out while waiting for browser diagnostics")
+        sock.settimeout(remaining)
+        message = json.loads(_recv_websocket_frame(sock))
+        if expected_id is None and expected_method is None:
+            return message
+        if expected_id is not None and message.get("id") == expected_id:
+            return message
+        if expected_method is not None and message.get("method") == expected_method:
+            return message
+
+
+def _cdp_request(
+    sock: socket.socket,
+    message_id: int,
+    method: str,
+    params: Optional[Mapping[str, Any]],
+    timeout_seconds: float,
+) -> Mapping[str, Any]:
+    _cdp_send(sock, message_id, method, params)
+    response = _cdp_wait_for_message(sock, timeout_seconds=timeout_seconds, expected_id=message_id)
+    error = response.get("error")
+    if isinstance(error, Mapping):
+        detail = error.get("message") or "unknown browser debugging error"
+        raise LauncherError(str(detail))
+    return response
+
+
+def _evaluate_browser_expression(sock: socket.socket, message_id: int, expression: str, timeout_seconds: float) -> Tuple[int, str]:
+    response = _cdp_request(
+        sock,
+        message_id,
+        "Runtime.evaluate",
+        {
+            "expression": expression,
+            "returnByValue": True,
+            "awaitPromise": True,
+        },
+        timeout_seconds,
+    )
+    result = response.get("result")
+    if not isinstance(result, Mapping):
+        raise LauncherError("browser returned an unreadable evaluation result")
+
+    exception_details = result.get("exceptionDetails")
+    if isinstance(exception_details, Mapping):
+        detail = exception_details.get("text")
+        raise LauncherError(str(detail or "browser evaluation failed"))
+
+    value_container = result.get("result")
+    if not isinstance(value_container, Mapping):
+        return message_id + 1, ""
+
+    value = value_container.get("value")
+    if value is None:
+        return message_id + 1, ""
+    return message_id + 1, str(value)
+
+
+def _run_browser_smoke_check_via_cdp(
+    url: str,
+    *,
+    chrome_process: subprocess.Popen,
+    profile_dir: Path,
+    timeout_seconds: float,
+) -> BrowserSmokeCheckResult:
+    try:
+        browser_target = _wait_for_devtools_target(profile_dir, chrome_process=chrome_process, timeout_seconds=timeout_seconds)
+        page_target = _wait_for_page_target(
+            browser_target.port,
+            chrome_process=chrome_process,
+            timeout_seconds=timeout_seconds,
+        )
+    except LauncherError as exc:
+        return BrowserSmokeCheckResult(status="browser_error", detail=str(exc))
+
+    sock: Optional[socket.socket] = None
+    message_id = 1
+    first_exception_detail = ""
+    try:
+        sock = _connect_to_devtools(page_target.websocket_url, timeout_seconds=timeout_seconds)
+        _cdp_request(sock, message_id, "Runtime.enable", None, timeout_seconds)
+        message_id += 1
+        _cdp_request(sock, message_id, "Page.enable", None, timeout_seconds)
+        message_id += 1
+        _cdp_request(sock, message_id, "Page.navigate", {"url": url}, timeout_seconds)
+        message_id += 1
+
+        deadline = time.monotonic() + timeout_seconds
+        load_event_seen = False
+        while not load_event_seen:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return BrowserSmokeCheckResult(status="failed", detail="page load timed out")
+            message = _cdp_wait_for_message(sock, timeout_seconds=remaining)
+            method = message.get("method")
+            if method == "Runtime.exceptionThrown" and not first_exception_detail:
+                first_exception_detail = _extract_exception_detail(message) or "Runtime.exceptionThrown"
+            elif method == "Page.loadEventFired":
+                load_event_seen = True
+
+        settle_deadline = min(deadline, time.monotonic() + min(DEFAULT_BROWSER_SETTLE_WINDOW_SECONDS, timeout_seconds))
+        while True:
+            remaining = settle_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                message = _cdp_wait_for_message(sock, timeout_seconds=remaining)
+            except (LauncherError, TimeoutError, socket.timeout):
+                break
+
+            method = message.get("method")
+            if method == "Runtime.exceptionThrown" and not first_exception_detail:
+                first_exception_detail = _extract_exception_detail(message) or "Runtime.exceptionThrown"
+
+        message_id, page_title = _evaluate_browser_expression(sock, message_id, "document.title", timeout_seconds)
+        message_id, root_html = _evaluate_browser_expression(
+            sock,
+            message_id,
+            "(function(){const root=document.querySelector('#root'); return root ? root.innerHTML : '';})()",
+            timeout_seconds,
+        )
+        _, body_text = _evaluate_browser_expression(
+            sock,
+            message_id,
+            "(function(){return document.body ? document.body.innerText : '';})()",
+            timeout_seconds,
+        )
+
+        if first_exception_detail:
+            return BrowserSmokeCheckResult(status="failed", detail=first_exception_detail)
+        _ = page_title
+        if not root_html.strip():
+            return BrowserSmokeCheckResult(status="failed", detail="root element remained empty after page load")
+        if not body_text.strip():
+            return BrowserSmokeCheckResult(status="failed", detail="document body text remained empty after page load")
+        return BrowserSmokeCheckResult(status="passed")
+    except (LauncherError, OSError, json.JSONDecodeError) as exc:
+        return BrowserSmokeCheckResult(status="failed", detail=str(exc))
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
+def run_browser_smoke_check(url: str, *, output: Optional[TextIO] = None, timeout_seconds: float = 15.0) -> None:
+    stream = output or sys.stdout
+    browser = find_browser_executable()
+    if not browser:
+        stream.write(f"[warn] Browser smoke check skipped for {url}: Chrome/Chromium not found\n")
+        return
+
+    profile_dir = Path(tempfile.mkdtemp(prefix="launcher-browser-smoke-"))
+    chrome_process: Optional[subprocess.Popen] = None
+    try:
+        chrome_process = subprocess.Popen(
+            [
+                browser,
+                f"--user-data-dir={profile_dir}",
+                "--headless=new",
+                "--disable-gpu",
+                "--remote-debugging-port=0",
+                "about:blank",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        result = _run_browser_smoke_check_via_cdp(
+            url,
+            chrome_process=chrome_process,
+            profile_dir=profile_dir,
+            timeout_seconds=timeout_seconds,
+        )
+        if result.status == "browser_error":
+            raise LauncherError(
+                _build_actionable_message(
+                    f"Browser smoke check could not start a usable Chrome/Chromium session for {url}: {result.detail}",
+                    "Verify Chrome/Chromium is installed and launchable, then retry the launcher.",
+                )
+            )
+        if result.status != "passed":
+            raise LauncherError(
+                _build_actionable_message(
+                    f"Browser smoke check failed for {url}: {result.detail}",
+                    "Open the URL in a clean browser profile or inspect the built frontend bundle for startup errors.",
+                )
+            )
+        stream.write(f"[ok] Browser smoke check passed: {url}\n")
+    except OSError as exc:
+        raise LauncherError(
+            _build_actionable_message(
+                f"Browser smoke check failed for {url}: browser could not start.",
+                "Verify Chrome/Chromium is installed and launchable.",
+            )
+        ) from exc
+    finally:
+        if chrome_process is not None and chrome_process.poll() is None:
+            chrome_process.terminate()
+            try:
+                chrome_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                chrome_process.kill()
+        shutil.rmtree(profile_dir, ignore_errors=True)
 
 
 def _extract_cname_target(nslookup_output: str) -> Optional[str]:
