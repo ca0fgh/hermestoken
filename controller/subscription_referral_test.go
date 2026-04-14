@@ -424,6 +424,49 @@ func TestUpdateSubscriptionReferralSelfStoresPerGroupInviteeRate(t *testing.T) {
 	}
 }
 
+func TestDeleteSubscriptionReferralSelfRemovesGroupedDefaultInviteeRate(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	common.SubscriptionReferralGlobalRateBps = 2000
+	setSubscriptionReferralGroupRatesForTest(t, `{"vip":4500}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-delete-vip", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{
+			"default": 300,
+			"vip":     700,
+		},
+	})
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "vip", 4500, 1); err != nil {
+		t.Fatalf("failed to create self-delete override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodDelete,
+		"/api/user/referral/subscription?group=vip",
+		nil,
+		user.Id,
+	)
+	DeleteSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	updatedUser, err := model.GetUserById(user.Id, true)
+	if err != nil {
+		t.Fatalf("failed to reload updated user: %v", err)
+	}
+	ratesByGroup := updatedUser.GetSetting().SubscriptionReferralInviteeRateBpsByGroup
+	if _, exists := ratesByGroup["vip"]; exists {
+		t.Fatalf("expected vip grouped default to be deleted, got %+v", ratesByGroup)
+	}
+	if got := ratesByGroup["default"]; got != 300 {
+		t.Fatalf("default group invitee rate = %d, want 300", got)
+	}
+}
+
 func TestUpdateSubscriptionReferralSelfRejectsMissingGroup(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true
