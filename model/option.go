@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"gorm.io/gorm"
 )
 
 type Option struct {
@@ -177,6 +179,33 @@ func InitOptionMap() {
 
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
+	ensureDefaultOptionRecords()
+}
+
+func ensureDefaultOptionRecords() {
+	if err := ensureDefaultOptionRecord("Footer", common.DefaultFooterHTML); err != nil {
+		common.SysLog("failed to persist default footer option: " + err.Error())
+	}
+}
+
+func ensureDefaultOptionRecord(key string, value string) error {
+	if DB == nil {
+		return nil
+	}
+
+	var option Option
+	err := DB.First(&option, "key = ?", key).Error
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	return DB.Create(&Option{
+		Key:   key,
+		Value: value,
+	}).Error
 }
 
 func loadOptionsFromDatabase() {
