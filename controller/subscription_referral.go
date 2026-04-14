@@ -153,7 +153,11 @@ func GetSubscriptionReferralInvitees(c *gin.Context) {
 		return
 	}
 
-	overrideCountByInviteeID := listSubscriptionReferralInviteeOverrideCounts(userID, summaries)
+	overrideCountByInviteeID, err := listSubscriptionReferralInviteeOverrideCounts(userID, summaries)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	items := make([]gin.H, 0, len(summaries))
 	for _, summary := range summaries {
 		items = append(items, gin.H{
@@ -540,19 +544,23 @@ func getOwnedSubscriptionReferralInvitee(c *gin.Context, inviterUserID int) (*mo
 	return invitee, true
 }
 
-func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries []*model.SubscriptionReferralInviteeContributionSummary) map[int]int64 {
+func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries []*model.SubscriptionReferralInviteeContributionSummary) (map[int]int64, error) {
 	counts := make(map[int]int64, len(summaries))
+	inviteeUserIDs := make([]int, 0, len(summaries))
 	for _, summary := range summaries {
 		if summary == nil || summary.InviteeUserId <= 0 {
 			continue
 		}
-		overrides, err := model.ListSubscriptionReferralInviteeOverrides(inviterUserID, summary.InviteeUserId)
-		if err != nil {
-			continue
-		}
-		counts[summary.InviteeUserId] = int64(len(overrides))
+		inviteeUserIDs = append(inviteeUserIDs, summary.InviteeUserId)
 	}
-	return counts
+	batchCounts, err := model.ListSubscriptionReferralInviteeOverrideCounts(inviterUserID, inviteeUserIDs)
+	if err != nil {
+		return nil, err
+	}
+	for inviteeUserID, count := range batchCounts {
+		counts[inviteeUserID] = count
+	}
+	return counts, nil
 }
 
 func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *model.User) (gin.H, error) {

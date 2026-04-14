@@ -128,6 +128,42 @@ func TestSubscriptionReferralInviteeOverrideRejectsNonOwnedInvitee(t *testing.T)
 	}
 }
 
+func TestListSubscriptionReferralInviteeOverrideCountsBatchesInvitees(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	if err := db.AutoMigrate(&SubscriptionReferralInviteeOverride{}); err != nil {
+		t.Fatalf("failed to migrate invitee override table: %v", err)
+	}
+
+	inviter := seedReferralUser(t, db, "batch-count-inviter", 0, dto.UserSetting{})
+	firstInvitee := seedReferralUser(t, db, "batch-count-first", inviter.Id, dto.UserSetting{})
+	secondInvitee := seedReferralUser(t, db, "batch-count-second", inviter.Id, dto.UserSetting{})
+	thirdInvitee := seedReferralUser(t, db, "batch-count-third", inviter.Id, dto.UserSetting{})
+
+	if _, err := UpsertSubscriptionReferralInviteeOverride(inviter.Id, firstInvitee.Id, "default", 100); err != nil {
+		t.Fatalf("failed to create first invitee default override: %v", err)
+	}
+	if _, err := UpsertSubscriptionReferralInviteeOverride(inviter.Id, firstInvitee.Id, "vip", 200); err != nil {
+		t.Fatalf("failed to create first invitee vip override: %v", err)
+	}
+	if _, err := UpsertSubscriptionReferralInviteeOverride(inviter.Id, secondInvitee.Id, "vip", 300); err != nil {
+		t.Fatalf("failed to create second invitee vip override: %v", err)
+	}
+
+	counts, err := ListSubscriptionReferralInviteeOverrideCounts(inviter.Id, []int{firstInvitee.Id, secondInvitee.Id, secondInvitee.Id, thirdInvitee.Id})
+	if err != nil {
+		t.Fatalf("ListSubscriptionReferralInviteeOverrideCounts() error = %v", err)
+	}
+	if counts[firstInvitee.Id] != 2 {
+		t.Fatalf("first invitee count = %d, want 2", counts[firstInvitee.Id])
+	}
+	if counts[secondInvitee.Id] != 1 {
+		t.Fatalf("second invitee count = %d, want 1", counts[secondInvitee.Id])
+	}
+	if counts[thirdInvitee.Id] != 0 {
+		t.Fatalf("third invitee count = %d, want 0", counts[thirdInvitee.Id])
+	}
+}
+
 func TestListSubscriptionReferralInviteeContributionSummariesUsesNetInviterReward(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 

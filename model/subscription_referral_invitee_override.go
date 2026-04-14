@@ -124,6 +124,48 @@ func ListSubscriptionReferralInviteeOverrides(inviterUserId int, inviteeUserId i
 	return overrides, nil
 }
 
+func ListSubscriptionReferralInviteeOverrideCounts(inviterUserId int, inviteeUserIds []int) (map[int]int64, error) {
+	if inviterUserId <= 0 {
+		return nil, errors.New("invalid inviter user id")
+	}
+	if _, err := GetUserById(inviterUserId, false); err != nil {
+		return nil, err
+	}
+
+	counts := make(map[int]int64, len(inviteeUserIds))
+	filteredInviteeUserIds := make([]int, 0, len(inviteeUserIds))
+	seenInviteeUserIDs := make(map[int]struct{}, len(inviteeUserIds))
+	for _, inviteeUserId := range inviteeUserIds {
+		if inviteeUserId <= 0 {
+			continue
+		}
+		if _, exists := seenInviteeUserIDs[inviteeUserId]; exists {
+			continue
+		}
+		seenInviteeUserIDs[inviteeUserId] = struct{}{}
+		filteredInviteeUserIds = append(filteredInviteeUserIds, inviteeUserId)
+	}
+	if len(filteredInviteeUserIds) == 0 {
+		return counts, nil
+	}
+
+	rows := make([]struct {
+		InviteeUserId int   `gorm:"column:invitee_user_id"`
+		Count         int64 `gorm:"column:override_group_count"`
+	}, 0, len(filteredInviteeUserIds))
+	if err := DB.Model(&SubscriptionReferralInviteeOverride{}).
+		Select("invitee_user_id, COUNT(*) AS override_group_count").
+		Where("inviter_user_id = ? AND invitee_user_id IN ?", inviterUserId, filteredInviteeUserIds).
+		Group("invitee_user_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		counts[row.InviteeUserId] = row.Count
+	}
+	return counts, nil
+}
+
 func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, keyword string, pageInfo *common.PageInfo) ([]*SubscriptionReferralInviteeContributionSummary, int64, int64, error) {
 	if inviterUserId <= 0 {
 		return nil, 0, 0, errors.New("invalid inviter user id")
@@ -146,7 +188,7 @@ func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, key
 		Select(strings.Join([]string{
 			"invitees.id AS invitee_user_id",
 			"COALESCE(invitees.username, '') AS invitee_username",
-			"COALESCE(invitees.`group`, '') AS invitee_group",
+			"COALESCE(invitees." + commonGroupCol + ", '') AS invitee_group",
 			"COALESCE(SUM(records.reward_quota - records.reversed_quota - records.debt_quota), 0) AS contribution_quota",
 			"COALESCE(SUM(records.reward_quota), 0) AS reward_quota",
 			"COALESCE(SUM(records.reversed_quota), 0) AS reversed_quota",
@@ -155,7 +197,7 @@ func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, key
 		}, ", ")).
 		Joins("LEFT JOIN subscription_referral_records AS records ON records.payer_user_id = invitees.id AND records.inviter_user_id = ? AND records.beneficiary_role = ?", inviterUserId, SubscriptionReferralBeneficiaryRoleInviter).
 		Where("invitees.inviter_id = ?", inviterUserId).
-		Group("invitees.id, invitees.username, invitees.`group`")
+		Group("invitees.id, invitees.username, invitees." + commonGroupCol)
 
 	if keyword != "" {
 		if inviteeId, err := strconv.Atoi(keyword); err == nil {
