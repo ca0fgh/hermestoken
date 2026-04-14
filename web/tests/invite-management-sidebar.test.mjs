@@ -1,11 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-const appRoutesSource = readFileSync(
-  new URL('../src/AppRoutes.jsx', import.meta.url),
-  'utf8',
-);
+const appSource = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const appRoutesPath = new URL('../src/AppRoutes.jsx', import.meta.url);
 const siderBarSource = readFileSync(
   new URL('../src/components/layout/SiderBar.jsx', import.meta.url),
   'utf8',
@@ -22,15 +20,23 @@ const notificationSettingsSource = readFileSync(
   'utf8',
 );
 
-test('app routes lazy load the invite rebate console page', () => {
+test('app entry lazy loads the invite rebate console page on the live route tree', () => {
   assert.match(
-    appRoutesSource,
+    appSource,
     /const InviteRebate = lazy\(\(\) => import\('\.\/pages\/InviteRebate'\)\);/,
   );
   assert.match(
-    appRoutesSource,
+    appSource,
     /path='\/console\/invite\/rebate'[\s\S]*<PrivateRoute>\{renderWithSuspense\(<InviteRebate \/>\)\}<\/PrivateRoute>/,
   );
+  assert.doesNotMatch(
+    appSource,
+    /const AppRoutes = lazy\(\(\) => import\('\.\/AppRoutes'\)\);/,
+  );
+});
+
+test('invite scaffold does not leave behind a dead AppRoutes layer', () => {
+  assert.equal(existsSync(appRoutesPath), false);
 });
 
 test('sidebar renders a standalone invite management group with the rebate item', () => {

@@ -20,9 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
-import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers';
-import { StatusContext } from './context/Status';
 import SetupCheck from './components/layout/SetupCheck';
+import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers/auth';
+import { StatusContext } from './context/Status';
 import { getPricingRequireAuth } from './helpers/headerNavModules';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -55,6 +55,7 @@ const ModelPage = lazy(() => import('./pages/Model'));
 const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
 const Playground = lazy(() => import('./pages/Playground'));
 const Subscription = lazy(() => import('./pages/Subscription'));
+const InviteRebate = lazy(() => import('./pages/InviteRebate'));
 const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
 const PersonalSetting = lazy(
   () => import('./components/settings/PersonalSetting'),
@@ -76,7 +77,6 @@ function App() {
     </Suspense>
   );
 
-  // 获取模型广场权限配置
   const pricingRequireAuth = useMemo(() => {
     return getPricingRequireAuth(statusState?.status?.HeaderNavModules);
   }, [statusState?.status?.HeaderNavModules]);
@@ -84,7 +84,7 @@ function App() {
   return (
     <SetupCheck>
       <Routes>
-        <Route path='/' element={renderWithSuspense(<Home />)} />
+        <Route path='/' element={renderWithSuspense(<Home />, 'home')} />
         <Route path='/setup' element={renderWithSuspense(<Setup />)} />
         <Route path='/forbidden' element={renderWithSuspense(<Forbidden />)} />
         <Route
@@ -198,6 +198,12 @@ function App() {
           element={<PrivateRoute>{renderWithSuspense(<TopUp />)}</PrivateRoute>}
         />
         <Route
+          path='/console/invite/rebate'
+          element={
+            <PrivateRoute>{renderWithSuspense(<InviteRebate />)}</PrivateRoute>
+          }
+        />
+        <Route
           path='/console/log'
           element={<PrivateRoute>{renderWithSuspense(<Log />)}</PrivateRoute>}
         />
@@ -240,7 +246,6 @@ function App() {
           path='/console/chat/:id?'
           element={renderWithSuspense(<Chat />)}
         />
-        {/* 方便使用chat2link直接跳转聊天... */}
         <Route
           path='/chat2link'
           element={
