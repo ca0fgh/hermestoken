@@ -52,6 +52,11 @@ const InviteRebatePage = () => {
   const [loadingInvitees, setLoadingInvitees] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  const clearInviteeSelection = () => {
+    setSelectedInvitee(null);
+    setInviteeOverrideRows([]);
+  };
+
   const loadDefaultRules = async () => {
     setLoadingDefaults(true);
     try {
@@ -102,10 +107,12 @@ const InviteRebatePage = () => {
         });
       } else {
         setInviteePage(initialPageState);
+        clearInviteeSelection();
         showError(res.data?.message || t('加载失败'));
       }
     } catch (error) {
       setInviteePage(initialPageState);
+      clearInviteeSelection();
       showError(error?.message || t('加载失败'));
     } finally {
       setLoadingInvitees(false);
@@ -145,7 +152,7 @@ const InviteRebatePage = () => {
 
   useEffect(() => {
     loadInvitees();
-  }, [queryKeyword]);
+  }, []);
 
   useEffect(() => {
     loadInviteeDetail(selectedInvitee?.id);
@@ -153,6 +160,10 @@ const InviteRebatePage = () => {
 
   const handleSearch = () => {
     setQueryKeyword(keyword);
+    setInviteePage((currentPage) => ({
+      ...currentPage,
+      page: 1,
+    }));
     loadInvitees({
       page: 1,
       page_size: inviteePage.page_size,

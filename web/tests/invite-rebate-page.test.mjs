@@ -37,6 +37,27 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
     pageSource,
     /API\.get\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{inviteeId\}`\s*,?\s*\)/,
   );
+  assert.match(
+    pageSource,
+    /useEffect\(\(\) => \{\s*loadInvitees\(\);\s*\}, \[\]\);/s,
+  );
+  assert.doesNotMatch(pageSource, /useEffect\(\(\) => \{[\s\S]*?\}, \[queryKeyword\]\);/);
+  assert.match(
+    pageSource,
+    /const handleSearch = \(\) => \{\s*setQueryKeyword\(keyword\);\s*setInviteePage\(\(currentPage\) => \([\s\S]*?page: 1,[\s\S]*?loadInvitees\(\{\s*page: 1,\s*page_size: inviteePage\.page_size,\s*keyword,\s*\}\);\s*\};/s,
+  );
+  assert.match(
+    pageSource,
+    /const clearInviteeSelection = \(\) => \{\s*setSelectedInvitee\(null\);\s*setInviteeOverrideRows\(\[\]\);\s*\};/s,
+  );
+  assert.match(
+    pageSource,
+    /setInviteePage\(initialPageState\);\s*clearInviteeSelection\(\);\s*showError\(res\.data\?\.message \|\| t\('加载失败'\)\);/s,
+  );
+  assert.match(
+    pageSource,
+    /setInviteePage\(initialPageState\);\s*clearInviteeSelection\(\);\s*showError\(error\?\.message \|\| t\('加载失败'\)\);/s,
+  );
 });
 
 test('invite rebate panels implement grouped editing, search, pagination, and delete flows', () => {
