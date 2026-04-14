@@ -48,7 +48,7 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
   );
   assert.match(
     pageSource,
-    /const clearInviteeSelection = \(\) => \{\s*setSelectedInvitee\(null\);\s*setInviteeOverrideRows\(\[\]\);\s*\};/s,
+    /const clearInviteeSelection = \(\) => \{[\s\S]*?setSelectedInvitee\(null\);\s*setInviteeOverrideRows\(\[\]\);\s*\};/s,
   );
   assert.match(
     pageSource,

@@ -17,10 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Spin, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../helpers';
+import { createInviteeDetailRequestGuard } from '../../helpers/inviteeDetailRequestGuard';
 import {
   buildInviteDefaultRuleRows,
   buildInviteeOverrideRows,
@@ -51,8 +52,10 @@ const InviteRebatePage = () => {
   const [loadingDefaults, setLoadingDefaults] = useState(false);
   const [loadingInvitees, setLoadingInvitees] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const inviteeDetailRequestGuardRef = useRef(createInviteeDetailRequestGuard());
 
   const clearInviteeSelection = () => {
+    inviteeDetailRequestGuardRef.current.clear();
     setSelectedInvitee(null);
     setInviteeOverrideRows([]);
   };
@@ -121,15 +124,20 @@ const InviteRebatePage = () => {
 
   const loadInviteeDetail = async (inviteeId) => {
     if (!inviteeId) {
+      inviteeDetailRequestGuardRef.current.clear();
       setInviteeOverrideRows([]);
       return;
     }
 
+    const detailRequest = inviteeDetailRequestGuardRef.current.begin(inviteeId);
     setLoadingDetail(true);
     try {
       const res = await API.get(
         `/api/user/referral/subscription/invitees/${inviteeId}`,
       );
+      if (!inviteeDetailRequestGuardRef.current.isCurrent(detailRequest)) {
+        return;
+      }
       if (res.data?.success) {
         const data = res.data?.data || {};
         setSelectedInvitee((currentInvitee) => data.invitee || currentInvitee);
@@ -139,10 +147,15 @@ const InviteRebatePage = () => {
         showError(res.data?.message || t('加载失败'));
       }
     } catch (error) {
+      if (!inviteeDetailRequestGuardRef.current.isCurrent(detailRequest)) {
+        return;
+      }
       setInviteeOverrideRows([]);
       showError(error?.message || t('加载失败'));
     } finally {
-      setLoadingDetail(false);
+      if (inviteeDetailRequestGuardRef.current.isCurrent(detailRequest)) {
+        setLoadingDetail(false);
+      }
     }
   };
 
