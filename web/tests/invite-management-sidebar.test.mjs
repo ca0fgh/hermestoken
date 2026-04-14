@@ -19,6 +19,13 @@ const notificationSettingsSource = readFileSync(
   ),
   'utf8',
 );
+const adminSidebarSettingsSource = readFileSync(
+  new URL(
+    '../src/pages/Setting/Operation/SettingsSidebarModulesAdmin.jsx',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 test('app entry lazy loads the invite rebate console page on the live route tree', () => {
   assert.match(
@@ -73,4 +80,12 @@ test('personal sidebar settings expose the invite section and rebate toggle', ()
   assert.match(notificationSettingsSource, /description:\s*t\('邀请返佣入口显示控制'\)/);
   assert.match(notificationSettingsSource, /key:\s*'rebate'/);
   assert.match(notificationSettingsSource, /title:\s*t\('邀请返佣'\)/);
+});
+
+test('admin sidebar settings expose invite section defaults and rebate control', () => {
+  assert.match(adminSidebarSettingsSource, /mergeAdminConfig/);
+  assert.match(adminSidebarSettingsSource, /key:\s*'invite'/);
+  assert.match(adminSidebarSettingsSource, /title:\s*t\('邀请管理'\)/);
+  assert.match(adminSidebarSettingsSource, /key:\s*'rebate'/);
+  assert.match(adminSidebarSettingsSource, /title:\s*t\('邀请返佣'\)/);
 });
