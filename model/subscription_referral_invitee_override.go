@@ -196,7 +196,7 @@ func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, key
 			"COUNT(DISTINCT records.order_id) AS order_count",
 		}, ", ")).
 		Joins("LEFT JOIN subscription_referral_records AS records ON records.payer_user_id = invitees.id AND records.inviter_user_id = ? AND records.beneficiary_role = ?", inviterUserId, SubscriptionReferralBeneficiaryRoleInviter).
-		Where("invitees.inviter_id = ?", inviterUserId).
+		Where("invitees.inviter_id = ? AND invitees.deleted_at IS NULL", inviterUserId).
 		Group("invitees.id, invitees.username, invitees." + commonGroupCol)
 
 	if keyword != "" {

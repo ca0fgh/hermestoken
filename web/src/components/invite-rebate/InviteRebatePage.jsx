@@ -21,7 +21,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Spin, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { API, showError } from '../../helpers';
-import { createInviteeDetailRequestGuard } from '../../helpers/inviteeDetailRequestGuard';
+import {
+  createInviteeDetailRequestGuard,
+  resolveInviteeSelectionAfterPageRefresh,
+} from '../../helpers/inviteeDetailRequestGuard';
 import {
   buildInviteDefaultRuleRows,
   buildInviteeOverrideRows,
@@ -97,16 +100,12 @@ const InviteRebatePage = () => {
         const nextPage = normalizeInviteeContributionPage(res.data?.data);
         setInviteePage(nextPage);
         setSelectedInvitee((currentInvitee) => {
-          if (!currentInvitee) {
-            return currentInvitee;
-          }
-          const nextInvitee =
-            nextPage.items.find((item) => item.id === currentInvitee.id) ||
-            null;
-          if (!nextInvitee) {
-            setInviteeOverrideRows([]);
-          }
-          return nextInvitee;
+          return resolveInviteeSelectionAfterPageRefresh({
+            currentInvitee,
+            nextItems: nextPage.items,
+            requestGuard: inviteeDetailRequestGuardRef.current,
+            onSelectionCleared: () => setInviteeOverrideRows([]),
+          });
         });
       } else {
         setInviteePage(initialPageState);

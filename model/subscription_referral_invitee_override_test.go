@@ -241,6 +241,24 @@ func TestListSubscriptionReferralInviteeContributionSummariesUsesNetInviterRewar
 	if filteredIDTotal != 1 || filteredIDContributionTotal != 0 || len(filteredByID) != 1 || filteredByID[0].InviteeUserId != charlie.Id {
 		t.Fatalf("filtered by id = %+v total=%d contributionTotal=%d, want only charlie/0", filteredByID, filteredIDTotal, filteredIDContributionTotal)
 	}
+
+	deletedInvitee := seedReferralUser(t, db, "deleted-contrib", inviter.Id, dto.UserSetting{})
+	if err := db.Delete(deletedInvitee).Error; err != nil {
+		t.Fatalf("failed to soft-delete invitee: %v", err)
+	}
+
+	summariesAfterDelete, totalAfterDelete, _, err := ListSubscriptionReferralInviteeContributionSummaries(inviter.Id, "", &common.PageInfo{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListSubscriptionReferralInviteeContributionSummaries(after delete) error = %v", err)
+	}
+	if totalAfterDelete != 3 {
+		t.Fatalf("total summaries after delete = %d, want 3", totalAfterDelete)
+	}
+	for _, summary := range summariesAfterDelete {
+		if summary.InviteeUserId == deletedInvitee.Id {
+			t.Fatalf("deleted invitee %d unexpectedly present in summaries: %+v", deletedInvitee.Id, summariesAfterDelete)
+		}
+	}
 }
 
 func TestMigrateDBCreatesSubscriptionReferralInviteeOverrideTable(t *testing.T) {

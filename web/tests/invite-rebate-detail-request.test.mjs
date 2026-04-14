@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createInviteeDetailRequestGuard } from '../src/helpers/inviteeDetailRequestGuard.js';
+import {
+  createInviteeDetailRequestGuard,
+  resolveInviteeSelectionAfterPageRefresh,
+} from '../src/helpers/inviteeDetailRequestGuard.js';
 
 test('createInviteeDetailRequestGuard ignores stale invitee detail responses', async () => {
   const guard = createInviteeDetailRequestGuard();
@@ -43,5 +46,24 @@ test('createInviteeDetailRequestGuard invalidates in-flight detail requests when
 
   guard.clear();
 
+  assert.equal(guard.isCurrent(request), false);
+});
+
+test('resolveInviteeSelectionAfterPageRefresh clears the guard when the selected invitee disappears from the next page', () => {
+  const guard = createInviteeDetailRequestGuard();
+  const request = guard.begin(404);
+  let cleared = false;
+
+  const nextInvitee = resolveInviteeSelectionAfterPageRefresh({
+    currentInvitee: { id: 404, username: 'gone-user' },
+    nextItems: [{ id: 505, username: 'other-user' }],
+    requestGuard: guard,
+    onSelectionCleared: () => {
+      cleared = true;
+    },
+  });
+
+  assert.equal(nextInvitee, null);
+  assert.equal(cleared, true);
   assert.equal(guard.isCurrent(request), false);
 });

@@ -44,3 +44,26 @@ export function createInviteeDetailRequestGuard() {
     },
   };
 }
+
+export function resolveInviteeSelectionAfterPageRefresh({
+  currentInvitee,
+  nextItems = [],
+  requestGuard,
+  onSelectionCleared = () => {},
+} = {}) {
+  if (!currentInvitee) {
+    return currentInvitee;
+  }
+
+  const nextInvitee =
+    (Array.isArray(nextItems) ? nextItems : []).find(
+      (item) => item?.id === currentInvitee.id,
+    ) || null;
+
+  if (!nextInvitee) {
+    requestGuard?.clear?.();
+    onSelectionCleared();
+  }
+
+  return nextInvitee;
+}
