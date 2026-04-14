@@ -135,6 +135,15 @@ func TestListSubscriptionReferralInviteeContributionSummariesUsesNetInviterRewar
 	alice := seedReferralUser(t, db, "alice-contrib", inviter.Id, dto.UserSetting{})
 	bob := seedReferralUser(t, db, "bob-contrib", inviter.Id, dto.UserSetting{})
 	charlie := seedReferralUser(t, db, "charlie-contrib", inviter.Id, dto.UserSetting{})
+	if err := db.Model(&User{}).Where("id = ?", alice.Id).Update("group", "starter").Error; err != nil {
+		t.Fatalf("failed to update alice group: %v", err)
+	}
+	if err := db.Model(&User{}).Where("id = ?", bob.Id).Update("group", "vip").Error; err != nil {
+		t.Fatalf("failed to update bob group: %v", err)
+	}
+	if err := db.Model(&User{}).Where("id = ?", charlie.Id).Update("group", "enterprise").Error; err != nil {
+		t.Fatalf("failed to update charlie group: %v", err)
+	}
 
 	records := []SubscriptionReferralRecord{
 		{OrderId: 1, OrderTradeNo: "trade-alice-1", ReferralGroup: "vip", PayerUserId: alice.Id, InviterUserId: inviter.Id, BeneficiaryUserId: inviter.Id, BeneficiaryRole: SubscriptionReferralBeneficiaryRoleInviter, RewardQuota: 500, ReversedQuota: 100, DebtQuota: 40, Status: SubscriptionReferralStatusPartialRevert},
@@ -165,11 +174,20 @@ func TestListSubscriptionReferralInviteeContributionSummariesUsesNetInviterRewar
 	if summaries[0].InviteeUserId != alice.Id || summaries[0].ContributionQuota != 560 {
 		t.Fatalf("first summary = %+v, want invitee %d contribution 560", summaries[0], alice.Id)
 	}
+	if summaries[0].InviteeGroup != "starter" {
+		t.Fatalf("first summary group = %q, want starter", summaries[0].InviteeGroup)
+	}
 	if summaries[1].InviteeUserId != bob.Id || summaries[1].ContributionQuota != 600 {
 		t.Fatalf("second summary = %+v, want invitee %d contribution 600", summaries[1], bob.Id)
 	}
+	if summaries[1].InviteeGroup != "vip" {
+		t.Fatalf("second summary group = %q, want vip", summaries[1].InviteeGroup)
+	}
 	if summaries[2].InviteeUserId != charlie.Id || summaries[2].ContributionQuota != 0 {
 		t.Fatalf("third summary = %+v, want invitee %d contribution 0", summaries[2], charlie.Id)
+	}
+	if summaries[2].InviteeGroup != "enterprise" {
+		t.Fatalf("third summary group = %q, want enterprise", summaries[2].InviteeGroup)
 	}
 
 	filteredByUsername, filteredTotal, filteredContributionTotal, err := ListSubscriptionReferralInviteeContributionSummaries(inviter.Id, "bob", &common.PageInfo{Page: 1, PageSize: 10})

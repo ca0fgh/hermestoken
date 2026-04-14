@@ -41,6 +41,7 @@ func (o *SubscriptionReferralInviteeOverride) BeforeUpdate(tx *gorm.DB) error {
 type SubscriptionReferralInviteeContributionSummary struct {
 	InviteeUserId     int    `json:"invitee_user_id" gorm:"column:invitee_user_id"`
 	InviteeUsername   string `json:"invitee_username" gorm:"column:invitee_username"`
+	InviteeGroup      string `json:"invitee_group" gorm:"column:invitee_group"`
 	ContributionQuota int64  `json:"contribution_quota" gorm:"column:contribution_quota"`
 	RewardQuota       int64  `json:"reward_quota" gorm:"column:reward_quota"`
 	ReversedQuota     int64  `json:"reversed_quota" gorm:"column:reversed_quota"`
@@ -145,6 +146,7 @@ func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, key
 		Select(strings.Join([]string{
 			"invitees.id AS invitee_user_id",
 			"COALESCE(invitees.username, '') AS invitee_username",
+			"COALESCE(invitees.`group`, '') AS invitee_group",
 			"COALESCE(SUM(records.reward_quota - records.reversed_quota - records.debt_quota), 0) AS contribution_quota",
 			"COALESCE(SUM(records.reward_quota), 0) AS reward_quota",
 			"COALESCE(SUM(records.reversed_quota), 0) AS reversed_quota",
@@ -153,7 +155,7 @@ func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, key
 		}, ", ")).
 		Joins("LEFT JOIN subscription_referral_records AS records ON records.payer_user_id = invitees.id AND records.inviter_user_id = ? AND records.beneficiary_role = ?", inviterUserId, SubscriptionReferralBeneficiaryRoleInviter).
 		Where("invitees.inviter_id = ?", inviterUserId).
-		Group("invitees.id, invitees.username")
+		Group("invitees.id, invitees.username, invitees.`group`")
 
 	if keyword != "" {
 		if inviteeId, err := strconv.Atoi(keyword); err == nil {

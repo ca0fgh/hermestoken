@@ -156,15 +156,10 @@ func GetSubscriptionReferralInvitees(c *gin.Context) {
 	overrideCountByInviteeID := listSubscriptionReferralInviteeOverrideCounts(userID, summaries)
 	items := make([]gin.H, 0, len(summaries))
 	for _, summary := range summaries {
-		inviteeGroup := ""
-		invitee, err := model.GetUserById(summary.InviteeUserId, false)
-		if err == nil {
-			inviteeGroup = invitee.Group
-		}
 		items = append(items, gin.H{
 			"id":                   summary.InviteeUserId,
 			"username":             summary.InviteeUsername,
-			"group":                inviteeGroup,
+			"group":                summary.InviteeGroup,
 			"contribution_quota":   summary.ContributionQuota,
 			"reward_quota":         summary.RewardQuota,
 			"reversed_quota":       summary.ReversedQuota,
