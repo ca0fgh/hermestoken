@@ -25,7 +25,8 @@ import { ChevronLeft } from 'lucide-react';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
-import { isAdmin, isRoot, showError } from '../../helpers/utils';
+import { showError } from '../../helpers/notifications';
+import { isAdmin, isRoot } from '../../helpers/session';
 import SkeletonWrapper from './components/SkeletonWrapper';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
@@ -49,6 +50,7 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+  rebate: '/console/invite/rebate',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -143,6 +145,18 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     });
 
     return filteredItems;
+  }, [t, isModuleVisible]);
+
+  const inviteItems = useMemo(() => {
+    const items = [
+      {
+        text: t('邀请返佣'),
+        itemKey: 'rebate',
+        to: '/invite/rebate',
+      },
+    ];
+
+    return items.filter((item) => isModuleVisible('invite', item.itemKey));
   }, [t, isModuleVisible]);
 
   const adminItems = useMemo(() => {
@@ -471,6 +485,19 @@ const SiderBar = ({ onNavigate = () => {} }) => {
                   <div className='sidebar-group-label'>{t('个人中心')}</div>
                 )}
                 {financeItems.map((item) => renderNavItem(item))}
+              </div>
+            </>
+          )}
+
+          {/* 邀请管理区域 */}
+          {hasSectionVisibleModules('invite') && (
+            <>
+              <Divider className='sidebar-divider' />
+              <div>
+                {!collapsed && (
+                  <div className='sidebar-group-label'>{t('邀请管理')}</div>
+                )}
+                {inviteItems.map((item) => renderNavItem(item))}
               </div>
             </>
           )}

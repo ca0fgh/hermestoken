@@ -49,6 +49,41 @@ import {
   useSidebar,
 } from '../../../../hooks/common/useSidebar';
 
+const getDefaultSidebarModules = () => ({
+  chat: {
+    enabled: true,
+    playground: true,
+    chat: true,
+  },
+  console: {
+    enabled: true,
+    detail: true,
+    token: true,
+    log: true,
+    midjourney: true,
+    task: true,
+  },
+  personal: {
+    enabled: true,
+    topup: true,
+    personal: true,
+  },
+  invite: {
+    enabled: true,
+    rebate: true,
+  },
+  admin: {
+    enabled: true,
+    channel: true,
+    models: true,
+    deployment: true,
+    subscription: true,
+    redemption: true,
+    user: true,
+    setting: true,
+  },
+});
+
 const NotificationSettings = ({
   t,
   notificationSettings,
@@ -63,36 +98,9 @@ const NotificationSettings = ({
   // 左侧边栏设置相关状态
   const [sidebarLoading, setSidebarLoading] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState('notification');
-  const [sidebarModulesUser, setSidebarModulesUser] = useState({
-    chat: {
-      enabled: true,
-      playground: true,
-      chat: true,
-    },
-    console: {
-      enabled: true,
-      detail: true,
-      token: true,
-      log: true,
-      midjourney: true,
-      task: true,
-    },
-    personal: {
-      enabled: true,
-      topup: true,
-      personal: true,
-    },
-    admin: {
-      enabled: true,
-      channel: true,
-      models: true,
-      deployment: true,
-      subscription: true,
-      redemption: true,
-      user: true,
-      setting: true,
-    },
-  });
+  const [sidebarModulesUser, setSidebarModulesUser] = useState(
+    getDefaultSidebarModules(),
+  );
   const [adminConfig, setAdminConfig] = useState(null);
 
   // 使用后端权限验证替代前端角色判断
@@ -155,29 +163,7 @@ const NotificationSettings = ({
   };
 
   const resetSidebarModules = () => {
-    const defaultConfig = {
-      chat: { enabled: true, playground: true, chat: true },
-      console: {
-        enabled: true,
-        detail: true,
-        token: true,
-        log: true,
-        midjourney: true,
-        task: true,
-      },
-      personal: { enabled: true, topup: true, personal: true },
-      admin: {
-        enabled: true,
-        channel: true,
-        models: true,
-        deployment: true,
-        subscription: true,
-        redemption: true,
-        user: true,
-        setting: true,
-      },
-    };
-    setSidebarModulesUser(defaultConfig);
+    setSidebarModulesUser(getDefaultSidebarModules());
   };
 
   // 加载左侧边栏配置
@@ -207,7 +193,10 @@ const NotificationSettings = ({
           } else {
             userConf = userRes.data.data.sidebar_modules;
           }
-          setSidebarModulesUser(userConf);
+          setSidebarModulesUser({
+            ...getDefaultSidebarModules(),
+            ...userConf,
+          });
         }
       } catch (error) {
         console.error('加载边栏配置失败:', error);
@@ -283,6 +272,18 @@ const NotificationSettings = ({
           key: 'personal',
           title: t('个人设置'),
           description: t('个人信息设置'),
+        },
+      ],
+    },
+    {
+      key: 'invite',
+      title: t('邀请管理'),
+      description: t('邀请返佣入口显示控制'),
+      modules: [
+        {
+          key: 'rebate',
+          title: t('邀请返佣'),
+          description: t('邀请返佣入口显示控制'),
         },
       ],
     },
