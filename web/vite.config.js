@@ -38,16 +38,9 @@ function buildManualChunkName(id) {
     return 'seasonal-effects';
   }
 
-  // Keep startup-critical UI/runtime libraries in a single vendor chunk.
-  // Splitting them into multiple eagerly preloaded chunks can create
-  // circular initialization order bugs and blank-screen the app.
+  // Keep startup-critical runtime and shared UI primitives together.
+  // Route-specific heavyweight libraries move to dedicated async chunks.
   if (
-    id.includes('/mermaid/') ||
-    id.includes('react-markdown') ||
-    id.includes('remark-') ||
-    id.includes('rehype-') ||
-    id.includes('/katex/') ||
-    id.includes('highlight.js') ||
     id.includes('@douyinfe/semi-ui') ||
     id.includes('@douyinfe/semi-icons') ||
     id.includes('@douyinfe/semi-foundation') ||
@@ -56,11 +49,8 @@ function buildManualChunkName(id) {
     id.includes('/react/') ||
     id.includes('scheduler') ||
     id.includes('i18next') ||
-    id.includes('@lobehub/icons') ||
-    id.includes('@lobehub/fluent-emoji') ||
     id.includes('lucide-react') ||
     id.includes('/react-icons/') ||
-    id.includes('@lobehub/') ||
     id.includes('react-avatar-editor') ||
     id.includes('@radix-ui')
   ) {

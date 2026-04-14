@@ -18,11 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { API, showError } from '../../helpers';
+import { API } from '../../helpers/api';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
+import { showError } from '../../helpers/utils';
 import NoticeModal from '../../components/layout/NoticeModal';
 
 const Home = () => {
