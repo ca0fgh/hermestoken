@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"sort"
 	"strconv"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type UpdateSubscriptionReferralSelfRequest struct {
@@ -534,7 +536,11 @@ func getOwnedSubscriptionReferralInvitee(c *gin.Context, inviterUserID int) (*mo
 
 	invitee, err := model.GetUserById(inviteeID, false)
 	if err != nil {
-		common.ApiError(c, err)
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(strings.ToLower(err.Error()), "record not found") {
+			common.ApiErrorMsg(c, "被邀请人不存在")
+			return nil, false
+		}
+		common.ApiErrorMsg(c, "被邀请人不存在")
 		return nil, false
 	}
 	if invitee.InviterId != inviterUserID {

@@ -181,3 +181,29 @@ func TestUpsertSubscriptionReferralInviteeOverrideRejectsForeignInvitee(t *testi
 		t.Fatalf("foreign invitee overrides length = %d, want 0", len(overrides))
 	}
 }
+
+func TestGetSubscriptionReferralInviteeHidesNonexistentInviteeIDs(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	ensureSubscriptionReferralInviteeOverrideTable(t)
+	common.SubscriptionReferralEnabled = true
+
+	inviter := seedSubscriptionReferralControllerUser(t, "invitee-missing-owner", 0, dto.UserSetting{})
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodGet,
+		"/api/user/referral/subscription/invitees/9999",
+		nil,
+		inviter.Id,
+	)
+	ctx.Params = gin.Params{{Key: "invitee_id", Value: "9999"}}
+	GetSubscriptionReferralInvitee(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if resp.Success {
+		t.Fatal("expected nonexistent invitee lookup to fail")
+	}
+	if resp.Message != "被邀请人不存在" {
+		t.Fatalf("message = %q, want %q", resp.Message, "被邀请人不存在")
+	}
+}
