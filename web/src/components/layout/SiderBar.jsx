@@ -25,8 +25,7 @@ import { ChevronLeft } from 'lucide-react';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useSidebar } from '../../hooks/common/useSidebar';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
-import { showError } from '../../helpers/notifications';
-import { isAdmin, isRoot } from '../../helpers/session';
+import { showError, isAdmin, isRoot } from '../../helpers/utils';
 import SkeletonWrapper from './components/SkeletonWrapper';
 
 import { Nav, Divider, Button } from '@douyinfe/semi-ui';
@@ -69,6 +68,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const [openedKeys, setOpenedKeys] = useState([]);
   const location = useLocation();
   const [routerMapState, setRouterMapState] = useState(routerMap);
+  const sidebarWidth = collapsed
+    ? 'var(--sidebar-width-collapsed)'
+    : 'var(--sidebar-width)';
 
   const workspaceItems = useMemo(() => {
     const items = [
@@ -308,15 +310,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     }
   }, [location.pathname, routerMapState]);
 
-  // 监控折叠状态变化以更新 body class
-  useEffect(() => {
-    if (collapsed) {
-      document.body.classList.add('sidebar-collapsed');
-    } else {
-      document.body.classList.remove('sidebar-collapsed');
-    }
-  }, [collapsed]);
-
   // 选中高亮颜色（统一）
   const SELECTED_COLOR = 'var(--semi-color-primary)';
 
@@ -404,7 +397,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     <div
       className='sidebar-container'
       style={{
-        width: 'var(--sidebar-current-width)',
+        width: sidebarWidth,
       }}
     >
       <SkeletonWrapper

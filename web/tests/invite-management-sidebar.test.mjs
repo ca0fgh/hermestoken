@@ -45,6 +45,12 @@ test('sidebar renders a standalone invite management group with the rebate item'
   assert.match(siderBarSource, /t\('邀请管理'\)/);
   assert.match(siderBarSource, /text:\s*t\('邀请返佣'\),\s*itemKey:\s*'rebate'/);
   assert.match(siderBarSource, /const inviteItems = useMemo\(/);
+  assert.match(siderBarSource, /from '\.\.\/\.\.\/helpers\/utils';/);
+  assert.doesNotMatch(
+    siderBarSource,
+    /from '\.\.\/\.\.\/helpers\/notifications';/,
+  );
+  assert.doesNotMatch(siderBarSource, /from '\.\.\/\.\.\/helpers\/session';/);
 });
 
 test('sidebar defaults include the invite section and rebate module', () => {

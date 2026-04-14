@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -135,4 +136,44 @@ func TestInsertDefaultsBlankGroupWithoutSchemaDefault(t *testing.T) {
 			t.Fatalf("expected tx-inserted user group to be default, got %q", stored.Group)
 		}
 	})
+}
+
+func TestInsertInitializesInviteSidebarModuleForNewUsers(t *testing.T) {
+	db := setupUserDefaultGroupModelTestDB(t)
+
+	user := &User{
+		Username: "invite-sidebar-user",
+		Password: "password123",
+		Group:    "default",
+	}
+
+	if err := user.Insert(0); err != nil {
+		t.Fatalf("expected insert to succeed, got error: %v", err)
+	}
+
+	var stored User
+	if err := db.Where("username = ?", user.Username).First(&stored).Error; err != nil {
+		t.Fatalf("failed to load inserted user: %v", err)
+	}
+
+	setting := stored.GetSetting()
+	if setting.SidebarModules == "" {
+		t.Fatal("expected sidebar modules to be initialized for new user")
+	}
+
+	var sidebarConfig map[string]map[string]bool
+	if err := json.Unmarshal([]byte(setting.SidebarModules), &sidebarConfig); err != nil {
+		t.Fatalf("failed to unmarshal sidebar modules: %v", err)
+	}
+
+	inviteConfig, ok := sidebarConfig["invite"]
+	if !ok {
+		t.Fatal("expected invite section in new user sidebar config")
+	}
+	if !inviteConfig["enabled"] {
+		t.Fatal("expected invite section to be enabled")
+	}
+	if !inviteConfig["rebate"] {
+		t.Fatal("expected invite rebate module to be enabled")
+	}
 }
