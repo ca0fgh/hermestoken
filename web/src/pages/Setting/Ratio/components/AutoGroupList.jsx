@@ -18,13 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useState, useCallback, useMemo } from 'react';
-import {
-  Button,
-  Select,
-  Typography,
-  Popconfirm,
-  Tag,
-} from '@douyinfe/semi-ui';
+import { Button, Select, Typography, Popconfirm, Tag } from '@douyinfe/semi-ui';
 import {
   IconPlus,
   IconDelete,
@@ -131,10 +125,7 @@ export default function AutoGroupList({ value, groupNames = [], onChange }) {
     <div>
       <div className='space-y-2'>
         {items.map((item, index) => (
-          <div
-            key={item._id}
-            className='flex items-center gap-2'
-          >
+          <div key={item._id} className='flex items-center gap-2'>
             <Tag size='small' color='blue' className='shrink-0'>
               {index + 1}
             </Tag>

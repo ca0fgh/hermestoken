@@ -30,7 +30,10 @@ test('buildGroupOption truncates long descriptions only for dropdown secondary t
   );
 
   assert.equal(option.label, 'vip');
-  assert.equal(option.fullLabel, '这是一个非常长的描述，用来确认下拉框里的副标题会被截断');
+  assert.equal(
+    option.fullLabel,
+    '这是一个非常长的描述，用来确认下拉框里的副标题会被截断',
+  );
   assert.equal(option.optionDescription, '这是一个非常长的...');
   assert.equal(option.ratio, 0.8);
 });

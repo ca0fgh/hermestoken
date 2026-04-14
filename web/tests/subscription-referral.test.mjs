@@ -82,7 +82,11 @@ test('buildAdminOverrideGroupOptions retains legacy group even when missing from
     { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
     { id: 'subscription:legacy', type: 'subscription', group: 'legacy' },
   ];
-  const options = buildAdminOverrideGroupOptions(['alpha', 'beta'], rows, rows[1]);
+  const options = buildAdminOverrideGroupOptions(
+    ['alpha', 'beta'],
+    rows,
+    rows[1],
+  );
 
   assert.deepEqual(options, [
     { label: 'alpha', value: 'alpha', disabled: true },
@@ -108,7 +112,11 @@ test('buildAdminOverrideGroupOptions disables already used groups for the same t
     { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
     { id: 'subscription:beta', type: 'subscription', group: 'beta' },
   ];
-  const options = buildAdminOverrideGroupOptions(['alpha', 'beta', 'gamma'], rows, rows[0]);
+  const options = buildAdminOverrideGroupOptions(
+    ['alpha', 'beta', 'gamma'],
+    rows,
+    rows[0],
+  );
 
   assert.deepEqual(options, [
     { label: 'alpha', value: 'alpha', disabled: false },
@@ -484,8 +492,14 @@ test('OperationSetting no longer mounts the global subscription referral setting
     'utf8',
   );
 
-  assert.equal(operationSettingSource.includes('SettingsSubscriptionReferral'), false);
-  assert.equal(operationSettingSource.includes('SubscriptionReferralEnabled'), false);
+  assert.equal(
+    operationSettingSource.includes('SettingsSubscriptionReferral'),
+    false,
+  );
+  assert.equal(
+    operationSettingSource.includes('SubscriptionReferralEnabled'),
+    false,
+  );
 });
 
 test('SubscriptionReferralOverrideSection keeps the extensible override list workflow', () => {
@@ -510,7 +524,7 @@ test('SubscriptionReferralOverrideSection keeps the extensible override list wor
   assert.match(overrideSource, /buildAdminOverrideGroupOptions\(/);
   assert.match(overrideSource, /t\('新增覆盖'\)/);
   assert.equal(
-    overrideSource.includes("/api/subscription/admin/referral/settings"),
+    overrideSource.includes('/api/subscription/admin/referral/settings'),
     false,
   );
 });

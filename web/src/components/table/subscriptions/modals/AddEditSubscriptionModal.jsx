@@ -90,7 +90,6 @@ const AddEditSubscriptionModal = ({
     custom_seconds: 0,
     quota_reset_period: 'never',
     quota_reset_custom_seconds: 0,
-    enabled: true,
     sort_order: 0,
     max_purchase_per_user: 0,
     stock_total: 0,
@@ -118,7 +117,6 @@ const AddEditSubscriptionModal = ({
       custom_seconds: Number(p.custom_seconds || 0),
       quota_reset_period: p.quota_reset_period || 'never',
       quota_reset_custom_seconds: Number(p.quota_reset_custom_seconds || 0),
-      enabled: p.enabled !== false,
       sort_order: Number(p.sort_order || 0),
       max_purchase_per_user: Number(p.max_purchase_per_user || 0),
       stock_total: Number(p.stock_total || 0),
@@ -156,6 +154,9 @@ const AddEditSubscriptionModal = ({
     }
     setLoading(true);
     try {
+      const nextEnabled = editingPlan?.plan?.id
+        ? editingPlan?.plan?.enabled !== false
+        : true;
       const payload = {
         plan: {
           ...values,
@@ -173,6 +174,7 @@ const AddEditSubscriptionModal = ({
           stock_total: Number(values.stock_total || 0),
           total_amount: displayAmountToQuota(values.total_amount),
           upgrade_group: values.upgrade_group || '',
+          enabled: nextEnabled,
         },
       };
       if (editingPlan?.plan?.id) {
@@ -388,14 +390,6 @@ const AddEditSubscriptionModal = ({
                         precision={0}
                         extraText={`${t('套餐总库存，0 表示不限')} ${t('库存从开启后开始统计，历史销售不计入')}`}
                         style={{ width: '100%' }}
-                      />
-                    </Col>
-
-                    <Col span={12}>
-                      <Form.Switch
-                        field='enabled'
-                        label={t('启用状态')}
-                        size='large'
                       />
                     </Col>
 

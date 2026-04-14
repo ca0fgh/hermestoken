@@ -38,6 +38,17 @@ test('subscription admin editor exposes a separate stock_total field and stock s
   assert.match(addEditSource, /t\('剩余'\)/);
 });
 
+test('subscription admin editor removes the redundant enabled form switch while keeping create and update titles', () => {
+  assert.doesNotMatch(addEditSource, /field='enabled'/);
+  assert.doesNotMatch(addEditSource, /t\('实时概览'\)/);
+  assert.doesNotMatch(
+    addEditSource,
+    /t\('创建时默认启用，后续可在列表中统一启用或禁用'\)/,
+  );
+  assert.match(addEditSource, /t\('创建新的订阅套餐'\)/);
+  assert.match(addEditSource, /t\('更新套餐信息'\)/);
+});
+
 test('subscription admin table renders stock information separately from purchase limit', () => {
   assert.match(columnsSource, /t\('库存'\)/);
   assert.match(columnsSource, /t\('总库存'\)/);

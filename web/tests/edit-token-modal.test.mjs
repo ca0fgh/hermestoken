@@ -29,6 +29,12 @@ test('edit token modal shows plain none text when no token groups are available'
 test('edit token modal no longer claims blank token group always falls back to user group', async () => {
   const source = await load(editTokenModalPath);
 
-  assert.doesNotMatch(source, /placeholder=\{t\('令牌分组，默认为用户的分组'\)\}/);
-  assert.match(source, /请选择用户可选分组；留空仅在默认分组属于用户可选时生效/);
+  assert.doesNotMatch(
+    source,
+    /placeholder=\{t\('令牌分组，默认为用户的分组'\)\}/,
+  );
+  assert.match(
+    source,
+    /请选择用户可选分组；留空仅在默认分组属于用户可选时生效/,
+  );
 });

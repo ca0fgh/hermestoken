@@ -35,7 +35,10 @@ const FooterBar = () => {
   const docsLink = statusState?.status?.docs_link || '';
   const { showDocsSection, showAboutSection } = useMemo(
     () =>
-      getFooterSectionVisibility(statusState?.status?.HeaderNavModules, docsLink),
+      getFooterSectionVisibility(
+        statusState?.status?.HeaderNavModules,
+        docsLink,
+      ),
     [docsLink, statusState?.status?.HeaderNavModules],
   );
 

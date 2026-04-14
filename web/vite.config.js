@@ -23,6 +23,74 @@ import pkg from '@douyinfe/vite-plugin-semi';
 import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
+const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
+
+function buildManualChunkName(id) {
+  if (!id.includes('node_modules')) {
+    return undefined;
+  }
+
+  if (id.includes('@visactor/')) {
+    return 'visactor';
+  }
+
+  if (id.includes('react-fireworks')) {
+    return 'seasonal-effects';
+  }
+
+  // Keep startup-critical UI/runtime libraries in a single vendor chunk.
+  // Splitting them into multiple eagerly preloaded chunks can create
+  // circular initialization order bugs and blank-screen the app.
+  if (
+    id.includes('/mermaid/') ||
+    id.includes('react-markdown') ||
+    id.includes('remark-') ||
+    id.includes('rehype-') ||
+    id.includes('/katex/') ||
+    id.includes('highlight.js') ||
+    id.includes('@douyinfe/semi-ui') ||
+    id.includes('@douyinfe/semi-icons') ||
+    id.includes('@douyinfe/semi-foundation') ||
+    id.includes('@douyinfe/semi-illustrations') ||
+    id.includes('react-router-dom') ||
+    id.includes('/react/') ||
+    id.includes('scheduler') ||
+    id.includes('i18next') ||
+    id.includes('@lobehub/icons') ||
+    id.includes('@lobehub/fluent-emoji') ||
+    id.includes('lucide-react') ||
+    id.includes('/react-icons/') ||
+    id.includes('@lobehub/') ||
+    id.includes('react-avatar-editor') ||
+    id.includes('@radix-ui')
+  ) {
+    return 'react-core';
+  }
+
+  if (
+    id.includes('axios') ||
+    id.includes('/history/') ||
+    id.includes('/marked/')
+  ) {
+    return 'tools';
+  }
+
+  return undefined;
+}
+
+function handleBuildWarning(warning, warn) {
+  const warningId = warning.id || warning.loc?.file || '';
+  const warningMessage = warning.message || '';
+
+  if (
+    warningId.includes(LOTTIE_EVAL_WARNING_PATH) &&
+    (warning.code === 'EVAL' || warningMessage.includes('Use of eval'))
+  ) {
+    return;
+  }
+
+  warn(warning);
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -65,25 +133,11 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 3500,
     rollupOptions: {
+      onwarn: handleBuildWarning,
       output: {
-        manualChunks: {
-          'react-core': ['react', 'react-dom', 'react-router-dom'],
-          'semi-ui': ['@douyinfe/semi-icons', '@douyinfe/semi-ui'],
-          tools: ['axios', 'history', 'marked'],
-          'react-components': [
-            'react-dropzone',
-            'react-fireworks',
-            'react-telegram-login',
-            'react-toastify',
-            'react-turnstile',
-          ],
-          i18n: [
-            'i18next',
-            'react-i18next',
-            'i18next-browser-languagedetector',
-          ],
-        },
+        manualChunks: buildManualChunkName,
       },
     },
   },

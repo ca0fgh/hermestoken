@@ -89,12 +89,6 @@ test('settings header nav source explains guest pricing uses the default group',
     'utf8',
   );
 
-  assert.match(
-    source,
-    /t\('关闭后游客按 default 分组浏览模型广场'\)/,
-  );
-  assert.match(
-    source,
-    /t\('default 是游客和新注册用户的公开基础分组'\)/,
-  );
+  assert.match(source, /t\('关闭后游客按 default 分组浏览模型广场'\)/);
+  assert.match(source, /t\('default 是游客和新注册用户的公开基础分组'\)/);
 });

@@ -56,6 +56,9 @@ test('SubscriptionReferralOverrideSection copy reflects override list UX', () =>
   assert.match(componentSource, /t\('当前默认总返佣率'\)/);
   assert.match(componentSource, /t\('取消'\)/);
   assert.match(componentSource, /t\('删除'\)/);
-  assert.doesNotMatch(componentSource, /t\('未设置覆盖时，该分组不启用订阅返佣'\)/);
+  assert.doesNotMatch(
+    componentSource,
+    /t\('未设置覆盖时，该分组不启用订阅返佣'\)/,
+  );
   assert.doesNotMatch(componentSource, /t\('当前未启用该分组订阅返佣'\)/);
 });

@@ -214,7 +214,10 @@ const OtherSetting = () => {
     }
 
     try {
-      setLoadingInput((loadingInput) => ({ ...loadingInput, LogoUpload: true }));
+      setLoadingInput((loadingInput) => ({
+        ...loadingInput,
+        LogoUpload: true,
+      }));
       const formData = new FormData();
       formData.append(LOGO_UPLOAD_FIELD, file);
       const res = await API.post('/api/option/logo', formData, {

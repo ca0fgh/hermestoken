@@ -328,7 +328,9 @@ const EditUserModal = (props) => {
                   </Card>
                 )}
 
-                {userId && <SubscriptionReferralOverrideSection userId={userId} />}
+                {userId && (
+                  <SubscriptionReferralOverrideSection userId={userId} />
+                )}
 
                 {/* 绑定信息入口 */}
                 {userId && (

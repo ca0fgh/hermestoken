@@ -28,11 +28,7 @@ function truncateDescription(desc, maxLength) {
   return `${desc.substring(0, maxLength)}...`;
 }
 
-export function buildGroupOption(
-  group,
-  info = {},
-  { truncateDescAt } = {},
-) {
+export function buildGroupOption(group, info = {}, { truncateDescAt } = {}) {
   const description = normalizeGroupDescription(info?.desc);
 
   return {

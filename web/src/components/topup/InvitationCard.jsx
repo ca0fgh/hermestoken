@@ -65,8 +65,8 @@ const InvitationCard = ({
     }));
   };
 
-  const visibleReferralGroups = (referralGroups || []).filter((referralSummary) =>
-    String(referralSummary?.group || '').trim(),
+  const visibleReferralGroups = (referralGroups || []).filter(
+    (referralSummary) => String(referralSummary?.group || '').trim(),
   );
 
   return (
@@ -267,7 +267,9 @@ const InvitationCard = ({
                             {t('分给被邀请人的比例')}
                           </Text>
                           <Text strong>
-                            {formatRateBpsPercent(referralSummary.inviteeRateBps)}
+                            {formatRateBpsPercent(
+                              referralSummary.inviteeRateBps,
+                            )}
                           </Text>
                         </div>
                         <div className='rounded-xl bg-gray-50 p-3'>
@@ -275,7 +277,9 @@ const InvitationCard = ({
                             {t('我实际获得的比例')}
                           </Text>
                           <Text strong>
-                            {formatRateBpsPercent(referralSummary.inviterRateBps)}
+                            {formatRateBpsPercent(
+                              referralSummary.inviterRateBps,
+                            )}
                           </Text>
                         </div>
                       </div>
@@ -311,10 +315,7 @@ const InvitationCard = ({
                           loading={referralSaving}
                           disabled={!canSaveReferral}
                           onClick={() =>
-                            onSaveReferralConfig?.(
-                              group,
-                              inviteeRateBpsDraft,
-                            )
+                            onSaveReferralConfig?.(group, inviteeRateBpsDraft)
                           }
                         >
                           {t('保存返佣设置')}

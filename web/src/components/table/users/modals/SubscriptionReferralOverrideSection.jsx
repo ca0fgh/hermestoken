@@ -51,7 +51,9 @@ const buildGroupDefaultRates = (groups = []) =>
     return {
       ...rateMap,
       [group]: Number(
-        groupItem?.effective_total_rate_bps ?? groupItem?.effectiveTotalRateBps ?? 0,
+        groupItem?.effective_total_rate_bps ??
+          groupItem?.effectiveTotalRateBps ??
+          0,
       ),
     };
   }, {});
@@ -127,9 +129,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
       const responseGroups = Array.isArray(next.groups) ? next.groups : [];
       const persistedOverrideRows = buildAdminOverrideRows(
         Array.isArray(next.groups) ? next.groups : [],
-      ).filter(
-        (row) => row.hasOverride,
-      );
+      ).filter((row) => row.hasOverride);
       const nextAvailableGroups = normalizeGroupNames([
         ...(Array.isArray(groupRes.data?.data) ? groupRes.data.data : []),
         ...persistedOverrideRows.map((row) => row.group),
@@ -343,7 +343,8 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
                         onChange={(value) =>
                           updateRow(row.id, {
                             group: value,
-                            effectiveTotalRateBps: getDefaultRateBpsByGroup(value),
+                            effectiveTotalRateBps:
+                              getDefaultRateBpsByGroup(value),
                           })
                         }
                       />
@@ -395,7 +396,9 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
                     <Button
                       theme='light'
                       disabled={
-                        (!row.isDraft && !row.hasOverride) || loading || isSaving
+                        (!row.isDraft && !row.hasOverride) ||
+                        loading ||
+                        isSaving
                       }
                       onClick={() => removeOverride(row.id)}
                     >
