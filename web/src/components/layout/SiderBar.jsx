@@ -68,9 +68,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
   const [openedKeys, setOpenedKeys] = useState([]);
   const location = useLocation();
   const [routerMapState, setRouterMapState] = useState(routerMap);
-  const sidebarWidth = collapsed
-    ? 'var(--sidebar-width-collapsed)'
-    : 'var(--sidebar-width)';
 
   const workspaceItems = useMemo(() => {
     const items = [
@@ -310,6 +307,15 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     }
   }, [location.pathname, routerMapState]);
 
+  // Preserve the shared collapsed-layout shell behavior used by PageLayout.
+  useEffect(() => {
+    if (collapsed) {
+      document.body.classList.add('sidebar-collapsed');
+    } else {
+      document.body.classList.remove('sidebar-collapsed');
+    }
+  }, [collapsed]);
+
   // 选中高亮颜色（统一）
   const SELECTED_COLOR = 'var(--semi-color-primary)';
 
@@ -397,7 +403,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     <div
       className='sidebar-container'
       style={{
-        width: sidebarWidth,
+        width: 'var(--sidebar-current-width)',
       }}
     >
       <SkeletonWrapper
