@@ -51,6 +51,13 @@ test('sidebar renders a standalone invite management group with the rebate item'
     /from '\.\.\/\.\.\/helpers\/notifications';/,
   );
   assert.doesNotMatch(siderBarSource, /from '\.\.\/\.\.\/helpers\/session';/);
+  assert.match(siderBarSource, /document\.body\.classList\.add\('sidebar-collapsed'\)/);
+  assert.match(
+    siderBarSource,
+    /document\.body\.classList\.remove\('sidebar-collapsed'\)/,
+  );
+  assert.match(siderBarSource, /width:\s*'var\(--sidebar-current-width\)'/);
+  assert.doesNotMatch(siderBarSource, /const sidebarWidth = collapsed/);
 });
 
 test('sidebar defaults include the invite section and rebate module', () => {
