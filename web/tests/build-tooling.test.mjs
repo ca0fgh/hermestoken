@@ -62,23 +62,23 @@ test('heavy console routes are lazy loaded to keep the app entry chunk small', a
 
   assert.match(
     source,
-    /const Playground = lazy\(\(\) => import\('\.\/pages\/Playground'\)\);/,
+    /const Playground = lazyWithRetry\([\s\S]*import\('\.\/pages\/Playground'\),/,
   );
   assert.match(
     source,
-    /const Setting = lazy\(\(\) => import\('\.\/pages\/Setting'\)\);/,
+    /const Setting = lazyWithRetry\([\s\S]*import\('\.\/pages\/Setting'\),/,
   );
   assert.match(
     source,
-    /const ModelPage = lazy\(\(\) => import\('\.\/pages\/Model'\)\);/,
+    /const ModelPage = lazyWithRetry\([\s\S]*import\('\.\/pages\/Model'\),/,
   );
   assert.match(
     source,
-    /const Token = lazy\(\(\) => import\('\.\/pages\/Token'\)\);/,
+    /const Token = lazyWithRetry\([\s\S]*import\('\.\/pages\/Token'\),/,
   );
   assert.match(
     source,
-    /const Chat = lazy\(\(\) => import\('\.\/pages\/Chat'\)\);/,
+    /const Chat = lazyWithRetry\([\s\S]*import\('\.\/pages\/Chat'\),/,
   );
 });
 

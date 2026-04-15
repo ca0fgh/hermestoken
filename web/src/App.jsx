@@ -17,51 +17,106 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { lazy, Suspense, useContext, useMemo } from 'react';
+import React, { Suspense, useContext, useMemo } from 'react';
 import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import SetupCheck from './components/layout/SetupCheck';
 import { AuthRedirect, PrivateRoute, AdminRoute } from './helpers/auth';
 import { StatusContext } from './context/Status';
 import { getPricingRequireAuth } from './helpers/headerNavModules';
+import { lazyWithRetry } from './helpers/lazyWithRetry';
+import RegisterForm from './components/auth/RegisterForm';
+import LoginForm from './components/auth/LoginForm';
 
-const Home = lazy(() => import('./pages/Home'));
-const Setup = lazy(() => import('./pages/Setup'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const About = lazy(() => import('./pages/About'));
-const User = lazy(() => import('./pages/User'));
-const RegisterForm = lazy(() => import('./components/auth/RegisterForm'));
-const LoginForm = lazy(() => import('./components/auth/LoginForm'));
-const NotFound = lazy(() => import('./pages/NotFound'));
-const Forbidden = lazy(() => import('./pages/Forbidden'));
-const Setting = lazy(() => import('./pages/Setting'));
-const PasswordResetForm = lazy(
+const Home = lazyWithRetry(() => import('./pages/Home'), 'home-route');
+const Setup = lazyWithRetry(() => import('./pages/Setup'), 'setup-route');
+const Dashboard = lazyWithRetry(
+  () => import('./pages/Dashboard'),
+  'dashboard-route',
+);
+const About = lazyWithRetry(() => import('./pages/About'), 'about-route');
+const User = lazyWithRetry(() => import('./pages/User'), 'user-route');
+const NotFound = lazyWithRetry(
+  () => import('./pages/NotFound'),
+  'not-found-route',
+);
+const Forbidden = lazyWithRetry(
+  () => import('./pages/Forbidden'),
+  'forbidden-route',
+);
+const Setting = lazyWithRetry(
+  () => import('./pages/Setting'),
+  'setting-route',
+);
+const PasswordResetForm = lazyWithRetry(
   () => import('./components/auth/PasswordResetForm'),
+  'password-reset-route',
 );
-const PasswordResetConfirm = lazy(
+const PasswordResetConfirm = lazyWithRetry(
   () => import('./components/auth/PasswordResetConfirm'),
+  'password-reset-confirm-route',
 );
-const Channel = lazy(() => import('./pages/Channel'));
-const Token = lazy(() => import('./pages/Token'));
-const Redemption = lazy(() => import('./pages/Redemption'));
-const TopUp = lazy(() => import('./pages/TopUp'));
-const Log = lazy(() => import('./pages/Log'));
-const Chat = lazy(() => import('./pages/Chat'));
-const Chat2Link = lazy(() => import('./pages/Chat2Link'));
-const Midjourney = lazy(() => import('./pages/Midjourney'));
-const Pricing = lazy(() => import('./pages/Pricing'));
-const Task = lazy(() => import('./pages/Task'));
-const ModelPage = lazy(() => import('./pages/Model'));
-const ModelDeploymentPage = lazy(() => import('./pages/ModelDeployment'));
-const Playground = lazy(() => import('./pages/Playground'));
-const Subscription = lazy(() => import('./pages/Subscription'));
-const InviteRebate = lazy(() => import('./pages/InviteRebate'));
-const OAuth2Callback = lazy(() => import('./components/auth/OAuth2Callback'));
-const PersonalSetting = lazy(
+const Channel = lazyWithRetry(
+  () => import('./pages/Channel'),
+  'channel-route',
+);
+const Token = lazyWithRetry(() => import('./pages/Token'), 'token-route');
+const Redemption = lazyWithRetry(
+  () => import('./pages/Redemption'),
+  'redemption-route',
+);
+const TopUp = lazyWithRetry(() => import('./pages/TopUp'), 'topup-route');
+const Log = lazyWithRetry(() => import('./pages/Log'), 'log-route');
+const Chat = lazyWithRetry(() => import('./pages/Chat'), 'chat-route');
+const Chat2Link = lazyWithRetry(
+  () => import('./pages/Chat2Link'),
+  'chat2link-route',
+);
+const Midjourney = lazyWithRetry(
+  () => import('./pages/Midjourney'),
+  'midjourney-route',
+);
+const Pricing = lazyWithRetry(
+  () => import('./pages/Pricing'),
+  'pricing-route',
+);
+const Task = lazyWithRetry(() => import('./pages/Task'), 'task-route');
+const ModelPage = lazyWithRetry(
+  () => import('./pages/Model'),
+  'model-route',
+);
+const ModelDeploymentPage = lazyWithRetry(
+  () => import('./pages/ModelDeployment'),
+  'model-deployment-route',
+);
+const Playground = lazyWithRetry(
+  () => import('./pages/Playground'),
+  'playground-route',
+);
+const Subscription = lazyWithRetry(
+  () => import('./pages/Subscription'),
+  'subscription-route',
+);
+const InviteRebate = lazyWithRetry(
+  () => import('./pages/InviteRebate'),
+  'invite-rebate-route',
+);
+const OAuth2Callback = lazyWithRetry(
+  () => import('./components/auth/OAuth2Callback'),
+  'oauth-callback-route',
+);
+const PersonalSetting = lazyWithRetry(
   () => import('./components/settings/PersonalSetting'),
+  'personal-setting-route',
 );
-const UserAgreement = lazy(() => import('./pages/UserAgreement'));
-const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const UserAgreement = lazyWithRetry(
+  () => import('./pages/UserAgreement'),
+  'user-agreement-route',
+);
+const PrivacyPolicy = lazyWithRetry(
+  () => import('./pages/PrivacyPolicy'),
+  'privacy-policy-route',
+);
 
 function DynamicOAuth2Callback() {
   const { provider } = useParams();
