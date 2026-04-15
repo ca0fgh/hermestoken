@@ -563,6 +563,88 @@ func TestAdminUpdateSubscriptionPlanRejectsDisablingStockWhenReservedOrderExists
 	}
 }
 
+func TestGetSubscriptionSelfUsesCanonicalSnapshotBeforeLegacyString(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+
+	user := &model.User{
+		Id:       301,
+		Username: "subscription_summary_user",
+		Password: "password123",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	plan := &model.SubscriptionPlan{
+		Id:              401,
+		Title:           "subscription-summary-plan",
+		PriceAmount:     9.9,
+		Currency:        "USD",
+		DurationUnit:    model.SubscriptionDurationMonth,
+		DurationValue:   1,
+		Enabled:         true,
+		UpgradeGroup:    "default",
+		UpgradeGroupKey: "default",
+	}
+	if err := db.Create(plan).Error; err != nil {
+		t.Fatalf("failed to create plan: %v", err)
+	}
+
+	now := common.GetTimestamp()
+	subscription := &model.UserSubscription{
+		UserId:                   user.Id,
+		PlanId:                   plan.Id,
+		AmountTotal:              100,
+		AmountUsed:               0,
+		StartTime:                now,
+		EndTime:                  now + 3600,
+		Status:                   "active",
+		Source:                   "migration",
+		UpgradeGroup:             "legacy-premium",
+		UpgradeGroupKeySnapshot:  "premium",
+		UpgradeGroupNameSnapshot: "Premium",
+		PrevUserGroup:            "default",
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+	if err := db.Create(subscription).Error; err != nil {
+		t.Fatalf("failed to create user subscription: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/self", nil, user.Id)
+	GetSubscriptionSelf(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var payload struct {
+		Subscriptions     []model.SubscriptionSummary `json:"subscriptions"`
+		AllSubscriptions  []model.SubscriptionSummary `json:"all_subscriptions"`
+		BillingPreference string                      `json:"billing_preference"`
+	}
+	if err := common.Unmarshal(response.Data, &payload); err != nil {
+		t.Fatalf("failed to decode subscription self payload: %v", err)
+	}
+
+	if len(payload.Subscriptions) != 1 {
+		t.Fatalf("expected one active subscription summary, got %d", len(payload.Subscriptions))
+	}
+	if got := payload.Subscriptions[0].Subscription.UpgradeGroup; got != "premium" {
+		t.Fatalf("expected active summary upgrade_group to prefer canonical snapshot key, got %q", got)
+	}
+	if len(payload.AllSubscriptions) != 1 {
+		t.Fatalf("expected one total subscription summary, got %d", len(payload.AllSubscriptions))
+	}
+	if got := payload.AllSubscriptions[0].Subscription.UpgradeGroup; got != "premium" {
+		t.Fatalf("expected all_subscriptions upgrade_group to prefer canonical snapshot key, got %q", got)
+	}
+}
+
 func TestGetSubscriptionPlansIncludesStockAvailable(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	plan := seedSubscriptionPlan(t, db, "stock-api-plan")

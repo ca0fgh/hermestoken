@@ -1022,13 +1022,28 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+func normalizeSubscriptionSummary(sub UserSubscription) UserSubscription {
+	sub.UpgradeGroupKeySnapshot = strings.TrimSpace(sub.UpgradeGroupKeySnapshot)
+	switch {
+	case sub.UpgradeGroupKeySnapshot != "":
+		sub.UpgradeGroup = sub.UpgradeGroupKeySnapshot
+	default:
+		if canonicalGroup := resolveCanonicalSubscriptionUpgradeGroup(sub.UpgradeGroup); canonicalGroup != "" {
+			sub.UpgradeGroup = canonicalGroup
+		} else {
+			sub.UpgradeGroup = strings.TrimSpace(sub.UpgradeGroup)
+		}
+	}
+	return sub
+}
+
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
 	}
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
-		subCopy := sub
+		subCopy := normalizeSubscriptionSummary(sub)
 		result = append(result, SubscriptionSummary{
 			Subscription: &subCopy,
 		})
