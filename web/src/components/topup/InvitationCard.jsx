@@ -17,25 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
-import {
-  Avatar,
-  Typography,
-  Card,
-  Button,
-  Input,
-  InputNumber,
-  Badge,
-  Space,
-} from '@douyinfe/semi-ui';
+import React from 'react';
+import { Avatar, Typography, Card, Button, Input, Badge, Space } from '@douyinfe/semi-ui';
 import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
-import {
-  buildInvitationDraftPercentInputs,
-  clampInviteeRateBps,
-  formatRateBpsPercent,
-  percentNumberToRateBps,
-  rateBpsToPercentNumber,
-} from '../../helpers/subscriptionReferral';
 
 const { Text } = Typography;
 
@@ -46,29 +30,7 @@ const InvitationCard = ({
   setOpenTransfer,
   affLink,
   handleAffLinkClick,
-  referralGroups,
-  referralSaving,
-  onSaveReferralConfig,
 }) => {
-  const [inviteePercentInputs, setInviteePercentInputs] = useState({});
-
-  useEffect(() => {
-    setInviteePercentInputs((currentInputs) =>
-      buildInvitationDraftPercentInputs(currentInputs, referralGroups),
-    );
-  }, [referralGroups]);
-
-  const updateInviteePercentInput = (group, value) => {
-    setInviteePercentInputs((currentInputs) => ({
-      ...currentInputs,
-      [group]: Number(value || 0),
-    }));
-  };
-
-  const visibleReferralGroups = (referralGroups || []).filter(
-    (referralSummary) => String(referralSummary?.group || '').trim(),
-  );
-
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -222,112 +184,6 @@ const InvitationCard = ({
             }
           />
         </Card>
-
-        {visibleReferralGroups.length > 0 && (
-          <Card
-            className='!rounded-xl w-full'
-            title={<Text type='tertiary'>{t('订阅返佣分配')}</Text>}
-          >
-            <div className='flex flex-col gap-4'>
-              {visibleReferralGroups.map((referralSummary) => {
-                const group = String(referralSummary?.group || '').trim();
-                const inviteePercentInput = inviteePercentInputs[group] ?? 0;
-                const inviteeRateBpsDraft = clampInviteeRateBps(
-                  percentNumberToRateBps(inviteePercentInput),
-                  referralSummary.totalRateBps,
-                );
-                const canSaveReferral =
-                  !referralSaving &&
-                  inviteeRateBpsDraft !== referralSummary.inviteeRateBps;
-
-                return (
-                  <div
-                    key={group}
-                    className='rounded-xl border border-gray-100 p-4'
-                  >
-                    <div className='flex flex-col gap-3'>
-                      <div className='flex items-center justify-between gap-3'>
-                        <Text strong>{group}</Text>
-                        <Text type='tertiary' className='text-xs'>
-                          {t('按分组配置被邀请人订阅奖励')}
-                        </Text>
-                      </div>
-
-                      <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
-                        <div className='rounded-xl bg-gray-50 p-3'>
-                          <Text type='tertiary' className='text-xs block mb-1'>
-                            {t('我的总返佣率')}
-                          </Text>
-                          <Text strong>
-                            {formatRateBpsPercent(referralSummary.totalRateBps)}
-                          </Text>
-                        </div>
-                        <div className='rounded-xl bg-gray-50 p-3'>
-                          <Text type='tertiary' className='text-xs block mb-1'>
-                            {t('分给被邀请人的比例')}
-                          </Text>
-                          <Text strong>
-                            {formatRateBpsPercent(
-                              referralSummary.inviteeRateBps,
-                            )}
-                          </Text>
-                        </div>
-                        <div className='rounded-xl bg-gray-50 p-3'>
-                          <Text type='tertiary' className='text-xs block mb-1'>
-                            {t('我实际获得的比例')}
-                          </Text>
-                          <Text strong>
-                            {formatRateBpsPercent(
-                              referralSummary.inviterRateBps,
-                            )}
-                          </Text>
-                        </div>
-                      </div>
-
-                      <div className='flex flex-col gap-3'>
-                        <div>
-                          <Text type='tertiary' className='text-xs block mb-2'>
-                            {t('分给被邀请人的比例')}
-                          </Text>
-                          <InputNumber
-                            value={inviteePercentInput}
-                            min={0}
-                            max={rateBpsToPercentNumber(
-                              referralSummary.totalRateBps,
-                            )}
-                            step={0.01}
-                            precision={2}
-                            style={{ width: '100%' }}
-                            suffix='%'
-                            disabled={referralSaving}
-                            onChange={(value) =>
-                              updateInviteePercentInput(group, value)
-                            }
-                          />
-                        </div>
-                        <Text type='tertiary' className='text-xs'>
-                          {t('请输入不大于总返佣率的比例')}
-                        </Text>
-                        <Button
-                          type='primary'
-                          theme='solid'
-                          className='!rounded-lg self-start'
-                          loading={referralSaving}
-                          disabled={!canSaveReferral}
-                          onClick={() =>
-                            onSaveReferralConfig?.(group, inviteeRateBpsDraft)
-                          }
-                        >
-                          {t('保存返佣设置')}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
 
         {/* 奖励说明 */}
         <Card

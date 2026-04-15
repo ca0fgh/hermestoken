@@ -39,7 +39,6 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
-import { buildGroupedReferralSummaries } from '../../helpers/subscriptionReferral';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -91,8 +90,6 @@ const TopUp = () => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
-  const [referralGroups, setReferralGroups] = useState([]);
-  const [referralSavingGroup, setReferralSavingGroup] = useState('');
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -406,40 +403,6 @@ const TopUp = () => {
     }
   };
 
-  const getSubscriptionReferralSelf = async () => {
-    try {
-      const res = await API.get('/api/user/referral/subscription');
-      if (res.data?.success) {
-        const data = res.data.data || {};
-        setReferralGroups(buildGroupedReferralSummaries(data.groups || []));
-      }
-    } catch (e) {
-      setReferralGroups((currentGroups) =>
-        buildGroupedReferralSummaries(currentGroups),
-      );
-    }
-  };
-
-  const updateSubscriptionReferralSelf = async (group, inviteeRateBps) => {
-    setReferralSavingGroup(group);
-    try {
-      const res = await API.put('/api/user/referral/subscription', {
-        group,
-        invitee_rate_bps: inviteeRateBps,
-      });
-      if (res.data?.success) {
-        await getSubscriptionReferralSelf();
-        showSuccess(t('保存成功'));
-      } else {
-        showError(res.data?.message || t('保存失败'));
-      }
-    } catch (e) {
-      showError(t('保存失败'));
-    } finally {
-      setReferralSavingGroup('');
-    }
-  };
-
   const updateBillingPreference = async (pref) => {
     const previousPref = billingPreference;
     setBillingPreference(pref);
@@ -664,7 +627,6 @@ const TopUp = () => {
     getTopupInfo().then();
     getSubscriptionPlans().then();
     getSubscriptionSelf().then();
-    getSubscriptionReferralSelf().then();
   }, []);
 
   useEffect(() => {
@@ -904,9 +866,6 @@ const TopUp = () => {
           setOpenTransfer={setOpenTransfer}
           affLink={affLink}
           handleAffLinkClick={handleAffLinkClick}
-          referralGroups={referralGroups}
-          referralSaving={Boolean(referralSavingGroup)}
-          onSaveReferralConfig={updateSubscriptionReferralSelf}
         />
       </div>
     </div>

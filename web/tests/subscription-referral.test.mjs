@@ -458,31 +458,62 @@ test('InvitationCard does not reference removed referralSavingGroup state', () =
   assert.equal(invitationCardSource.includes('referralSavingGroup'), false);
 });
 
-test('InvitationCard imports rateBpsToPercentNumber for grouped invitee max validation', () => {
+test('InvitationCard no longer imports grouped subscription referral helpers', () => {
   const invitationCardSource = readFileSync(
     new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(
+  assert.doesNotMatch(
     invitationCardSource,
     /import\s*{[\s\S]*\brateBpsToPercentNumber\b[\s\S]*}\s*from\s*['"]\.\.\/\.\.\/helpers\/subscriptionReferral['"]/,
   );
 });
 
-test('InvitationCard only renders the subscription referral card when grouped rebates exist', () => {
+test('InvitationCard no longer renders grouped subscription referral controls in wallet view', () => {
   const invitationCardSource = readFileSync(
     new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(
-    invitationCardSource,
-    /const visibleReferralGroups = \(referralGroups \|\| \[\]\)\.filter/,
+  assert.doesNotMatch(invitationCardSource, /visibleReferralGroups/);
+  assert.doesNotMatch(invitationCardSource, /订阅返佣分配/);
+  assert.doesNotMatch(invitationCardSource, /保存返佣设置/);
+});
+
+test('wallet invitation card keeps invite stats and link but removes subscription referral management', () => {
+  const invitationCardSource = readFileSync(
+    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    'utf8',
   );
-  assert.match(
-    invitationCardSource,
-    /\{visibleReferralGroups\.length > 0 && \(/,
+
+  assert.match(invitationCardSource, /t\('邀请奖励'\)/);
+  assert.match(invitationCardSource, /t\('收益统计'\)/);
+  assert.match(invitationCardSource, /t\('邀请链接'\)/);
+  assert.doesNotMatch(invitationCardSource, /t\('订阅返佣分配'\)/);
+  assert.doesNotMatch(invitationCardSource, /referralGroups/);
+  assert.doesNotMatch(invitationCardSource, /onSaveReferralConfig/);
+});
+
+test('TopUp no longer fetches or wires wallet subscription referral management state', () => {
+  const topUpSource = readFileSync(
+    new URL('../src/components/topup/index.jsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.doesNotMatch(
+    topUpSource,
+    /API\.get\('\/api\/user\/referral\/subscription'\)/,
+  );
+  assert.doesNotMatch(topUpSource, /const \[referralGroups, setReferralGroups\]/);
+  assert.doesNotMatch(
+    topUpSource,
+    /const updateSubscriptionReferralSelf = async \(group, inviteeRateBps\) =>/,
+  );
+  assert.doesNotMatch(topUpSource, /referralGroups=\{referralGroups\}/);
+  assert.doesNotMatch(
+    topUpSource,
+    /onSaveReferralConfig=\{updateSubscriptionReferralSelf\}/,
   );
 });
 
@@ -529,13 +560,13 @@ test('SubscriptionReferralOverrideSection keeps the extensible override list wor
   );
 });
 
-test('topup self save refreshes grouped referral summaries instead of synthesizing top-level fallbacks', () => {
+test('topup wallet view no longer keeps grouped referral summary refresh logic', () => {
   const topupSource = readFileSync(
     new URL('../src/components/topup/index.jsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(topupSource, /await getSubscriptionReferralSelf\(\);/);
+  assert.doesNotMatch(topupSource, /getSubscriptionReferralSelf/);
   assert.equal(topupSource.includes('data.total_rate_bps'), false);
   assert.equal(topupSource.includes('data.invitee_rate_bps'), false);
 });
