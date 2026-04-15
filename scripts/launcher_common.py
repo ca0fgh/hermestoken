@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import socket
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,12 @@ DEFAULT_BROWSER_CANDIDATES = (
     "chromium",
     "chromium-browser",
     "chrome",
+)
+DEFAULT_CA_BUNDLE_CANDIDATES = (
+    "/etc/ssl/cert.pem",
+    "/etc/ssl/certs/ca-certificates.crt",
+    "/etc/pki/tls/certs/ca-bundle.crt",
+    "/etc/ssl/ca-bundle.pem",
 )
 
 
@@ -362,7 +369,7 @@ def poll_http_until_healthy(
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=remaining) as response:
+            with _urlopen_with_tls_fallback(request, timeout=remaining) as response:
                 status = getattr(response, "status", 200)
                 if status in healthy_set:
                     return
@@ -388,6 +395,59 @@ def poll_http_until_healthy(
             f"Service never became healthy within {timeout_seconds}s. Last error: {last_error or 'no response'}",
         )
     )
+
+
+def _is_https_url(url: str) -> bool:
+    return urllib.parse.urlparse(url).scheme.lower() == "https"
+
+
+def _is_certificate_verify_failure(error: URLError) -> bool:
+    reason = getattr(error, "reason", error)
+    message = str(reason or error).lower()
+    return isinstance(reason, ssl.SSLCertVerificationError) or "certificate verify failed" in message
+
+
+def _detect_fallback_ca_bundle_path() -> Optional[str]:
+    candidates = []
+    env_ca_bundle = os.environ.get("SSL_CERT_FILE")
+    if env_ca_bundle:
+        candidates.append(env_ca_bundle)
+    candidates.extend(DEFAULT_CA_BUNDLE_CANDIDATES)
+
+    try:
+        import certifi  # type: ignore
+    except ImportError:
+        certifi = None
+
+    if certifi is not None:
+        candidates.append(certifi.where())
+
+    seen = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        normalized = os.path.expanduser(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.isfile(normalized):
+            return normalized
+    return None
+
+
+def _urlopen_with_tls_fallback(request: urllib.request.Request, *, timeout: float) -> Any:
+    try:
+        return urllib.request.urlopen(request, timeout=timeout)
+    except URLError as exc:
+        if not _is_https_url(request.full_url) or not _is_certificate_verify_failure(exc):
+            raise
+
+        fallback_ca_bundle = _detect_fallback_ca_bundle_path()
+        if not fallback_ca_bundle:
+            raise
+
+        fallback_context = ssl.create_default_context(cafile=fallback_ca_bundle)
+        return urllib.request.urlopen(request, timeout=timeout, context=fallback_context)
 
 
 def _extract_exception_detail(message: Mapping[str, Any]) -> str:

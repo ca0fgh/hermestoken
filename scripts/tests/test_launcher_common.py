@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import ssl
 import subprocess
 import tempfile
 import unittest
@@ -336,6 +337,67 @@ class LauncherCommonTests(unittest.TestCase):
         self.assertEqual(request.get_method(), "GET")
         self.assertEqual(request.headers.get("User-agent"), launcher_common.DEFAULT_HEALTHCHECK_USER_AGENT)
         self.assertEqual(request.headers.get("Accept"), "*/*")
+
+    @mock.patch("launcher_common.os.path.isfile")
+    @mock.patch("launcher_common.ssl.create_default_context")
+    @mock.patch("launcher_common.urllib.request.urlopen")
+    @mock.patch("launcher_common.time.monotonic")
+    def test_poll_http_until_healthy_retries_https_with_system_ca_bundle_after_cert_verify_failure(
+        self,
+        monotonic_mock,
+        urlopen_mock,
+        create_default_context_mock,
+        isfile_mock,
+    ):
+        monotonic_mock.side_effect = [0.0, 0.0, 0.1, 0.2, 0.3, 0.4, 2.1]
+        isfile_mock.side_effect = lambda path: path == "/etc/ssl/cert.pem"
+        fallback_context = object()
+        create_default_context_mock.return_value = fallback_context
+
+        cert_error = ssl.SSLCertVerificationError(1, "certificate verify failed: unable to get local issuer certificate")
+
+        def _urlopen(request, timeout, context=None):
+            if context is fallback_context:
+                return _FakeResponse(status=200)
+            raise URLError(cert_error)
+
+        urlopen_mock.side_effect = _urlopen
+
+        launcher_common.poll_http_until_healthy(
+            "https://pay-local.hermestoken.top",
+            timeout_seconds=2,
+            interval_seconds=0,
+        )
+
+        create_default_context_mock.assert_called_once_with(cafile="/etc/ssl/cert.pem")
+        self.assertEqual(urlopen_mock.call_count, 2)
+        self.assertNotIn("context", urlopen_mock.call_args_list[0].kwargs)
+        self.assertIs(urlopen_mock.call_args_list[1].kwargs["context"], fallback_context)
+
+    @mock.patch("launcher_common.os.path.isfile")
+    @mock.patch("launcher_common.ssl.create_default_context")
+    @mock.patch("launcher_common.urllib.request.urlopen")
+    @mock.patch("launcher_common.time.monotonic")
+    def test_poll_http_until_healthy_does_not_use_ca_fallback_for_http_urls(
+        self,
+        monotonic_mock,
+        urlopen_mock,
+        create_default_context_mock,
+        isfile_mock,
+    ):
+        monotonic_mock.side_effect = [0.0, 0.0, 0.1]
+        urlopen_mock.return_value = _FakeResponse(status=200)
+        isfile_mock.return_value = True
+
+        launcher_common.poll_http_until_healthy(
+            "http://localhost:3000",
+            timeout_seconds=2,
+            interval_seconds=0,
+        )
+
+        create_default_context_mock.assert_not_called()
+        self.assertEqual(urlopen_mock.call_count, 1)
+        self.assertNotIn("context", urlopen_mock.call_args.kwargs)
 
     @mock.patch("launcher_common.urllib.request.urlopen", side_effect=URLError("offline"))
     @mock.patch("launcher_common.time.monotonic", side_effect=[0.0, 0.1, 0.2, 1.1, 1.2])
