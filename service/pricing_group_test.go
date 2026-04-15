@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 func resetPricingGroupTestTables(t *testing.T) {
@@ -39,6 +40,19 @@ func seedPricingGroupAlias(t *testing.T, aliasKey string, groupID int) {
 	if err := model.DB.Create(&alias).Error; err != nil {
 		t.Fatalf("failed to create pricing group alias %q: %v", aliasKey, err)
 	}
+}
+
+func withPricingGroupLegacyRatios(t *testing.T, ratioJSON string) {
+	t.Helper()
+	originalRatios := ratio_setting.GroupRatio2JSONString()
+	if err := ratio_setting.UpdateGroupRatioByJSONString(ratioJSON); err != nil {
+		t.Fatalf("failed to set group ratios: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := ratio_setting.UpdateGroupRatioByJSONString(originalRatios); err != nil {
+			t.Fatalf("failed to restore group ratios: %v", err)
+		}
+	})
 }
 
 func TestResolveCanonicalPricingGroupKey(t *testing.T) {
@@ -86,5 +100,21 @@ func TestResolveCanonicalPricingGroupKeyRejectsUnknownValue(t *testing.T) {
 	}
 	if resolved.Source != PricingGroupResolutionSourceUnknown {
 		t.Fatalf("expected unknown source, got %q", resolved.Source)
+	}
+}
+
+func TestListCanonicalPricingGroupKeysOrFallbackUsesLegacyOnlyBeforeSeeding(t *testing.T) {
+	resetPricingGroupTestTables(t)
+	withPricingGroupLegacyRatios(t, `{"default":1,"legacy-only":1}`)
+
+	beforeSeeding := ListCanonicalPricingGroupKeysOrFallback()
+	if len(beforeSeeding) != 2 || beforeSeeding[0] != "default" || beforeSeeding[1] != "legacy-only" {
+		t.Fatalf("expected pre-seeding fallback to use legacy keys, got %#v", beforeSeeding)
+	}
+
+	seedPricingGroup(t, "default")
+	afterSeeding := ListCanonicalPricingGroupKeysOrFallback()
+	if len(afterSeeding) != 1 || afterSeeding[0] != "default" {
+		t.Fatalf("expected seeded canonical keys to suppress legacy fallback, got %#v", afterSeeding)
 	}
 }

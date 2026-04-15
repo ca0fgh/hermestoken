@@ -65,13 +65,16 @@ func ListCanonicalPricingGroupKeysOrFallback() []string {
 	}
 
 	var count int64
-	if err := model.DB.Model(&model.PricingGroup{}).Count(&count).Error; err != nil || count == 0 {
+	if err := model.DB.Model(&model.PricingGroup{}).Count(&count).Error; err != nil {
+		return make([]string, 0)
+	}
+	if count == 0 {
 		return listLegacyGroupRatioKeys()
 	}
 
 	var groups []model.PricingGroup
 	if err := model.DB.Order("sort_order asc").Order("group_key asc").Find(&groups).Error; err != nil {
-		return listLegacyGroupRatioKeys()
+		return make([]string, 0)
 	}
 
 	keys := make([]string, 0, len(groups))

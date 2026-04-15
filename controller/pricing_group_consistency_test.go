@@ -3,13 +3,17 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -42,7 +46,7 @@ func setupPricingGroupConsistencyControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	if err := db.AutoMigrate(&model.PricingGroup{}, &model.PricingGroupAlias{}); err != nil {
+	if err := db.AutoMigrate(&model.User{}, &model.PricingGroup{}, &model.PricingGroupAlias{}); err != nil {
 		t.Fatalf("failed to migrate pricing group tables: %v", err)
 	}
 
@@ -96,8 +100,56 @@ func TestGetPricingGroupConsistencyReportIncludesUnknownLegacyReferences(t *test
 		t.Fatalf("failed to create pricing group alias: %v", err)
 	}
 
-	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/group/admin/consistency", nil, 1)
-	GetPricingGroupConsistencyReport(ctx)
+	rootToken := "root-token"
+	rootUser := model.User{
+		Id:          1,
+		Username:    "root",
+		Password:    "password123",
+		Role:        common.RoleRootUser,
+		Status:      common.UserStatusEnabled,
+		AffCode:     "root-aff",
+		AccessToken: &rootToken,
+	}
+	if err := db.Create(&rootUser).Error; err != nil {
+		t.Fatalf("failed to create root user: %v", err)
+	}
+
+	adminToken := "admin-token"
+	adminUser := model.User{
+		Id:          2,
+		Username:    "admin",
+		Password:    "password123",
+		Role:        common.RoleAdminUser,
+		Status:      common.UserStatusEnabled,
+		AffCode:     "admin-aff",
+		AccessToken: &adminToken,
+	}
+	if err := db.Create(&adminUser).Error; err != nil {
+		t.Fatalf("failed to create admin user: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	store := cookie.NewStore([]byte(common.SessionSecret))
+	engine.Use(sessions.Sessions("session", store))
+	engine.GET("/api/group/admin/consistency", middleware.RootAuth(), GetPricingGroupConsistencyReport)
+
+	adminRequest := httptest.NewRequest(http.MethodGet, "/api/group/admin/consistency", nil)
+	adminRequest.Header.Set("Authorization", adminToken)
+	adminRequest.Header.Set("New-Api-User", "2")
+	adminRecorder := httptest.NewRecorder()
+	engine.ServeHTTP(adminRecorder, adminRequest)
+
+	adminResponse := decodeAPIResponse(t, adminRecorder)
+	if adminResponse.Success {
+		t.Fatalf("expected admin request to be rejected by root-only route, got %#v", adminResponse)
+	}
+
+	rootRequest := httptest.NewRequest(http.MethodGet, "/api/group/admin/consistency", nil)
+	rootRequest.Header.Set("Authorization", rootToken)
+	rootRequest.Header.Set("New-Api-User", "1")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, rootRequest)
 
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
