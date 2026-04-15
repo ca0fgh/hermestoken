@@ -50,6 +50,30 @@ func withSelectableGroupSettingsAndRatios(t *testing.T, usableJSON string, speci
 	})
 }
 
+func ensureSubscriptionGroupTestSchema(t *testing.T) {
+	t.Helper()
+
+	migrator := model.DB.Migrator()
+	requiredColumns := []struct {
+		model interface{}
+		name  string
+	}{
+		{&model.SubscriptionPlan{}, "UpgradeGroupKey"},
+		{&model.SubscriptionPlan{}, "DeletedAt"},
+		{&model.UserSubscription{}, "UpgradeGroupKeySnapshot"},
+		{&model.UserSubscription{}, "UpgradeGroupNameSnapshot"},
+	}
+
+	for _, column := range requiredColumns {
+		if migrator.HasColumn(column.model, column.name) {
+			continue
+		}
+		if err := migrator.AddColumn(column.model, column.name); err != nil {
+			t.Fatalf("failed to add %s column for group tests: %v", column.name, err)
+		}
+	}
+}
+
 func seedGroupTestUser(t *testing.T, id int, group string) {
 	t.Helper()
 
@@ -205,6 +229,7 @@ func TestGetUserSelectableGroupsForUserSkipsExpiredSubscriptionUpgradeGroup(t *t
 
 func TestGetUserSelectableGroupsForUserFallsBackToPlanUpgradeGroupWhenSnapshotIsInvalid(t *testing.T) {
 	truncate(t)
+	ensureSubscriptionGroupTestSchema(t)
 	withSelectableGroupSettingsAndRatios(
 		t,
 		`{"standard":"标准价格"}`,
@@ -250,5 +275,83 @@ func TestGetUserSelectableGroupsForUserFallsBackToPlanUpgradeGroupWhenSnapshotIs
 	}
 	if _, ok := groups["cc-oups4.6-福利渠道"]; ok {
 		t.Fatalf("expected stale snapshot group to stay hidden, got %#v", groups)
+	}
+}
+
+func TestResolveTokenGroupForUserRequestUsesCanonicalGroupKey(t *testing.T) {
+	truncate(t)
+	resetPricingGroupTestTables(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"premium":"Premium"}`,
+		`{}`,
+		`{"default":1,"premium":1}`,
+	)
+
+	defaultGroup := seedPricingGroup(t, "default")
+	premiumGroup := seedPricingGroup(t, "premium")
+	seedPricingGroupAlias(t, "legacy-default", defaultGroup.Id)
+	seedPricingGroupAlias(t, "legacy-premium", premiumGroup.Id)
+
+	resolvedGroup, err := ResolveTokenGroupForUserRequest(0, "legacy-default", "legacy-premium")
+	if err != nil {
+		t.Fatalf("expected alias-backed token group to resolve via canonical key, got %v", err)
+	}
+	if resolvedGroup != "premium" {
+		t.Fatalf("expected resolved group premium, got %q", resolvedGroup)
+	}
+}
+
+func TestGetUserSelectableGroupsForUserIncludesCanonicalSubscriptionUpgradeGroup(t *testing.T) {
+	truncate(t)
+	ensureSubscriptionGroupTestSchema(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{}`,
+		`{"default":1,"standard":1,"premium":1}`,
+	)
+	seedGroupTestUser(t, 105, "default")
+	plan := &model.SubscriptionPlan{
+		Id:              205,
+		Title:           "canonical-upgrade-plan",
+		PriceAmount:     9.9,
+		Currency:        "USD",
+		DurationUnit:    model.SubscriptionDurationMonth,
+		DurationValue:   1,
+		Enabled:         true,
+		UpgradeGroup:    "legacy-premium",
+		UpgradeGroupKey: "premium",
+	}
+	if err := model.DB.Create(plan).Error; err != nil {
+		t.Fatalf("failed to seed subscription plan: %v", err)
+	}
+	sub := &model.UserSubscription{
+		UserId:                   105,
+		PlanId:                   plan.Id,
+		AmountTotal:              100,
+		AmountUsed:               0,
+		StartTime:                time.Now().Unix(),
+		EndTime:                  time.Now().Add(time.Hour).Unix(),
+		Status:                   "active",
+		Source:                   "test",
+		UpgradeGroup:             "legacy-stale",
+		UpgradeGroupKeySnapshot:  "premium",
+		UpgradeGroupNameSnapshot: "Premium",
+		PrevUserGroup:            "default",
+		CreatedAt:                time.Now().Unix(),
+		UpdatedAt:                time.Now().Unix(),
+	}
+	if err := model.DB.Create(sub).Error; err != nil {
+		t.Fatalf("failed to seed canonical subscription snapshot: %v", err)
+	}
+
+	groups := GetUserSelectableGroupsForUser(105, "default")
+
+	if got := groups["premium"]; got != "premium" {
+		t.Fatalf("expected canonical subscription upgrade group to be selectable, got %q from %#v", got, groups)
+	}
+	if _, ok := groups["legacy-stale"]; ok {
+		t.Fatalf("expected legacy snapshot string to stay hidden, got %#v", groups)
 	}
 }

@@ -41,6 +41,8 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 		&model.UserSubscription{},
 		&model.SubscriptionReferralOverride{},
 		&model.SubscriptionReferralRecord{},
+		&model.PricingGroup{},
+		&model.PricingGroupAlias{},
 		&model.TopUp{},
 		&model.Log{},
 	); err != nil {
@@ -55,6 +57,25 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func seedSubscriptionPricingGroup(t *testing.T, db *gorm.DB, groupKey string) model.PricingGroup {
+	t.Helper()
+
+	group := model.PricingGroup{GroupKey: groupKey, DisplayName: groupKey}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create pricing group %q: %v", groupKey, err)
+	}
+	return group
+}
+
+func seedSubscriptionPricingGroupAlias(t *testing.T, db *gorm.DB, aliasKey string, groupID int) {
+	t.Helper()
+
+	alias := model.PricingGroupAlias{AliasKey: aliasKey, GroupId: groupID, Reason: "test"}
+	if err := db.Create(&alias).Error; err != nil {
+		t.Fatalf("failed to create pricing group alias %q: %v", aliasKey, err)
+	}
 }
 
 func seedSubscriptionPlan(t *testing.T, db *gorm.DB, title string) *model.SubscriptionPlan {
@@ -365,6 +386,45 @@ func TestAdminCreateSubscriptionPlanRejectsNegativeStock(t *testing.T) {
 	}
 }
 
+func TestAdminCreateSubscriptionPlan(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	withControllerGroupSettingsAndRatios(t, `{}`, `{"default":1}`)
+
+	defaultGroup := seedSubscriptionPricingGroup(t, db, "default")
+	seedSubscriptionPricingGroupAlias(t, db, "legacy-default", defaultGroup.Id)
+
+	body := AdminUpsertSubscriptionPlanRequest{
+		Plan: model.SubscriptionPlan{
+			Title:         "canonical-create-plan",
+			PriceAmount:   9.9,
+			Currency:      "USD",
+			DurationUnit:  model.SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			UpgradeGroup:  " legacy-default ",
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/admin/plans", body, 1)
+	AdminCreateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected plan creation to succeed, got message: %s", response.Message)
+	}
+
+	var plan model.SubscriptionPlan
+	if err := db.Where("title = ?", "canonical-create-plan").First(&plan).Error; err != nil {
+		t.Fatalf("failed to reload created plan: %v", err)
+	}
+	if plan.UpgradeGroupKey != "default" {
+		t.Fatalf("expected upgrade_group_key=default, got %q", plan.UpgradeGroupKey)
+	}
+	if plan.UpgradeGroup != "default" {
+		t.Fatalf("expected legacy upgrade_group to stay populated with canonical key, got %q", plan.UpgradeGroup)
+	}
+}
+
 func TestAdminUpdateSubscriptionPlanResetsStockCycleWhenEnablingFromZero(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	plan := seedSubscriptionPlan(t, db, "stock-cycle-plan")
@@ -404,6 +464,56 @@ func TestAdminUpdateSubscriptionPlanResetsStockCycleWhenEnablingFromZero(t *test
 	}
 	if after.StockTotal != 20 || after.StockLocked != 0 || after.StockSold != 0 {
 		t.Fatalf("expected total=20 locked=0 sold=0, got total=%d locked=%d sold=%d", after.StockTotal, after.StockLocked, after.StockSold)
+	}
+}
+
+func TestAdminUpdateSubscriptionPlan(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	withControllerGroupSettingsAndRatios(t, `{}`, `{"default":1,"premium":1}`)
+
+	defaultGroup := seedSubscriptionPricingGroup(t, db, "default")
+	premiumGroup := seedSubscriptionPricingGroup(t, db, "premium")
+	seedSubscriptionPricingGroupAlias(t, db, "legacy-default", defaultGroup.Id)
+	seedSubscriptionPricingGroupAlias(t, db, "legacy-premium", premiumGroup.Id)
+
+	plan := seedSubscriptionPlan(t, db, "canonical-update-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"upgrade_group":     "default",
+		"upgrade_group_key": "default",
+	}).Error; err != nil {
+		t.Fatalf("failed to seed initial canonical upgrade group: %v", err)
+	}
+
+	body := AdminUpsertSubscriptionPlanRequest{
+		Plan: model.SubscriptionPlan{
+			Title:         "canonical-update-plan",
+			PriceAmount:   9.9,
+			Currency:      "USD",
+			DurationUnit:  model.SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			UpgradeGroup:  " legacy-premium ",
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/subscription/admin/plans/"+strconv.Itoa(plan.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(plan.Id)}}
+	AdminUpdateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected plan update to succeed, got message: %s", response.Message)
+	}
+
+	var updated model.SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&updated).Error; err != nil {
+		t.Fatalf("failed to reload updated plan: %v", err)
+	}
+	if updated.UpgradeGroupKey != "premium" {
+		t.Fatalf("expected upgrade_group_key=premium, got %q", updated.UpgradeGroupKey)
+	}
+	if updated.UpgradeGroup != "premium" {
+		t.Fatalf("expected legacy upgrade_group to stay populated with canonical key, got %q", updated.UpgradeGroup)
 	}
 }
 

@@ -918,19 +918,45 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 	return count > 0, nil
 }
 
+func resolveCanonicalSubscriptionUpgradeGroup(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || DB == nil || !DB.Migrator().HasTable(&PricingGroup{}) {
+		return ""
+	}
+
+	var canonical PricingGroup
+	if err := DB.Where("group_key = ?", trimmed).First(&canonical).Error; err == nil {
+		return strings.TrimSpace(canonical.GroupKey)
+	}
+	if DB.Migrator().HasTable(&PricingGroupAlias{}) {
+		var alias PricingGroupAlias
+		if err := DB.Where("alias_key = ?", trimmed).First(&alias).Error; err == nil {
+			if err := DB.Where("id = ?", alias.GroupId).First(&canonical).Error; err == nil {
+				return strings.TrimSpace(canonical.GroupKey)
+			}
+		}
+	}
+	return ""
+}
+
 func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	if userId <= 0 {
 		return []string{}, errors.New("invalid userId")
 	}
 	now := common.GetTimestamp()
 	type subscriptionUpgradeGroupRow struct {
-		SubscriptionUpgradeGroup string
-		PlanUpgradeGroup         string
+		SubscriptionUpgradeGroup    string
+		SubscriptionUpgradeGroupKey string
+		PlanUpgradeGroup            string
+		PlanUpgradeGroupKey         string
 	}
 	var rows []subscriptionUpgradeGroupRow
 	if err := DB.Table("user_subscriptions").
 		Select(
-			"user_subscriptions.upgrade_group AS subscription_upgrade_group, subscription_plans.upgrade_group AS plan_upgrade_group",
+			"user_subscriptions.upgrade_group AS subscription_upgrade_group, "+
+				"user_subscriptions.upgrade_group_key_snapshot AS subscription_upgrade_group_key, "+
+				"subscription_plans.upgrade_group AS plan_upgrade_group, "+
+				"subscription_plans.upgrade_group_key AS plan_upgrade_group_key",
 		).
 		Joins("LEFT JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ?", userId, "active", now).
@@ -941,11 +967,23 @@ func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	seen := make(map[string]struct{}, len(rows))
 	groups := make([]string, 0, len(rows))
 	for _, row := range rows {
+		subscriptionGroupKey := strings.TrimSpace(row.SubscriptionUpgradeGroupKey)
 		subscriptionGroup := strings.TrimSpace(row.SubscriptionUpgradeGroup)
+		planGroupKey := strings.TrimSpace(row.PlanUpgradeGroupKey)
 		planGroup := strings.TrimSpace(row.PlanUpgradeGroup)
+		resolvedSubscriptionGroup := resolveCanonicalSubscriptionUpgradeGroup(subscriptionGroup)
+		resolvedPlanGroup := resolveCanonicalSubscriptionUpgradeGroup(planGroup)
 
 		group := ""
 		switch {
+		case subscriptionGroupKey != "":
+			group = subscriptionGroupKey
+		case planGroupKey != "":
+			group = planGroupKey
+		case resolvedSubscriptionGroup != "":
+			group = resolvedSubscriptionGroup
+		case resolvedPlanGroup != "":
+			group = resolvedPlanGroup
 		case subscriptionGroup != "" && ratio_setting.ContainsGroupRatio(subscriptionGroup):
 			group = subscriptionGroup
 		case planGroup != "" && ratio_setting.ContainsGroupRatio(planGroup):
