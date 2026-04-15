@@ -125,6 +125,9 @@ test('GroupRatioSettings exposes a merge action in visual mode', async () => {
   assert.match(source, /disabled=\{!isMergeReady\}/);
   assert.match(source, /group\.status !== 3/);
   assert.match(source, /将会把.*合并到/);
+  assert.match(source, /legacy 引用一致性/);
+  assert.match(source, /listPricingGroupConsistencyReport/);
+  assert.match(source, /activeGroupNames/);
 });
 
 test('canonical GroupTable uses archive wording instead of hard delete wording', async () => {

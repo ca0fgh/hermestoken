@@ -79,6 +79,11 @@ export async function listPricingGroupsAdmin() {
   return API.get('/api/group/admin');
 }
 
+export async function listPricingGroupConsistencyReport() {
+  const API = await getAPI();
+  return API.get('/api/group/admin/consistency');
+}
+
 export async function createPricingGroup(payload) {
   const API = await getAPI();
   return API.post('/api/group/admin', payload);

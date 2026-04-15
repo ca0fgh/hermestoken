@@ -55,6 +55,7 @@ import {
   buildLegacyGroupOptionPayload,
   canMergeGroups,
   createPricingGroup,
+  listPricingGroupConsistencyReport,
   listPricingGroupsAdmin,
   mergePricingGroups,
   updatePricingGroup,
@@ -93,6 +94,7 @@ export default function GroupRatioSettings(props) {
   const [showGuide, setShowGuide] = useState(false);
   const [adminGroups, setAdminGroups] = useState([]);
   const [adminGroupsRow, setAdminGroupsRow] = useState([]);
+  const [consistencyReferences, setConsistencyReferences] = useState([]);
   const [mergeDraft, setMergeDraft] = useState({
     source_group_key: '',
     target_group_key: '',
@@ -110,13 +112,21 @@ export default function GroupRatioSettings(props) {
   const [inputsRow, setInputsRow] = useState(inputs);
   const dataVersionRef = useRef(0);
 
+  const activeGroupNames = useMemo(
+    () =>
+      adminGroups
+        .filter((group) => group.status !== 3)
+        .map((group) => group.group_key)
+        .filter(Boolean),
+    [adminGroups],
+  );
   const groupNames = useMemo(() => {
     if (editMode === 'visual') {
-      return adminGroups.map((group) => group.group_key).filter(Boolean);
+      return activeGroupNames;
     }
     const ratioMap = parseJSONSafe(inputs.GroupRatio, {});
     return Object.keys(ratioMap);
-  }, [editMode, adminGroups, inputs.GroupRatio]);
+  }, [activeGroupNames, editMode, inputs.GroupRatio]);
   const mergeGroupOptions = useMemo(
     () =>
       adminGroups
@@ -177,6 +187,21 @@ export default function GroupRatioSettings(props) {
       setGroupsLoading(false);
     }
   }, [t]);
+
+  const loadConsistencyReport = useCallback(async () => {
+    try {
+      const res = await listPricingGroupConsistencyReport();
+      if (res?.data?.success) {
+        setConsistencyReferences(
+          res.data?.data?.unresolved_legacy_references || [],
+        );
+      } else {
+        setConsistencyReferences([]);
+      }
+    } catch {
+      setConsistencyReferences([]);
+    }
+  }, []);
 
   async function onSubmit() {
     if (editMode === 'visual') {
@@ -247,6 +272,7 @@ export default function GroupRatioSettings(props) {
         }
         showSuccess(t('保存成功'));
         await loadAdminGroups();
+        await loadConsistencyReport();
         props.refresh();
       } catch (error) {
         console.error('Unexpected error:', error);
@@ -293,6 +319,7 @@ export default function GroupRatioSettings(props) {
         }
       }
       showSuccess(t('保存成功'));
+      await loadConsistencyReport();
       props.refresh();
     } catch (error) {
       console.error('Unexpected error:', error);
@@ -319,7 +346,8 @@ export default function GroupRatioSettings(props) {
 
   useEffect(() => {
     loadAdminGroups();
-  }, [loadAdminGroups]);
+    loadConsistencyReport();
+  }, [loadAdminGroups, loadConsistencyReport]);
 
   const handleGroupTableChange = useCallback((groups) => {
     setAdminGroups(groups);
@@ -391,6 +419,7 @@ export default function GroupRatioSettings(props) {
         target_group_key: '',
       });
       await loadAdminGroups();
+      await loadConsistencyReport();
       props.refresh();
     } catch (error) {
       console.error('Unexpected merge error:', error);
@@ -495,6 +524,33 @@ export default function GroupRatioSettings(props) {
             </Form.Slot>
           </Col>
         </Row>
+      </Form.Section>
+
+      <Form.Section text={t('legacy 引用一致性')}>
+        <Text
+          type='tertiary'
+          size='small'
+          style={{ display: 'block', marginBottom: 12 }}
+        >
+          {t(
+            '这里会显示仍然引用 legacy 分组字符串但尚未映射到 canonical key 的配置项，便于继续清理迁移尾项。',
+          )}
+        </Text>
+        {consistencyReferences.length === 0 ? (
+          <Text type='success'>{t('当前未发现未解析的 legacy 分组引用。')}</Text>
+        ) : (
+          <div className='space-y-2'>
+            {consistencyReferences.map((item) => (
+              <div
+                key={`${item.scope}:${item.value}`}
+                className='flex items-center gap-2'
+              >
+                <Text strong>{item.scope}</Text>
+                <Text type='warning'>{item.value}</Text>
+              </div>
+            ))}
+          </div>
+        )}
       </Form.Section>
 
       <Form.Section text={t('自动分组')}>
