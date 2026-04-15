@@ -8,7 +8,14 @@ import (
 )
 
 func GetPricingGroupConsistencyReport(c *gin.Context) {
-	report := service.BuildPricingGroupConsistencyReport()
+	report, err := service.BuildPricingGroupConsistencyReport()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

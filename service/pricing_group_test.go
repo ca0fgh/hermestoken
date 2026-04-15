@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
@@ -51,6 +52,19 @@ func withPricingGroupLegacyRatios(t *testing.T, ratioJSON string) {
 	t.Cleanup(func() {
 		if err := ratio_setting.UpdateGroupRatioByJSONString(originalRatios); err != nil {
 			t.Fatalf("failed to restore group ratios: %v", err)
+		}
+	})
+}
+
+func withPricingGroupAutoGroups(t *testing.T, autoGroupsJSON string) {
+	t.Helper()
+	originalAutoGroups := setting.AutoGroups2JsonString()
+	if err := setting.UpdateAutoGroupsByJsonString(autoGroupsJSON); err != nil {
+		t.Fatalf("failed to set auto groups: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := setting.UpdateAutoGroupsByJsonString(originalAutoGroups); err != nil {
+			t.Fatalf("failed to restore auto groups: %v", err)
 		}
 	})
 }
@@ -107,14 +121,65 @@ func TestListCanonicalPricingGroupKeysOrFallbackUsesLegacyOnlyBeforeSeeding(t *t
 	resetPricingGroupTestTables(t)
 	withPricingGroupLegacyRatios(t, `{"default":1,"legacy-only":1}`)
 
-	beforeSeeding := ListCanonicalPricingGroupKeysOrFallback()
+	beforeSeeding, err := ListCanonicalPricingGroupKeysOrFallback()
+	if err != nil {
+		t.Fatalf("expected pre-seeding fallback to succeed, got %v", err)
+	}
 	if len(beforeSeeding) != 2 || beforeSeeding[0] != "default" || beforeSeeding[1] != "legacy-only" {
 		t.Fatalf("expected pre-seeding fallback to use legacy keys, got %#v", beforeSeeding)
 	}
 
 	seedPricingGroup(t, "default")
-	afterSeeding := ListCanonicalPricingGroupKeysOrFallback()
+	afterSeeding, err := ListCanonicalPricingGroupKeysOrFallback()
+	if err != nil {
+		t.Fatalf("expected canonical listing to succeed after seeding, got %v", err)
+	}
 	if len(afterSeeding) != 1 || afterSeeding[0] != "default" {
 		t.Fatalf("expected seeded canonical keys to suppress legacy fallback, got %#v", afterSeeding)
+	}
+}
+
+func TestResolveCanonicalPricingGroupKeyReturnsOperationalErrorWhenStoreUnavailable(t *testing.T) {
+	originalDB := model.DB
+	model.DB = nil
+	t.Cleanup(func() {
+		model.DB = originalDB
+	})
+
+	resolved, err := ResolveCanonicalPricingGroupKey("default")
+	if err == nil {
+		t.Fatal("expected unavailable store to return an operational error")
+	}
+	if resolved.Source == PricingGroupResolutionSourceUnknown || resolved.Source == PricingGroupResolutionSourceEmpty {
+		t.Fatalf("expected operational error to avoid business miss sources, got %q", resolved.Source)
+	}
+}
+
+func TestBuildPricingGroupConsistencyReportIncludesAutoGroups(t *testing.T) {
+	resetPricingGroupTestTables(t)
+	withPricingGroupLegacyRatios(t, `{"default":1,"legacy-default":1,"legacy-missing":1}`)
+	withPricingGroupAutoGroups(t, `["default","legacy-default","auto-missing"]`)
+
+	group := seedPricingGroup(t, "default")
+	seedPricingGroupAlias(t, "legacy-default", group.Id)
+
+	report, err := BuildPricingGroupConsistencyReport()
+	if err != nil {
+		t.Fatalf("expected consistency report build to succeed, got %v", err)
+	}
+
+	reported := make(map[string]string, len(report.UnresolvedLegacyReferences))
+	for _, unresolved := range report.UnresolvedLegacyReferences {
+		reported[unresolved.Scope+"|"+unresolved.Value] = unresolved.Value
+	}
+
+	if _, ok := reported["auto_groups|auto-missing"]; !ok {
+		t.Fatalf("expected stale auto group to be reported, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["group_ratio|legacy-default"]; ok {
+		t.Fatalf("expected alias-backed legacy-default to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["auto_groups|legacy-default"]; ok {
+		t.Fatalf("expected alias-backed auto group to stay resolved, got %#v", report.UnresolvedLegacyReferences)
 	}
 }

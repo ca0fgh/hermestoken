@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"gorm.io/gorm"
 )
 
 type PricingGroupResolutionSource string
@@ -39,12 +41,14 @@ func ResolveCanonicalPricingGroupKey(raw string) (PricingGroupResolution, error)
 		return PricingGroupResolution{Source: PricingGroupResolutionSourceEmpty}, nil
 	}
 	if model.DB == nil || !model.DB.Migrator().HasTable(&model.PricingGroup{}) {
-		return PricingGroupResolution{Source: PricingGroupResolutionSourceUnknown}, fmt.Errorf("unknown pricing group: %s", trimmed)
+		return PricingGroupResolution{}, fmt.Errorf("pricing group store unavailable")
 	}
 
 	var canonical model.PricingGroup
 	if err := model.DB.Where("group_key = ?", trimmed).First(&canonical).Error; err == nil {
 		return PricingGroupResolution{CanonicalKey: canonical.GroupKey, Source: PricingGroupResolutionSourceCanonical}, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return PricingGroupResolution{}, fmt.Errorf("query canonical pricing group %q: %w", trimmed, err)
 	}
 
 	if model.DB.Migrator().HasTable(&model.PricingGroupAlias{}) {
@@ -52,29 +56,33 @@ func ResolveCanonicalPricingGroupKey(raw string) (PricingGroupResolution, error)
 		if err := model.DB.Where("alias_key = ?", trimmed).First(&alias).Error; err == nil {
 			if err := model.DB.Where("id = ?", alias.GroupId).First(&canonical).Error; err == nil {
 				return PricingGroupResolution{CanonicalKey: canonical.GroupKey, Source: PricingGroupResolutionSourceAlias}, nil
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return PricingGroupResolution{}, fmt.Errorf("query alias target pricing group %q: %w", trimmed, err)
 			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return PricingGroupResolution{}, fmt.Errorf("query pricing group alias %q: %w", trimmed, err)
 		}
 	}
 
 	return PricingGroupResolution{Source: PricingGroupResolutionSourceUnknown}, fmt.Errorf("unknown pricing group: %s", trimmed)
 }
 
-func ListCanonicalPricingGroupKeysOrFallback() []string {
+func ListCanonicalPricingGroupKeysOrFallback() ([]string, error) {
 	if model.DB == nil || !model.DB.Migrator().HasTable(&model.PricingGroup{}) {
-		return listLegacyGroupRatioKeys()
+		return listLegacyGroupRatioKeys(), nil
 	}
 
 	var count int64
 	if err := model.DB.Model(&model.PricingGroup{}).Count(&count).Error; err != nil {
-		return make([]string, 0)
+		return nil, fmt.Errorf("count pricing groups: %w", err)
 	}
 	if count == 0 {
-		return listLegacyGroupRatioKeys()
+		return listLegacyGroupRatioKeys(), nil
 	}
 
 	var groups []model.PricingGroup
 	if err := model.DB.Order("sort_order asc").Order("group_key asc").Find(&groups).Error; err != nil {
-		return make([]string, 0)
+		return nil, fmt.Errorf("list pricing groups: %w", err)
 	}
 
 	keys := make([]string, 0, len(groups))
@@ -84,46 +92,67 @@ func ListCanonicalPricingGroupKeysOrFallback() []string {
 		}
 		keys = append(keys, group.GroupKey)
 	}
-	return keys
+	return keys, nil
 }
 
-func BuildPricingGroupConsistencyReport() PricingGroupConsistencyReport {
+func BuildPricingGroupConsistencyReport() (PricingGroupConsistencyReport, error) {
 	unresolved := make([]PricingGroupLegacyReference, 0)
 	seen := make(map[string]struct{})
 
-	appendUnknown := func(scope string, raw string) {
+	appendUnknown := func(scope string, raw string) error {
 		value := normalizePricingGroupAuditValue(raw)
 		if value == "" {
-			return
+			return nil
 		}
 		resolution, err := ResolveCanonicalPricingGroupKey(value)
-		if err == nil || resolution.Source != PricingGroupResolutionSourceUnknown {
-			return
+		if err == nil {
+			return nil
+		}
+		if resolution.Source != PricingGroupResolutionSourceUnknown {
+			return err
 		}
 		key := scope + "\x00" + value
 		if _, ok := seen[key]; ok {
-			return
+			return nil
 		}
 		seen[key] = struct{}{}
 		unresolved = append(unresolved, PricingGroupLegacyReference{Scope: scope, Value: value})
+		return nil
 	}
 
 	for groupKey := range ratio_setting.GetGroupRatioCopy() {
-		appendUnknown("group_ratio", groupKey)
+		if err := appendUnknown("group_ratio", groupKey); err != nil {
+			return PricingGroupConsistencyReport{}, err
+		}
 	}
 	for subjectGroup, targetGroups := range ratio_setting.GetGroupRatioSetting().GroupGroupRatio.ReadAll() {
-		appendUnknown("group_group_ratio.subject", subjectGroup)
+		if err := appendUnknown("group_group_ratio.subject", subjectGroup); err != nil {
+			return PricingGroupConsistencyReport{}, err
+		}
 		for targetGroup := range targetGroups {
-			appendUnknown("group_group_ratio.target", targetGroup)
+			if err := appendUnknown("group_group_ratio.target", targetGroup); err != nil {
+				return PricingGroupConsistencyReport{}, err
+			}
 		}
 	}
 	for groupKey := range setting.GetUserUsableGroupsCopy() {
-		appendUnknown("user_usable_groups", groupKey)
+		if err := appendUnknown("user_usable_groups", groupKey); err != nil {
+			return PricingGroupConsistencyReport{}, err
+		}
 	}
 	for subjectGroup, entries := range ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll() {
-		appendUnknown("group_special_usable_group.subject", subjectGroup)
+		if err := appendUnknown("group_special_usable_group.subject", subjectGroup); err != nil {
+			return PricingGroupConsistencyReport{}, err
+		}
 		for rawGroup := range entries {
-			appendUnknown("group_special_usable_group.target", rawGroup)
+			if err := appendUnknown("group_special_usable_group.target", rawGroup); err != nil {
+				return PricingGroupConsistencyReport{}, err
+			}
+		}
+	}
+	for _, groupKey := range setting.GetAutoGroups() {
+		if err := appendUnknown("auto_groups", groupKey); err != nil {
+			return PricingGroupConsistencyReport{}, err
 		}
 	}
 
@@ -134,7 +163,7 @@ func BuildPricingGroupConsistencyReport() PricingGroupConsistencyReport {
 		return unresolved[i].Scope < unresolved[j].Scope
 	})
 
-	return PricingGroupConsistencyReport{UnresolvedLegacyReferences: unresolved}
+	return PricingGroupConsistencyReport{UnresolvedLegacyReferences: unresolved}, nil
 }
 
 func listLegacyGroupRatioKeys() []string {

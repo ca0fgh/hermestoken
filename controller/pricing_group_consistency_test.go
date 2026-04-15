@@ -65,12 +65,16 @@ func withConsistencyGroupSettings(t *testing.T, usableJSON string, ratioJSON str
 
 	originalUsable := setting.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
+	originalAutoGroups := setting.AutoGroups2JsonString()
 
 	if err := setting.UpdateUserUsableGroupsByJSONString(usableJSON); err != nil {
 		t.Fatalf("failed to set usable groups: %v", err)
 	}
 	if err := ratio_setting.UpdateGroupRatioByJSONString(ratioJSON); err != nil {
 		t.Fatalf("failed to set group ratios: %v", err)
+	}
+	if err := setting.UpdateAutoGroupsByJsonString(`["default","legacy-default","auto-missing"]`); err != nil {
+		t.Fatalf("failed to set auto groups: %v", err)
 	}
 
 	t.Cleanup(func() {
@@ -79,6 +83,9 @@ func withConsistencyGroupSettings(t *testing.T, usableJSON string, ratioJSON str
 		}
 		if err := ratio_setting.UpdateGroupRatioByJSONString(originalRatios); err != nil {
 			t.Fatalf("failed to restore group ratios: %v", err)
+		}
+		if err := setting.UpdateAutoGroupsByJsonString(originalAutoGroups); err != nil {
+			t.Fatalf("failed to restore auto groups: %v", err)
 		}
 	})
 }
@@ -128,11 +135,13 @@ func TestGetPricingGroupConsistencyReportIncludesUnknownLegacyReferences(t *test
 		t.Fatalf("failed to create admin user: %v", err)
 	}
 
-	gin.SetMode(gin.TestMode)
 	engine := gin.New()
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	engine.Use(sessions.Sessions("session", store))
-	engine.GET("/api/group/admin/consistency", middleware.RootAuth(), GetPricingGroupConsistencyReport)
+	apiRouter := engine.Group("/api")
+	groupAdminRoute := apiRouter.Group("/group/admin")
+	groupAdminRoute.Use(middleware.RootAuth())
+	groupAdminRoute.GET("/consistency", GetPricingGroupConsistencyReport)
 
 	adminRequest := httptest.NewRequest(http.MethodGet, "/api/group/admin/consistency", nil)
 	adminRequest.Header.Set("Authorization", adminToken)
@@ -165,10 +174,23 @@ func TestGetPricingGroupConsistencyReportIncludesUnknownLegacyReferences(t *test
 		t.Fatal("expected unresolved legacy references to be reported")
 	}
 
+	reported := make(map[string]string, len(report.UnresolvedLegacyReferences))
 	for _, unresolved := range report.UnresolvedLegacyReferences {
-		if unresolved.Value == "legacy-missing" {
-			return
-		}
+		reported[unresolved.Scope+"|"+unresolved.Value] = unresolved.Value
 	}
-	t.Fatalf("expected legacy-missing to be reported, got %#v", report.UnresolvedLegacyReferences)
+	if _, ok := reported["group_ratio|legacy-missing"]; !ok {
+		t.Fatalf("expected legacy-missing to be reported, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["auto_groups|auto-missing"]; !ok {
+		t.Fatalf("expected auto-missing auto group to be reported, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["group_ratio|legacy-default"]; ok {
+		t.Fatalf("expected alias-backed legacy-default to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["user_usable_groups|legacy-default"]; ok {
+		t.Fatalf("expected alias-backed user-usable legacy-default to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["auto_groups|legacy-default"]; ok {
+		t.Fatalf("expected alias-backed auto group to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
 }
