@@ -2,6 +2,19 @@ package model
 
 import "gorm.io/gorm"
 
+const (
+	// Pricing group lifecycle values. Follow the existing integer-status style used in other models.
+	PricingGroupStatusActive     = 1
+	PricingGroupStatusDeprecated = 2
+	PricingGroupStatusArchived   = 3
+)
+
+const (
+	// Visibility rule actions mirror the planned add/remove semantics for per-subject group lists.
+	PricingGroupVisibilityActionAdd    = "add"
+	PricingGroupVisibilityActionRemove = "remove"
+)
+
 type PricingGroup struct {
 	Id             int            `json:"id"`
 	GroupKey       string         `json:"group_key" gorm:"type:varchar(64);not null;uniqueIndex"`
@@ -9,7 +22,7 @@ type PricingGroup struct {
 	Description    string         `json:"description" gorm:"type:text"`
 	BillingRatio   float64        `json:"billing_ratio" gorm:"type:decimal(12,6);not null;default:1"`
 	UserSelectable bool           `json:"user_selectable" gorm:"not null;default:false"`
-	Status         int            `json:"status" gorm:"type:int;not null;default:1;index"`
+	Status         int            `json:"status" gorm:"type:int;not null;default:1;index"` // active/deprecated/archived
 	SortOrder      int            `json:"sort_order" gorm:"type:int;not null;default:0"`
 	DeletedAt      gorm.DeletedAt `json:"-" gorm:"index"`
 }
@@ -31,7 +44,7 @@ type PricingGroupRatioOverride struct {
 type PricingGroupVisibilityRule struct {
 	Id                  int    `json:"id"`
 	SubjectGroupId      int    `json:"subject_group_id" gorm:"not null;index"`
-	Action              string `json:"action" gorm:"type:varchar(32);not null;default:'add';index"`
+	Action              string `json:"action" gorm:"type:varchar(32);not null;default:'add';index"` // add/remove
 	TargetGroupId       int    `json:"target_group_id" gorm:"not null;index"`
 	DescriptionOverride string `json:"description_override" gorm:"type:varchar(255);not null;default:''"`
 	SortOrder           int    `json:"sort_order" gorm:"type:int;not null;default:0"`

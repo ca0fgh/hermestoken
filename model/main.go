@@ -583,7 +583,9 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
 )`
-		return DB.Exec(createSQL).Error
+		if err := DB.Exec(createSQL).Error; err != nil {
+			return err
+		}
 	}
 	var cols []struct {
 		Name string `gorm:"column:name"`
@@ -624,6 +626,11 @@ PRIMARY KEY (` + "`id`" + `)
 			continue
 		}
 		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
+			return err
+		}
+	}
+	if !DB.Migrator().HasIndex(&SubscriptionPlan{}, "UpgradeGroupKey") {
+		if err := DB.Migrator().CreateIndex(&SubscriptionPlan{}, "UpgradeGroupKey"); err != nil {
 			return err
 		}
 	}
