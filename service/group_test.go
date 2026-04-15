@@ -1,13 +1,18 @@
 package service
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 func withSelectableGroupSettings(t *testing.T, usableJSON string, specialJSON string) {
@@ -72,6 +77,77 @@ func ensureSubscriptionGroupTestSchema(t *testing.T) {
 			t.Fatalf("failed to add %s column for group tests: %v", column.name, err)
 		}
 	}
+}
+
+func setupLegacyOnlySubscriptionSchemaDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	model.InitColumnMetadata()
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open legacy-only sqlite db: %v", err)
+	}
+	model.DB = db
+	model.LOG_DB = db
+
+	ddl := []string{
+		`CREATE TABLE subscription_plans (
+			id INTEGER PRIMARY KEY,
+			title TEXT NOT NULL,
+			price_amount REAL NOT NULL DEFAULT 0,
+			currency TEXT NOT NULL DEFAULT 'USD',
+			duration_unit TEXT NOT NULL DEFAULT 'month',
+			duration_value INTEGER NOT NULL DEFAULT 1,
+			enabled NUMERIC NOT NULL DEFAULT 1,
+			upgrade_group TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE TABLE user_subscriptions (
+			id INTEGER PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			plan_id INTEGER NOT NULL,
+			amount_total INTEGER NOT NULL DEFAULT 0,
+			amount_used INTEGER NOT NULL DEFAULT 0,
+			start_time INTEGER NOT NULL DEFAULT 0,
+			end_time INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT '',
+			upgrade_group TEXT NOT NULL DEFAULT '',
+			prev_user_group TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL DEFAULT 0,
+			updated_at INTEGER NOT NULL DEFAULT 0
+		)`,
+	}
+	for _, stmt := range ddl {
+		if err := db.Exec(stmt).Error; err != nil {
+			t.Fatalf("failed to create legacy-only schema: %v", err)
+		}
+	}
+
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		model.InitColumnMetadata()
+	})
+
+	return db
 }
 
 func seedGroupTestUser(t *testing.T, id int, group string) {
@@ -302,6 +378,26 @@ func TestResolveTokenGroupForUserRequestUsesCanonicalGroupKey(t *testing.T) {
 	}
 }
 
+func TestValidateTokenSelectableGroupForUserUsesCanonicalGroupKey(t *testing.T) {
+	truncate(t)
+	resetPricingGroupTestTables(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"premium":"Premium"}`,
+		`{}`,
+		`{"default":1,"premium":1}`,
+	)
+
+	defaultGroup := seedPricingGroup(t, "default")
+	premiumGroup := seedPricingGroup(t, "premium")
+	seedPricingGroupAlias(t, "legacy-default", defaultGroup.Id)
+	seedPricingGroupAlias(t, "legacy-premium", premiumGroup.Id)
+
+	if err := ValidateTokenSelectableGroupForUser(0, "legacy-default", "legacy-premium"); err != nil {
+		t.Fatalf("expected alias-backed token group validation to pass via canonical key, got %v", err)
+	}
+}
+
 func TestGetUserSelectableGroupsForUserIncludesCanonicalSubscriptionUpgradeGroup(t *testing.T) {
 	truncate(t)
 	ensureSubscriptionGroupTestSchema(t)
@@ -353,5 +449,50 @@ func TestGetUserSelectableGroupsForUserIncludesCanonicalSubscriptionUpgradeGroup
 	}
 	if _, ok := groups["legacy-stale"]; ok {
 		t.Fatalf("expected legacy snapshot string to stay hidden, got %#v", groups)
+	}
+}
+
+func TestGetActiveUserSubscriptionUpgradeGroupsFallsBackWithoutCanonicalColumns(t *testing.T) {
+	db := setupLegacyOnlySubscriptionSchemaDB(t)
+
+	now := time.Now().Unix()
+	if err := db.Exec(
+		"INSERT INTO subscription_plans (id, title, price_amount, currency, duration_unit, duration_value, enabled, upgrade_group) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		301,
+		"legacy-plan",
+		9.9,
+		"USD",
+		model.SubscriptionDurationMonth,
+		1,
+		true,
+		"legacy-premium",
+	).Error; err != nil {
+		t.Fatalf("failed to seed legacy-only plan: %v", err)
+	}
+	if err := db.Exec(
+		"INSERT INTO user_subscriptions (id, user_id, plan_id, amount_total, amount_used, start_time, end_time, status, source, upgrade_group, prev_user_group, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		401,
+		501,
+		301,
+		100,
+		0,
+		now,
+		now+3600,
+		"active",
+		"legacy",
+		"",
+		"default",
+		now,
+		now,
+	).Error; err != nil {
+		t.Fatalf("failed to seed legacy-only subscription: %v", err)
+	}
+
+	groups, err := model.GetActiveUserSubscriptionUpgradeGroups(501)
+	if err != nil {
+		t.Fatalf("expected legacy-only schema to fall back without error, got %v", err)
+	}
+	if len(groups) != 1 || groups[0] != "legacy-premium" {
+		t.Fatalf("expected legacy-only fallback group legacy-premium, got %#v", groups)
 	}
 }

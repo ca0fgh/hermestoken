@@ -939,6 +939,27 @@ func resolveCanonicalSubscriptionUpgradeGroup(raw string) string {
 	return ""
 }
 
+func activeSubscriptionUpgradeGroupSelectClause() string {
+	selectParts := []string{
+		"user_subscriptions.upgrade_group AS subscription_upgrade_group",
+		"subscription_plans.upgrade_group AS plan_upgrade_group",
+	}
+
+	migrator := DB.Migrator()
+	if migrator.HasColumn(&UserSubscription{}, "UpgradeGroupKeySnapshot") {
+		selectParts = append(selectParts, "user_subscriptions.upgrade_group_key_snapshot AS subscription_upgrade_group_key")
+	} else {
+		selectParts = append(selectParts, "'' AS subscription_upgrade_group_key")
+	}
+	if migrator.HasColumn(&SubscriptionPlan{}, "UpgradeGroupKey") {
+		selectParts = append(selectParts, "subscription_plans.upgrade_group_key AS plan_upgrade_group_key")
+	} else {
+		selectParts = append(selectParts, "'' AS plan_upgrade_group_key")
+	}
+
+	return strings.Join(selectParts, ", ")
+}
+
 func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	if userId <= 0 {
 		return []string{}, errors.New("invalid userId")
@@ -952,12 +973,7 @@ func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	}
 	var rows []subscriptionUpgradeGroupRow
 	if err := DB.Table("user_subscriptions").
-		Select(
-			"user_subscriptions.upgrade_group AS subscription_upgrade_group, "+
-				"user_subscriptions.upgrade_group_key_snapshot AS subscription_upgrade_group_key, "+
-				"subscription_plans.upgrade_group AS plan_upgrade_group, "+
-				"subscription_plans.upgrade_group_key AS plan_upgrade_group_key",
-		).
+		Select(activeSubscriptionUpgradeGroupSelectClause()).
 		Joins("LEFT JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ?", userId, "active", now).
 		Find(&rows).Error; err != nil {

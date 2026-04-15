@@ -94,18 +94,50 @@ func ValidateTokenSelectableGroup(userGroup, tokenGroup string) error {
 	return ValidateTokenSelectableGroupForUser(0, userGroup, tokenGroup)
 }
 
+func canonicalizeRequestGroup(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || trimmed == "auto" {
+		return trimmed, nil
+	}
+
+	resolution, err := ResolveCanonicalPricingGroupKey(trimmed)
+	if err == nil && resolution.CanonicalKey != "" {
+		return resolution.CanonicalKey, nil
+	}
+	if err != nil {
+		switch resolution.Source {
+		case PricingGroupResolutionSourceUnknown, PricingGroupResolutionSourceEmpty:
+			return trimmed, nil
+		default:
+			if strings.Contains(err.Error(), "pricing group store unavailable") {
+				return trimmed, nil
+			}
+			return "", err
+		}
+	}
+	return trimmed, nil
+}
+
 func ValidateTokenSelectableGroupForUser(userId int, userGroup, tokenGroup string) error {
+	canonicalUserGroup, err := canonicalizeRequestGroup(userGroup)
+	if err != nil {
+		return err
+	}
 	if tokenGroup == "" {
-		if GroupInUserSelectableGroupsForUser(userId, userGroup, userGroup) {
+		if GroupInUserSelectableGroupsForUser(userId, canonicalUserGroup, canonicalUserGroup) {
 			return nil
 		}
 		return errors.New("当前用户默认分组未开放为用户可选分组，请选择一个用户可选分组")
 	}
-	if !GroupInUserSelectableGroupsForUser(userId, userGroup, tokenGroup) {
-		return fmt.Errorf("分组 %s 不是用户可选分组", tokenGroup)
+	canonicalTokenGroup, err := canonicalizeRequestGroup(tokenGroup)
+	if err != nil {
+		return err
 	}
-	if tokenGroup != "auto" && !ratio_setting.ContainsGroupRatio(tokenGroup) {
-		return fmt.Errorf("分组 %s 已被弃用", tokenGroup)
+	if !GroupInUserSelectableGroupsForUser(userId, canonicalUserGroup, canonicalTokenGroup) {
+		return fmt.Errorf("分组 %s 不是用户可选分组", canonicalTokenGroup)
+	}
+	if canonicalTokenGroup != "auto" && !ratio_setting.ContainsGroupRatio(canonicalTokenGroup) {
+		return fmt.Errorf("分组 %s 已被弃用", canonicalTokenGroup)
 	}
 	return nil
 }
@@ -115,19 +147,27 @@ func ResolveTokenGroupForRequest(userGroup, tokenGroup string) (string, error) {
 }
 
 func ResolveTokenGroupForUserRequest(userId int, userGroup, tokenGroup string) (string, error) {
+	canonicalUserGroup, err := canonicalizeRequestGroup(userGroup)
+	if err != nil {
+		return "", err
+	}
 	if tokenGroup == "" {
-		if !GroupInUserSelectableGroupsForUser(userId, userGroup, userGroup) {
+		if !GroupInUserSelectableGroupsForUser(userId, canonicalUserGroup, canonicalUserGroup) {
 			return "", errors.New("当前令牌未配置可用分组，请选择一个用户可选分组")
 		}
-		return userGroup, nil
+		return canonicalUserGroup, nil
 	}
-	if !GroupInUserUsableGroupsForUser(userId, userGroup, tokenGroup) {
-		return "", fmt.Errorf("无权访问 %s 分组", tokenGroup)
+	canonicalTokenGroup, err := canonicalizeRequestGroup(tokenGroup)
+	if err != nil {
+		return "", err
 	}
-	if tokenGroup != "auto" && !ratio_setting.ContainsGroupRatio(tokenGroup) {
-		return "", fmt.Errorf("分组 %s 已被弃用", tokenGroup)
+	if !GroupInUserUsableGroupsForUser(userId, canonicalUserGroup, canonicalTokenGroup) {
+		return "", fmt.Errorf("无权访问 %s 分组", canonicalTokenGroup)
 	}
-	return tokenGroup, nil
+	if canonicalTokenGroup != "auto" && !ratio_setting.ContainsGroupRatio(canonicalTokenGroup) {
+		return "", fmt.Errorf("分组 %s 已被弃用", canonicalTokenGroup)
+	}
+	return canonicalTokenGroup, nil
 }
 
 // GetUserAutoGroup 根据用户分组获取自动分组设置
