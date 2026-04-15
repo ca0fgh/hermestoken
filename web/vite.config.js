@@ -24,14 +24,11 @@ import path from 'path';
 import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
+const HOME_DEFERRED_PRELOAD_PATTERN = /(?:semi-core|visactor)-/;
 
 function buildManualChunkName(id) {
   if (!id.includes('node_modules')) {
     return undefined;
-  }
-
-  if (id.includes('@visactor/')) {
-    return 'visactor';
   }
 
   if (id.includes('react-fireworks')) {
@@ -41,18 +38,11 @@ function buildManualChunkName(id) {
   // Keep startup-critical runtime and shared UI primitives together.
   // Route-specific heavyweight libraries move to dedicated async chunks.
   if (
-    id.includes('@douyinfe/semi-ui') ||
-    id.includes('@douyinfe/semi-icons') ||
-    id.includes('@douyinfe/semi-foundation') ||
-    id.includes('@douyinfe/semi-illustrations') ||
     id.includes('react-router-dom') ||
     id.includes('/react/') ||
     id.includes('scheduler') ||
     id.includes('i18next') ||
-    id.includes('lucide-react') ||
-    id.includes('/react-icons/') ||
-    id.includes('react-avatar-editor') ||
-    id.includes('@radix-ui')
+    id.includes('lucide-react')
   ) {
     return 'react-core';
   }
@@ -124,6 +114,17 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 3500,
+    modulePreload: {
+      resolveDependencies(filename, deps, { hostType }) {
+        if (hostType !== 'html' || filename !== 'index.html') {
+          return deps;
+        }
+
+        return deps.filter((dependency) => {
+          return !HOME_DEFERRED_PRELOAD_PATTERN.test(dependency);
+        });
+      },
+    },
     rollupOptions: {
       onwarn: handleBuildWarning,
       output: {

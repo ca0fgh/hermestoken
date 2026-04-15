@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Tag } from '@douyinfe/semi-ui';
 import BrandWordmark from '../../common/BrandWordmark';
+import { getOptimizedLogoUrl } from '../../../helpers/logo';
 
 const HeaderLogo = ({
   isMobile,
@@ -34,12 +34,17 @@ const HeaderLogo = ({
     return null;
   }
 
+  const displayLogo = getOptimizedLogoUrl(logo, { size: 64 });
+
   return (
     <Link to='/' className='group flex items-center gap-2'>
-      {logo ? (
+      {displayLogo ? (
         <img
-          src={logo}
+          src={displayLogo}
           alt='Logo'
+          width='32'
+          height='32'
+          decoding='async'
           className='h-8 w-8 rounded-full object-cover transition-transform duration-200 group-hover:scale-105'
         />
       ) : null}
@@ -48,14 +53,15 @@ const HeaderLogo = ({
         className='transition-opacity duration-200 group-hover:opacity-80'
       />
       {(isSelfUseMode || isDemoSiteMode) && (
-        <Tag
-          color={isSelfUseMode ? 'purple' : 'blue'}
-          className='hidden md:inline-flex text-xs px-1.5 py-0.5 rounded whitespace-nowrap shadow-sm'
-          size='small'
-          shape='circle'
+        <span
+          className={`hidden rounded-full px-2 py-0.5 text-[11px] font-medium shadow-sm md:inline-flex ${
+            isSelfUseMode
+              ? 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-200'
+              : 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200'
+          }`}
         >
           {isSelfUseMode ? t('自用模式') : t('演示站点')}
-        </Tag>
+        </span>
       )}
     </Link>
   );

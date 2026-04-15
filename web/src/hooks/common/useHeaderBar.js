@@ -23,12 +23,15 @@ import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useSetTheme, useTheme, useActualTheme } from '../../context/Theme';
-import { API, getLogo, showSuccess } from '../../helpers';
+import { API } from '../../helpers/api';
+import { getLogo } from '../../helpers/branding';
 import {
   getPricingRequireAuth,
   normalizeHeaderNavModules,
 } from '../../helpers/headerNavModules';
+import { ensureLanguageResources } from '../../i18n/i18n';
 import { normalizeLanguage } from '../../i18n/language';
+import { showSuccess } from '../../helpers/notifications';
 import { useIsMobile } from './useIsMobile';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
 import { useMinimumLoadingTime } from './useMinimumLoadingTime';
@@ -123,6 +126,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
     async (lang) => {
       // Change language immediately for responsive UX
       const previousLang = normalizeLanguage(i18n.language);
+      await ensureLanguageResources(lang);
       i18n.changeLanguage(lang);
       localStorage.setItem('i18nextLng', lang);
 
@@ -158,6 +162,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
           }
         } catch (error) {
           if (previousLang) {
+            await ensureLanguageResources(previousLang);
             i18n.changeLanguage(previousLang);
             localStorage.setItem('i18nextLng', previousLang);
           }

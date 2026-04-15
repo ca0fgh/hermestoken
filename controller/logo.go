@@ -1,17 +1,25 @@
 package controller
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/image/draw"
+	"golang.org/x/image/webp"
 )
 
 const (
@@ -19,6 +27,7 @@ const (
 	logoPublicPath               = "/api/logo"
 	maxLogoUploadBytes     int64 = 5 << 20
 	defaultLogoStoragePath       = "data/system-assets/logo-upload.bin"
+	maxLogoThumbnailSize         = 512
 )
 
 var (
@@ -105,6 +114,96 @@ func writeLogoError(c *gin.Context, statusCode int, message string) {
 	})
 }
 
+func getRequestedLogoSize(c *gin.Context) int {
+	sizeRaw := strings.TrimSpace(c.Query("size"))
+	if sizeRaw == "" {
+		return 0
+	}
+
+	size, err := strconv.Atoi(sizeRaw)
+	if err != nil || size <= 0 {
+		return 0
+	}
+
+	if size > maxLogoThumbnailSize {
+		return maxLogoThumbnailSize
+	}
+
+	return size
+}
+
+func writeLogoCacheHeaders(c *gin.Context) {
+	if strings.TrimSpace(c.Query("v")) != "" {
+		c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
+
+	c.Header("Cache-Control", "no-cache")
+}
+
+func decodeLogoImage(content []byte, contentType string) (image.Image, error) {
+	reader := bytes.NewReader(content)
+
+	if contentType == "image/webp" {
+		return webp.Decode(reader)
+	}
+
+	img, _, err := image.Decode(reader)
+	return img, err
+}
+
+func scaleLogoDimensions(width int, height int, maxEdge int) (int, int) {
+	if width <= 0 || height <= 0 || maxEdge <= 0 {
+		return width, height
+	}
+
+	if width <= maxEdge && height <= maxEdge {
+		return width, height
+	}
+
+	if width >= height {
+		scaledHeight := (height*maxEdge + width/2) / width
+		if scaledHeight < 1 {
+			scaledHeight = 1
+		}
+		return maxEdge, scaledHeight
+	}
+
+	scaledWidth := (width*maxEdge + height/2) / height
+	if scaledWidth < 1 {
+		scaledWidth = 1
+	}
+	return scaledWidth, maxEdge
+}
+
+func resizeLogoContent(content []byte, contentType string, maxEdge int) ([]byte, string, error) {
+	img, err := decodeLogoImage(content, contentType)
+	if err != nil {
+		return nil, "", err
+	}
+
+	sourceBounds := img.Bounds()
+	targetWidth, targetHeight := scaleLogoDimensions(
+		sourceBounds.Dx(),
+		sourceBounds.Dy(),
+		maxEdge,
+	)
+
+	if targetWidth == sourceBounds.Dx() && targetHeight == sourceBounds.Dy() && contentType == "image/png" {
+		return content, contentType, nil
+	}
+
+	dst := image.NewNRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, sourceBounds, draw.Over, nil)
+
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, dst); err != nil {
+		return nil, "", err
+	}
+
+	return buffer.Bytes(), "image/png", nil
+}
+
 func UploadLogo(c *gin.Context) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxLogoUploadBytes+(1<<20))
 	if err := c.Request.ParseMultipartForm(maxLogoUploadBytes); err != nil {
@@ -184,7 +283,20 @@ func GetLogo(c *gin.Context) {
 		return
 	}
 
-	c.Header("Cache-Control", "no-cache")
+	writeLogoCacheHeaders(c)
+
+	if requestedSize := getRequestedLogoSize(c); requestedSize > 0 {
+		resizedContent, resizedContentType, resizeErr := resizeLogoContent(
+			content,
+			contentType,
+			requestedSize,
+		)
+		if resizeErr == nil {
+			c.Data(http.StatusOK, resizedContentType, resizedContent)
+			return
+		}
+	}
+
 	c.Data(http.StatusOK, contentType, content)
 }
 

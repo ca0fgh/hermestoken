@@ -55,6 +55,9 @@ const routerMap = {
 const SiderBar = ({ onNavigate = () => {} }) => {
   const { t } = useTranslation();
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const sidebarWidth = collapsed
+    ? 'var(--sidebar-width-collapsed)'
+    : 'var(--sidebar-width)';
   const {
     isModuleVisible,
     hasSectionVisibleModules,
@@ -307,15 +310,6 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     }
   }, [location.pathname, routerMapState]);
 
-  // Preserve the shared collapsed-layout shell behavior used by PageLayout.
-  useEffect(() => {
-    if (collapsed) {
-      document.body.classList.add('sidebar-collapsed');
-    } else {
-      document.body.classList.remove('sidebar-collapsed');
-    }
-  }, [collapsed]);
-
   // 选中高亮颜色（统一）
   const SELECTED_COLOR = 'var(--semi-color-primary)';
 
@@ -403,7 +397,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     <div
       className='sidebar-container'
       style={{
-        width: 'var(--sidebar-current-width)',
+        width: sidebarWidth,
+        minWidth: sidebarWidth,
+        maxWidth: sidebarWidth,
       }}
     >
       <SkeletonWrapper

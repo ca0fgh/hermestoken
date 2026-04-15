@@ -30,6 +30,7 @@ import {
   setUserData,
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
+  getOptimizedLogoUrl,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import {
@@ -110,7 +111,7 @@ const RegisterForm = () => {
   const [githubButtonDisabled, setGithubButtonDisabled] = useState(false);
   const githubTimeoutRef = useRef(null);
   const githubButtonText = t(githubButtonTextKeyByState[githubButtonState]);
-  const logo = getLogo();
+  const logo = getOptimizedLogoUrl(getLogo(), { size: 80 });
 
   let affCode = new URLSearchParams(window.location.search).get('aff');
   if (affCode) {
@@ -398,6 +399,9 @@ const RegisterForm = () => {
               <img
                 src={logo}
                 alt='Logo'
+                width='40'
+                height='40'
+                decoding='async'
                 className='h-10 w-10 rounded-full object-cover'
               />
             ) : null}
@@ -565,6 +569,9 @@ const RegisterForm = () => {
               <img
                 src={logo}
                 alt='Logo'
+                width='40'
+                height='40'
+                decoding='async'
                 className='h-10 w-10 rounded-full object-cover'
               />
             ) : null}

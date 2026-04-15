@@ -17,19 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+const STYLE_TAG_PATTERN = /<style\b[^>]*>[\s\S]*?<\/style>/gi;
+const STYLESHEET_LINK_PATTERN =
+  /<link\b(?=[^>]*\brel\s*=\s*["']?stylesheet["']?)[^>]*>/gi;
+const DOCUMENT_TAG_PATTERN = /<\/?(?:html|head|body)\b[^>]*>/gi;
 
-const Loading = ({ size = 'small' }) => {
-  const dimensionClass =
-    size === 'large' ? 'h-12 w-12 border-[5px]' : 'h-8 w-8 border-4';
+export function sanitizeNoticeHtml(html) {
+  if (!html) {
+    return '';
+  }
 
-  return (
-    <div className='fixed inset-0 w-screen h-screen flex items-center justify-center'>
-      <div
-        className={`animate-spin rounded-full border-slate-300 border-t-slate-900 dark:border-slate-700 dark:border-t-slate-100 ${dimensionClass}`}
-      />
-    </div>
-  );
-};
-
-export default Loading;
+  return String(html)
+    .replace(STYLE_TAG_PATTERN, '')
+    .replace(STYLESHEET_LINK_PATTERN, '')
+    .replace(DOCUMENT_TAG_PATTERN, '')
+    .trim();
+}

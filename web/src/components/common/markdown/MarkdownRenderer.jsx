@@ -21,13 +21,9 @@ import ReactMarkdown from 'react-markdown';
 import 'katex/dist/katex.min.css';
 import 'highlight.js/styles/github.css';
 import './markdown.css';
-import RemarkMath from 'remark-math';
 import RemarkBreaks from 'remark-breaks';
-import RehypeKatex from 'rehype-katex';
 import RemarkGfm from 'remark-gfm';
-import RehypeHighlight from 'rehype-highlight';
 import { useRef, useState, useEffect, useMemo } from 'react';
-import mermaid from 'mermaid';
 import React from 'react';
 import { useDebouncedCallback } from 'use-debounce';
 import clsx from 'clsx';
@@ -36,19 +32,94 @@ import { copy, rehypeSplitWordsIntoSpans } from '../../../helpers';
 import { IconCopy } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-});
+let mermaidModulePromise = null;
+let mathBundlePromise = null;
+let highlightBundlePromise = null;
+
+function detectMarkdownFeatures(content = '') {
+  const normalizedContent = String(content || '');
+  return {
+    hasMermaid: /```mermaid\b/i.test(normalizedContent),
+    hasCodeHighlight:
+      /```[\w-]*\n/i.test(normalizedContent) ||
+      /~~~[\w-]*\n/i.test(normalizedContent),
+    hasMath: /(^|[^`])(\$\$[\s\S]+?\$\$|\$[^$\n]+\$|\\\(|\\\[)/m.test(
+      normalizedContent,
+    ),
+  };
+}
+
+function loadMermaidModule() {
+  if (mermaidModulePromise) {
+    return mermaidModulePromise;
+  }
+
+  mermaidModulePromise = import('mermaid').then((module) => {
+    const mermaidApi = module.default || module;
+    mermaidApi.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'loose',
+    });
+    return mermaidApi;
+  });
+
+  return mermaidModulePromise;
+}
+
+function loadMathBundle() {
+  if (mathBundlePromise) {
+    return mathBundlePromise;
+  }
+
+  mathBundlePromise = Promise.all([
+    import('remark-math'),
+    import('rehype-katex'),
+  ]).then(([remarkMathModule, rehypeKatexModule]) => ({
+    remarkMath: remarkMathModule.default || remarkMathModule,
+    rehypeKatex: rehypeKatexModule.default || rehypeKatexModule,
+  }));
+
+  return mathBundlePromise;
+}
+
+function loadHighlightBundle() {
+  if (highlightBundlePromise) {
+    return highlightBundlePromise;
+  }
+
+  highlightBundlePromise = import('rehype-highlight').then((module) => ({
+    rehypeHighlight: module.default || module,
+  }));
+
+  return highlightBundlePromise;
+}
 
 export function Mermaid(props) {
   const ref = useRef(null);
   const [hasError, setHasError] = useState(false);
+  const [mermaidApi, setMermaidApi] = useState(null);
 
   useEffect(() => {
-    if (props.code && ref.current) {
-      mermaid
+    if (!props.code) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    void loadMermaidModule().then((module) => {
+      if (!cancelled) {
+        setMermaidApi(module);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [props.code]);
+
+  useEffect(() => {
+    if (props.code && ref.current && mermaidApi) {
+      mermaidApi
         .run({
           nodes: [ref.current],
           suppressErrors: true,
@@ -58,7 +129,7 @@ export function Mermaid(props) {
           console.error('[Mermaid] ', e.message);
         });
     }
-  }, [props.code]);
+  }, [mermaidApi, props.code]);
 
   function viewSvgInNewWindow() {
     const svg = ref.current?.querySelector('svg');
@@ -389,30 +460,83 @@ function _MarkdownContent(props) {
   const escapedContent = useMemo(() => {
     return tryWrapHtmlCode(escapeBrackets(content));
   }, [content]);
+  const markdownFeatures = useMemo(
+    () => detectMarkdownFeatures(escapedContent),
+    [escapedContent],
+  );
+  const [mathBundle, setMathBundle] = useState(null);
+  const [highlightBundle, setHighlightBundle] = useState(null);
 
   // 判断是否为用户消息
   const isUserMessage = className && className.includes('user-message');
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (markdownFeatures.hasMath) {
+      void loadMathBundle().then((bundle) => {
+        if (!cancelled) {
+          setMathBundle(bundle);
+        }
+      });
+    } else {
+      setMathBundle(null);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [markdownFeatures.hasMath]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (markdownFeatures.hasCodeHighlight) {
+      void loadHighlightBundle().then((bundle) => {
+        if (!cancelled) {
+          setHighlightBundle(bundle);
+        }
+      });
+    } else {
+      setHighlightBundle(null);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [markdownFeatures.hasCodeHighlight]);
+
   const rehypePluginsBase = useMemo(() => {
-    const base = [
-      RehypeKatex,
-      [
-        RehypeHighlight,
+    const base = [];
+    if (mathBundle?.rehypeKatex) {
+      base.push(mathBundle.rehypeKatex);
+    }
+    if (highlightBundle?.rehypeHighlight) {
+      base.push([
+        highlightBundle.rehypeHighlight,
         {
           detect: false,
           ignoreMissing: true,
         },
-      ],
-    ];
+      ]);
+    }
     if (animated) {
       base.push([rehypeSplitWordsIntoSpans, { previousContentLength }]);
     }
     return base;
-  }, [animated, previousContentLength]);
+  }, [animated, highlightBundle, mathBundle, previousContentLength]);
+
+  const remarkPlugins = useMemo(() => {
+    const base = [RemarkGfm, RemarkBreaks];
+    if (mathBundle?.remarkMath) {
+      base.unshift(mathBundle.remarkMath);
+    }
+    return base;
+  }, [mathBundle]);
 
   return (
     <ReactMarkdown
-      remarkPlugins={[RemarkMath, RemarkGfm, RemarkBreaks]}
+      remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePluginsBase}
       components={{
         pre: PreCode,

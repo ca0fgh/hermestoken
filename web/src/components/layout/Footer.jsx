@@ -19,10 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useState, useMemo, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Typography } from '@douyinfe/semi-ui';
-import { getFooterHTML, getLogo, getSystemName } from '../../helpers/utils';
+import { getFooterHTML, getLogo, getSystemName } from '../../helpers/branding';
 import { StatusContext } from '../../context/Status';
 import { getFooterSectionVisibility } from '../../helpers/headerNavModules';
+import { getOptimizedLogoUrl } from '../../helpers/logo';
 import BrandWordmark from '../common/BrandWordmark';
 
 const FooterBar = () => {
@@ -30,6 +30,7 @@ const FooterBar = () => {
   const [footer, setFooter] = useState(getFooterHTML());
   const systemName = getSystemName();
   const logo = getLogo();
+  const displayLogo = getOptimizedLogoUrl(logo, { size: 128 });
   const [statusState] = useContext(StatusContext);
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
   const docsLink = statusState?.status?.docs_link || '';
@@ -58,10 +59,13 @@ const FooterBar = () => {
         {isDemoSiteMode && (
           <div className='flex flex-col md:flex-row justify-between w-full max-w-[1110px] mb-10 gap-8'>
             <div className='flex-shrink-0'>
-              {logo ? (
+              {displayLogo ? (
                 <img
-                  src={logo}
+                  src={displayLogo}
                   alt={systemName}
+                  width='64'
+                  height='64'
+                  decoding='async'
                   className='w-16 h-16 rounded-full bg-gray-800 p-1.5 object-contain'
                 />
               ) : (
@@ -207,14 +211,14 @@ const FooterBar = () => {
 
         <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-6'>
           <div className='flex flex-wrap items-center gap-2'>
-            <Typography.Text className='text-sm !text-semi-color-text-1'>
+            <span className='text-sm text-semi-color-text-1'>
               © {currentYear} {systemName}. {t('版权所有')}
-            </Typography.Text>
+            </span>
           </div>
         </div>
       </footer>
     ),
-    [logo, systemName, t, currentYear, isDemoSiteMode],
+    [displayLogo, systemName, t, currentYear, isDemoSiteMode],
   );
 
   useEffect(() => {

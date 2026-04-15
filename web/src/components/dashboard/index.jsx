@@ -17,19 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect } from 'react';
+import React, { Suspense, lazy, useContext, useEffect } from 'react';
 import { getRelativeTime } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
 import DashboardHeader from './DashboardHeader';
-import StatsCards from './StatsCards';
-import ChartsPanel from './ChartsPanel';
-import ApiInfoPanel from './ApiInfoPanel';
-import AnnouncementsPanel from './AnnouncementsPanel';
-import FaqPanel from './FaqPanel';
-import UptimePanel from './UptimePanel';
-import SearchModal from './modals/SearchModal';
 
 import { useDashboardData } from '../../hooks/dashboard/useDashboardData';
 import { useDashboardStats } from '../../hooks/dashboard/useDashboardStats';
@@ -51,6 +44,14 @@ import {
   getUptimeStatusText,
   renderMonitorList,
 } from '../../helpers/dashboard';
+
+const SearchModal = lazy(() => import('./modals/SearchModal'));
+const StatsCards = lazy(() => import('./StatsCards'));
+const ChartsPanel = lazy(() => import('./ChartsPanel'));
+const ApiInfoPanel = lazy(() => import('./ApiInfoPanel'));
+const AnnouncementsPanel = lazy(() => import('./AnnouncementsPanel'));
+const FaqPanel = lazy(() => import('./FaqPanel'));
+const UptimePanel = lazy(() => import('./UptimePanel'));
 
 const Dashboard = () => {
   // ========== Context ==========
@@ -161,59 +162,69 @@ const Dashboard = () => {
         t={dashboardData.t}
       />
 
-      <SearchModal
-        searchModalVisible={dashboardData.searchModalVisible}
-        handleSearchConfirm={handleSearchConfirm}
-        handleCloseModal={dashboardData.handleCloseModal}
-        isMobile={dashboardData.isMobile}
-        isAdminUser={dashboardData.isAdminUser}
-        inputs={dashboardData.inputs}
-        dataExportDefaultTime={dashboardData.dataExportDefaultTime}
-        timeOptions={dashboardData.timeOptions}
-        handleInputChange={dashboardData.handleInputChange}
-        t={dashboardData.t}
-      />
+      {dashboardData.searchModalVisible ? (
+        <Suspense fallback={null}>
+          <SearchModal
+            searchModalVisible={dashboardData.searchModalVisible}
+            handleSearchConfirm={handleSearchConfirm}
+            handleCloseModal={dashboardData.handleCloseModal}
+            isMobile={dashboardData.isMobile}
+            isAdminUser={dashboardData.isAdminUser}
+            inputs={dashboardData.inputs}
+            dataExportDefaultTime={dashboardData.dataExportDefaultTime}
+            timeOptions={dashboardData.timeOptions}
+            handleInputChange={dashboardData.handleInputChange}
+            t={dashboardData.t}
+          />
+        </Suspense>
+      ) : null}
 
-      <StatsCards
-        groupedStatsData={groupedStatsData}
-        loading={dashboardData.loading}
-        getTrendSpec={getTrendSpec}
-        CARD_PROPS={CARD_PROPS}
-        CHART_CONFIG={CHART_CONFIG}
-      />
+      <Suspense fallback={null}>
+        <StatsCards
+          groupedStatsData={groupedStatsData}
+          loading={dashboardData.loading}
+          getTrendSpec={getTrendSpec}
+          CARD_PROPS={CARD_PROPS}
+          CHART_CONFIG={CHART_CONFIG}
+        />
+      </Suspense>
 
       {/* API信息和图表面板 */}
       <div className='mb-4'>
         <div
           className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
         >
-          <ChartsPanel
-            activeChartTab={dashboardData.activeChartTab}
-            setActiveChartTab={dashboardData.setActiveChartTab}
-            spec_line={dashboardCharts.spec_line}
-            spec_model_line={dashboardCharts.spec_model_line}
-            spec_pie={dashboardCharts.spec_pie}
-            spec_rank_bar={dashboardCharts.spec_rank_bar}
-            spec_user_rank={dashboardCharts.spec_user_rank}
-            spec_user_trend={dashboardCharts.spec_user_trend}
-            isAdminUser={dashboardData.isAdminUser}
-            CARD_PROPS={CARD_PROPS}
-            CHART_CONFIG={CHART_CONFIG}
-            FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-            hasApiInfoPanel={dashboardData.hasApiInfoPanel}
-            t={dashboardData.t}
-          />
-
-          {dashboardData.hasApiInfoPanel && (
-            <ApiInfoPanel
-              apiInfoData={apiInfoData}
-              handleCopyUrl={(url) => handleCopyUrl(url, dashboardData.t)}
-              handleSpeedTest={handleSpeedTest}
+          <Suspense fallback={null}>
+            <ChartsPanel
+              activeChartTab={dashboardData.activeChartTab}
+              setActiveChartTab={dashboardData.setActiveChartTab}
+              spec_line={dashboardCharts.spec_line}
+              spec_model_line={dashboardCharts.spec_model_line}
+              spec_pie={dashboardCharts.spec_pie}
+              spec_rank_bar={dashboardCharts.spec_rank_bar}
+              spec_user_rank={dashboardCharts.spec_user_rank}
+              spec_user_trend={dashboardCharts.spec_user_trend}
+              isAdminUser={dashboardData.isAdminUser}
               CARD_PROPS={CARD_PROPS}
+              CHART_CONFIG={CHART_CONFIG}
               FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-              ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+              hasApiInfoPanel={dashboardData.hasApiInfoPanel}
               t={dashboardData.t}
             />
+          </Suspense>
+
+          {dashboardData.hasApiInfoPanel && (
+            <Suspense fallback={null}>
+              <ApiInfoPanel
+                apiInfoData={apiInfoData}
+                handleCopyUrl={(url) => handleCopyUrl(url, dashboardData.t)}
+                handleSpeedTest={handleSpeedTest}
+                CARD_PROPS={CARD_PROPS}
+                FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                t={dashboardData.t}
+              />
+            </Suspense>
           )}
         </div>
       </div>
@@ -224,57 +235,64 @@ const Dashboard = () => {
           <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
             {/* 公告卡片 */}
             {dashboardData.announcementsEnabled && (
-              <AnnouncementsPanel
-                announcementData={announcementData}
-                announcementLegendData={ANNOUNCEMENT_LEGEND_DATA.map(
-                  (item) => ({
-                    ...item,
-                    label: dashboardData.t(item.label),
-                  }),
-                )}
-                CARD_PROPS={CARD_PROPS}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
+              <Suspense fallback={null}>
+                <AnnouncementsPanel
+                  announcementData={announcementData}
+                  announcementLegendData={ANNOUNCEMENT_LEGEND_DATA.map(
+                    (item) => ({
+                      ...item,
+                      label: dashboardData.t(item.label),
+                    }),
+                  )}
+                  CARD_PROPS={CARD_PROPS}
+                  ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                  t={dashboardData.t}
+                />
+              </Suspense>
             )}
 
             {/* 常见问答卡片 */}
             {dashboardData.faqEnabled && (
-              <FaqPanel
-                faqData={faqData}
-                CARD_PROPS={CARD_PROPS}
-                FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
+              <Suspense fallback={null}>
+                <FaqPanel
+                  faqData={faqData}
+                  CARD_PROPS={CARD_PROPS}
+                  FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+                  ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                  t={dashboardData.t}
+                />
+              </Suspense>
             )}
 
             {/* 服务可用性卡片 */}
             {dashboardData.uptimeEnabled && (
-              <UptimePanel
-                uptimeData={dashboardData.uptimeData}
-                uptimeLoading={dashboardData.uptimeLoading}
-                activeUptimeTab={dashboardData.activeUptimeTab}
-                setActiveUptimeTab={dashboardData.setActiveUptimeTab}
-                loadUptimeData={dashboardData.loadUptimeData}
-                uptimeLegendData={uptimeLegendData}
-                renderMonitorList={(monitors) =>
-                  renderMonitorList(
-                    monitors,
-                    (status) => getUptimeStatusColor(status, UPTIME_STATUS_MAP),
-                    (status) =>
-                      getUptimeStatusText(
-                        status,
-                        UPTIME_STATUS_MAP,
-                        dashboardData.t,
-                      ),
-                    dashboardData.t,
-                  )
-                }
-                CARD_PROPS={CARD_PROPS}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
+              <Suspense fallback={null}>
+                <UptimePanel
+                  uptimeData={dashboardData.uptimeData}
+                  uptimeLoading={dashboardData.uptimeLoading}
+                  activeUptimeTab={dashboardData.activeUptimeTab}
+                  setActiveUptimeTab={dashboardData.setActiveUptimeTab}
+                  loadUptimeData={dashboardData.loadUptimeData}
+                  uptimeLegendData={uptimeLegendData}
+                  renderMonitorList={(monitors) =>
+                    renderMonitorList(
+                      monitors,
+                      (status) =>
+                        getUptimeStatusColor(status, UPTIME_STATUS_MAP),
+                      (status) =>
+                        getUptimeStatusText(
+                          status,
+                          UPTIME_STATUS_MAP,
+                          dashboardData.t,
+                        ),
+                      dashboardData.t,
+                    )
+                  }
+                  CARD_PROPS={CARD_PROPS}
+                  ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                  t={dashboardData.t}
+                />
+              </Suspense>
             )}
           </div>
         </div>

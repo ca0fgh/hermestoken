@@ -23,6 +23,7 @@ import { Languages } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { API, showSuccess, showError } from '../../../../helpers';
 import { UserContext } from '../../../../context/User';
+import { ensureLanguageResources } from '../../../../i18n/i18n';
 import { normalizeLanguage } from '../../../../i18n/language';
 
 // Language options with native names
@@ -54,7 +55,9 @@ const PreferencesSettings = ({ t }) => {
           setCurrentLanguage(lang);
           // Sync i18n with saved preference
           if (i18n.language !== lang) {
-            i18n.changeLanguage(lang);
+            void ensureLanguageResources(lang).then(() => {
+              i18n.changeLanguage(lang);
+            });
           }
         }
       } catch (e) {
@@ -72,6 +75,7 @@ const PreferencesSettings = ({ t }) => {
     try {
       // Update language immediately for responsive UX
       setCurrentLanguage(lang);
+      await ensureLanguageResources(lang);
       i18n.changeLanguage(lang);
       localStorage.setItem('i18nextLng', lang);
 
@@ -105,6 +109,7 @@ const PreferencesSettings = ({ t }) => {
         showError(res.data.message || t('保存失败'));
         // Revert on error
         setCurrentLanguage(previousLang);
+        await ensureLanguageResources(previousLang);
         i18n.changeLanguage(previousLang);
         localStorage.setItem('i18nextLng', previousLang);
       }
@@ -112,6 +117,7 @@ const PreferencesSettings = ({ t }) => {
       showError(t('保存失败，请重试'));
       // Revert on error
       setCurrentLanguage(previousLang);
+      await ensureLanguageResources(previousLang);
       i18n.changeLanguage(previousLang);
       localStorage.setItem('i18nextLng', previousLang);
     } finally {

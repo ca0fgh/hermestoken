@@ -17,29 +17,37 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import HeaderBar from './headerbar';
-import { Layout } from '@douyinfe/semi-ui';
-import SiderBar from './SiderBar';
 import App from '../../App';
 import FooterBar from './Footer';
 import { ToastContainer } from 'react-toastify';
 import ErrorBoundary from '../common/ErrorBoundary';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { setStatusData } from '../../helpers/data';
-import { getLogo, getSystemName, showError } from '../../helpers/utils';
+import { getLogo, getSystemName } from '../../helpers/branding';
+import { getOptimizedLogoUrl } from '../../helpers/logo';
+import { showError } from '../../helpers/notifications';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
+import { ensureLanguageResources } from '../../i18n/i18n';
 import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
-const { Sider, Content, Header } = Layout;
+import MarketingHeaderBar from './MarketingHeaderBar';
+
+const ConsoleHeaderBar = lazy(() => import('./headerbar'));
+const ConsoleSiderBar = lazy(() => import('./SiderBar'));
+const SemiRuntime = lazy(() => import('../common/SemiRuntime'));
+
+const MINIMAL_SHELL_FALLBACK = (
+  <div className='min-h-screen bg-white dark:bg-slate-950' />
+);
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
-  const [, statusDispatch] = useContext(StatusContext);
+  const [statusState, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
   const [collapsed, , setCollapsed] = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -59,14 +67,17 @@ const PageLayout = () => {
   ];
 
   const shouldHideFooter = cardProPages.includes(location.pathname);
-
   const shouldInnerPadding =
     location.pathname.includes('/console') &&
     !location.pathname.startsWith('/console/chat') &&
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
+  const isMarketingRoute = location.pathname === '/';
   const showSider = isConsoleRoute && (!isMobile || drawerOpen);
+  const sidebarWidth = collapsed
+    ? 'var(--sidebar-width-collapsed)'
+    : 'var(--sidebar-width)';
 
   useEffect(() => {
     if (isMobile && drawerOpen && collapsed) {
@@ -74,42 +85,51 @@ const PageLayout = () => {
     }
   }, [isMobile, drawerOpen, collapsed, setCollapsed]);
 
-  const loadUser = () => {
-    let user = localStorage.getItem('user');
-    if (user) {
-      let data = JSON.parse(user);
-      userDispatch({ type: 'login', payload: data });
+  useEffect(() => {
+    const rawUser = localStorage.getItem('user');
+    if (!rawUser) {
+      return;
     }
-  };
 
-  const loadStatus = async () => {
     try {
-      const res = await API.get('/api/status');
-      const { success, data } = res.data;
-      if (success) {
-        statusDispatch({ type: 'set', payload: data });
-        setStatusData(data);
-      } else {
-        showError('Unable to connect to server');
-      }
-    } catch (error) {
-      showError('Failed to load status');
+      userDispatch({ type: 'login', payload: JSON.parse(rawUser) });
+    } catch {
+      localStorage.removeItem('user');
     }
-  };
+  }, [userDispatch]);
 
   useEffect(() => {
-    loadUser();
+    const loadStatus = async () => {
+      try {
+        const res = await API.get('/api/status');
+        const { success, data } = res.data;
+        if (success) {
+          statusDispatch({ type: 'set', payload: data });
+          setStatusData(data);
+          return;
+        }
+        showError('Unable to connect to server');
+      } catch {
+        showError('Failed to load status');
+      }
+    };
+
     loadStatus().catch(console.error);
-    let systemName = getSystemName();
+  }, [statusDispatch]);
+
+  useEffect(() => {
+    const systemName = getSystemName();
     if (systemName) {
       document.title = systemName;
     }
-    let logo = getLogo();
-    let linkElement = document.querySelector("link[rel~='icon']");
+
+    const logo = getLogo();
+    const faviconHref = getOptimizedLogoUrl(logo, { size: 32 }) || 'data:,';
+    const linkElement = document.querySelector("link[rel~='icon']");
     if (linkElement) {
-      linkElement.href = logo || 'data:,';
+      linkElement.href = faviconHref;
     }
-  }, []);
+  }, [statusState?.status?.logo, statusState?.status?.system_name]);
 
   useEffect(() => {
     let preferredLang;
@@ -118,8 +138,8 @@ const PageLayout = () => {
       try {
         const settings = JSON.parse(userState.user.setting);
         preferredLang = normalizeLanguage(settings.language);
-      } catch (e) {
-        // Ignore parse errors
+      } catch {
+        preferredLang = undefined;
       }
     }
 
@@ -130,24 +150,57 @@ const PageLayout = () => {
       }
     }
 
-    if (preferredLang) {
+    if (!preferredLang) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const applyPreferredLanguage = async () => {
       localStorage.setItem('i18nextLng', preferredLang);
-      if (preferredLang !== i18n.language) {
+      await ensureLanguageResources(preferredLang);
+      if (!cancelled && preferredLang !== i18n.language) {
         i18n.changeLanguage(preferredLang);
       }
-    }
+    };
+
+    void applyPreferredLanguage();
+
+    return () => {
+      cancelled = true;
+    };
   }, [i18n, userState?.user?.setting]);
 
-  return (
-    <Layout
-      className='app-layout'
+  const appContent = (
+    <main
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: isMobile ? 'visible' : 'hidden',
+        flex: '1 0 auto',
+        overflowY: isMobile ? 'visible' : 'hidden',
+        WebkitOverflowScrolling: 'touch',
+        padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
+        position: 'relative',
       }}
     >
-      <Header
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </main>
+  );
+
+  const footerContent = !shouldHideFooter ? (
+    <div
+      style={{
+        flex: '0 0 auto',
+        width: '100%',
+      }}
+    >
+      <FooterBar />
+    </div>
+  ) : null;
+
+  const marketingShell = (
+    <>
+      <header
         style={{
           padding: 0,
           height: 'auto',
@@ -158,20 +211,57 @@ const PageLayout = () => {
           zIndex: 100,
         }}
       >
-        <HeaderBar
-          onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
-          drawerOpen={drawerOpen}
-        />
-      </Header>
-      <Layout
+        <MarketingHeaderBar />
+      </header>
+      <div
         style={{
           overflow: isMobile ? 'visible' : 'auto',
           display: 'flex',
           flexDirection: 'column',
         }}
       >
-        {showSider && (
-          <Sider
+        <div
+          style={{
+            marginLeft: '0',
+            flex: '1 1 auto',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {appContent}
+          {footerContent}
+        </div>
+      </div>
+    </>
+  );
+
+  const consoleShell = (
+    <SemiRuntime>
+      <header
+        style={{
+          padding: 0,
+          height: 'auto',
+          lineHeight: 'normal',
+          position: 'fixed',
+          width: '100%',
+          top: 0,
+          zIndex: 100,
+        }}
+      >
+        <ConsoleHeaderBar
+          onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
+          drawerOpen={drawerOpen}
+        />
+      </header>
+      <div
+        style={{
+          overflow: isMobile ? 'visible' : 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        {showSider ? (
+          <aside
             className='app-sider'
             style={{
               position: 'fixed',
@@ -180,55 +270,49 @@ const PageLayout = () => {
               zIndex: 99,
               border: 'none',
               paddingRight: '0',
-              width: 'var(--sidebar-current-width)',
+              width: sidebarWidth,
             }}
           >
-            <SiderBar
+            <ConsoleSiderBar
               onNavigate={() => {
-                if (isMobile) setDrawerOpen(false);
+                if (isMobile) {
+                  setDrawerOpen(false);
+                }
               }}
             />
-          </Sider>
-        )}
-        <Layout
+          </aside>
+        ) : null}
+        <div
           style={{
-            marginLeft: isMobile
-              ? '0'
-              : showSider
-                ? 'var(--sidebar-current-width)'
-                : '0',
+            marginLeft: isMobile ? '0' : showSider ? sidebarWidth : '0',
             flex: '1 1 auto',
             display: 'flex',
             flexDirection: 'column',
           }}
         >
-          <Content
-            style={{
-              flex: '1 0 auto',
-              overflowY: isMobile ? 'visible' : 'hidden',
-              WebkitOverflowScrolling: 'touch',
-              padding: shouldInnerPadding ? (isMobile ? '5px' : '24px') : '0',
-              position: 'relative',
-            }}
-          >
-            <ErrorBoundary>
-              <App />
-            </ErrorBoundary>
-          </Content>
-          {!shouldHideFooter && (
-            <Layout.Footer
-              style={{
-                flex: '0 0 auto',
-                width: '100%',
-              }}
-            >
-              <FooterBar />
-            </Layout.Footer>
-          )}
-        </Layout>
-      </Layout>
+          {appContent}
+          {footerContent}
+        </div>
+      </div>
+    </SemiRuntime>
+  );
+
+  return (
+    <div
+      className='app-layout'
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: isMobile ? 'visible' : 'hidden',
+      }}
+    >
+      {isMarketingRoute ? (
+        marketingShell
+      ) : (
+        <Suspense fallback={MINIMAL_SHELL_FALLBACK}>{consoleShell}</Suspense>
+      )}
       <ToastContainer />
-    </Layout>
+    </div>
   );
 };
 

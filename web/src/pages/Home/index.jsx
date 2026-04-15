@@ -17,14 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { API } from '../../helpers/api';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
-import { showError } from '../../helpers/utils';
-import NoticeModal from '../../components/layout/NoticeModal';
+import { showError } from '../../helpers/notifications';
+
+const MarketingNoticeModal = lazy(
+  () => import('../../components/layout/MarketingNoticeModal'),
+);
 
 const Home = () => {
   const { t, i18n } = useTranslation();
@@ -152,11 +162,15 @@ const Home = () => {
 
   return (
     <div className='w-full overflow-x-hidden'>
-      <NoticeModal
-        visible={noticeVisible}
-        onClose={() => setNoticeVisible(false)}
-        isMobile={isMobile}
-      />
+      {noticeVisible ? (
+        <Suspense fallback={null}>
+          <MarketingNoticeModal
+            visible={noticeVisible}
+            onClose={() => setNoticeVisible(false)}
+            isMobile={isMobile}
+          />
+        </Suspense>
+      ) : null}
       {homePageContent !== '' ? (
         <div className='overflow-x-hidden w-full'>
           {homePageContent.startsWith('https://') ? (

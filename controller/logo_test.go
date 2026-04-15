@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -138,6 +141,37 @@ func sampleGIFBytes(t *testing.T) []byte {
 		t.Fatalf("failed to decode sample gif: %v", err)
 	}
 	return data
+}
+
+func sampleLargePNGBytes(t *testing.T, width int, height int) []byte {
+	t.Helper()
+
+	img := image.NewNRGBA(image.Rect(0, 0, width, height))
+	widthRange := width - 1
+	if widthRange < 1 {
+		widthRange = 1
+	}
+	heightRange := height - 1
+	if heightRange < 1 {
+		heightRange = 1
+	}
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, color.NRGBA{
+				R: uint8((x * 255) / widthRange),
+				G: uint8((y * 255) / heightRange),
+				B: 180,
+				A: 255,
+			})
+		}
+	}
+
+	var buffer bytes.Buffer
+	if err := png.Encode(&buffer, img); err != nil {
+		t.Fatalf("failed to encode large sample png: %v", err)
+	}
+
+	return buffer.Bytes()
 }
 
 func TestUploadLogoUpdatesOptionAndOverwritesExistingFile(t *testing.T) {
@@ -293,6 +327,53 @@ func TestGetLogoServesStoredImage(t *testing.T) {
 	}
 	if !bytes.Equal(recorder.Body.Bytes(), content) {
 		t.Fatalf("served body did not match stored logo bytes")
+	}
+	if cacheControl := recorder.Header().Get("Cache-Control"); cacheControl != "no-cache" {
+		t.Fatalf("expected unversioned logo to disable cache, got %q", cacheControl)
+	}
+}
+
+func TestGetLogoServesVersionedThumbnailWithImmutableCache(t *testing.T) {
+	setTempLogoStoragePath(t)
+
+	content := sampleLargePNGBytes(t, 240, 120)
+	if err := os.MkdirAll(filepath.Dir(logoStoragePath), 0o755); err != nil {
+		t.Fatalf("failed to create temp logo storage directory: %v", err)
+	}
+	if err := os.WriteFile(logoStoragePath, content, 0o644); err != nil {
+		t.Fatalf("failed to write stored logo: %v", err)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(
+		http.MethodGet,
+		"/api/logo?v=123&size=64",
+		nil,
+	)
+
+	GetLogo(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", recorder.Code)
+	}
+	if contentType := recorder.Header().Get("Content-Type"); contentType != "image/png" {
+		t.Fatalf("expected resized logo to be served as image/png, got %q", contentType)
+	}
+	if cacheControl := recorder.Header().Get("Cache-Control"); cacheControl != "public, max-age=31536000, immutable" {
+		t.Fatalf("expected versioned thumbnail to be immutable, got %q", cacheControl)
+	}
+
+	resizedConfig, _, err := image.DecodeConfig(bytes.NewReader(recorder.Body.Bytes()))
+	if err != nil {
+		t.Fatalf("failed to decode resized logo: %v", err)
+	}
+	if resizedConfig.Width != 64 || resizedConfig.Height != 32 {
+		t.Fatalf(
+			"expected 240x120 logo to resize to 64x32, got %dx%d",
+			resizedConfig.Width,
+			resizedConfig.Height,
+		)
 	}
 }
 

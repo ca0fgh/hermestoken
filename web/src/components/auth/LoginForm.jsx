@@ -38,6 +38,7 @@ import {
   prepareCredentialRequestOptions,
   buildAssertionResult,
   isPasskeySupported,
+  getOptimizedLogoUrl,
 } from '../../helpers';
 import Turnstile from 'react-turnstile';
 import {
@@ -112,7 +113,7 @@ const LoginForm = () => {
   const githubTimeoutRef = useRef(null);
   const githubButtonText = t(githubButtonTextKeyByState[githubButtonState]);
   const [customOAuthLoading, setCustomOAuthLoading] = useState({});
-  const logo = getLogo();
+  const logo = getOptimizedLogoUrl(getLogo(), { size: 80 });
 
   let affCode = new URLSearchParams(window.location.search).get('aff');
   if (affCode) {
@@ -507,6 +508,9 @@ const LoginForm = () => {
               <img
                 src={logo}
                 alt='Logo'
+                width='40'
+                height='40'
+                decoding='async'
                 className='h-10 w-10 rounded-full object-cover'
               />
             ) : null}
@@ -727,6 +731,9 @@ const LoginForm = () => {
               <img
                 src={logo}
                 alt='Logo'
+                width='40'
+                height='40'
+                decoding='async'
                 className='h-10 w-10 rounded-full object-cover'
               />
             ) : null}

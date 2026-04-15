@@ -17,19 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+export function getSystemName() {
+  const systemName = localStorage.getItem('system_name');
+  if (!systemName) {
+    return 'HERMESTOKEN';
+  }
+  return systemName;
+}
 
-const Loading = ({ size = 'small' }) => {
-  const dimensionClass =
-    size === 'large' ? 'h-12 w-12 border-[5px]' : 'h-8 w-8 border-4';
+export function getLogo() {
+  const logo = localStorage.getItem('logo');
+  if (!logo || logo === '/logo.png') {
+    return '';
+  }
+  return logo;
+}
 
-  return (
-    <div className='fixed inset-0 w-screen h-screen flex items-center justify-center'>
-      <div
-        className={`animate-spin rounded-full border-slate-300 border-t-slate-900 dark:border-slate-700 dark:border-t-slate-100 ${dimensionClass}`}
-      />
-    </div>
-  );
-};
-
-export default Loading;
+export function getFooterHTML() {
+  return localStorage.getItem('footer_html');
+}

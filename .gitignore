@@ -9,7 +9,8 @@ build
 *.db-journal
 logs
 web/dist
-.env
+web/dist-map*/
+.env*
 one-api
 new-api
 /__debug_bin*

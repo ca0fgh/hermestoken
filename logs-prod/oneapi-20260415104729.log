@@ -1,0 +1,25 @@
+[SYS] 2026/04/15 - 10:47:29 | initializing token encoders 
+[SYS] 2026/04/15 - 10:47:29 | token encoders initialized 
+[SYS] 2026/04/15 - 10:47:29 | using PostgreSQL as database 
+[SYS] 2026/04/15 - 10:47:29 | database migration started 
+[SYS] 2026/04/15 - 10:47:29 | system is not initialized and no root user exists 
+[SYS] 2026/04/15 - 10:47:29 | SYNC_FREQUENCY not set, use default value 60 
+[SYS] 2026/04/15 - 10:47:29 | Redis is enabled 
+[SYS] 2026/04/15 - 10:47:29 | i18n initialized with languages: zh-CN, zh-TW, en 
+[SYS] 2026/04/15 - 10:47:29 | Loaded 0 custom OAuth providers 
+[SYS] 2026/04/15 - 10:47:29 | New API  started 
+[SYS] 2026/04/15 - 10:47:29 | memory cache enabled 
+[SYS] 2026/04/15 - 10:47:29 | sync frequency: 60 seconds 
+[SYS] 2026/04/15 - 10:47:29 | channels synced from database 
+[SYS] 2026/04/15 - 10:47:29 | batch update enabled with interval 5s 
+[SYS] 2026/04/15 - 10:47:29 | 正在更新数据看板数据... 
+[INFO] 2026/04/15 - 10:47:29 | SYSTEM | codex credential auto-refresh task started: tick=10m0s threshold=24h0m0s 
+[SYS] 2026/04/15 - 10:47:29 | 保存数据看板数据成功，共保存0条数据 
+[SYS] 2026/04/15 - 10:47:29 | upstream model update task started: interval=30m0s 
+[INFO] 2026/04/15 - 10:47:29 | SYSTEM | subscription quota reset task started: tick=1m0s 
+
+  [32mHERMESTOKEN [0m  ready in 347 ms
+
+  ➜  [1mNetwork:[0m http://172.18.0.4:3000/
+
+[GIN] 2026/04/15 - 10:47:30 | api | 202604150247306454778448268d9d6Hhp3HwSY | 200 |    3.193875ms |      172.18.0.1 |     GET /api/status

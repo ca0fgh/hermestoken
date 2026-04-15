@@ -17,11 +17,6 @@
 :root {
   --sidebar-width: 180px;
   --sidebar-width-collapsed: 60px;
-  --sidebar-current-width: var(--sidebar-width);
-}
-
-body.sidebar-collapsed {
-  --sidebar-current-width: var(--sidebar-width-collapsed);
 }
 
 body {
@@ -125,6 +120,7 @@ code {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   transition: width 0.3s ease;
   background: var(--semi-color-bg-0);
 }
@@ -133,14 +129,37 @@ code {
   flex: 1;
   width: 100%;
   background: var(--semi-color-bg-0);
-  height: 100%;
-  overflow-x: hidden;
+  height: auto;
+  overflow: hidden;
   border-right: none;
-  overflow-y: auto;
   min-height: 0;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+.sidebar-nav.semi-navigation {
+  width: 100% !important;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.sidebar-nav .semi-navigation-inner,
+.sidebar-nav .semi-navigation-header-list-outer {
+  min-height: 0;
+}
+
+.sidebar-nav .semi-navigation-header-list-outer {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-nav .semi-navigation-list-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 12px;
 }
 
 .sidebar-nav::-webkit-scrollbar {

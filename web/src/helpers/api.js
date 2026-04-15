@@ -17,13 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import {
-  getUserIdFromLocalStorage,
-  showError,
-  formatMessageForAPI,
-  isValidMessage,
-} from './utils';
 import { buildGroupOptions } from './groupOptions';
+import { showError } from './notifications';
+import { getUserIdFromLocalStorage } from './session';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
@@ -76,6 +72,21 @@ function patchAPIInstance(instance) {
 }
 
 patchAPIInstance(API);
+
+function formatMessageForAPI(message) {
+  if (!message) {
+    return null;
+  }
+
+  return {
+    role: message.role,
+    content: message.content,
+  };
+}
+
+function isValidMessage(message) {
+  return message && message.role && (message.content || message.content === '');
+}
 
 export function updateAPI() {
   API = axios.create({

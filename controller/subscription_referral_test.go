@@ -166,6 +166,51 @@ func TestGetSubscriptionReferralSelfReturnsGroupedOnlyShape(t *testing.T) {
 	}
 }
 
+func TestGetSubscriptionReferralSelfOmitsRenamedRetiredOverrideGroup(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+	setSubscriptionReferralGroupRatesForTest(t, `{}`)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-user-renamed-group", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"legacy": 500},
+	})
+	plan := seedSubscriptionPlan(t, model.DB, "self-user-renamed-group-plan")
+	plan.UpgradeGroup = "legacy"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to set initial legacy upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "legacy", 4500, 1); err != nil {
+		t.Fatalf("failed to create legacy grouped override: %v", err)
+	}
+
+	plan.UpgradeGroup = "renamed"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to rename upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		Groups []struct {
+			Group string `json:"group"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if len(data.Groups) != 0 {
+		t.Fatalf("groups length = %d, want 0 after group rename (%+v)", len(data.Groups), data.Groups)
+	}
+}
+
 func TestGetSubscriptionReferralSelfIncludesPlanUpgradeGroupWithoutConfiguredRate(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true

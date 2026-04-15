@@ -17,19 +17,33 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+function readStoredUser() {
+  const rawUser = localStorage.getItem('user');
+  if (!rawUser) {
+    return null;
+  }
 
-const Loading = ({ size = 'small' }) => {
-  const dimensionClass =
-    size === 'large' ? 'h-12 w-12 border-[5px]' : 'h-8 w-8 border-4';
+  try {
+    return JSON.parse(rawUser);
+  } catch {
+    return null;
+  }
+}
 
-  return (
-    <div className='fixed inset-0 w-screen h-screen flex items-center justify-center'>
-      <div
-        className={`animate-spin rounded-full border-slate-300 border-t-slate-900 dark:border-slate-700 dark:border-t-slate-100 ${dimensionClass}`}
-      />
-    </div>
-  );
-};
+export function isAdmin() {
+  const user = readStoredUser();
+  return Boolean(user && user.role >= 10);
+}
 
-export default Loading;
+export function isRoot() {
+  const user = readStoredUser();
+  return Boolean(user && user.role >= 100);
+}
+
+export function getUserIdFromLocalStorage() {
+  const user = readStoredUser();
+  if (!user) {
+    return -1;
+  }
+  return user.id;
+}

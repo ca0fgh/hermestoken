@@ -17,26 +17,78 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
 const KEY = 'default_collapse_sidebar';
+const SIDEBAR_COLLAPSED_EVENT = 'sidebar-collapsed-change';
+
+const readCollapsedState = () => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return window.localStorage.getItem(KEY) === 'true';
+};
+
+const broadcastCollapsedState = (collapsed) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(KEY, collapsed.toString());
+  window.dispatchEvent(
+    new CustomEvent(SIDEBAR_COLLAPSED_EVENT, {
+      detail: { collapsed },
+    }),
+  );
+};
 
 export const useSidebarCollapsed = () => {
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem(KEY) === 'true',
-  );
+  const [collapsed, setCollapsed] = useState(readCollapsedState);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const handleStorageChange = (event) => {
+      if (event.key !== KEY) {
+        return;
+      }
+      setCollapsed(event.newValue === 'true');
+    };
+
+    const handleSidebarCollapsedChange = (event) => {
+      setCollapsed(event.detail?.collapsed === true);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener(
+      SIDEBAR_COLLAPSED_EVENT,
+      handleSidebarCollapsedChange,
+    );
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener(
+        SIDEBAR_COLLAPSED_EVENT,
+        handleSidebarCollapsedChange,
+      );
+    };
+  }, []);
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
-      localStorage.setItem(KEY, next.toString());
+      broadcastCollapsedState(next);
       return next;
     });
   }, []);
 
   const set = useCallback((value) => {
-    setCollapsed(value);
-    localStorage.setItem(KEY, value.toString());
+    const next = value === true;
+    setCollapsed(next);
+    broadcastCollapsedState(next);
   }, []);
 
   return [collapsed, toggle, set];

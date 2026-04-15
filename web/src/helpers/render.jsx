@@ -17,46 +17,44 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import React, { useEffect, useMemo, useState } from 'react';
 import i18next from 'i18next';
 import { Modal, Tag, Typography, Avatar } from '@douyinfe/semi-ui';
 import { copy, showSuccess } from './utils';
 import { stringToColor } from './color';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
-import * as LobeIcons from '@lobehub/icons';
-import {
-  OpenAI,
-  Claude,
-  Gemini,
-  Moonshot,
-  Zhipu,
-  Qwen,
-  DeepSeek,
-  Minimax,
-  Wenxin,
-  Spark,
-  Midjourney,
-  Hunyuan,
-  Cohere,
-  Cloudflare,
-  Ai360,
-  Yi,
-  Jina,
-  Mistral,
-  XAI,
-  Ollama,
-  Doubao,
-  Suno,
-  Xinference,
-  OpenRouter,
-  Dify,
-  Coze,
-  SiliconCloud,
-  FastGPT,
-  Kling,
-  Jimeng,
-  Perplexity,
-  Replicate,
-} from '@lobehub/icons';
+import Ai360 from '@lobehub/icons/es/Ai360';
+import Claude from '@lobehub/icons/es/Claude';
+import Cloudflare from '@lobehub/icons/es/Cloudflare';
+import Cohere from '@lobehub/icons/es/Cohere';
+import Coze from '@lobehub/icons/es/Coze';
+import DeepSeek from '@lobehub/icons/es/DeepSeek';
+import Dify from '@lobehub/icons/es/Dify';
+import Doubao from '@lobehub/icons/es/Doubao';
+import FastGPT from '@lobehub/icons/es/FastGPT';
+import Gemini from '@lobehub/icons/es/Gemini';
+import Hunyuan from '@lobehub/icons/es/Hunyuan';
+import Jina from '@lobehub/icons/es/Jina';
+import Jimeng from '@lobehub/icons/es/Jimeng';
+import Kling from '@lobehub/icons/es/Kling';
+import Midjourney from '@lobehub/icons/es/Midjourney';
+import Minimax from '@lobehub/icons/es/Minimax';
+import Mistral from '@lobehub/icons/es/Mistral';
+import Moonshot from '@lobehub/icons/es/Moonshot';
+import Ollama from '@lobehub/icons/es/Ollama';
+import OpenAI from '@lobehub/icons/es/OpenAI';
+import OpenRouter from '@lobehub/icons/es/OpenRouter';
+import Perplexity from '@lobehub/icons/es/Perplexity';
+import Qwen from '@lobehub/icons/es/Qwen';
+import Replicate from '@lobehub/icons/es/Replicate';
+import SiliconCloud from '@lobehub/icons/es/SiliconCloud';
+import Spark from '@lobehub/icons/es/Spark';
+import Suno from '@lobehub/icons/es/Suno';
+import Wenxin from '@lobehub/icons/es/Wenxin';
+import XAI from '@lobehub/icons/es/XAI';
+import Xinference from '@lobehub/icons/es/Xinference';
+import Yi from '@lobehub/icons/es/Yi';
+import Zhipu from '@lobehub/icons/es/Zhipu';
 
 import { Layers } from 'lucide-react';
 import {
@@ -84,6 +82,87 @@ import {
   SiWechat,
   SiX,
 } from 'react-icons/si';
+
+const lobeIconModuleLoaders = import.meta.glob([
+  '../../node_modules/@lobehub/icons/es/*/index.js',
+  '!../../node_modules/@lobehub/icons/es/{Ai360,Claude,Cloudflare,Cohere,Coze,DeepSeek,Dify,Doubao,FastGPT,Gemini,Hunyuan,Jina,Jimeng,Kling,Midjourney,Minimax,Mistral,Moonshot,Ollama,OpenAI,OpenRouter,Perplexity,Qwen,Replicate,SiliconCloud,Spark,Suno,Wenxin,XAI,Xinference,Yi,Zhipu}/index.js',
+]);
+const lobeIconModuleCache = new Map();
+const lobeIconModulePromises = new Map();
+const staticLobeIconRegistry = {
+  Ai360,
+  Claude,
+  Cloudflare,
+  Cohere,
+  Coze,
+  DeepSeek,
+  Dify,
+  Doubao,
+  FastGPT,
+  Gemini,
+  Hunyuan,
+  Jina,
+  Jimeng,
+  Kling,
+  Midjourney,
+  Minimax,
+  Mistral,
+  Moonshot,
+  Ollama,
+  OpenAI,
+  OpenRouter,
+  Perplexity,
+  Qwen,
+  Replicate,
+  SiliconCloud,
+  Spark,
+  Suno,
+  Wenxin,
+  XAI,
+  Xinference,
+  Yi,
+  Zhipu,
+};
+
+function getLobeIconModulePath(baseKey) {
+  return `../../node_modules/@lobehub/icons/es/${baseKey}/index.js`;
+}
+
+async function loadLobeIconModule(baseKey) {
+  if (!baseKey) {
+    return null;
+  }
+
+  if (staticLobeIconRegistry[baseKey]) {
+    return staticLobeIconRegistry[baseKey];
+  }
+
+  if (lobeIconModuleCache.has(baseKey)) {
+    return lobeIconModuleCache.get(baseKey);
+  }
+
+  if (lobeIconModulePromises.has(baseKey)) {
+    return lobeIconModulePromises.get(baseKey);
+  }
+
+  const loader = lobeIconModuleLoaders[getLobeIconModulePath(baseKey)];
+  if (!loader) {
+    return null;
+  }
+
+  const loadPromise = loader()
+    .then((module) => {
+      const loadedModule = module?.default || module;
+      lobeIconModuleCache.set(baseKey, loadedModule);
+      return loadedModule;
+    })
+    .finally(() => {
+      lobeIconModulePromises.delete(baseKey);
+    });
+
+  lobeIconModulePromises.set(baseKey, loadPromise);
+  return loadPromise;
+}
 
 // 获取模型分类
 export const getModelCategories = (() => {
@@ -353,81 +432,155 @@ export function getChannelIcon(channelType) {
  * @param {number} size - 图标大小，默认为 14
  * @returns {JSX.Element} - 对应的图标组件或 Avatar
  */
-export function getLobeHubIcon(iconName, size = 14) {
-  if (typeof iconName === 'string') iconName = iconName.trim();
-  // 如果没有图标名称，返回 Avatar
-  if (!iconName) {
-    return <Avatar size='extra-extra-small'>?</Avatar>;
+function renderLobeIconFallback(iconName) {
+  const firstLetter =
+    String(iconName || '?')
+      .charAt(0)
+      .toUpperCase() || '?';
+  return <Avatar size='extra-extra-small'>{firstLetter}</Avatar>;
+}
+
+function parseLobeIconValue(raw) {
+  if (raw == null) return true;
+
+  let value = String(raw).trim();
+  if (value.startsWith('{') && value.endsWith('}')) {
+    value = value.slice(1, -1).trim();
   }
 
-  // 解析组件路径与点号链式属性
-  const segments = String(iconName).split('.');
-  const baseKey = segments[0];
-  const BaseIcon = LobeIcons[baseKey];
-
-  let IconComponent = undefined;
-  let propStartIndex = 1;
-
-  if (BaseIcon && segments.length > 1 && BaseIcon[segments[1]]) {
-    IconComponent = BaseIcon[segments[1]];
-    propStartIndex = 2;
-  } else {
-    IconComponent = LobeIcons[baseKey];
-    propStartIndex = 1;
-  }
-
-  // 失败兜底
   if (
-    !IconComponent ||
-    (typeof IconComponent !== 'function' && typeof IconComponent !== 'object')
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
   ) {
-    const firstLetter = String(iconName).charAt(0).toUpperCase();
-    return <Avatar size='extra-extra-small'>{firstLetter}</Avatar>;
+    return value.slice(1, -1);
   }
 
-  // 解析点号链式属性，形如：key={...}、key='...'、key="..."、key=123、key、key=true/false
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (/^-?\d+(?:\.\d+)?$/.test(value)) return Number(value);
+
+  return value;
+}
+
+function resolveLobeIconRenderSpec(iconName, size, iconModule) {
+  const normalizedIconName =
+    typeof iconName === 'string' ? iconName.trim() : iconName;
+
+  if (!normalizedIconName) {
+    return null;
+  }
+
+  const segments = String(normalizedIconName).split('.');
+  let propStartIndex = 1;
+  let IconComponent = iconModule;
+
+  if (
+    iconModule &&
+    segments.length > 1 &&
+    !segments[1].includes('=') &&
+    iconModule[segments[1]]
+  ) {
+    IconComponent = iconModule[segments[1]];
+    propStartIndex = 2;
+  }
+
   const props = {};
+  for (let index = propStartIndex; index < segments.length; index += 1) {
+    const segment = segments[index];
+    if (!segment) continue;
 
-  const parseValue = (raw) => {
-    if (raw == null) return true;
-    let v = String(raw).trim();
-    // 去除一层花括号包裹
-    if (v.startsWith('{') && v.endsWith('}')) {
-      v = v.slice(1, -1).trim();
-    }
-    // 去除引号
-    if (
-      (v.startsWith('"') && v.endsWith('"')) ||
-      (v.startsWith("'") && v.endsWith("'"))
-    ) {
-      return v.slice(1, -1);
-    }
-    // 布尔
-    if (v === 'true') return true;
-    if (v === 'false') return false;
-    // 数字
-    if (/^-?\d+(?:\.\d+)?$/.test(v)) return Number(v);
-    // 其他原样返回字符串
-    return v;
-  };
-
-  for (let i = propStartIndex; i < segments.length; i++) {
-    const seg = segments[i];
-    if (!seg) continue;
-    const eqIdx = seg.indexOf('=');
+    const eqIdx = segment.indexOf('=');
     if (eqIdx === -1) {
-      props[seg.trim()] = true;
+      props[segment.trim()] = true;
       continue;
     }
-    const key = seg.slice(0, eqIdx).trim();
-    const valRaw = seg.slice(eqIdx + 1).trim();
-    props[key] = parseValue(valRaw);
+
+    const key = segment.slice(0, eqIdx).trim();
+    const valueRaw = segment.slice(eqIdx + 1).trim();
+    props[key] = parseLobeIconValue(valueRaw);
   }
 
-  // 兼容第二参数 size，若字符串中未显式指定 size，则使用函数入参
-  if (props.size == null && size != null) props.size = size;
+  if (props.size == null && size != null) {
+    props.size = size;
+  }
 
-  return <IconComponent {...props} />;
+  return {
+    baseKey: segments[0],
+    IconComponent,
+    props,
+  };
+}
+
+function DynamicLobeHubIcon({ iconName, size = 14 }) {
+  const normalizedIconName =
+    typeof iconName === 'string' ? iconName.trim() : iconName;
+  const baseKey = useMemo(() => {
+    if (!normalizedIconName) {
+      return '';
+    }
+
+    return String(normalizedIconName).split('.')[0];
+  }, [normalizedIconName]);
+  const [iconModule, setIconModule] = useState(() => {
+    if (!baseKey) {
+      return null;
+    }
+
+    return (
+      staticLobeIconRegistry[baseKey] ||
+      lobeIconModuleCache.get(baseKey) ||
+      null
+    );
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!baseKey) {
+      setIconModule(null);
+      return undefined;
+    }
+
+    if (staticLobeIconRegistry[baseKey]) {
+      setIconModule(staticLobeIconRegistry[baseKey]);
+      return undefined;
+    }
+
+    if (lobeIconModuleCache.has(baseKey)) {
+      setIconModule(lobeIconModuleCache.get(baseKey));
+      return undefined;
+    }
+
+    void loadLobeIconModule(baseKey).then((module) => {
+      if (!cancelled) {
+        setIconModule(module);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseKey]);
+
+  const renderSpec = useMemo(
+    () => resolveLobeIconRenderSpec(normalizedIconName, size, iconModule),
+    [iconModule, normalizedIconName, size],
+  );
+
+  if (!normalizedIconName) {
+    return renderLobeIconFallback('?');
+  }
+
+  if (!renderSpec?.IconComponent) {
+    return renderLobeIconFallback(normalizedIconName);
+  }
+
+  const ResolvedIconComponent = renderSpec.IconComponent;
+  return <ResolvedIconComponent {...renderSpec.props} />;
+}
+
+export function getLobeHubIcon(iconName, size = 14) {
+  return <DynamicLobeHubIcon iconName={iconName} size={size} />;
 }
 
 const oauthProviderIconMap = {

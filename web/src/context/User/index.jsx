@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { reducer, initialState } from './reducer';
+import { ensureLanguageResources } from '../../i18n/i18n';
 import { normalizeLanguage } from '../../i18n/language';
 
 export const UserContext = React.createContext({
@@ -33,11 +34,24 @@ export const UserProvider = ({ children }) => {
 
   // Sync language preference when user data is loaded
   useEffect(() => {
-    if (state.user?.setting) {
+    let cancelled = false;
+
+    const syncLanguagePreference = async () => {
+      if (!state.user?.setting) {
+        return;
+      }
+
       try {
         const settings = JSON.parse(state.user.setting);
         const normalizedLanguage = normalizeLanguage(settings.language);
-        if (normalizedLanguage && normalizedLanguage !== i18n.language) {
+        if (normalizedLanguage) {
+          await ensureLanguageResources(normalizedLanguage);
+        }
+        if (
+          !cancelled &&
+          normalizedLanguage &&
+          normalizedLanguage !== i18n.language
+        ) {
           i18n.changeLanguage(normalizedLanguage);
         }
         if (normalizedLanguage) {
@@ -46,7 +60,13 @@ export const UserProvider = ({ children }) => {
       } catch (e) {
         // Ignore parse errors
       }
-    }
+    };
+
+    void syncLanguagePreference();
+
+    return () => {
+      cancelled = true;
+    };
   }, [state.user?.setting, i18n]);
 
   return (

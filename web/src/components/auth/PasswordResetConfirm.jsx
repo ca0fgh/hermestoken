@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
-import { API, copy, getLogo, showError, showNotice } from '../../helpers';
+import {
+  API,
+  copy,
+  getLogo,
+  getOptimizedLogoUrl,
+  showError,
+  showNotice,
+} from '../../helpers';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Button, Card, Form, Typography, Banner } from '@douyinfe/semi-ui';
 import { IconMail, IconLock, IconCopy } from '@douyinfe/semi-icons';
@@ -42,7 +49,7 @@ const PasswordResetConfirm = () => {
   const [newPassword, setNewPassword] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const [formApi, setFormApi] = useState(null);
-  const logo = getLogo();
+  const logo = getOptimizedLogoUrl(getLogo(), { size: 80 });
 
   useEffect(() => {
     let token = searchParams.get('token');
@@ -114,6 +121,9 @@ const PasswordResetConfirm = () => {
                 <img
                   src={logo}
                   alt='Logo'
+                  width='40'
+                  height='40'
+                  decoding='async'
                   className='h-10 w-10 rounded-full object-cover'
                 />
               ) : null}

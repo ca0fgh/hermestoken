@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
-import { API, getLogo, showError, showInfo, showSuccess } from '../../helpers';
+import {
+  API,
+  getLogo,
+  getOptimizedLogoUrl,
+  showError,
+  showInfo,
+  showSuccess,
+} from '../../helpers';
 import Turnstile from 'react-turnstile';
 import { Button, Card, Form, Typography } from '@douyinfe/semi-ui';
 import { IconMail } from '@douyinfe/semi-icons';
@@ -41,7 +48,7 @@ const PasswordResetForm = () => {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
-  const logo = getLogo();
+  const logo = getOptimizedLogoUrl(getLogo(), { size: 80 });
 
   useEffect(() => {
     let status = localStorage.getItem('status');
@@ -114,6 +121,9 @@ const PasswordResetForm = () => {
                 <img
                   src={logo}
                   alt='Logo'
+                  width='40'
+                  height='40'
+                  decoding='async'
                   className='h-10 w-10 rounded-full object-cover'
                 />
               ) : null}

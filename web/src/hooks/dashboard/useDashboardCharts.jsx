@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useState, useCallback, useEffect } from 'react';
-import { initVChartSemiTheme } from '@visactor/vchart-semi-theme';
 import {
   modelColorMap,
   renderNumber,
@@ -49,6 +48,24 @@ const USER_COLORS = [
   '#6366f1',
   '#14b8a6',
 ];
+
+let vchartSemiThemePromise = null;
+
+function ensureVChartSemiTheme() {
+  if (vchartSemiThemePromise) {
+    return vchartSemiThemePromise;
+  }
+
+  vchartSemiThemePromise = import('@visactor/vchart-semi-theme').then(
+    ({ initVChartSemiTheme }) => {
+      initVChartSemiTheme({
+        isWatchingThemeSwitch: true,
+      });
+    },
+  );
+
+  return vchartSemiThemePromise;
+}
 
 export const useDashboardCharts = (
   dataExportDefaultTime,
@@ -100,9 +117,6 @@ export const useDashboardCharts = (
     legends: {
       visible: true,
       orient: 'left',
-    },
-    label: {
-      visible: true,
     },
     tooltip: {
       mark: {
@@ -287,11 +301,6 @@ export const useDashboardCharts = (
     },
     bar: {
       state: { hover: { stroke: '#000', lineWidth: 1 } },
-    },
-    label: {
-      visible: true,
-      position: 'outside',
-      formatMethod: (value, datum) => renderQuota(datum['rawQuota'] || 0, 2),
     },
     axes: [
       {
@@ -572,9 +581,7 @@ export const useDashboardCharts = (
 
   // ========== 初始化图表主题 ==========
   useEffect(() => {
-    initVChartSemiTheme({
-      isWatchingThemeSwitch: true,
-    });
+    void ensureVChartSemiTheme();
   }, []);
 
   return {

@@ -18,18 +18,25 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
+import '@douyinfe/semi-ui/dist/css/semi.css';
+import { LocaleProvider } from '@douyinfe/semi-ui';
+import zh_CN from '@douyinfe/semi-ui/lib/es/locale/source/zh_CN';
+import en_GB from '@douyinfe/semi-ui/lib/es/locale/source/en_GB';
+import { useTranslation } from 'react-i18next';
 
-const Loading = ({ size = 'small' }) => {
-  const dimensionClass =
-    size === 'large' ? 'h-12 w-12 border-[5px]' : 'h-8 w-8 border-4';
-
-  return (
-    <div className='fixed inset-0 w-screen h-screen flex items-center justify-center'>
-      <div
-        className={`animate-spin rounded-full border-slate-300 border-t-slate-900 dark:border-slate-700 dark:border-t-slate-100 ${dimensionClass}`}
-      />
-    </div>
-  );
+const localeMap = {
+  zh: zh_CN,
+  en: en_GB,
 };
 
-export default Loading;
+const SemiRuntime = ({ children }) => {
+  const { i18n } = useTranslation();
+  const locale = React.useMemo(
+    () => localeMap[i18n.language] || zh_CN,
+    [i18n.language],
+  );
+
+  return <LocaleProvider locale={locale}>{children}</LocaleProvider>;
+};
+
+export default SemiRuntime;

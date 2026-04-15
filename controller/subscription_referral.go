@@ -227,6 +227,9 @@ func buildSubscriptionReferralSelfGroupViews(user *model.User) []gin.H {
 		if group == "" {
 			continue
 		}
+		if !isValidSubscriptionReferralGroup(group) {
+			continue
+		}
 		totalRateBps := model.GetEffectiveSubscriptionReferralTotalRateBps(user.Id, group)
 		if totalRateBps <= 0 {
 			continue
