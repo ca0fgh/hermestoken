@@ -1,5 +1,6 @@
 .github
 .git
+.worktrees
 *.md
 .vscode
 .gitignore
@@ -8,3 +9,7 @@ docs
 .eslintcache
 .gocache
 /web/node_modules
+data
+data-prod
+logs
+scripts/.runtime

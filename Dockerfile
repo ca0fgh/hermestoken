@@ -2,15 +2,24 @@ FROM mirror.gcr.io/oven/bun:1 AS builder
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG WEB_DIST_STRATEGY=prebuilt
 ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096
+ARG APP_VERSION=
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 WORKDIR /build
 COPY . .
 RUN set -eux; \
+    resolve_version() { \
+      version="$(tr -d '\r\n' < /build/VERSION 2>/dev/null || true)"; \
+      if [ -z "$version" ]; then \
+        version="${APP_VERSION:-dev}"; \
+      fi; \
+      printf '%s' "$version"; \
+    }; \
     build_web_dist() { \
+      version="$(resolve_version)"; \
       cd web; \
       bun install --registry "${NPM_REGISTRY}"; \
-      DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$(cat /build/VERSION)" bun run build; \
+      DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$version" bun run build; \
       mkdir -p /build/dist; \
       cp -R dist/. /build/dist/; \
     }; \
@@ -39,6 +48,7 @@ FROM mirror.gcr.io/library/golang:1.26.1-alpine AS builder2
 ENV GO111MODULE=on CGO_ENABLED=0
 ARG GOPROXY_URL=https://goproxy.cn,direct
 ARG GOSUMDB_URL=sum.golang.google.cn
+ARG APP_VERSION=
 ENV GOPROXY=${GOPROXY_URL} GOSUMDB=${GOSUMDB_URL}
 
 ARG TARGETOS
@@ -61,7 +71,12 @@ RUN set -eux; \
 
 COPY . .
 COPY --from=builder /build/dist ./web/dist
-RUN go build -tags embed -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$(cat VERSION)'" -o new-api
+RUN set -eux; \
+    version="$(tr -d '\r\n' < VERSION 2>/dev/null || true)"; \
+    if [ -z "$version" ]; then \
+      version="${APP_VERSION:-dev}"; \
+    fi; \
+    go build -tags embed -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${version}'" -o new-api
 
 FROM mirror.gcr.io/library/debian:bookworm-slim
 

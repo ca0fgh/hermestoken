@@ -7,6 +7,7 @@ services:
       dockerfile: Dockerfile
       args:
         WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}
+        APP_VERSION: ${APP_VERSION:-}
     image: hermestoken-prod:latest
     container_name: hermestoken-prod
     restart: unless-stopped

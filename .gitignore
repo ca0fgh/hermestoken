@@ -109,6 +109,7 @@ a.out
 
 # Runtime and local data
 runtime/
+scripts/.runtime/
 playground/
 tmp/
 dump.rdb

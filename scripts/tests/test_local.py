@@ -31,20 +31,26 @@ class LocalLauncherTests(unittest.TestCase):
 
         self.assertRegex(compose_text, r"(?m)^name:\s+hermestoken-local$")
         self.assertIn("name: hermestoken_pg_data", compose_text)
+        self.assertIn("external: true", compose_text)
         self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
+        self.assertIn("APP_VERSION: ${APP_VERSION:-}", compose_text)
 
     @mock.patch("local.run_browser_smoke_check")
     @mock.patch("local.poll_http_until_healthy")
+    @mock.patch("local.ensure_named_docker_volume")
     @mock.patch("local.remove_legacy_compose_containers")
     @mock.patch("local.run_command")
+    @mock.patch("local.resolve_application_version", return_value="e3f7bef8-dirty")
     @mock.patch("local.prepare_frontend_dist_for_docker_packaging")
     @mock.patch("local.require_docker_and_compose")
     def test_run_local_stack_builds_frontend_on_host_and_packages_prebuilt_dist(
         self,
         require_docker_and_compose,
         prepare_frontend_dist_for_docker_packaging,
+        resolve_application_version,
         run_command,
         remove_legacy_compose_containers,
+        ensure_named_docker_volume,
         poll_http_until_healthy,
         run_browser_smoke_check,
     ):
@@ -62,14 +68,28 @@ class LocalLauncherTests(unittest.TestCase):
             output=stdout,
             repo_root=repo_root,
         )
+        ensure_named_docker_volume.assert_called_once_with(
+            "hermestoken_pg_data",
+            output=stdout,
+            repo_root=repo_root,
+        )
         run_command.assert_called_once_with(
-            ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d", "--build"],
+            [
+                "docker",
+                "compose",
+                "-f",
+                str(repo_root / "docker-compose.yml"),
+                "up",
+                "-d",
+                "--build",
+            ],
             check=True,
             stream_output=True,
             cwd=repo_root,
-            env={"WEB_DIST_STRATEGY": "prebuilt"},
+            env={"WEB_DIST_STRATEGY": "prebuilt", "APP_VERSION": "e3f7bef8-dirty"},
             stdout_stream=stdout,
         )
+        resolve_application_version.assert_called_once_with(repo_root=repo_root)
         poll_http_until_healthy.assert_called_once_with(
             "http://localhost:3000",
             timeout_seconds=30,

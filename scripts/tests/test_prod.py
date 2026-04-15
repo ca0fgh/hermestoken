@@ -29,6 +29,7 @@ class ProdLauncherTests(unittest.TestCase):
         compose_text = (repo_root / "docker-compose.prod.yml").read_text(encoding="utf-8")
 
         self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
+        self.assertIn("APP_VERSION: ${APP_VERSION:-}", compose_text)
 
     def test_build_local_health_url_uses_port_from_env_file(self):
         self.assertEqual(
@@ -49,12 +50,14 @@ class ProdLauncherTests(unittest.TestCase):
     @mock.patch("prod.poll_http_until_healthy")
     @mock.patch("prod.remove_legacy_compose_containers")
     @mock.patch("prod.run_command")
+    @mock.patch("prod.resolve_application_version", return_value="e3f7bef8-dirty")
     @mock.patch("prod.prepare_frontend_dist_for_docker_packaging")
     @mock.patch("prod.require_docker_and_compose")
     def test_run_stack_prepares_frontend_and_uses_prebuilt_compose_build(
         self,
         require_docker_and_compose,
         prepare_frontend_dist_for_docker_packaging,
+        resolve_application_version,
         run_command,
         remove_legacy_compose_containers,
         poll_http_until_healthy,
@@ -97,9 +100,10 @@ class ProdLauncherTests(unittest.TestCase):
             check=True,
             stream_output=True,
             cwd=repo_root,
-            env={"WEB_DIST_STRATEGY": "prebuilt"},
+            env={"WEB_DIST_STRATEGY": "prebuilt", "APP_VERSION": "e3f7bef8-dirty"},
             stdout_stream=stdout,
         )
+        resolve_application_version.assert_called_once_with(repo_root=repo_root)
         poll_http_until_healthy.assert_called_once_with(
             "http://127.0.0.1:3000/api/status",
             timeout_seconds=prod.DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS,

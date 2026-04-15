@@ -1,4 +1,7 @@
 import argparse
+import os
+import signal
+import subprocess
 import sys
 import time
 from collections import deque
@@ -13,6 +16,7 @@ from launcher_common import (
     load_launcher_config,
     poll_http_until_healthy,
     print_actionable_error,
+    require_cloudflared,
     run_browser_smoke_check,
     run_command,
     validate_cfargotunnel_cname,
@@ -20,13 +24,15 @@ from launcher_common import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-LOCAL_APP_CONTAINER_NAME = "new-api"
-PUBLIC_TUNNEL_CONTAINER_NAME = "hermestoken-public-cloudflared"
-CLOUDFLARED_IMAGE = "cloudflare/cloudflared:latest"
+LEGACY_PUBLIC_TUNNEL_CONTAINER_NAME = "hermestoken-public-cloudflared"
+PUBLIC_TUNNEL_RUNTIME_DIR_NAME = ".runtime"
+PUBLIC_TUNNEL_PID_FILE_NAME = "public-cloudflared.pid"
+PUBLIC_TUNNEL_LOG_FILE_NAME = "public-cloudflared.log"
 TUNNEL_HEARTBEAT_SECONDS = 0.2
 PUBLIC_PROBE_TIMEOUT_SECONDS = 5.0
 PUBLIC_PROBE_INTERVAL_SECONDS = 0.2
 RECENT_TUNNEL_LOG_LINES = 20
+PROCESS_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 
 
 def _resolve_cloudflared_config_path(config_path: str, *, repo_root: Path) -> Path:
@@ -78,111 +84,159 @@ def _extract_hostname_from_url(url: str) -> str:
     return hostname
 
 
-def _extract_cloudflared_reference_path(config_path: Path, field_name: str) -> Optional[Path]:
-    prefix = f"{field_name}:"
-    try:
-        for line in config_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped.startswith(prefix):
-                continue
-            raw_value = stripped[len(prefix) :].strip().strip("'\"")
-            if not raw_value:
-                return None
-            resolved = Path(raw_value).expanduser()
-            if not resolved.is_absolute():
-                resolved = (config_path.parent / resolved).resolve()
-            return resolved
-    except OSError:
+def _tunnel_runtime_dir_path(*, repo_root: Path) -> Path:
+    return repo_root / "scripts" / PUBLIC_TUNNEL_RUNTIME_DIR_NAME
+
+
+def _tunnel_pid_file_path(*, repo_root: Path) -> Path:
+    return _tunnel_runtime_dir_path(repo_root=repo_root) / PUBLIC_TUNNEL_PID_FILE_NAME
+
+
+def _tunnel_log_file_path(*, repo_root: Path) -> Path:
+    return _tunnel_runtime_dir_path(repo_root=repo_root) / PUBLIC_TUNNEL_LOG_FILE_NAME
+
+
+def _ensure_tunnel_runtime_dir(*, repo_root: Path) -> Path:
+    runtime_dir = _tunnel_runtime_dir_path(repo_root=repo_root)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    return runtime_dir
+
+
+def _read_tunnel_pid(*, repo_root: Path) -> Optional[int]:
+    pid_path = _tunnel_pid_file_path(repo_root=repo_root)
+    if not pid_path.is_file():
         return None
-    return None
+
+    try:
+        raw_pid = pid_path.read_text(encoding="utf-8").strip()
+        return int(raw_pid)
+    except (OSError, ValueError):
+        pid_path.unlink(missing_ok=True)
+        return None
 
 
-def _stop_tunnel_container(*, repo_root: Path) -> None:
+def _write_tunnel_pid(pid: int, *, repo_root: Path) -> None:
+    _ensure_tunnel_runtime_dir(repo_root=repo_root)
+    _tunnel_pid_file_path(repo_root=repo_root).write_text(f"{pid}\n", encoding="utf-8")
+
+
+def _clear_tunnel_pid(*, repo_root: Path) -> None:
+    _tunnel_pid_file_path(repo_root=repo_root).unlink(missing_ok=True)
+
+
+def _process_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _is_tracked_tunnel_process(pid: int, *, repo_root: Path) -> bool:
+    inspection = run_command(
+        ["ps", "-p", str(pid), "-o", "command="],
+        check=False,
+        stream_output=False,
+        cwd=repo_root,
+    )
+    command = (inspection.stdout or "").strip().lower()
+    return inspection.returncode == 0 and "cloudflared" in command
+
+
+def _cleanup_legacy_tunnel_container(*, repo_root: Path) -> None:
     run_command(
-        ["docker", "rm", "-f", PUBLIC_TUNNEL_CONTAINER_NAME],
+        ["docker", "rm", "-f", LEGACY_PUBLIC_TUNNEL_CONTAINER_NAME],
         check=False,
         stream_output=False,
         cwd=repo_root,
     )
 
 
-def _start_tunnel_container(
+def _stop_tunnel_process(*, repo_root: Path) -> None:
+    pid = _read_tunnel_pid(repo_root=repo_root)
+    if pid is not None and _is_tracked_tunnel_process(pid, repo_root=repo_root):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        else:
+            deadline = time.monotonic() + PROCESS_SHUTDOWN_TIMEOUT_SECONDS
+            while time.monotonic() < deadline and _process_exists(pid):
+                time.sleep(0.1)
+            if _process_exists(pid):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+    _clear_tunnel_pid(repo_root=repo_root)
+    _cleanup_legacy_tunnel_container(repo_root=repo_root)
+
+
+def _start_tunnel_process(
     config: LauncherConfig,
     *,
     cloudflared_token: Optional[str],
     cloudflared_config_path: Optional[Path],
     repo_root: Path,
-) -> None:
-    docker_command = [
-        "docker",
-        "run",
-        "-d",
-        "--name",
-        PUBLIC_TUNNEL_CONTAINER_NAME,
-        "--restart",
-        "unless-stopped",
-        "--network",
-        f"container:{LOCAL_APP_CONTAINER_NAME}",
-    ]
+) -> int:
+    cloudflared_binary = require_cloudflared()
+    _ensure_tunnel_runtime_dir(repo_root=repo_root)
+    log_path = _tunnel_log_file_path(repo_root=repo_root)
+    _stop_tunnel_process(repo_root=repo_root)
+
+    command = [cloudflared_binary, "tunnel", "--no-autoupdate"]
+    environment = os.environ.copy()
 
     if cloudflared_token is not None:
-        docker_command.extend(
-            [
-                "-e",
-                f"TUNNEL_TOKEN={cloudflared_token}",
-                CLOUDFLARED_IMAGE,
-                "tunnel",
-                "--no-autoupdate",
-                "run",
-            ]
-        )
+        environment["TUNNEL_TOKEN"] = cloudflared_token
+        command.append("run")
     else:
         if cloudflared_config_path is None:
             raise LauncherError(
                 "Missing cloudflared configuration. Next step: Set a tunnel token or a valid `cloudflared_config_path` in scripts/launcher_config.json."
             )
+        command.extend(["--config", str(cloudflared_config_path), "run", config.cloudflared_tunnel_name])
 
-        mount_paths = {cloudflared_config_path.parent}
-        credentials_path = _extract_cloudflared_reference_path(cloudflared_config_path, "credentials-file")
-        if credentials_path is not None:
-            mount_paths.add(credentials_path.parent)
-
-        for mount_path in sorted(mount_paths):
-            docker_command.extend(["-v", f"{mount_path}:{mount_path}:ro"])
-
-        docker_command.extend(
-            [
-                CLOUDFLARED_IMAGE,
-                "tunnel",
-                "--no-autoupdate",
-                "--config",
-                str(cloudflared_config_path),
-                "run",
-                config.cloudflared_tunnel_name,
-            ]
+    with log_path.open("w", encoding="utf-8") as log_stream:
+        process = subprocess.Popen(
+            command,
+            cwd=str(repo_root),
+            env=environment,
+            stdout=log_stream,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
         )
 
-    _stop_tunnel_container(repo_root=repo_root)
-    run_command(
-        docker_command,
-        check=True,
-        stream_output=False,
-        cwd=repo_root,
-    )
+    _write_tunnel_pid(process.pid, repo_root=repo_root)
+    time.sleep(TUNNEL_HEARTBEAT_SECONDS)
+    exit_code = process.poll()
+    if exit_code is not None:
+        _clear_tunnel_pid(repo_root=repo_root)
+        raise LauncherError(
+            f"cloudflared exited immediately with code {exit_code}. Next step: Review the cloudflared logs and tunnel configuration, then rerun scripts/public.py."
+            + _format_tunnel_output_context(_read_recent_tunnel_output(repo_root=repo_root))
+        )
+
+    return process.pid
 
 
 def _read_recent_tunnel_output(*, repo_root: Path, max_lines: int = RECENT_TUNNEL_LOG_LINES) -> Deque[str]:
     lines: Deque[str] = deque(maxlen=max_lines)
-    completed = run_command(
-        ["docker", "logs", "--tail", str(max_lines), PUBLIC_TUNNEL_CONTAINER_NAME],
-        check=False,
-        stream_output=False,
-        cwd=repo_root,
-    )
-    for line in (completed.stdout or "").splitlines():
-        text = line.strip()
-        if text:
-            lines.append(text)
+    log_path = _tunnel_log_file_path(repo_root=repo_root)
+    if not log_path.is_file():
+        return lines
+
+    try:
+        for line in log_path.read_text(encoding="utf-8").splitlines()[-max_lines:]:
+            text = line.strip()
+            if text:
+                lines.append(text)
+    except OSError:
+        return lines
     return lines
 
 
@@ -192,14 +246,17 @@ def _format_tunnel_output_context(log_buffer: Deque[str]) -> str:
     return " Recent cloudflared output: " + " | ".join(log_buffer)
 
 
-def _current_tunnel_container_status(*, repo_root: Path) -> str:
-    completed = run_command(
-        ["docker", "inspect", "-f", "{{.State.Status}}", PUBLIC_TUNNEL_CONTAINER_NAME],
-        check=False,
-        stream_output=False,
-        cwd=repo_root,
-    )
-    return (completed.stdout or "").strip()
+def _current_tunnel_process_status(*, repo_root: Path) -> str:
+    pid = _read_tunnel_pid(repo_root=repo_root)
+    if pid is None:
+        return ""
+    if not _process_exists(pid):
+        _clear_tunnel_pid(repo_root=repo_root)
+        return "exited"
+    if not _is_tracked_tunnel_process(pid, repo_root=repo_root):
+        _clear_tunnel_pid(repo_root=repo_root)
+        return ""
+    return "running"
 
 
 def _wait_for_public_readiness(
@@ -211,11 +268,11 @@ def _wait_for_public_readiness(
     last_health_error: Optional[str] = None
 
     while True:
-        container_status = _current_tunnel_container_status(repo_root=repo_root)
-        if container_status and container_status != "running":
+        process_status = _current_tunnel_process_status(repo_root=repo_root)
+        if process_status and process_status != "running":
             raise LauncherError(
-                f"Tunnel container entered `{container_status}` before {config.public_url} became healthy. "
-                "Next step: Check the cloudflared container logs and tunnel configuration, then rerun scripts/public.py."
+                f"Tunnel process entered `{process_status}` before {config.public_url} became healthy. "
+                "Next step: Check the cloudflared logs and tunnel configuration, then rerun scripts/public.py."
                 + _format_tunnel_output_context(_read_recent_tunnel_output(repo_root=repo_root))
             )
 
@@ -277,25 +334,29 @@ def run_public_stack(
     local.run_local_stack(config, output=stream, repo_root=effective_repo_root, action_label=action_label)
 
     try:
-        _start_tunnel_container(
+        tunnel_pid = _start_tunnel_process(
             config,
             cloudflared_token=cloudflared_token,
             cloudflared_config_path=cloudflared_config_path,
             repo_root=effective_repo_root,
         )
-        stream.write(f"[ok] Tunnel container started: {PUBLIC_TUNNEL_CONTAINER_NAME}\n")
+        stream.write(f"[ok] Tunnel process started: {tunnel_pid}\n")
         _wait_for_public_readiness(config, repo_root=effective_repo_root)
-        run_browser_smoke_check(config.public_url, output=stream)
         stream.write(f"[ok] Public {action_label} healthy: {config.public_url}\n")
         stream.write(f"[ok] Local URL:  {config.local_url}\n")
         stream.write(f"[ok] Public URL: {config.public_url}\n")
     except Exception as exc:
         log_context = _format_tunnel_output_context(_read_recent_tunnel_output(repo_root=effective_repo_root))
-        _stop_tunnel_container(repo_root=effective_repo_root)
+        _stop_tunnel_process(repo_root=effective_repo_root)
         if isinstance(exc, LauncherError):
             if log_context and log_context not in str(exc):
                 raise LauncherError(f"{exc}{log_context}") from exc
         raise
+
+    try:
+        run_browser_smoke_check(config.public_url, output=stream)
+    except LauncherError as exc:
+        stream.write(f"[warn] Public browser smoke check failed after health check: {exc}\n")
 
 
 def build_parser() -> argparse.ArgumentParser:

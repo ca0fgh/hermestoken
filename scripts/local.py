@@ -6,12 +6,14 @@ from typing import Optional, TextIO
 from launcher_common import (
     LauncherConfig,
     LauncherError,
+    ensure_named_docker_volume,
     load_launcher_config,
     poll_http_until_healthy,
     print_actionable_error,
     remove_legacy_compose_containers,
     prepare_frontend_dist_for_docker_packaging,
     require_docker_and_compose,
+    resolve_application_version,
     resolve_web_dist_strategy,
     run_browser_smoke_check,
     run_command,
@@ -20,6 +22,7 @@ from launcher_common import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_CONTAINER_NAMES = ("new-api", "postgres", "redis")
+LOCAL_NAMED_VOLUMES = {"pg_data": "hermestoken_pg_data"}
 
 
 def _compose_file_path(compose_file: str, *, repo_root: Path) -> Path:
@@ -68,6 +71,7 @@ def run_local_stack(
     effective_repo_root = repo_root or REPO_ROOT
     compose_file_path = _compose_file_path(config.compose_file, repo_root=effective_repo_root)
     web_dist_strategy = resolve_web_dist_strategy()
+    app_version = resolve_application_version(repo_root=effective_repo_root)
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
     prepare_frontend_dist_for_docker_packaging(output=stream, repo_root=effective_repo_root)
@@ -79,13 +83,17 @@ def run_local_stack(
         output=stream,
         repo_root=effective_repo_root,
     )
-
+    ensure_named_docker_volume(
+        LOCAL_NAMED_VOLUMES["pg_data"],
+        output=stream,
+        repo_root=effective_repo_root,
+    )
     run_command(
         ["docker", "compose", "-f", str(compose_file_path), "up", "-d", "--build"],
         check=True,
         stream_output=True,
         cwd=effective_repo_root,
-        env={"WEB_DIST_STRATEGY": web_dist_strategy},
+        env={"WEB_DIST_STRATEGY": web_dist_strategy, "APP_VERSION": app_version},
         stdout_stream=stream,
     )
     stream.write("[ok] Containers started\n")

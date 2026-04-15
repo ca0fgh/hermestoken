@@ -261,6 +261,22 @@ def require_cloudflared() -> str:
     )
 
 
+def ensure_named_docker_volume(
+    volume_name: str,
+    *,
+    output: Optional[TextIO] = None,
+    repo_root: Optional[Path] = None,
+) -> None:
+    run_command(
+        ["docker", "volume", "create", volume_name],
+        check=True,
+        stream_output=False,
+        cwd=repo_root,
+    )
+    stream = output or sys.stdout
+    stream.write(f"[info] Docker volume ready: {volume_name}\n")
+
+
 def resolve_web_dist_strategy(*, env: Optional[Mapping[str, str]] = None) -> str:
     candidate_env = env or os.environ
     raw_strategy = (candidate_env.get("WEB_DIST_STRATEGY") or "").strip().lower()
@@ -274,6 +290,38 @@ def resolve_web_dist_strategy(*, env: Optional[Mapping[str, str]] = None) -> str
             )
         )
     return raw_strategy
+
+
+def resolve_application_version(*, repo_root: Path) -> str:
+    version_file = repo_root / "VERSION"
+    if not version_file.is_file():
+        raise LauncherError(
+            _build_actionable_message(
+                f"Missing VERSION file: {version_file}",
+                "Restore the VERSION file and retry.",
+            )
+        )
+
+    version = version_file.read_text(encoding="utf-8").strip()
+    if version:
+        return version
+
+    describe_result = run_command(
+        ["git", "describe", "--tags", "--always", "--dirty"],
+        check=False,
+        stream_output=False,
+        cwd=repo_root,
+    )
+    fallback_version = (describe_result.stdout or "").strip()
+    if fallback_version:
+        return fallback_version
+
+    raise LauncherError(
+        _build_actionable_message(
+            f"VERSION file is empty: {version_file}",
+            "Populate VERSION or ensure `git describe --tags --always --dirty` works in this checkout before retrying.",
+        )
+    )
 
 
 def prepare_frontend_dist_for_docker_packaging(
@@ -290,15 +338,6 @@ def prepare_frontend_dist_for_docker_packaging(
         install_hint="Install Bun and verify `bun --version` succeeds. These launcher scripts build the frontend on the host so Docker only packages `web/dist` and avoids Docker-side Vite OOM.",
     )
 
-    version_file = repo_root / "VERSION"
-    if not version_file.is_file():
-        raise LauncherError(
-            _build_actionable_message(
-                f"Missing VERSION file: {version_file}",
-                "Restore the VERSION file and retry.",
-            )
-        )
-
     web_dir = repo_root / "web"
     if not web_dir.is_dir():
         raise LauncherError(
@@ -308,14 +347,11 @@ def prepare_frontend_dist_for_docker_packaging(
             )
         )
 
-    version = version_file.read_text(encoding="utf-8").strip()
-    if not version:
-        raise LauncherError(
-            _build_actionable_message(
-                f"VERSION file is empty: {version_file}",
-                "Restore the application version before retrying.",
-            )
-        )
+    version_file = repo_root / "VERSION"
+    raw_version = version_file.read_text(encoding="utf-8").strip() if version_file.is_file() else ""
+    version = resolve_application_version(repo_root=repo_root)
+    if not raw_version:
+        output.write(f"[info] VERSION file empty; using git describe fallback: {version}\n")
 
     output.write(f"[info] Building frontend on host before docker packaging (WEB_DIST_STRATEGY={strategy})...\n")
     run_command(

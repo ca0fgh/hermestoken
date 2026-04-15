@@ -257,6 +257,39 @@ class LauncherCommonTests(unittest.TestCase):
 
         self.assertIn("avoid Docker-side Vite OOM", str(context.exception))
 
+    @mock.patch("launcher_common.run_command")
+    def test_resolve_application_version_prefers_version_file(self, run_command):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            (repo_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
+
+            version = launcher_common.resolve_application_version(repo_root=repo_root)
+
+        self.assertEqual(version, "1.2.3")
+        run_command.assert_not_called()
+
+    @mock.patch("launcher_common.run_command")
+    def test_resolve_application_version_falls_back_to_git_describe_when_version_file_empty(self, run_command):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            (repo_root / "VERSION").write_text("", encoding="utf-8")
+            run_command.return_value = subprocess.CompletedProcess(
+                args=["git", "describe", "--tags", "--always", "--dirty"],
+                returncode=0,
+                stdout="e3f7bef8-dirty\n",
+                stderr="",
+            )
+
+            version = launcher_common.resolve_application_version(repo_root=repo_root)
+
+        self.assertEqual(version, "e3f7bef8-dirty")
+        run_command.assert_called_once_with(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            check=False,
+            stream_output=False,
+            cwd=repo_root,
+        )
+
     @mock.patch.dict(os.environ, {}, clear=True)
     @mock.patch("launcher_common.run_command")
     @mock.patch("launcher_common.require_executable")
@@ -299,6 +332,65 @@ class LauncherCommonTests(unittest.TestCase):
             ]
         )
         self.assertIn("WEB_DIST_STRATEGY=prebuilt", stdout.getvalue())
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("launcher_common.run_command")
+    @mock.patch("launcher_common.require_executable")
+    def test_prepare_frontend_dist_for_docker_packaging_falls_back_to_git_describe_when_version_file_empty(
+        self,
+        require_executable,
+        run_command,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            web_dir = repo_root / "web"
+            web_dir.mkdir()
+            (repo_root / "VERSION").write_text("", encoding="utf-8")
+            stdout = io.StringIO()
+            run_command.side_effect = [
+                subprocess.CompletedProcess(
+                    args=["git", "describe", "--tags", "--always", "--dirty"],
+                    returncode=0,
+                    stdout="e3f7bef8\n",
+                    stderr="",
+                ),
+                subprocess.CompletedProcess(args=["bun", "install"], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(args=["bun", "run", "build"], returncode=0, stdout="", stderr=""),
+            ]
+
+            launcher_common.prepare_frontend_dist_for_docker_packaging(output=stdout, repo_root=repo_root)
+
+        require_executable.assert_called_once_with("bun", install_hint=mock.ANY)
+        run_command.assert_has_calls(
+            [
+                mock.call(
+                    ["git", "describe", "--tags", "--always", "--dirty"],
+                    check=False,
+                    stream_output=False,
+                    cwd=repo_root,
+                ),
+                mock.call(
+                    ["bun", "install"],
+                    check=True,
+                    stream_output=True,
+                    cwd=web_dir,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "run", "build"],
+                    check=True,
+                    stream_output=True,
+                    cwd=web_dir,
+                    env={
+                        "DISABLE_ESLINT_PLUGIN": "true",
+                        "NODE_OPTIONS": "--max-old-space-size=4096",
+                        "VITE_REACT_APP_VERSION": "e3f7bef8",
+                    },
+                    stdout_stream=stdout,
+                ),
+            ]
+        )
+        self.assertIn("git describe fallback", stdout.getvalue())
 
     @mock.patch("launcher_common.run_command")
     def test_remove_legacy_compose_containers_removes_only_matching_legacy_project_for_target_compose(self, run_command):
@@ -410,6 +502,21 @@ class LauncherCommonTests(unittest.TestCase):
         self.assertIn("PATH", kwargs["env"])
         self.assertEqual(kwargs["env"]["PATH"], "/usr/bin")
         self.assertEqual(kwargs["env"]["CUSTOM_FLAG"], "1")
+
+    @mock.patch("launcher_common.run_command")
+    def test_ensure_named_docker_volume_creates_volume(self, run_command):
+        repo_root = Path("/repo")
+        output = io.StringIO()
+
+        launcher_common.ensure_named_docker_volume("hermestoken_pg_data", output=output, repo_root=repo_root)
+
+        run_command.assert_called_once_with(
+            ["docker", "volume", "create", "hermestoken_pg_data"],
+            check=True,
+            stream_output=False,
+            cwd=repo_root,
+        )
+        self.assertIn("Docker volume ready: hermestoken_pg_data", output.getvalue())
 
     @mock.patch("launcher_common.subprocess.Popen")
     def test_run_command_streamed(self, popen_mock):

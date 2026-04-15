@@ -11,6 +11,7 @@ from launcher_common import (
     print_actionable_error,
     remove_legacy_compose_containers,
     require_docker_and_compose,
+    resolve_application_version,
     resolve_web_dist_strategy,
     run_command,
 )
@@ -79,6 +80,7 @@ def run_stack(
     stream = output or sys.stdout
     effective_repo_root = repo_root or REPO_ROOT
     web_dist_strategy = resolve_web_dist_strategy()
+    app_version = resolve_application_version(repo_root=effective_repo_root)
 
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
@@ -97,7 +99,7 @@ def run_stack(
         check=True,
         stream_output=True,
         cwd=effective_repo_root,
-        env={"WEB_DIST_STRATEGY": web_dist_strategy},
+        env={"WEB_DIST_STRATEGY": web_dist_strategy, "APP_VERSION": app_version},
         stdout_stream=stream,
     )
     stream.write(f"[ok] Production {action_label} containers started\n")

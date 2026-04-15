@@ -64,15 +64,17 @@
 
 除本地模式前置条件外，还需要：
 
+- 已安装并可用 `cloudflared`
 - 已在 Cloudflare 中创建命名 tunnel（默认名见 `cloudflared_tunnel_name`）
 - 如果使用本地管理的 tunnel 配置模式，本机存在 `~/.cloudflared/config.yml`（或 `launcher_config.json` 中配置的等效路径）
 - 如果使用 token 模式，需要在 `launcher_config.json` 中配置 `cloudflared_tunnel_token` 或 `cloudflared_tunnel_token_path`
-- 公网脚本会把 `cloudflared` 作为 Docker 容器启动，并与 `new-api` 共享网络命名空间
 
 注意：
 
 - 公网模式不会自动创建 tunnel，也不会自动创建或修改 DNS 记录。
 - 本地管理配置模式下，脚本仍会校验公网 hostname 的 CNAME 是否指向 `*.cfargotunnel.com`。
+- 公网模式会在宿主机直接启动 `cloudflared` 进程，不再使用 Docker 容器。
+- 运行期文件会写入 `scripts/.runtime/`，包括 PID 文件和日志文件，便于排障和更新时替换旧进程。
 
 ## 2. 启动方式
 
@@ -100,7 +102,7 @@ python3 scripts/public.py update
 说明：
 
 - 会先委托 `scripts/local.py` 启动本地服务，因此同样会先做宿主机前端构建，再重建镜像并启动容器。
-- 本地服务健康后，会再启动一个 Docker 化的 `cloudflared` 容器，而不是在宿主机直接拉起 `cloudflared` 进程。
+- 本地服务健康后，会在宿主机直接启动 `cloudflared` 进程，并复用已有 tunnel token / config。
 
 ## 3. 成功输出示例
 
@@ -121,7 +123,7 @@ python3 scripts/public.py update
 [info] Building frontend on host before docker packaging (WEB_DIST_STRATEGY=prebuilt)...
 [ok] Containers started
 [ok] Local deploy healthy: http://localhost:3000
-[ok] Tunnel container started: hermestoken-public-cloudflared
+[ok] Tunnel process started: 53181
 [ok] Public deploy healthy: https://pay-local.hermestoken.top
 [ok] Local URL:  http://localhost:3000
 [ok] Public URL: https://pay-local.hermestoken.top
@@ -130,7 +132,7 @@ python3 scripts/public.py update
 说明：
 
 - 公网模式成功后，本地地址 `http://localhost:3000` 仍然可用。
-- 成功路径下 `cloudflared` 容器会保持后台运行，不会被脚本主动停止。
+- 成功路径下宿主机 `cloudflared` 进程会保持后台运行；再次执行 `public.py` 时，脚本会替换旧进程。
 
 ## 4. 常见失败信息与处理
 
@@ -147,6 +149,10 @@ python3 scripts/public.py update
 - `Missing required executable: bun`
   - 含义：脚本无法在宿主机构建前端。
   - 处理：安装 Bun，并确认 `bun --version` 成功。
+
+- `Missing required executable: cloudflared`
+  - 含义：公网模式无法在宿主机启动 tunnel 进程。
+  - 处理：安装 `cloudflared`，并确认 `cloudflared --version` 成功。
 
 - `cloudflared config file not found: ...`
   - 含义：`cloudflared_config_path` 指向的配置文件不存在。
@@ -165,6 +171,10 @@ python3 scripts/public.py update
   - 处理：检查容器日志、端口占用、应用启动耗时、tunnel 连通性；必要时调大 `healthcheck_timeout_seconds`。
   - 补充：`local.py` 在本地健康检查失败时，还会先打印 `[info] Recent container status (docker compose ps):` 作为额外诊断信息。
 
-- `Tunnel container entered ... before https://... became healthy`
-  - 含义：Docker 化 `cloudflared` 容器提前退出或异常停止。
-  - 处理：检查错误里附带的 cloudflared 容器日志，并核对 token / `cloudflared_config_path` / tunnel 配置。
+- `Tunnel process entered ... before https://... became healthy`
+  - 含义：宿主机 `cloudflared` 进程提前退出或异常停止。
+  - 处理：检查错误里附带的 `scripts/.runtime/public-cloudflared.log` 日志，并核对 token / `cloudflared_config_path` / tunnel 配置。
+
+- `[warn] Public browser smoke check failed after health check: ...`
+  - 含义：公网地址已经可用，但本机浏览器 smoke check 失败。
+  - 处理：优先按健康检查结果判断服务是否在线，再单独排查本机 Chrome/Chromium 环境；该 warning 不会主动停止公网 tunnel。

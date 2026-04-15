@@ -2,9 +2,10 @@
 #
 # Quick Start:
 #   1. Build the frontend on the host, or run `python3 scripts/local.py` to automate it
-#   2. docker compose up --build -d
-#   3. Access at http://localhost:3000
-#   4. `web/dist` is required because Docker now packages prebuilt frontend assets by default
+#   2. Ensure the PostgreSQL volume exists: `docker volume create hermestoken_pg_data`
+#   3. docker compose up --build -d
+#   4. Access at http://localhost:3000
+#   5. `web/dist` is required because Docker now packages prebuilt frontend assets by default
 #
 # Using MySQL instead of PostgreSQL:
 #   1. Comment out the postgres service and SQL_DSN line 15
@@ -23,6 +24,7 @@ services:
       dockerfile: Dockerfile
       args:
         WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}
+        APP_VERSION: ${APP_VERSION:-}
     image: hermestoken-local:latest
     container_name: new-api
     restart: always
@@ -107,6 +109,7 @@ services:
 
 volumes:
   pg_data:
+    external: true
     name: hermestoken_pg_data
 #  mysql_data:
 
