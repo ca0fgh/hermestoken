@@ -15,6 +15,32 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 	return getUserGroupsByMode(0, userGroup, true)
 }
 
+func NormalizeTokenSelectionMode(selectionMode, groupKey, legacyGroup string) string {
+	normalizedMode := strings.TrimSpace(selectionMode)
+	switch normalizedMode {
+	case "", "inherit_user_default", "fixed", "auto":
+	default:
+		return normalizedMode
+	}
+
+	trimmedGroupKey := strings.TrimSpace(groupKey)
+	trimmedLegacyGroup := strings.TrimSpace(legacyGroup)
+	if trimmedGroupKey != "" {
+		return "fixed"
+	}
+	if trimmedLegacyGroup == "auto" {
+		return "auto"
+	}
+	if trimmedLegacyGroup != "" {
+		return "fixed"
+	}
+
+	if normalizedMode == "fixed" || normalizedMode == "auto" {
+		return normalizedMode
+	}
+	return "inherit_user_default"
+}
+
 func GetUserUsableGroupsForUser(userId int, userGroup string) map[string]string {
 	return getUserGroupsByMode(userId, userGroup, true)
 }
@@ -28,9 +54,19 @@ func GetUserSelectableGroupsForUser(userId int, userGroup string) map[string]str
 }
 
 func getUserGroupsByMode(userId int, userGroup string, includeAssignedGroup bool) map[string]string {
-	groupsCopy := setting.GetUserUsableGroupsCopy()
+	groupsCopy, err := model.LoadEffectiveUserUsableGroups()
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to load effective user usable pricing groups: %v", err))
+		groupsCopy = setting.GetUserUsableGroupsCopy()
+	}
+	specialGroupRules, err := model.LoadEffectivePricingGroupVisibilityRules()
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to load effective pricing group visibility rules: %v", err))
+		specialGroupRules = ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll()
+	}
+
 	if userGroup != "" {
-		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
+		specialSettings, b := specialGroupRules[userGroup]
 		if b {
 			// 处理特殊可用分组
 			for specialGroup, desc := range specialSettings {
@@ -136,14 +172,59 @@ func ValidateTokenSelectableGroupForUser(userId int, userGroup, tokenGroup strin
 	if !GroupInUserSelectableGroupsForUser(userId, canonicalUserGroup, canonicalTokenGroup) {
 		return fmt.Errorf("分组 %s 不是用户可选分组", canonicalTokenGroup)
 	}
-	if canonicalTokenGroup != "auto" && !ratio_setting.ContainsGroupRatio(canonicalTokenGroup) {
-		return fmt.Errorf("分组 %s 已被弃用", canonicalTokenGroup)
+	groupRatios, err := model.LoadEffectivePricingGroupRatios()
+	if err != nil {
+		return err
+	}
+	if canonicalTokenGroup != "auto" {
+		if _, ok := groupRatios[canonicalTokenGroup]; !ok {
+			return fmt.Errorf("分组 %s 已被弃用", canonicalTokenGroup)
+		}
 	}
 	return nil
 }
 
 func ResolveTokenGroupForRequest(userGroup, tokenGroup string) (string, error) {
 	return ResolveTokenGroupForUserRequest(0, userGroup, tokenGroup)
+}
+
+func ResolveTokenGroupForUserToken(userId int, userGroup string, token *model.Token) (string, error) {
+	if token == nil {
+		return "", errors.New("token is nil")
+	}
+
+	switch NormalizeTokenSelectionMode(token.SelectionMode, token.GroupKey, token.Group) {
+	case "", "inherit_user_default":
+		return ResolveTokenGroupForUserRequest(userId, userGroup, "")
+	case "fixed":
+		requestedGroup := strings.TrimSpace(token.GroupKey)
+		if requestedGroup == "" {
+			requestedGroup = strings.TrimSpace(token.Group)
+		}
+		return ResolveTokenGroupForUserRequest(userId, userGroup, requestedGroup)
+	case "auto":
+		return "auto", nil
+	default:
+		return "", fmt.Errorf("invalid token selection mode: %s", token.SelectionMode)
+	}
+}
+
+func GetTokenSelectionRoutingGroup(token *model.Token) string {
+	if token == nil {
+		return ""
+	}
+
+	switch NormalizeTokenSelectionMode(token.SelectionMode, token.GroupKey, token.Group) {
+	case "fixed":
+		if groupKey := strings.TrimSpace(token.GroupKey); groupKey != "" {
+			return groupKey
+		}
+		return strings.TrimSpace(token.Group)
+	case "auto":
+		return "auto"
+	default:
+		return ""
+	}
 }
 
 func ResolveTokenGroupForUserRequest(userId int, userGroup, tokenGroup string) (string, error) {
@@ -164,8 +245,14 @@ func ResolveTokenGroupForUserRequest(userId int, userGroup, tokenGroup string) (
 	if !GroupInUserUsableGroupsForUser(userId, canonicalUserGroup, canonicalTokenGroup) {
 		return "", fmt.Errorf("无权访问 %s 分组", canonicalTokenGroup)
 	}
-	if canonicalTokenGroup != "auto" && !ratio_setting.ContainsGroupRatio(canonicalTokenGroup) {
-		return "", fmt.Errorf("分组 %s 已被弃用", canonicalTokenGroup)
+	groupRatios, err := model.LoadEffectivePricingGroupRatios()
+	if err != nil {
+		return "", err
+	}
+	if canonicalTokenGroup != "auto" {
+		if _, ok := groupRatios[canonicalTokenGroup]; !ok {
+			return "", fmt.Errorf("分组 %s 已被弃用", canonicalTokenGroup)
+		}
 	}
 	return canonicalTokenGroup, nil
 }
@@ -177,8 +264,13 @@ func GetUserAutoGroup(userGroup string) []string {
 
 func GetUserAutoGroupForUser(userId int, userGroup string) []string {
 	groups := GetUserUsableGroupsForUser(userId, userGroup)
+	effectiveAutoGroups, err := model.LoadEffectiveAutoGroupKeys()
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to load effective auto pricing groups: %v", err))
+		effectiveAutoGroups = setting.GetAutoGroups()
+	}
 	autoGroups := make([]string, 0)
-	for _, group := range setting.GetAutoGroups() {
+	for _, group := range effectiveAutoGroups {
 		if _, ok := groups[group]; ok {
 			autoGroups = append(autoGroups, group)
 		}
@@ -190,9 +282,27 @@ func GetUserAutoGroupForUser(userId int, userGroup string) []string {
 // userGroup 用户分组
 // group 需要获取倍率的分组
 func GetUserGroupRatio(userGroup, group string) float64 {
-	ratio, ok := ratio_setting.GetGroupGroupRatio(userGroup, group)
-	if ok {
-		return ratio
+	groupOverrides, err := model.LoadEffectivePricingGroupRatioOverrides()
+	if err == nil {
+		if ratiosByTarget, ok := groupOverrides[userGroup]; ok {
+			if ratio, ok := ratiosByTarget[group]; ok {
+				return ratio
+			}
+		}
+	} else {
+		common.SysError(fmt.Sprintf("failed to load effective pricing group ratio overrides: %v", err))
+		if ratio, ok := ratio_setting.GetGroupGroupRatio(userGroup, group); ok {
+			return ratio
+		}
+	}
+
+	groupRatios, err := model.LoadEffectivePricingGroupRatios()
+	if err == nil {
+		if ratio, ok := groupRatios[group]; ok {
+			return ratio
+		}
+	} else {
+		common.SysError(fmt.Sprintf("failed to load effective pricing group ratios: %v", err))
 	}
 	return ratio_setting.GetGroupRatio(group)
 }

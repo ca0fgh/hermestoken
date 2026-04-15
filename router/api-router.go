@@ -319,6 +319,11 @@ func SetApiRouter(router *gin.Engine) {
 		groupAdminRoute := apiRouter.Group("/group/admin")
 		groupAdminRoute.Use(middleware.RootAuth())
 		{
+			groupAdminRoute.GET("/", controller.AdminListPricingGroups)
+			groupAdminRoute.POST("/", controller.AdminCreatePricingGroup)
+			groupAdminRoute.PUT("/:group_key", controller.AdminUpdatePricingGroup)
+			groupAdminRoute.POST("/archive", controller.ArchivePricingGroup)
+			groupAdminRoute.POST("/merge", controller.MergePricingGroup)
 			groupAdminRoute.GET("/consistency", controller.GetPricingGroupConsistencyReport)
 		}
 

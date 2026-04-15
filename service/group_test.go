@@ -378,6 +378,28 @@ func TestResolveTokenGroupForUserRequestUsesCanonicalGroupKey(t *testing.T) {
 	}
 }
 
+func TestResolveTokenGroupForUserTokenUsesAutoSelectionModeWithoutLegacyAutoGroup(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"default":"Default","auto":"Auto","premium":"Premium"}`,
+		`{}`,
+		`{"default":1,"premium":1}`,
+	)
+
+	resolvedGroup, err := ResolveTokenGroupForUserToken(0, "default", &model.Token{
+		SelectionMode: "auto",
+		Group:         "",
+		GroupKey:      "",
+	})
+	if err != nil {
+		t.Fatalf("expected auto selection mode to resolve without legacy auto group, got %v", err)
+	}
+	if resolvedGroup != "auto" {
+		t.Fatalf("expected resolved group auto, got %q", resolvedGroup)
+	}
+}
+
 func TestValidateTokenSelectableGroupForUserUsesCanonicalGroupKey(t *testing.T) {
 	truncate(t)
 	resetPricingGroupTestTables(t)

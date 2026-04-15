@@ -32,6 +32,7 @@ import {
   Radio,
   RadioGroup,
   Row,
+  Select,
   SideSheet,
   Spin,
   Switch,
@@ -48,6 +49,16 @@ import {
   showWarning,
   verifyJSON,
 } from '../../../helpers';
+import {
+  archivePricingGroup,
+  buildGroupUpsertPayload,
+  buildLegacyGroupOptionPayload,
+  canMergeGroups,
+  createPricingGroup,
+  listPricingGroupsAdmin,
+  mergePricingGroups,
+  updatePricingGroup,
+} from '../../../helpers/pricingGroupAdmin';
 import { useTranslation } from 'react-i18next';
 import GroupTable from './components/GroupTable';
 import AutoGroupList from './components/AutoGroupList';
@@ -77,8 +88,15 @@ function parseJSONSafe(str, fallback) {
 export default function GroupRatioSettings(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [groupsLoading, setGroupsLoading] = useState(false);
   const [editMode, setEditMode] = useState('visual');
   const [showGuide, setShowGuide] = useState(false);
+  const [adminGroups, setAdminGroups] = useState([]);
+  const [adminGroupsRow, setAdminGroupsRow] = useState([]);
+  const [mergeDraft, setMergeDraft] = useState({
+    source_group_key: '',
+    target_group_key: '',
+  });
 
   const [inputs, setInputs] = useState({
     GroupRatio: '',
@@ -93,11 +111,152 @@ export default function GroupRatioSettings(props) {
   const dataVersionRef = useRef(0);
 
   const groupNames = useMemo(() => {
+    if (editMode === 'visual') {
+      return adminGroups.map((group) => group.group_key).filter(Boolean);
+    }
     const ratioMap = parseJSONSafe(inputs.GroupRatio, {});
     return Object.keys(ratioMap);
-  }, [inputs.GroupRatio]);
+  }, [editMode, adminGroups, inputs.GroupRatio]);
+  const mergeGroupOptions = useMemo(
+    () =>
+      adminGroups
+        .filter((group) => group.status !== 3)
+        .map((group) => ({
+          label: group.display_name || group.group_key,
+          value: group.group_key,
+        })),
+    [adminGroups],
+  );
+  const mergeTargetGroupOptions = useMemo(
+    () =>
+      mergeGroupOptions.filter(
+        (group) => group.value !== mergeDraft.source_group_key,
+      ),
+    [mergeDraft.source_group_key, mergeGroupOptions],
+  );
+  const isMergeReady = useMemo(
+    () => canMergeGroups(mergeDraft),
+    [mergeDraft],
+  );
+  const mergePreviewText = useMemo(() => {
+    if (!isMergeReady) {
+      return '';
+    }
+
+    const sourceGroup = adminGroups.find(
+      (group) => group.group_key === mergeDraft.source_group_key,
+    );
+    const targetGroup = adminGroups.find(
+      (group) => group.group_key === mergeDraft.target_group_key,
+    );
+    const sourceLabel =
+      sourceGroup?.display_name || sourceGroup?.group_key || mergeDraft.source_group_key;
+    const targetLabel =
+      targetGroup?.display_name || targetGroup?.group_key || mergeDraft.target_group_key;
+    return t(`将会把「${sourceLabel}」合并到「${targetLabel}」`);
+  }, [adminGroups, isMergeReady, mergeDraft.source_group_key, mergeDraft.target_group_key, t]);
+
+  const loadAdminGroups = useCallback(async () => {
+    setGroupsLoading(true);
+    try {
+      const res = await listPricingGroupsAdmin();
+      if (res?.data?.success) {
+        const nextGroups = res.data.data || [];
+        setAdminGroups(nextGroups);
+        setAdminGroupsRow(structuredClone(nextGroups));
+      } else {
+        showError(res?.data?.message || t('加载分组失败'));
+        setAdminGroups([]);
+        setAdminGroupsRow([]);
+      }
+    } catch (error) {
+      showError(error?.message || t('加载分组失败'));
+      setAdminGroups([]);
+      setAdminGroupsRow([]);
+    } finally {
+      setGroupsLoading(false);
+    }
+  }, [t]);
 
   async function onSubmit() {
+    if (editMode === 'visual') {
+      const currentGroups = adminGroups || [];
+      const baselineGroups = adminGroupsRow || [];
+      const baselineByKey = new Map(
+        baselineGroups.map((group) => [group.group_key, group]),
+      );
+      const currentByKey = new Map(
+        currentGroups.map((group) => [group.group_key, group]),
+      );
+
+      const groupRequests = [];
+      currentGroups.forEach((group) => {
+        const existingGroup = baselineByKey.get(group.group_key);
+        const payload = buildGroupUpsertPayload(existingGroup, group);
+        if (!payload.group_key) return;
+        if (!existingGroup) {
+          groupRequests.push(createPricingGroup(payload));
+          return;
+        }
+        const existingPayload = buildGroupUpsertPayload(existingGroup, existingGroup);
+        if (JSON.stringify(existingPayload) !== JSON.stringify(payload)) {
+          groupRequests.push(updatePricingGroup(existingGroup.group_key, payload));
+        }
+      });
+      baselineGroups.forEach((group) => {
+        if (!currentByKey.has(group.group_key)) {
+          groupRequests.push(archivePricingGroup(group.group_key));
+        }
+      });
+
+      const derivedGroupOptions = buildLegacyGroupOptionPayload(currentGroups);
+      const visualInputs = {
+        ...inputs,
+        ...derivedGroupOptions,
+      };
+      const optionUpdates = compareObjects(visualInputs, inputsRow);
+      const optionRequests = optionUpdates.map((item) => {
+        const value =
+          typeof visualInputs[item.key] === 'boolean'
+            ? String(visualInputs[item.key])
+            : visualInputs[item.key];
+        return API.put('/api/option/', { key: item.key, value });
+      });
+
+      if (!groupRequests.length && !optionRequests.length) {
+        return showWarning(t('你似乎并没有修改什么'));
+      }
+
+      setLoading(true);
+      try {
+        if (groupRequests.length) {
+          const groupResults = await Promise.all(groupRequests);
+          for (let i = 0; i < groupResults.length; i++) {
+            if (!groupResults[i]?.data?.success) {
+              return showError(groupResults[i]?.data?.message || t('保存失败'));
+            }
+          }
+        }
+        if (optionRequests.length) {
+          const optionResults = await Promise.all(optionRequests);
+          for (let i = 0; i < optionResults.length; i++) {
+            if (!optionResults[i]?.data?.success) {
+              return showError(optionResults[i]?.data?.message || t('保存失败'));
+            }
+          }
+        }
+        showSuccess(t('保存成功'));
+        await loadAdminGroups();
+        props.refresh();
+      } catch (error) {
+        console.error('Unexpected error:', error);
+        showError(t('保存失败，请重试'));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (editMode === 'manual') {
       try {
         await refForm.current.validate();
@@ -158,12 +317,13 @@ export default function GroupRatioSettings(props) {
     }
   }, [props.options]);
 
-  const handleGroupTableChange = useCallback(
-    ({ GroupRatio, UserUsableGroups }) => {
-      setInputs((prev) => ({ ...prev, GroupRatio, UserUsableGroups }));
-    },
-    [],
-  );
+  useEffect(() => {
+    loadAdminGroups();
+  }, [loadAdminGroups]);
+
+  const handleGroupTableChange = useCallback((groups) => {
+    setAdminGroups(groups);
+  }, []);
 
   const handleAutoGroupsChange = useCallback((value) => {
     setInputs((prev) => ({ ...prev, AutoGroups: value }));
@@ -180,6 +340,66 @@ export default function GroupRatioSettings(props) {
     }));
   }, []);
 
+  const handleMergeDraftChange = useCallback((field, value) => {
+    setMergeDraft((prev) => ({
+      ...prev,
+      [field]: value || '',
+    }));
+  }, []);
+
+  const handleMergeGroups = useCallback(async () => {
+    if (!isMergeReady) {
+      showWarning(t('请选择两个不同的分组进行合并'));
+      return;
+    }
+
+    const sourceGroupKey = `${mergeDraft.source_group_key || ''}`.trim();
+    const targetGroupKey = `${mergeDraft.target_group_key || ''}`.trim();
+    const sourceGroup = adminGroups.find(
+      (group) => group.group_key === sourceGroupKey,
+    );
+    const targetGroup = adminGroups.find(
+      (group) => group.group_key === targetGroupKey,
+    );
+    const sourceLabel =
+      sourceGroup?.display_name || sourceGroup?.group_key || sourceGroupKey;
+    const targetLabel =
+      targetGroup?.display_name || targetGroup?.group_key || targetGroupKey;
+
+    if (
+      !window.confirm(
+        t(
+          `确认将「${sourceLabel}」合并到「${targetLabel}」？该操作会迁移用户、令牌、订阅等引用，并为旧 key 保留 alias 兼容。`,
+        ),
+      )
+    ) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await mergePricingGroups({
+        source_group_key: sourceGroupKey,
+        target_group_key: targetGroupKey,
+      });
+      if (!res?.data?.success) {
+        return showError(res?.data?.message || t('分组合并失败'));
+      }
+      showSuccess(t('分组合并成功'));
+      setMergeDraft({
+        source_group_key: '',
+        target_group_key: '',
+      });
+      await loadAdminGroups();
+      props.refresh();
+    } catch (error) {
+      console.error('Unexpected merge error:', error);
+      showError(t('分组合并失败'));
+    } finally {
+      setLoading(false);
+    }
+  }, [adminGroups, isMergeReady, loadAdminGroups, mergeDraft, props, t]);
+
   const dv = dataVersionRef.current;
 
   const renderVisualMode = () => (
@@ -194,12 +414,87 @@ export default function GroupRatioSettings(props) {
             '倍率用于计费乘数，勾选「用户可选」后用户可在创建令牌时选择该分组',
           )}
         </Text>
-        <GroupTable
-          key={`gt_${dv}`}
-          groupRatio={inputs.GroupRatio}
-          userUsableGroups={inputs.UserUsableGroups}
-          onChange={handleGroupTableChange}
-        />
+        <Spin spinning={groupsLoading}>
+          <GroupTable
+            key={`gt_${dv}`}
+            mode='canonical'
+            groups={adminGroups}
+            onChange={handleGroupTableChange}
+          />
+        </Spin>
+        <Text
+          type='tertiary'
+          size='small'
+          style={{ display: 'block', marginTop: 12 }}
+        >
+          {t('从表格中移除已有分组并保存后，会将其归档，而不是直接物理删除。')}
+        </Text>
+      </Form.Section>
+
+      <Form.Section text={t('分组合并')}>
+        <Text
+          type='tertiary'
+          size='small'
+          style={{ display: 'block', marginBottom: 12 }}
+        >
+          {t(
+            '将旧分组的用户、令牌、订阅等引用迁移到新分组，并自动保留旧 key 的 alias 兼容。',
+          )}
+        </Text>
+        <Text
+          type='tertiary'
+          size='small'
+          style={{ display: 'block', marginBottom: 12 }}
+        >
+          {t('建议先确认目标分组的倍率与显示名称正确，再执行合并。')}
+        </Text>
+        {mergePreviewText ? (
+          <Text
+            type='warning'
+            size='small'
+            style={{ display: 'block', marginBottom: 12 }}
+          >
+            {mergePreviewText}
+          </Text>
+        ) : null}
+        <Row gutter={16}>
+          <Col xs={24} sm={10}>
+            <Form.Slot label={t('源分组')}>
+              <Select
+                value={mergeDraft.source_group_key}
+                optionList={mergeGroupOptions}
+                placeholder={t('选择待合并的旧分组')}
+                onChange={(value) =>
+                  handleMergeDraftChange('source_group_key', value)
+                }
+              />
+            </Form.Slot>
+          </Col>
+          <Col xs={24} sm={10}>
+            <Form.Slot label={t('目标分组')}>
+              <Select
+                value={mergeDraft.target_group_key}
+                optionList={mergeTargetGroupOptions}
+                placeholder={t('选择保留的新分组')}
+                onChange={(value) =>
+                  handleMergeDraftChange('target_group_key', value)
+                }
+              />
+            </Form.Slot>
+          </Col>
+          <Col xs={24} sm={4}>
+            <Form.Slot label=' '>
+              <Button
+                theme='solid'
+                onClick={handleMergeGroups}
+                loading={loading}
+                disabled={!isMergeReady}
+              >
+                {t('合并分组')}
+              </Button>
+            </Form.Slot>
+          </Col>
+        </Row>
       </Form.Section>
 
       <Form.Section text={t('自动分组')}>

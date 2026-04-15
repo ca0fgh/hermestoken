@@ -375,6 +375,186 @@ func TestCreateTokenPersistsSelectionModeAndCanonicalGroupKey(t *testing.T) {
 	}
 }
 
+func TestCreateAutoTokenPreservesLegacyAutoGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"default":"默认分组","auto":"自动分组"}`, `{}`)
+
+	body := map[string]any{
+		"name":                 "auto-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"selection_mode":       "auto",
+		"group":                "auto",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected auto token creation to succeed, got message: %s", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "auto-token").First(&token).Error; err != nil {
+		t.Fatalf("failed to reload created token: %v", err)
+	}
+	if token.SelectionMode != "auto" {
+		t.Fatalf("expected selection_mode=auto, got %q", token.SelectionMode)
+	}
+	if token.Group != "auto" {
+		t.Fatalf("expected legacy group column to remain auto, got %q", token.Group)
+	}
+	if token.GroupKey != "" {
+		t.Fatalf("expected group_key to stay empty for auto, got %q", token.GroupKey)
+	}
+}
+
+func TestCreateAutoTokenUsesSelectionModeWithoutLegacyAutoGroupInput(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"default":"默认分组","auto":"自动分组"}`, `{}`)
+
+	body := map[string]any{
+		"name":                 "auto-token-no-legacy-group",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"selection_mode":       "auto",
+		"group":                "",
+		"group_key":            "",
+		"cross_group_retry":    true,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected auto token creation without legacy auto group to succeed, got message: %s", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "auto-token-no-legacy-group").First(&token).Error; err != nil {
+		t.Fatalf("failed to reload created token: %v", err)
+	}
+	if token.SelectionMode != "auto" {
+		t.Fatalf("expected selection_mode=auto, got %q", token.SelectionMode)
+	}
+	if token.Group != "auto" {
+		t.Fatalf("expected legacy group column to remain auto, got %q", token.Group)
+	}
+	if token.GroupKey != "" {
+		t.Fatalf("expected group_key to stay empty for auto, got %q", token.GroupKey)
+	}
+}
+
+func TestUpdateTokenPersistsSelectionModeAndCanonicalGroupKey(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"default":"默认分组"}`, `{}`)
+
+	defaultGroup := seedTokenPricingGroup(t, db, "default")
+	seedTokenPricingGroupAlias(t, db, "legacy-default", defaultGroup.Id)
+	token := seedToken(t, db, 1, "editable-group-token", "yzab1234cdef5678")
+	token.SelectionMode = "auto"
+	token.Group = "auto"
+	token.GroupKey = ""
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to seed token selection state: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "editable-group-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"selection_mode":       "fixed",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token update to succeed, got message: %s", response.Message)
+	}
+
+	var reloaded model.Token
+	if err := db.Where("id = ?", token.Id).First(&reloaded).Error; err != nil {
+		t.Fatalf("failed to reload updated token: %v", err)
+	}
+	if reloaded.SelectionMode != "fixed" {
+		t.Fatalf("expected selection_mode=fixed, got %q", reloaded.SelectionMode)
+	}
+	if reloaded.GroupKey != "default" {
+		t.Fatalf("expected group_key=default, got %q", reloaded.GroupKey)
+	}
+	if reloaded.Group != "default" {
+		t.Fatalf("expected legacy group column to persist canonical key, got %q", reloaded.Group)
+	}
+}
+
+func TestUpdateTokenPreservesExistingSelectionModeWhenOmitted(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"default":"默认分组"}`, `{}`)
+
+	token := seedToken(t, db, 1, "sticky-mode-token", "abcd1234efgh5678")
+	token.SelectionMode = "fixed"
+	token.Group = "default"
+	token.GroupKey = "default"
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to seed token selection state: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "sticky-mode-token-renamed",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token update with omitted selection_mode to succeed, got message: %s", response.Message)
+	}
+
+	var reloaded model.Token
+	if err := db.Where("id = ?", token.Id).First(&reloaded).Error; err != nil {
+		t.Fatalf("failed to reload updated token: %v", err)
+	}
+	if reloaded.SelectionMode != "fixed" {
+		t.Fatalf("expected selection_mode to be preserved, got %q", reloaded.SelectionMode)
+	}
+	if reloaded.GroupKey != "default" {
+		t.Fatalf("expected group_key to be preserved, got %q", reloaded.GroupKey)
+	}
+	if reloaded.Group != "default" {
+		t.Fatalf("expected legacy group column to stay canonical, got %q", reloaded.Group)
+	}
+}
+
 func TestGetTokenKeyRequiresOwnershipAndReturnsFullKey(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "owned-token", "owner1234token5678")

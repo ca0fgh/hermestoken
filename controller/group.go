@@ -12,7 +12,7 @@ import (
 )
 
 func GetGroups(c *gin.Context) {
-	groupNames, err := service.ListCanonicalPricingGroupKeysOrFallback()
+	groups, err := model.LoadEffectivePricingGroups()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -23,7 +23,7 @@ func GetGroups(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    groupNames,
+		"data":    groups,
 	})
 }
 

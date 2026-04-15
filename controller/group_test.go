@@ -11,6 +11,12 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
+type groupCatalogItem struct {
+	GroupKey    string `json:"group_key"`
+	DisplayName string `json:"display_name"`
+	Status      int    `json:"status"`
+}
+
 func withControllerGroupSettingsAndRatios(t *testing.T, usableJSON string, ratioJSON string) {
 	t.Helper()
 
@@ -253,5 +259,37 @@ func TestGetUserGroupsUsesCanonicalSubscriptionSnapshotBeforeLegacyString(t *tes
 	}
 	if _, ok := groups["legacy-premium"]; ok {
 		t.Fatalf("expected stale legacy snapshot string to stay hidden, got %#v", groups)
+	}
+}
+
+func TestGetGroupsReturnsCanonicalGroupMetadata(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	group := seedSubscriptionPricingGroup(t, db, "premium")
+	group.DisplayName = "Premium"
+	group.Status = model.PricingGroupStatusActive
+	if err := db.Save(&group).Error; err != nil {
+		t.Fatalf("failed to update seeded pricing group: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/group/", nil, 1)
+	GetGroups(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var groups []groupCatalogItem
+	if err := common.Unmarshal(response.Data, &groups); err != nil {
+		t.Fatalf("failed to decode group catalog response: %v", err)
+	}
+	if len(groups) == 0 {
+		t.Fatalf("expected canonical group catalog entries")
+	}
+	if groups[0].GroupKey != "premium" {
+		t.Fatalf("expected first group_key premium, got %q", groups[0].GroupKey)
+	}
+	if groups[0].DisplayName != "Premium" {
+		t.Fatalf("expected display_name Premium, got %q", groups[0].DisplayName)
 	}
 }

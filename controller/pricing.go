@@ -44,9 +44,10 @@ func GetPricing(c *gin.Context) {
 	contextStart := time.Now()
 	userId, exists := c.Get("id")
 	usableGroup := map[string]string{}
-	groupRatio := map[string]float64{}
-	for s, f := range ratio_setting.GetGroupRatioCopy() {
-		groupRatio[s] = f
+	groupRatio, err := model.LoadEffectivePricingGroupRatios()
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	currentUserID := 0
 	var group string
@@ -63,10 +64,7 @@ func GetPricing(c *gin.Context) {
 		displayGroup = "default"
 	}
 	for g := range groupRatio {
-		ratio, ok := ratio_setting.GetGroupGroupRatio(displayGroup, g)
-		if ok {
-			groupRatio[g] = ratio
-		}
+		groupRatio[g] = service.GetUserGroupRatio(displayGroup, g)
 	}
 
 	usableGroup = service.GetUserUsableGroupsForUser(currentUserID, displayGroup)
@@ -75,7 +73,7 @@ func GetPricing(c *gin.Context) {
 	filterStart := time.Now()
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
 	// check groupRatio contains usableGroup
-	for group := range ratio_setting.GetGroupRatioCopy() {
+	for group := range groupRatio {
 		if _, ok := usableGroup[group]; !ok {
 			delete(groupRatio, group)
 		}

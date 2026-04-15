@@ -41,6 +41,41 @@ export function buildGroupOption(group, info = {}, { truncateDescAt } = {}) {
   };
 }
 
+export function normalizeGroupCatalogEntry(group) {
+  if (typeof group === 'string') {
+    const normalized = group.trim();
+    return {
+      label: normalized,
+      value: normalized,
+      group_key: normalized,
+      display_name: normalized,
+    };
+  }
+
+  const groupKey = String(
+    group?.group_key ?? group?.group ?? group?.value ?? '',
+  ).trim();
+  const displayName = String(group?.display_name ?? group?.label ?? '').trim();
+
+  return {
+    label: displayName || groupKey,
+    value: groupKey,
+    group_key: groupKey,
+    display_name: displayName || groupKey,
+    status: group?.status,
+  };
+}
+
+export function buildGroupCatalogOptions(groups = []) {
+  if (!Array.isArray(groups)) {
+    return [];
+  }
+
+  return groups
+    .map((group) => normalizeGroupCatalogEntry(group))
+    .filter((group) => group.value);
+}
+
 export function buildGroupOptions(
   data,
   { userGroup = '', truncateDescAt } = {},

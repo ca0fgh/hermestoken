@@ -49,8 +49,15 @@ func getRequestedTokenGroupKey(token *model.Token) string {
 	if token == nil {
 		return ""
 	}
-	if groupKey := strings.TrimSpace(token.GroupKey); groupKey != "" {
-		return groupKey
+	switch service.NormalizeTokenSelectionMode(token.SelectionMode, token.GroupKey, token.Group) {
+	case "inherit_user_default", "":
+		return ""
+	case "auto":
+		return "auto"
+	case "fixed":
+		if groupKey := strings.TrimSpace(token.GroupKey); groupKey != "" {
+			return groupKey
+		}
 	}
 	return strings.TrimSpace(token.Group)
 }
@@ -85,7 +92,7 @@ func normalizeTokenSelectionForPersistence(c *gin.Context, userID int, token *mo
 		return false
 	}
 
-	token.SelectionMode = strings.TrimSpace(token.SelectionMode)
+	token.SelectionMode = service.NormalizeTokenSelectionMode(token.SelectionMode, token.GroupKey, token.Group)
 	requestedGroup := getRequestedTokenGroupKey(token)
 	if !validateTokenGroupSelection(c, userID, requestedGroup) {
 		return false
@@ -97,9 +104,53 @@ func normalizeTokenSelectionForPersistence(c *gin.Context, userID int, token *mo
 		return false
 	}
 
-	token.GroupKey = canonicalGroupKey
-	token.Group = canonicalGroupKey
+	switch token.SelectionMode {
+	case "", "inherit_user_default":
+		token.SelectionMode = "inherit_user_default"
+		token.GroupKey = ""
+		token.Group = ""
+	case "fixed":
+		if canonicalGroupKey == "" {
+			common.ApiErrorMsg(c, "selection_mode=fixed requires a canonical group")
+			return false
+		}
+		token.GroupKey = canonicalGroupKey
+		token.Group = canonicalGroupKey
+	case "auto":
+		token.GroupKey = ""
+		token.Group = "auto"
+	default:
+		common.ApiErrorMsg(c, "invalid token selection mode")
+		return false
+	}
 	return true
+}
+
+func mergeTokenSelectionFields(existing *model.Token, incoming *model.Token) {
+	if incoming == nil || existing == nil {
+		return
+	}
+
+	if strings.TrimSpace(incoming.SelectionMode) == "" &&
+		strings.TrimSpace(incoming.GroupKey) == "" &&
+		strings.TrimSpace(incoming.Group) == "" {
+		incoming.SelectionMode = existing.SelectionMode
+		incoming.GroupKey = existing.GroupKey
+		incoming.Group = existing.Group
+		return
+	}
+
+	if service.NormalizeTokenSelectionMode(incoming.SelectionMode, incoming.GroupKey, incoming.Group) == "fixed" &&
+		strings.TrimSpace(incoming.GroupKey) == "" &&
+		strings.TrimSpace(incoming.Group) == "" {
+		incoming.SelectionMode = "fixed"
+		if strings.TrimSpace(incoming.GroupKey) == "" {
+			incoming.GroupKey = existing.GroupKey
+		}
+		if strings.TrimSpace(incoming.Group) == "" {
+			incoming.Group = existing.Group
+		}
+	}
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -366,6 +417,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.Status = token.Status
 	} else {
 		// If you add more fields, please also update token.Update()
+		mergeTokenSelectionFields(cleanToken, &token)
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota
@@ -385,18 +437,6 @@ func UpdateToken(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
-	}
-	if statusOnly == "" {
-		err = model.DB.Model(&model.Token{}).
-			Where("id = ? AND user_id = ?", cleanToken.Id, cleanToken.UserId).
-			Updates(map[string]any{
-				"selection_mode": cleanToken.SelectionMode,
-				"group_key":      cleanToken.GroupKey,
-			}).Error
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

@@ -10,6 +10,15 @@ import (
 
 func resetPricingGroupTestTables(t *testing.T) {
 	t.Helper()
+	if err := model.DB.Exec("DELETE FROM pricing_group_auto_priorities").Error; err != nil {
+		t.Fatalf("failed to clear pricing_group_auto_priorities: %v", err)
+	}
+	if err := model.DB.Exec("DELETE FROM pricing_group_visibility_rules").Error; err != nil {
+		t.Fatalf("failed to clear pricing_group_visibility_rules: %v", err)
+	}
+	if err := model.DB.Exec("DELETE FROM pricing_group_ratio_overrides").Error; err != nil {
+		t.Fatalf("failed to clear pricing_group_ratio_overrides: %v", err)
+	}
 	if err := model.DB.Exec("DELETE FROM pricing_group_aliases").Error; err != nil {
 		t.Fatalf("failed to clear pricing_group_aliases: %v", err)
 	}
@@ -17,6 +26,15 @@ func resetPricingGroupTestTables(t *testing.T) {
 		t.Fatalf("failed to clear pricing_groups: %v", err)
 	}
 	t.Cleanup(func() {
+		if err := model.DB.Exec("DELETE FROM pricing_group_auto_priorities").Error; err != nil {
+			t.Fatalf("failed to cleanup pricing_group_auto_priorities: %v", err)
+		}
+		if err := model.DB.Exec("DELETE FROM pricing_group_visibility_rules").Error; err != nil {
+			t.Fatalf("failed to cleanup pricing_group_visibility_rules: %v", err)
+		}
+		if err := model.DB.Exec("DELETE FROM pricing_group_ratio_overrides").Error; err != nil {
+			t.Fatalf("failed to cleanup pricing_group_ratio_overrides: %v", err)
+		}
 		if err := model.DB.Exec("DELETE FROM pricing_group_aliases").Error; err != nil {
 			t.Fatalf("failed to cleanup pricing_group_aliases: %v", err)
 		}
@@ -181,5 +199,39 @@ func TestBuildPricingGroupConsistencyReportIncludesAutoGroups(t *testing.T) {
 	}
 	if _, ok := reported["auto_groups|legacy-default"]; ok {
 		t.Fatalf("expected alias-backed auto group to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
+}
+
+func TestGetUserSelectableGroupsForUserUsesCanonicalPricingGroupsBeforeLegacyFallback(t *testing.T) {
+	resetPricingGroupTestTables(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"legacy-only":"旧分组"}`,
+		`{}`,
+		`{"legacy-only":1}`,
+	)
+	withPricingGroupAutoGroups(t, `["legacy-only"]`)
+
+	if err := model.SeedPricingGroupsFromLegacyOptions(
+		`{"default":1,"premium":1}`,
+		`{"premium":"Premium"}`,
+		`{}`,
+		`["premium"]`,
+		`{}`,
+	); err != nil {
+		t.Fatalf("failed to seed canonical pricing groups: %v", err)
+	}
+
+	groups := GetUserSelectableGroupsForUser(0, "default")
+	if got := groups["premium"]; got != "Premium" {
+		t.Fatalf("expected canonical premium selectable group, got %q from %#v", got, groups)
+	}
+	if _, ok := groups["legacy-only"]; ok {
+		t.Fatalf("expected stale legacy selectable group to be ignored once canonical data exists, got %#v", groups)
+	}
+
+	autoGroups := GetUserAutoGroupForUser(0, "default")
+	if len(autoGroups) != 1 || autoGroups[0] != "premium" {
+		t.Fatalf("expected canonical auto groups [premium], got %#v", autoGroups)
 	}
 }

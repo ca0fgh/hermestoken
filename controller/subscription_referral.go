@@ -7,7 +7,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -327,8 +326,11 @@ func isValidSubscriptionReferralGroup(group string) bool {
 	if trimmedGroup == "" {
 		return false
 	}
-	if _, ok := ratio_setting.GetGroupRatioCopy()[trimmedGroup]; ok {
-		return true
+	groupRatios, err := model.LoadEffectivePricingGroupRatios()
+	if err == nil {
+		if _, ok := groupRatios[trimmedGroup]; ok {
+			return true
+		}
 	}
 	return model.IsSubscriptionReferralPlanBackedGroup(trimmedGroup)
 }
