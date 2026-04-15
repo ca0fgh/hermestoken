@@ -367,6 +367,7 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 type CreemCheckoutRequest struct {
 	ProductId string `json:"product_id"`
 	RequestId string `json:"request_id"`
+	Units     int    `json:"units,omitempty"`
 	Customer  struct {
 		Email string `json:"email"`
 	} `json:"customer"`
@@ -379,8 +380,15 @@ type CreemCheckoutResponse struct {
 }
 
 func genCreemLink(referenceId string, product *CreemProduct, email string, username string) (string, error) {
+	return genCreemLinkWithUnits(referenceId, product, email, username, 1)
+}
+
+func genCreemLinkWithUnits(referenceId string, product *CreemProduct, email string, username string, units int) (string, error) {
 	if setting.CreemApiKey == "" {
 		return "", fmt.Errorf("未配置Creem API密钥")
+	}
+	if units <= 0 {
+		units = 1
 	}
 
 	// 根据测试模式选择 API 端点
@@ -394,6 +402,7 @@ func genCreemLink(referenceId string, product *CreemProduct, email string, usern
 	requestData := CreemCheckoutRequest{
 		ProductId: product.ProductId,
 		RequestId: referenceId, // 这个作为订单ID传递给Creem
+		Units:     units,
 		Customer: struct {
 			Email string `json:"email"`
 		}{

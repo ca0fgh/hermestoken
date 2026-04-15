@@ -220,6 +220,7 @@ func TestCreatePendingSubscriptionOrderCreatesOrder(t *testing.T) {
 	lockedPlan, err := createPendingSubscriptionOrder(
 		1,
 		plan.Id,
+		1,
 		"trade-create-order",
 		"epay",
 		func(currentPlan *model.SubscriptionPlan) error {
@@ -255,6 +256,7 @@ func TestCreatePendingSubscriptionOrderRejectsDisabledPlan(t *testing.T) {
 	_, err := createPendingSubscriptionOrder(
 		1,
 		plan.Id,
+		1,
 		"trade-disabled-order",
 		"epay",
 		func(currentPlan *model.SubscriptionPlan) error {
@@ -287,6 +289,7 @@ func TestCreatePendingSubscriptionOrderReservesStock(t *testing.T) {
 	_, err := createPendingSubscriptionOrder(
 		1,
 		plan.Id,
+		1,
 		"trade-stock-lock",
 		"epay",
 		func(currentPlan *model.SubscriptionPlan) error {
@@ -330,6 +333,7 @@ func TestCreatePendingSubscriptionOrderRejectsSoldOutPlan(t *testing.T) {
 	_, err := createPendingSubscriptionOrder(
 		1,
 		plan.Id,
+		1,
 		"trade-stock-sold-out",
 		"epay",
 		func(currentPlan *model.SubscriptionPlan) error {
@@ -338,6 +342,56 @@ func TestCreatePendingSubscriptionOrderRejectsSoldOutPlan(t *testing.T) {
 	)
 	if !errors.Is(err, model.ErrSubscriptionPlanOutOfStock) {
 		t.Fatalf("expected ErrSubscriptionPlanOutOfStock, got %v", err)
+	}
+}
+
+func TestCreatePendingSubscriptionOrderRejectsQuantityBeyondRemainingUserLimit(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "limited-checkout-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("max_purchase_per_user", 2).Error; err != nil {
+		t.Fatalf("failed to set max_purchase_per_user: %v", err)
+	}
+	existingSubscription := &model.UserSubscription{
+		UserId:      1,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		StartTime:   1,
+		EndTime:     9999999999,
+		Status:      "active",
+		Source:      "order",
+	}
+	if err := db.Create(existingSubscription).Error; err != nil {
+		t.Fatalf("failed to create existing subscription: %v", err)
+	}
+
+	_, err := createPendingSubscriptionOrder(
+		1,
+		plan.Id,
+		2,
+		"trade-user-limit-overflow",
+		"epay",
+		func(currentPlan *model.SubscriptionPlan) error {
+			return nil
+		},
+	)
+	if !errors.Is(err, errSubscriptionPurchaseLimitReached) {
+		t.Fatalf("expected errSubscriptionPurchaseLimitReached, got %v", err)
+	}
+
+	var orderCount int64
+	if err := db.Model(&model.SubscriptionOrder{}).Where("trade_no = ?", "trade-user-limit-overflow").Count(&orderCount).Error; err != nil {
+		t.Fatalf("failed to count created orders: %v", err)
+	}
+	if orderCount != 0 {
+		t.Fatalf("expected no order for quantity beyond user limit, found %d", orderCount)
+	}
+}
+
+func TestGetSubscriptionOrderTotalRoundsToTwoDecimals(t *testing.T) {
+	total := getSubscriptionOrderTotal(10.015, 3)
+
+	if total != 30.05 {
+		t.Fatalf("expected rounded total 30.05, got %.6f", total)
 	}
 }
 

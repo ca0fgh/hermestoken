@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -15,12 +16,10 @@ import (
 	"github.com/thanhpk/randstr"
 )
 
-type SubscriptionCreemPayRequest struct {
-	PlanId int `json:"plan_id"`
-}
+var subscriptionCreemCheckoutLinkGenerator = genCreemLinkWithUnits
 
 func SubscriptionRequestCreemPay(c *gin.Context) {
-	var req SubscriptionCreemPayRequest
+	var req dto.SubscriptionPaymentRequest
 
 	// Keep body for debugging consistency (like RequestCreemPay)
 	bodyBytes, err := io.ReadAll(c.Request.Body)
@@ -32,6 +31,12 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	c.Request.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
+		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+
+	quantity, err := req.GetQuantity()
+	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
@@ -58,6 +63,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 	plan, err := createPendingSubscriptionOrder(
 		userId,
 		req.PlanId,
+		quantity,
 		referenceId,
 		PaymentMethodCreem,
 		func(plan *model.SubscriptionPlan) error {
@@ -93,7 +99,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		Quota:     0,
 	}
 
-	checkoutUrl, err := genCreemLink(referenceId, product, user.Email, user.Username)
+	checkoutUrl, err := subscriptionCreemCheckoutLinkGenerator(referenceId, product, user.Email, user.Username, quantity)
 	if err != nil {
 		_ = model.ExpireSubscriptionOrder(referenceId)
 		log.Printf("获取Creem支付链接失败: %v", err)

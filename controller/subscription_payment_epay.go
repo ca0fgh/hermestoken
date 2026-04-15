@@ -9,6 +9,7 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -17,14 +18,20 @@ import (
 	"github.com/samber/lo"
 )
 
-type SubscriptionEpayPayRequest struct {
-	PlanId        int    `json:"plan_id"`
-	PaymentMethod string `json:"payment_method"`
+var subscriptionEpayClientProvider = GetEpayClient
+var subscriptionEpayPurchase = func(client *epay.Client, args *epay.PurchaseArgs) (string, map[string]string, error) {
+	return client.Purchase(args)
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
-	var req SubscriptionEpayPayRequest
+	var req dto.SubscriptionEpayPaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	quantity, err := req.GetQuantity()
+	if err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
@@ -50,7 +57,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
 
-	client := GetEpayClient()
+	client := subscriptionEpayClientProvider()
 	if client == nil {
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
@@ -59,6 +66,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	plan, err := createPendingSubscriptionOrder(
 		userId,
 		req.PlanId,
+		quantity,
 		tradeNo,
 		req.PaymentMethod,
 		func(plan *model.SubscriptionPlan) error {
@@ -75,11 +83,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	uri, params, err := client.Purchase(&epay.PurchaseArgs{
+	total := getSubscriptionOrderTotal(plan.PriceAmount, quantity)
+	uri, params, err := subscriptionEpayPurchase(client, &epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(total, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,

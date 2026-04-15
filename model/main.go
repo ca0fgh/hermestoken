@@ -307,6 +307,9 @@ func migrateDB() error {
 		if err := ensureSubscriptionOrderStockReservedSQLite(); err != nil {
 			return err
 		}
+		if err := ensureSubscriptionOrderQuantitySQLite(); err != nil {
+			return err
+		}
 	} else {
 		if err := DB.AutoMigrate(&SubscriptionPlan{}); err != nil {
 			return err
@@ -390,6 +393,9 @@ func migrateDBFast() error {
 			return err
 		}
 		if err := ensureSubscriptionOrderStockReservedSQLite(); err != nil {
+			return err
+		}
+		if err := ensureSubscriptionOrderQuantitySQLite(); err != nil {
 			return err
 		}
 	} else {
@@ -626,6 +632,16 @@ func ensureSubscriptionOrderStockReservedSQLite() error {
 		return nil
 	}
 	return DB.Migrator().AddColumn(&SubscriptionOrder{}, "StockReserved")
+}
+
+func ensureSubscriptionOrderQuantitySQLite() error {
+	if !common.UsingSQLite {
+		return nil
+	}
+	if DB.Migrator().HasColumn(&SubscriptionOrder{}, "Quantity") {
+		return nil
+	}
+	return DB.Migrator().AddColumn(&SubscriptionOrder{}, "Quantity")
 }
 
 // migrateTokenModelLimitsToText migrates model_limits column from varchar(1024) to text

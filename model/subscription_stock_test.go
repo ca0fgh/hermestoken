@@ -243,6 +243,54 @@ func TestCompleteSubscriptionOrderMovesReservedStockToSold(t *testing.T) {
 	}
 }
 
+func TestCompleteSubscriptionOrderWithQuantityCreatesIndependentSubscriptions(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	user := seedReferralUser(t, db, "stock-complete-quantity-user", 0, dto.UserSetting{})
+	plan := seedReferralPlan(t, db, 18)
+	order := seedPendingReferralOrder(t, db, user.Id, plan.Id, "trade-stock-complete-quantity", 54)
+
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  8,
+		"stock_locked": 3,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+	if err := db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]interface{}{
+		"stock_reserved": 3,
+		"quantity":       3,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed order quantity and stock_reserved: %v", err)
+	}
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder() error = %v", err)
+	}
+
+	var subscriptions []UserSubscription
+	if err := db.Where("user_id = ? AND plan_id = ?", user.Id, plan.Id).Order("id asc").Find(&subscriptions).Error; err != nil {
+		t.Fatalf("failed to load created subscriptions: %v", err)
+	}
+	if len(subscriptions) != 3 {
+		t.Fatalf("expected 3 independent subscriptions, got %d", len(subscriptions))
+	}
+	for i, subscription := range subscriptions {
+		if subscription.Id == 0 {
+			t.Fatalf("expected persisted subscription at index %d", i)
+		}
+		if subscription.Status != "active" {
+			t.Fatalf("expected active subscription at index %d, got %s", i, subscription.Status)
+		}
+	}
+
+	var afterPlan SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&afterPlan).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if afterPlan.StockLocked != 0 || afterPlan.StockSold != 3 {
+		t.Fatalf("expected locked=0 sold=3, got locked=%d sold=%d", afterPlan.StockLocked, afterPlan.StockSold)
+	}
+}
+
 func TestAdminBindSubscriptionConsumesStockDirectly(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	user := seedReferralUser(t, db, "stock-admin-bind-user", 0, dto.UserSetting{})

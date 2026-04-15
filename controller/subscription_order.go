@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/model"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -13,10 +14,15 @@ var errSubscriptionPurchaseLimitReached = errors.New("已达到该套餐购买�
 func createPendingSubscriptionOrder(
 	userId int,
 	planId int,
+	quantity int,
 	tradeNo string,
 	paymentMethod string,
 	validate func(plan *model.SubscriptionPlan) error,
 ) (*model.SubscriptionPlan, error) {
+	if quantity <= 0 {
+		return nil, errors.New("invalid quantity")
+	}
+
 	var lockedPlan model.SubscriptionPlan
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
@@ -39,23 +45,24 @@ func createPendingSubscriptionOrder(
 				Count(&count).Error; err != nil {
 				return err
 			}
-			if count >= int64(lockedPlan.MaxPurchasePerUser) {
+			if count+int64(quantity) > int64(lockedPlan.MaxPurchasePerUser) {
 				return errSubscriptionPurchaseLimitReached
 			}
 		}
-		if err := model.ReserveSubscriptionPlanStockForPendingOrderTx(tx, &lockedPlan); err != nil {
+		if err := model.ReserveSubscriptionPlanStockForPendingOrderTx(tx, &lockedPlan, quantity); err != nil {
 			return err
 		}
 
 		stockReserved := 0
 		if lockedPlan.HasStockLimit() {
-			stockReserved = 1
+			stockReserved = quantity
 		}
 
 		order := &model.SubscriptionOrder{
 			UserId:        userId,
 			PlanId:        lockedPlan.Id,
-			Money:         lockedPlan.PriceAmount,
+			Money:         getSubscriptionOrderTotal(lockedPlan.PriceAmount, quantity),
+			Quantity:      quantity,
 			TradeNo:       tradeNo,
 			PaymentMethod: paymentMethod,
 			CreateTime:    time.Now().Unix(),
@@ -73,4 +80,14 @@ func createPendingSubscriptionOrder(
 	}
 
 	return &lockedPlan, nil
+}
+
+func getSubscriptionOrderTotal(unitPrice float64, quantity int) float64 {
+	if quantity <= 0 {
+		return 0
+	}
+	return decimal.NewFromFloat(unitPrice).
+		Mul(decimal.NewFromInt(int64(quantity))).
+		Round(2).
+		InexactFloat64()
 }

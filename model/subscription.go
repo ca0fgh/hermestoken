@@ -194,8 +194,8 @@ type SubscriptionPlan struct {
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
-	CreatedAt int64 `json:"created_at" gorm:"bigint"`
-	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+	CreatedAt int64          `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64          `json:"updated_at" gorm:"bigint"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -213,10 +213,11 @@ func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
 
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
-	Id     int     `json:"id"`
-	UserId int     `json:"user_id" gorm:"index"`
-	PlanId int     `json:"plan_id" gorm:"index"`
-	Money  float64 `json:"money"`
+	Id       int     `json:"id"`
+	UserId   int     `json:"user_id" gorm:"index"`
+	PlanId   int     `json:"plan_id" gorm:"index"`
+	Money    float64 `json:"money"`
+	Quantity int     `json:"quantity" gorm:"type:int;not null;default:1"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -386,8 +387,8 @@ func consumeSubscriptionPlanStockDirectTx(tx *gorm.DB, plan *SubscriptionPlan, a
 	return nil
 }
 
-func ReserveSubscriptionPlanStockForPendingOrderTx(tx *gorm.DB, plan *SubscriptionPlan) error {
-	return reserveSubscriptionPlanStockTx(tx, plan, 1)
+func ReserveSubscriptionPlanStockForPendingOrderTx(tx *gorm.DB, plan *SubscriptionPlan, quantity int) error {
+	return reserveSubscriptionPlanStockTx(tx, plan, quantity)
 }
 
 // User subscription instance
@@ -751,9 +752,15 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 			return err
 		}
 		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
-		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
-		if err != nil {
-			return err
+		orderQuantity := order.Quantity
+		if orderQuantity <= 0 {
+			orderQuantity = 1
+		}
+		for i := 0; i < orderQuantity; i++ {
+			_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+			if err != nil {
+				return err
+			}
 		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err

@@ -26,6 +26,7 @@ import {
   Button,
   Select,
   Divider,
+  InputNumber,
   Tooltip,
 } from '@douyinfe/semi-ui';
 import { Crown, CalendarClock, Package } from 'lucide-react';
@@ -52,6 +53,8 @@ const SubscriptionPurchaseModal = ({
   enableOnlineTopUp = false,
   enableStripeTopUp = false,
   enableCreemTopUp = false,
+  purchaseQuantity = 1,
+  setPurchaseQuantity,
   purchaseLimitInfo = null,
   onPayStripe,
   onPayCreem,
@@ -61,10 +64,9 @@ const SubscriptionPurchaseModal = ({
   const totalAmount = Number(plan?.total_amount || 0);
   const { symbol, rate } = getCurrencyConfig();
   const price = plan ? Number(plan.price_amount || 0) : 0;
-  const convertedPrice = price * rate;
-  const displayPrice = convertedPrice.toFixed(
-    Number.isInteger(convertedPrice) ? 0 : 2,
-  );
+  const quantity = Math.max(0, Math.floor(Number(purchaseQuantity || 0)));
+  const convertedTotalPrice = price * quantity * rate;
+  const displayPrice = convertedTotalPrice.toFixed(2);
   // 只有当管理员开启支付网关 AND 套餐配置了对应的支付ID时才显示
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
@@ -72,11 +74,25 @@ const SubscriptionPurchaseModal = ({
   const hasAnyPayment = hasStripe || hasCreem || hasEpay;
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
+  const remainingPurchaseLimit =
+    purchaseLimit > 0
+      ? Math.max(0, purchaseLimit - purchaseCount)
+      : Number.POSITIVE_INFINITY;
   const purchaseLimitReached =
     purchaseLimit > 0 && purchaseCount >= purchaseLimit;
   const stockTotal = Number(plan?.stock_total || 0);
   const stockAvailable = Number(plan?.stock_available || 0);
+  const stockPurchaseLimit =
+    stockTotal > 0 ? Math.max(0, stockAvailable) : Number.POSITIVE_INFINITY;
+  const availablePurchaseQuantity = Math.min(
+    remainingPurchaseLimit,
+    stockPurchaseLimit,
+  );
   const soldOut = stockTotal > 0 && stockAvailable <= 0;
+  const purchaseQuantityExceeded = quantity > availablePurchaseQuantity;
+  const purchaseQuantityInvalid = quantity < 1 || purchaseQuantityExceeded;
+  const paymentDisabled =
+    purchaseLimitReached || soldOut || purchaseQuantityInvalid;
 
   return (
     <Modal
@@ -169,6 +185,36 @@ const SubscriptionPurchaseModal = ({
                   </Text>
                 </div>
               )}
+              <div className='space-y-2'>
+                <div className='flex justify-between items-center gap-3'>
+                  <Text strong className='text-slate-700 dark:text-slate-200'>
+                    {t('购买数量')}：
+                  </Text>
+                  <InputNumber
+                    min={1}
+                    step={1}
+                    precision={0}
+                    value={purchaseQuantity}
+                    onChange={(value) => {
+                      const normalizedValue = Math.floor(Number(value || 0));
+                      setPurchaseQuantity?.(
+                        Number.isFinite(normalizedValue) ? normalizedValue : 0,
+                      );
+                    }}
+                    disabled={purchaseLimitReached || soldOut}
+                    className='w-32'
+                  />
+                </div>
+                {Number.isFinite(availablePurchaseQuantity) &&
+                  availablePurchaseQuantity > 0 && (
+                    <Text
+                      size='small'
+                      type={purchaseQuantityExceeded ? 'danger' : 'tertiary'}
+                    >
+                      {t('当前最多可购买')} {availablePurchaseQuantity} {t('份')}
+                    </Text>
+                  )}
+              </div>
               <Divider margin={8} />
               <div className='flex justify-between items-center'>
                 <Text strong className='text-slate-700 dark:text-slate-200'>
@@ -201,6 +247,19 @@ const SubscriptionPurchaseModal = ({
             />
           )}
 
+          {!soldOut &&
+            !purchaseLimitReached &&
+            purchaseQuantityExceeded &&
+            Number.isFinite(availablePurchaseQuantity) &&
+            availablePurchaseQuantity > 0 && (
+              <Banner
+                type='warning'
+                description={`${t('当前最多可购买')} ${availablePurchaseQuantity} ${t('份')}`}
+                className='!rounded-xl'
+                closeIcon={null}
+              />
+            )}
+
           {hasAnyPayment ? (
             <div className='space-y-3'>
               <Text size='small' type='tertiary'>
@@ -217,7 +276,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<SiStripe size={14} color='#635BFF' />}
                       onClick={onPayStripe}
                       loading={paying}
-                      disabled={purchaseLimitReached || soldOut}
+                      disabled={paymentDisabled}
                     >
                       Stripe
                     </Button>
@@ -229,7 +288,7 @@ const SubscriptionPurchaseModal = ({
                       icon={<IconCreditCard />}
                       onClick={onPayCreem}
                       loading={paying}
-                      disabled={purchaseLimitReached || soldOut}
+                      disabled={paymentDisabled}
                     >
                       Creem
                     </Button>
@@ -257,9 +316,7 @@ const SubscriptionPurchaseModal = ({
                     type='primary'
                     onClick={onPayEpay}
                     loading={paying}
-                    disabled={
-                      !selectedEpayMethod || purchaseLimitReached || soldOut
-                    }
+                    disabled={!selectedEpayMethod || paymentDisabled}
                   >
                     {t('支付')}
                   </Button>

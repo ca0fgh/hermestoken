@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -17,13 +18,17 @@ import (
 	"github.com/thanhpk/randstr"
 )
 
-type SubscriptionStripePayRequest struct {
-	PlanId int `json:"plan_id"`
-}
+var subscriptionStripeCheckoutLinkGenerator = genStripeSubscriptionLink
 
 func SubscriptionRequestStripePay(c *gin.Context) {
-	var req SubscriptionStripePayRequest
+	var req dto.SubscriptionPaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	quantity, err := req.GetQuantity()
+	if err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
@@ -54,6 +59,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	plan, err := createPendingSubscriptionOrder(
 		userId,
 		req.PlanId,
+		quantity,
 		referenceId,
 		PaymentMethodStripe,
 		func(plan *model.SubscriptionPlan) error {
@@ -71,7 +77,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 
-	payLink, err := genStripeSubscriptionLink(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
+	payLink, err := subscriptionStripeCheckoutLinkGenerator(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId, int64(quantity))
 	if err != nil {
 		_ = model.ExpireSubscriptionOrder(referenceId)
 		log.Println("获取Stripe Checkout支付链接失败", err)
@@ -87,8 +93,11 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	})
 }
 
-func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string) (string, error) {
+func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string, quantity int64) (string, error) {
 	stripe.Key = setting.StripeApiSecret
+	if quantity <= 0 {
+		quantity = 1
+	}
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
@@ -97,7 +106,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceId),
-				Quantity: stripe.Int64(1),
+				Quantity: stripe.Int64(quantity),
 			},
 		},
 		Mode: stripe.String(string(stripe.CheckoutSessionModeSubscription)),

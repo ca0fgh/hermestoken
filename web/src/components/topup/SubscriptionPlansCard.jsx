@@ -82,6 +82,7 @@ const SubscriptionPlansCard = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [purchaseQuantity, setPurchaseQuantity] = useState(1);
   const [paying, setPaying] = useState(false);
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -90,6 +91,7 @@ const SubscriptionPlansCard = ({
 
   const openBuy = (p) => {
     setSelectedPlan(p);
+    setPurchaseQuantity(1);
     setSelectedEpayMethod(epayMethods?.[0]?.type || '');
     setOpen(true);
   };
@@ -97,7 +99,13 @@ const SubscriptionPlansCard = ({
   const closeBuy = () => {
     setOpen(false);
     setSelectedPlan(null);
+    setPurchaseQuantity(1);
     setPaying(false);
+  };
+
+  const getPurchaseQuantity = () => {
+    const normalizedQuantity = Math.floor(Number(purchaseQuantity || 0));
+    return Number.isFinite(normalizedQuantity) ? normalizedQuantity : 0;
   };
 
   const handleRefresh = async () => {
@@ -114,10 +122,16 @@ const SubscriptionPlansCard = ({
       showError(t('该套餐未配置 Stripe'));
       return;
     }
+    const purchaseCount = getPurchaseQuantity();
+    if (purchaseCount < 1) {
+      showError(t('购买数量需至少为 1'));
+      return;
+    }
     setPaying(true);
     try {
       const res = await API.post('/api/subscription/stripe/pay', {
         plan_id: selectedPlan.plan.id,
+        quantity: purchaseCount,
       });
       if (res.data?.message === 'success') {
         window.open(res.data.data?.pay_link, '_blank');
@@ -142,10 +156,16 @@ const SubscriptionPlansCard = ({
       showError(t('该套餐未配置 Creem'));
       return;
     }
+    const purchaseCount = getPurchaseQuantity();
+    if (purchaseCount < 1) {
+      showError(t('购买数量需至少为 1'));
+      return;
+    }
     setPaying(true);
     try {
       const res = await API.post('/api/subscription/creem/pay', {
         plan_id: selectedPlan.plan.id,
+        quantity: purchaseCount,
       });
       if (res.data?.message === 'success') {
         window.open(res.data.data?.checkout_url, '_blank');
@@ -170,11 +190,17 @@ const SubscriptionPlansCard = ({
       showError(t('请选择支付方式'));
       return;
     }
+    const purchaseCount = getPurchaseQuantity();
+    if (purchaseCount < 1) {
+      showError(t('购买数量需至少为 1'));
+      return;
+    }
     setPaying(true);
     try {
       const res = await API.post('/api/subscription/epay/pay', {
         plan_id: selectedPlan.plan.id,
         payment_method: selectedEpayMethod,
+        quantity: purchaseCount,
       });
       if (res.data?.message === 'success') {
         submitEpayForm({ url: res.data.url, params: res.data.data });
@@ -676,6 +702,8 @@ const SubscriptionPlansCard = ({
         enableOnlineTopUp={enableOnlineTopUp}
         enableStripeTopUp={enableStripeTopUp}
         enableCreemTopUp={enableCreemTopUp}
+        purchaseQuantity={purchaseQuantity}
+        setPurchaseQuantity={setPurchaseQuantity}
         purchaseLimitInfo={
           selectedPlan?.plan?.id
             ? {
