@@ -59,7 +59,7 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	if err := db.AutoMigrate(&model.Token{}, &model.User{}); err != nil {
+	if err := db.AutoMigrate(&model.Token{}, &model.User{}, &model.PricingGroup{}, &model.PricingGroupAlias{}); err != nil {
 		t.Fatalf("failed to migrate token table: %v", err)
 	}
 
@@ -71,6 +71,25 @@ func setupTokenControllerTestDB(t *testing.T) *gorm.DB {
 	})
 
 	return db
+}
+
+func seedTokenPricingGroup(t *testing.T, db *gorm.DB, groupKey string) model.PricingGroup {
+	t.Helper()
+
+	group := model.PricingGroup{GroupKey: groupKey, DisplayName: groupKey}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatalf("failed to create pricing group %q: %v", groupKey, err)
+	}
+	return group
+}
+
+func seedTokenPricingGroupAlias(t *testing.T, db *gorm.DB, aliasKey string, groupID int) {
+	t.Helper()
+
+	alias := model.PricingGroupAlias{AliasKey: aliasKey, GroupId: groupID, Reason: "test"}
+	if err := db.Create(&alias).Error; err != nil {
+		t.Fatalf("failed to create pricing group alias %q: %v", aliasKey, err)
+	}
 }
 
 func seedUser(t *testing.T, db *gorm.DB, userID int, group string) *model.User {
@@ -310,6 +329,49 @@ func TestAddTokenRejectsBlankGroupWhenUserDefaultGroupIsNotSelectable(t *testing
 	}
 	if !strings.Contains(response.Message, "用户可选分组") {
 		t.Fatalf("expected selectable-group validation message, got %q", response.Message)
+	}
+}
+
+func TestCreateTokenPersistsSelectionModeAndCanonicalGroupKey(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"default":"默认分组"}`, `{}`)
+
+	defaultGroup := seedTokenPricingGroup(t, db, "default")
+	seedTokenPricingGroupAlias(t, db, "legacy-default", defaultGroup.Id)
+
+	body := map[string]any{
+		"name":                 "canonical-fixed-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"selection_mode":       "fixed",
+		"group":                "legacy-default",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token creation to succeed, got message: %s", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "canonical-fixed-token").First(&token).Error; err != nil {
+		t.Fatalf("failed to reload created token: %v", err)
+	}
+	if token.SelectionMode != "fixed" {
+		t.Fatalf("expected selection_mode=fixed, got %q", token.SelectionMode)
+	}
+	if token.GroupKey != "default" {
+		t.Fatalf("expected group_key=default, got %q", token.GroupKey)
+	}
+	if token.Group != "default" {
+		t.Fatalf("expected legacy group column to stay populated with canonical key, got %q", token.Group)
 	}
 }
 

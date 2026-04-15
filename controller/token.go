@@ -45,6 +45,63 @@ func validateTokenGroupSelection(c *gin.Context, userID int, tokenGroup string) 
 	return true
 }
 
+func getRequestedTokenGroupKey(token *model.Token) string {
+	if token == nil {
+		return ""
+	}
+	if groupKey := strings.TrimSpace(token.GroupKey); groupKey != "" {
+		return groupKey
+	}
+	return strings.TrimSpace(token.Group)
+}
+
+func canonicalizeTokenGroupForPersistence(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	resolution, err := service.ResolveCanonicalPricingGroupKey(trimmed)
+	if err == nil && resolution.CanonicalKey != "" {
+		return resolution.CanonicalKey, nil
+	}
+	if err != nil {
+		switch resolution.Source {
+		case service.PricingGroupResolutionSourceUnknown, service.PricingGroupResolutionSourceEmpty:
+			return trimmed, nil
+		default:
+			if strings.Contains(err.Error(), "pricing group store unavailable") {
+				return trimmed, nil
+			}
+			return "", err
+		}
+	}
+	return trimmed, nil
+}
+
+func normalizeTokenSelectionForPersistence(c *gin.Context, userID int, token *model.Token) bool {
+	if token == nil {
+		common.ApiErrorMsg(c, "token is required")
+		return false
+	}
+
+	token.SelectionMode = strings.TrimSpace(token.SelectionMode)
+	requestedGroup := getRequestedTokenGroupKey(token)
+	if !validateTokenGroupSelection(c, userID, requestedGroup) {
+		return false
+	}
+
+	canonicalGroupKey, err := canonicalizeTokenGroupForPersistence(requestedGroup)
+	if err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+
+	token.GroupKey = canonicalGroupKey
+	token.Group = canonicalGroupKey
+	return true
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -233,10 +290,12 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
+		SelectionMode:      token.SelectionMode,
+		GroupKey:           token.GroupKey,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
-	if !validateTokenGroupSelection(c, cleanToken.UserId, cleanToken.Group) {
+	if !normalizeTokenSelectionForPersistence(c, cleanToken.UserId, &cleanToken) {
 		return
 	}
 	err = cleanToken.Insert()
@@ -314,9 +373,11 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
+		cleanToken.SelectionMode = token.SelectionMode
+		cleanToken.GroupKey = token.GroupKey
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
-		if !validateTokenGroupSelection(c, userId, cleanToken.Group) {
+		if !normalizeTokenSelectionForPersistence(c, userId, cleanToken) {
 			return
 		}
 	}
@@ -324,6 +385,18 @@ func UpdateToken(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if statusOnly == "" {
+		err = model.DB.Model(&model.Token{}).
+			Where("id = ? AND user_id = ?", cleanToken.Id, cleanToken.UserId).
+			Updates(map[string]any{
+				"selection_mode": cleanToken.SelectionMode,
+				"group_key":      cleanToken.GroupKey,
+			}).Error
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
