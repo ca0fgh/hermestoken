@@ -54,6 +54,7 @@ import Wenxin from '@lobehub/icons/es/Wenxin';
 import XAI from '@lobehub/icons/es/XAI';
 import Xinference from '@lobehub/icons/es/Xinference';
 import Yi from '@lobehub/icons/es/Yi';
+import ZeroOne from '@lobehub/icons/es/ZeroOne';
 import Zhipu from '@lobehub/icons/es/Zhipu';
 
 import { Layers } from 'lucide-react';
@@ -88,7 +89,7 @@ const lobeIconComponentLoaders = import.meta.glob([
   '../../node_modules/@lobehub/icons/es/*/components/Color.js',
   '../../node_modules/@lobehub/icons/es/*/components/Avatar.js',
   '../../node_modules/@lobehub/icons/es/*/components/Text.js',
-  '!../../node_modules/@lobehub/icons/es/{Ai360,Claude,Cloudflare,Cohere,Coze,DeepSeek,Dify,Doubao,FastGPT,Gemini,Hunyuan,Jina,Jimeng,Kling,Midjourney,Minimax,Mistral,Moonshot,Ollama,OpenAI,OpenRouter,Perplexity,Qwen,Replicate,SiliconCloud,Spark,Suno,Wenxin,XAI,Xinference,Yi,Zhipu}/components/{Mono,Color,Avatar,Text}.js',
+  '!../../node_modules/@lobehub/icons/es/{Ai360,Claude,Cloudflare,Cohere,Coze,DeepSeek,Dify,Doubao,FastGPT,Gemini,Hunyuan,Jina,Jimeng,Kling,Midjourney,Minimax,Mistral,Moonshot,Ollama,OpenAI,OpenRouter,Perplexity,Qwen,Replicate,SiliconCloud,Spark,Suno,Wenxin,XAI,Xinference,Yi,Zhipu,ZeroOne}/components/{Mono,Color,Avatar,Text}.js',
 ]);
 const lobeIconModuleCache = new Map();
 const lobeIconModulePromises = new Map();
@@ -124,6 +125,7 @@ const staticLobeIconRegistry = {
   XAI,
   Xinference,
   Yi,
+  ZeroOne,
   Zhipu,
 };
 

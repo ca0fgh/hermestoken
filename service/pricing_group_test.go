@@ -46,7 +46,13 @@ func resetPricingGroupTestTables(t *testing.T) {
 
 func seedPricingGroup(t *testing.T, groupKey string) model.PricingGroup {
 	t.Helper()
-	group := model.PricingGroup{GroupKey: groupKey, DisplayName: groupKey}
+	group := model.PricingGroup{
+		GroupKey:       groupKey,
+		DisplayName:    groupKey,
+		BillingRatio:   1,
+		UserSelectable: true,
+		Status:         model.PricingGroupStatusActive,
+	}
 	if err := model.DB.Create(&group).Error; err != nil {
 		t.Fatalf("failed to create pricing group %q: %v", groupKey, err)
 	}
