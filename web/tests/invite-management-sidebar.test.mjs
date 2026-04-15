@@ -30,7 +30,7 @@ const adminSidebarSettingsSource = readFileSync(
 test('app entry lazy loads the invite rebate console page on the live route tree', () => {
   assert.match(
     appSource,
-    /const InviteRebate = lazy\(\(\) => import\('\.\/pages\/InviteRebate'\)\);/,
+    /const InviteRebate = lazyWithRetry\(\n  \(\) => import\('\.\/pages\/InviteRebate'\),\n  'invite-rebate-route',\n\);/,
   );
   assert.match(
     appSource,
@@ -63,8 +63,8 @@ test('sidebar renders a standalone invite management group with the rebate item'
     siderBarSource,
     /document\.body\.classList\.remove\('sidebar-collapsed'\)/,
   );
-  assert.match(siderBarSource, /width:\s*'var\(--sidebar-current-width\)'/);
-  assert.doesNotMatch(siderBarSource, /const sidebarWidth = collapsed/);
+  assert.match(siderBarSource, /const sidebarWidth = collapsed\s*\?/);
+  assert.match(siderBarSource, /width:\s*sidebarWidth/);
 });
 
 test('sidebar defaults include the invite section and rebate module', () => {
@@ -75,6 +75,11 @@ test('sidebar defaults include the invite section and rebate module', () => {
 });
 
 test('personal sidebar settings expose the invite section and rebate toggle', () => {
+  assert.match(notificationSettingsSource, /const mergeSidebarModulesWithDefaults =/);
+  assert.match(
+    notificationSettingsSource,
+    /mergedModules\[sectionKey\]\s*=\s*\{\s*\.\.\.\(defaults\[sectionKey\] \|\| \{\}\),\s*\.\.\.sectionValue,\s*\}/s,
+  );
   assert.match(notificationSettingsSource, /key:\s*'invite'/);
   assert.match(notificationSettingsSource, /title:\s*t\('邀请管理'\)/);
   assert.match(notificationSettingsSource, /description:\s*t\('邀请返佣入口显示控制'\)/);
