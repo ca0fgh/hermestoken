@@ -186,7 +186,7 @@ type SubscriptionPlan struct {
 
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup    string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
-	UpgradeGroupKey string `json:"upgrade_group_key" gorm:"type:varchar(64);default:''"`
+	UpgradeGroupKey string `json:"upgrade_group_key" gorm:"type:varchar(64);default:'';index"`
 
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
@@ -411,7 +411,7 @@ type UserSubscription struct {
 
 	UpgradeGroup             string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 	PrevUserGroup            string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
-	UpgradeGroupKeySnapshot  string `json:"upgrade_group_key_snapshot" gorm:"type:varchar(64);default:''"`
+	UpgradeGroupKeySnapshot  string `json:"upgrade_group_key_snapshot" gorm:"type:varchar(64);default:'';index"`
 	UpgradeGroupNameSnapshot string `json:"upgrade_group_name_snapshot" gorm:"type:varchar(128);default:''"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
