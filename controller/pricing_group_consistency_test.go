@@ -193,4 +193,13 @@ func TestGetPricingGroupConsistencyReportIncludesUnknownLegacyReferences(t *test
 	if _, ok := reported["auto_groups|legacy-default"]; ok {
 		t.Fatalf("expected alias-backed auto group to stay resolved, got %#v", report.UnresolvedLegacyReferences)
 	}
+	if _, ok := reported["group_ratio|default"]; ok {
+		t.Fatalf("expected canonical group_ratio value default to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["user_usable_groups|default"]; ok {
+		t.Fatalf("expected canonical user-usable value default to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
+	if _, ok := reported["auto_groups|default"]; ok {
+		t.Fatalf("expected canonical auto group value default to stay resolved, got %#v", report.UnresolvedLegacyReferences)
+	}
 }
