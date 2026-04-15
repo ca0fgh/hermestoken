@@ -7,9 +7,11 @@ from urllib.parse import urlparse
 from launcher_common import (
     LauncherError,
     poll_http_until_healthy,
+    prepare_frontend_dist_for_docker_packaging,
     print_actionable_error,
     remove_legacy_compose_containers,
     require_docker_and_compose,
+    resolve_web_dist_strategy,
     run_command,
 )
 
@@ -76,9 +78,11 @@ def run_stack(
 ) -> None:
     stream = output or sys.stdout
     effective_repo_root = repo_root or REPO_ROOT
+    web_dist_strategy = resolve_web_dist_strategy()
 
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
+    prepare_frontend_dist_for_docker_packaging(output=stream, repo_root=effective_repo_root)
 
     remove_legacy_compose_containers(
         legacy_project_name="hermestoken",
@@ -93,6 +97,7 @@ def run_stack(
         check=True,
         stream_output=True,
         cwd=effective_repo_root,
+        env={"WEB_DIST_STRATEGY": web_dist_strategy},
         stdout_stream=stream,
     )
     stream.write(f"[ok] Production {action_label} containers started\n")

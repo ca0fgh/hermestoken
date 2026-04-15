@@ -38,6 +38,8 @@ DEFAULT_CA_BUNDLE_CANDIDATES = (
     "/etc/pki/tls/certs/ca-bundle.crt",
     "/etc/ssl/ca-bundle.pem",
 )
+DEFAULT_WEB_DIST_STRATEGY = "prebuilt"
+DEFAULT_WEB_BUILD_NODE_OPTIONS = "--max-old-space-size=4096"
 
 
 @dataclass(frozen=True)
@@ -257,6 +259,89 @@ def require_cloudflared() -> str:
         "cloudflared",
         install_hint="Install cloudflared and verify `cloudflared --version` succeeds.",
     )
+
+
+def resolve_web_dist_strategy(*, env: Optional[Mapping[str, str]] = None) -> str:
+    candidate_env = env or os.environ
+    raw_strategy = (candidate_env.get("WEB_DIST_STRATEGY") or "").strip().lower()
+    if not raw_strategy:
+        return DEFAULT_WEB_DIST_STRATEGY
+    if raw_strategy != DEFAULT_WEB_DIST_STRATEGY:
+        raise LauncherError(
+            _build_actionable_message(
+                f"Unsupported WEB_DIST_STRATEGY for launcher scripts: {raw_strategy}.",
+                "Unset WEB_DIST_STRATEGY or set it to `prebuilt`. The launcher scripts forbid Docker-side frontend builds to avoid Docker-side Vite OOM.",
+            )
+        )
+    return raw_strategy
+
+
+def prepare_frontend_dist_for_docker_packaging(
+    *,
+    output: TextIO,
+    repo_root: Path,
+    env: Optional[Mapping[str, str]] = None,
+) -> None:
+    strategy = resolve_web_dist_strategy(env=env)
+    candidate_env = env or os.environ
+
+    require_executable(
+        "bun",
+        install_hint="Install Bun and verify `bun --version` succeeds. These launcher scripts build the frontend on the host so Docker only packages `web/dist` and avoids Docker-side Vite OOM.",
+    )
+
+    version_file = repo_root / "VERSION"
+    if not version_file.is_file():
+        raise LauncherError(
+            _build_actionable_message(
+                f"Missing VERSION file: {version_file}",
+                "Restore the VERSION file and retry.",
+            )
+        )
+
+    web_dir = repo_root / "web"
+    if not web_dir.is_dir():
+        raise LauncherError(
+            _build_actionable_message(
+                f"Missing frontend directory: {web_dir}",
+                "Run the launcher from the repository root.",
+            )
+        )
+
+    version = version_file.read_text(encoding="utf-8").strip()
+    if not version:
+        raise LauncherError(
+            _build_actionable_message(
+                f"VERSION file is empty: {version_file}",
+                "Restore the application version before retrying.",
+            )
+        )
+
+    output.write(f"[info] Building frontend on host before docker packaging (WEB_DIST_STRATEGY={strategy})...\n")
+    run_command(
+        ["bun", "install"],
+        check=True,
+        stream_output=True,
+        cwd=web_dir,
+        stdout_stream=output,
+    )
+
+    build_env = {
+        "DISABLE_ESLINT_PLUGIN": "true",
+        "VITE_REACT_APP_VERSION": version,
+    }
+    if "NODE_OPTIONS" not in candidate_env:
+        build_env["NODE_OPTIONS"] = DEFAULT_WEB_BUILD_NODE_OPTIONS
+
+    run_command(
+        ["bun", "run", "build"],
+        check=True,
+        stream_output=True,
+        cwd=web_dir,
+        env=build_env,
+        stdout_stream=output,
+    )
+    output.write("[ok] Host frontend build ready\n")
 
 
 def remove_legacy_compose_containers(

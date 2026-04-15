@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/hot"
 	"gorm.io/gorm"
 )
@@ -919,26 +920,47 @@ func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 		return []string{}, errors.New("invalid userId")
 	}
 	now := common.GetTimestamp()
-	var rawGroups []string
-	if err := DB.Model(&UserSubscription{}).
-		Distinct("upgrade_group").
-		Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''", userId, "active", now).
-		Pluck("upgrade_group", &rawGroups).Error; err != nil {
+	type subscriptionUpgradeGroupRow struct {
+		SubscriptionUpgradeGroup string
+		PlanUpgradeGroup         string
+	}
+	var rows []subscriptionUpgradeGroupRow
+	if err := DB.Table("user_subscriptions").
+		Select(
+			"user_subscriptions.upgrade_group AS subscription_upgrade_group, subscription_plans.upgrade_group AS plan_upgrade_group",
+		).
+		Joins("LEFT JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
+		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ?", userId, "active", now).
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
 
-	seen := make(map[string]struct{}, len(rawGroups))
-	groups := make([]string, 0, len(rawGroups))
-	for _, group := range rawGroups {
-		trimmed := strings.TrimSpace(group)
-		if trimmed == "" {
+	seen := make(map[string]struct{}, len(rows))
+	groups := make([]string, 0, len(rows))
+	for _, row := range rows {
+		subscriptionGroup := strings.TrimSpace(row.SubscriptionUpgradeGroup)
+		planGroup := strings.TrimSpace(row.PlanUpgradeGroup)
+
+		group := ""
+		switch {
+		case subscriptionGroup != "" && ratio_setting.ContainsGroupRatio(subscriptionGroup):
+			group = subscriptionGroup
+		case planGroup != "" && ratio_setting.ContainsGroupRatio(planGroup):
+			group = planGroup
+		case subscriptionGroup != "":
+			group = subscriptionGroup
+		case planGroup != "":
+			group = planGroup
+		}
+
+		if group == "" {
 			continue
 		}
-		if _, ok := seen[trimmed]; ok {
+		if _, ok := seen[group]; ok {
 			continue
 		}
-		seen[trimmed] = struct{}{}
-		groups = append(groups, trimmed)
+		seen[group] = struct{}{}
+		groups = append(groups, group)
 	}
 	sort.Strings(groups)
 	return groups, nil

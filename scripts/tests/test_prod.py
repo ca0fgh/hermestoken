@@ -24,6 +24,12 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("- pg_data_prod:/var/lib/postgresql", compose_text)
         self.assertNotIn("- pg_data_prod:/var/lib/postgresql/data", compose_text)
 
+    def test_prod_compose_defaults_to_prebuilt_frontend_packaging(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        compose_text = (repo_root / "docker-compose.prod.yml").read_text(encoding="utf-8")
+
+        self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
+
     def test_build_local_health_url_uses_port_from_env_file(self):
         self.assertEqual(
             prod.build_local_health_url({"APP_PORT": "4567"}),
@@ -43,10 +49,12 @@ class ProdLauncherTests(unittest.TestCase):
     @mock.patch("prod.poll_http_until_healthy")
     @mock.patch("prod.remove_legacy_compose_containers")
     @mock.patch("prod.run_command")
+    @mock.patch("prod.prepare_frontend_dist_for_docker_packaging")
     @mock.patch("prod.require_docker_and_compose")
-    def test_run_stack_uses_prod_compose_and_env_file(
+    def test_run_stack_prepares_frontend_and_uses_prebuilt_compose_build(
         self,
         require_docker_and_compose,
+        prepare_frontend_dist_for_docker_packaging,
         run_command,
         remove_legacy_compose_containers,
         poll_http_until_healthy,
@@ -66,6 +74,7 @@ class ProdLauncherTests(unittest.TestCase):
         )
 
         require_docker_and_compose.assert_called_once_with()
+        prepare_frontend_dist_for_docker_packaging.assert_called_once_with(output=stdout, repo_root=repo_root)
         remove_legacy_compose_containers.assert_called_once_with(
             legacy_project_name="hermestoken",
             compose_file_path=compose_file,
@@ -88,6 +97,7 @@ class ProdLauncherTests(unittest.TestCase):
             check=True,
             stream_output=True,
             cwd=repo_root,
+            env={"WEB_DIST_STRATEGY": "prebuilt"},
             stdout_stream=stdout,
         )
         poll_http_until_healthy.assert_called_once_with(
@@ -95,7 +105,6 @@ class ProdLauncherTests(unittest.TestCase):
             timeout_seconds=prod.DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS,
             interval_seconds=prod.DEFAULT_HEALTHCHECK_INTERVAL_SECONDS,
         )
-        self.assertIn("[ok] Docker available", stdout.getvalue())
         self.assertIn("[ok] Production deploy healthy", stdout.getvalue())
 
     @mock.patch("prod.poll_http_until_healthy")

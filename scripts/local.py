@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 from typing import Optional, TextIO
@@ -9,7 +10,9 @@ from launcher_common import (
     poll_http_until_healthy,
     print_actionable_error,
     remove_legacy_compose_containers,
+    prepare_frontend_dist_for_docker_packaging,
     require_docker_and_compose,
+    resolve_web_dist_strategy,
     run_browser_smoke_check,
     run_command,
 )
@@ -54,12 +57,20 @@ def _print_recent_container_status(compose_file_path: Path, *, output: TextIO, r
     output.write("[info] No container status output was returned.\n")
 
 
-def run_local_stack(config: LauncherConfig, *, output: Optional[TextIO] = None, repo_root: Optional[Path] = None) -> None:
+def run_local_stack(
+    config: LauncherConfig,
+    *,
+    output: Optional[TextIO] = None,
+    repo_root: Optional[Path] = None,
+    action_label: str = "deploy",
+) -> None:
     stream = output or sys.stdout
     effective_repo_root = repo_root or REPO_ROOT
     compose_file_path = _compose_file_path(config.compose_file, repo_root=effective_repo_root)
+    web_dist_strategy = resolve_web_dist_strategy()
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
+    prepare_frontend_dist_for_docker_packaging(output=stream, repo_root=effective_repo_root)
 
     remove_legacy_compose_containers(
         legacy_project_name="hermestoken",
@@ -74,6 +85,7 @@ def run_local_stack(config: LauncherConfig, *, output: Optional[TextIO] = None, 
         check=True,
         stream_output=True,
         cwd=effective_repo_root,
+        env={"WEB_DIST_STRATEGY": web_dist_strategy},
         stdout_stream=stream,
     )
     stream.write("[ok] Containers started\n")
@@ -88,13 +100,20 @@ def run_local_stack(config: LauncherConfig, *, output: Optional[TextIO] = None, 
     except LauncherError:
         _print_recent_container_status(compose_file_path, output=stream, repo_root=effective_repo_root)
         raise
-    stream.write(f"[ok] Local service healthy: {config.local_url}\n")
+    stream.write(f"[ok] Local {action_label} healthy: {config.local_url}\n")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Deploy or update the local Docker stack for HERMESTOKEN.")
+    parser.add_argument("command", nargs="?", choices=("deploy", "update"), default="deploy")
+    return parser
 
 
 def main() -> int:
     try:
+        args = build_parser().parse_args()
         config = load_launcher_config()
-        run_local_stack(config, output=sys.stdout)
+        run_local_stack(config, output=sys.stdout, action_label=args.command)
         return 0
     except LauncherError as exc:
         print_actionable_error(str(exc))

@@ -1,23 +1,33 @@
 FROM mirror.gcr.io/oven/bun:1 AS builder
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG WEB_DIST_STRATEGY=prebuilt
+ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 WORKDIR /build
 COPY . .
-RUN case "$WEB_DIST_STRATEGY" in \
+RUN set -eux; \
+    build_web_dist() { \
+      cd web; \
+      bun install --registry "${NPM_REGISTRY}"; \
+      DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$(cat /build/VERSION)" bun run build; \
+      mkdir -p /build/dist; \
+      cp -R dist/. /build/dist/; \
+    }; \
+    copy_prebuilt_dist() { \
+      if [ ! -d web/dist ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then \
+        echo "web/dist is empty; use WEB_DIST_STRATEGY=build or provide a prebuilt dist" >&2; \
+        exit 1; \
+      fi; \
+      mkdir -p /build/dist; \
+      cp -R web/dist/. /build/dist/; \
+    }; \
+    case "$WEB_DIST_STRATEGY" in \
       build) \
-        cd web && \
-        bun install --registry ${NPM_REGISTRY} && \
-        DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(cat /build/VERSION) bun run build && \
-        mkdir -p /build/dist && cp -R dist/. /build/dist/; \
+        build_web_dist; \
         ;; \
       prebuilt) \
-        if [ ! -d web/dist ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then \
-          echo "web/dist is empty; use WEB_DIST_STRATEGY=build or provide a prebuilt dist" >&2; \
-          exit 1; \
-        fi && \
-        mkdir -p /build/dist && cp -R web/dist/. /build/dist/; \
+        copy_prebuilt_dist; \
         ;; \
       *) \
         echo "Unsupported WEB_DIST_STRATEGY: $WEB_DIST_STRATEGY" >&2; \

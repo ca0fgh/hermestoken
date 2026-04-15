@@ -1,9 +1,10 @@
 # New-API Docker Compose Configuration
 #
 # Quick Start:
-#   1. docker compose up --build -d
-#   2. Access at http://localhost:3000
-#   3. To force an in-container frontend rebuild, run with WEB_DIST_STRATEGY=build
+#   1. Build the frontend on the host, or run `python3 scripts/local.py` to automate it
+#   2. docker compose up --build -d
+#   3. Access at http://localhost:3000
+#   4. `web/dist` is required because Docker now packages prebuilt frontend assets by default
 #
 # Using MySQL instead of PostgreSQL:
 #   1. Comment out the postgres service and SQL_DSN line 15

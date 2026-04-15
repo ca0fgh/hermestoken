@@ -246,6 +246,60 @@ class LauncherCommonTests(unittest.TestCase):
         )
         run_command.assert_called_once_with(["docker", "compose", "version"], check=True, stream_output=False)
 
+    @mock.patch.dict(os.environ, {}, clear=True)
+    def test_resolve_web_dist_strategy_defaults_to_prebuilt(self):
+        self.assertEqual(launcher_common.resolve_web_dist_strategy(), "prebuilt")
+
+    @mock.patch.dict(os.environ, {"WEB_DIST_STRATEGY": "build"}, clear=True)
+    def test_resolve_web_dist_strategy_rejects_docker_side_frontend_build_modes(self):
+        with self.assertRaises(launcher_common.LauncherError) as context:
+            launcher_common.resolve_web_dist_strategy()
+
+        self.assertIn("avoid Docker-side Vite OOM", str(context.exception))
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("launcher_common.run_command")
+    @mock.patch("launcher_common.require_executable")
+    def test_prepare_frontend_dist_for_docker_packaging_builds_on_host(
+        self,
+        require_executable,
+        run_command,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            web_dir = repo_root / "web"
+            web_dir.mkdir()
+            (repo_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
+            stdout = io.StringIO()
+
+            launcher_common.prepare_frontend_dist_for_docker_packaging(output=stdout, repo_root=repo_root)
+
+        require_executable.assert_called_once_with("bun", install_hint=mock.ANY)
+        run_command.assert_has_calls(
+            [
+                mock.call(
+                    ["bun", "install"],
+                    check=True,
+                    stream_output=True,
+                    cwd=web_dir,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "run", "build"],
+                    check=True,
+                    stream_output=True,
+                    cwd=web_dir,
+                    env={
+                        "DISABLE_ESLINT_PLUGIN": "true",
+                        "NODE_OPTIONS": "--max-old-space-size=4096",
+                        "VITE_REACT_APP_VERSION": "1.2.3",
+                    },
+                    stdout_stream=stdout,
+                ),
+            ]
+        )
+        self.assertIn("WEB_DIST_STRATEGY=prebuilt", stdout.getvalue())
+
     @mock.patch("launcher_common.run_command")
     def test_remove_legacy_compose_containers_removes_only_matching_legacy_project_for_target_compose(self, run_command):
         compose_file_path = Path("/repo/docker-compose.yml")

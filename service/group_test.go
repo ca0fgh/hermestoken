@@ -202,3 +202,53 @@ func TestGetUserSelectableGroupsForUserSkipsExpiredSubscriptionUpgradeGroup(t *t
 		t.Fatalf("expected expired subscription upgrade group to stay hidden")
 	}
 }
+
+func TestGetUserSelectableGroupsForUserFallsBackToPlanUpgradeGroupWhenSnapshotIsInvalid(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{}`,
+		`{"default":1,"standard":1,"cc-opus4.6-福利渠道":1}`,
+	)
+	seedGroupTestUser(t, 104, "default")
+	plan := &model.SubscriptionPlan{
+		Id:            204,
+		Title:         "stale-upgrade-plan",
+		PriceAmount:   9.9,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		UpgradeGroup:  "cc-opus4.6-福利渠道",
+	}
+	if err := model.DB.Create(plan).Error; err != nil {
+		t.Fatalf("failed to seed subscription plan: %v", err)
+	}
+	sub := &model.UserSubscription{
+		UserId:        104,
+		PlanId:        plan.Id,
+		AmountTotal:   100,
+		AmountUsed:    0,
+		StartTime:     time.Now().Unix(),
+		EndTime:       time.Now().Add(time.Hour).Unix(),
+		Status:        "active",
+		Source:        "test",
+		UpgradeGroup:  "cc-oups4.6-福利渠道",
+		PrevUserGroup: "default",
+		CreatedAt:     time.Now().Unix(),
+		UpdatedAt:     time.Now().Unix(),
+	}
+	if err := model.DB.Create(sub).Error; err != nil {
+		t.Fatalf("failed to seed stale subscription snapshot: %v", err)
+	}
+
+	groups := GetUserSelectableGroupsForUser(104, "default")
+
+	if _, ok := groups["cc-opus4.6-福利渠道"]; !ok {
+		t.Fatalf("expected current plan upgrade group to be selectable, got %#v", groups)
+	}
+	if _, ok := groups["cc-oups4.6-福利渠道"]; ok {
+		t.Fatalf("expected stale snapshot group to stay hidden, got %#v", groups)
+	}
+}

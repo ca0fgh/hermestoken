@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}
     image: hermestoken-prod:latest
     container_name: hermestoken-prod
     restart: unless-stopped
