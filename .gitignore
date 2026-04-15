@@ -7,7 +7,7 @@ upload
 *.db
 build
 *.db-journal
-logs
+logs*
 web/dist
 web/dist-map*/
 .env*
