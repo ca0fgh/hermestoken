@@ -185,8 +185,7 @@ type SubscriptionPlan struct {
 	StockAvailable int `json:"stock_available" gorm:"-"`
 
 	// Upgrade user group after purchase (empty = no change)
-	UpgradeGroup    string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
-	UpgradeGroupKey string `json:"upgrade_group_key" gorm:"type:varchar(64);default:'';index"`
+	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
@@ -410,10 +409,8 @@ type UserSubscription struct {
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
 
-	UpgradeGroup             string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
-	PrevUserGroup            string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
-	UpgradeGroupKeySnapshot  string `json:"upgrade_group_key_snapshot" gorm:"type:varchar(64);default:'';index"`
-	UpgradeGroupNameSnapshot string `json:"upgrade_group_name_snapshot" gorm:"type:varchar(128);default:''"`
+	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
@@ -925,62 +922,20 @@ func HasActiveUserSubscription(userId int) (bool, error) {
 	return count > 0, nil
 }
 
-func resolveCanonicalSubscriptionUpgradeGroup(raw string) string {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || DB == nil || !DB.Migrator().HasTable(&PricingGroup{}) {
-		return ""
-	}
-
-	var canonical PricingGroup
-	if err := DB.Where("group_key = ?", trimmed).First(&canonical).Error; err == nil {
-		return strings.TrimSpace(canonical.GroupKey)
-	}
-	if DB.Migrator().HasTable(&PricingGroupAlias{}) {
-		var alias PricingGroupAlias
-		if err := DB.Where("alias_key = ?", trimmed).First(&alias).Error; err == nil {
-			if err := DB.Where("id = ?", alias.GroupId).First(&canonical).Error; err == nil {
-				return strings.TrimSpace(canonical.GroupKey)
-			}
-		}
-	}
-	return ""
-}
-
-func activeSubscriptionUpgradeGroupSelectClause() string {
-	selectParts := []string{
-		"user_subscriptions.upgrade_group AS subscription_upgrade_group",
-		"subscription_plans.upgrade_group AS plan_upgrade_group",
-	}
-
-	migrator := DB.Migrator()
-	if migrator.HasColumn(&UserSubscription{}, "UpgradeGroupKeySnapshot") {
-		selectParts = append(selectParts, "user_subscriptions.upgrade_group_key_snapshot AS subscription_upgrade_group_key")
-	} else {
-		selectParts = append(selectParts, "'' AS subscription_upgrade_group_key")
-	}
-	if migrator.HasColumn(&SubscriptionPlan{}, "UpgradeGroupKey") {
-		selectParts = append(selectParts, "subscription_plans.upgrade_group_key AS plan_upgrade_group_key")
-	} else {
-		selectParts = append(selectParts, "'' AS plan_upgrade_group_key")
-	}
-
-	return strings.Join(selectParts, ", ")
-}
-
 func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	if userId <= 0 {
 		return []string{}, errors.New("invalid userId")
 	}
 	now := common.GetTimestamp()
 	type subscriptionUpgradeGroupRow struct {
-		SubscriptionUpgradeGroup    string
-		SubscriptionUpgradeGroupKey string
-		PlanUpgradeGroup            string
-		PlanUpgradeGroupKey         string
+		SubscriptionUpgradeGroup string
+		PlanUpgradeGroup         string
 	}
 	var rows []subscriptionUpgradeGroupRow
 	if err := DB.Table("user_subscriptions").
-		Select(activeSubscriptionUpgradeGroupSelectClause()).
+		Select(
+			"user_subscriptions.upgrade_group AS subscription_upgrade_group, subscription_plans.upgrade_group AS plan_upgrade_group",
+		).
 		Joins("LEFT JOIN subscription_plans ON subscription_plans.id = user_subscriptions.plan_id").
 		Where("user_subscriptions.user_id = ? AND user_subscriptions.status = ? AND user_subscriptions.end_time > ?", userId, "active", now).
 		Find(&rows).Error; err != nil {
@@ -990,23 +945,11 @@ func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	seen := make(map[string]struct{}, len(rows))
 	groups := make([]string, 0, len(rows))
 	for _, row := range rows {
-		subscriptionGroupKey := strings.TrimSpace(row.SubscriptionUpgradeGroupKey)
 		subscriptionGroup := strings.TrimSpace(row.SubscriptionUpgradeGroup)
-		planGroupKey := strings.TrimSpace(row.PlanUpgradeGroupKey)
 		planGroup := strings.TrimSpace(row.PlanUpgradeGroup)
-		resolvedSubscriptionGroup := resolveCanonicalSubscriptionUpgradeGroup(subscriptionGroup)
-		resolvedPlanGroup := resolveCanonicalSubscriptionUpgradeGroup(planGroup)
 
 		group := ""
 		switch {
-		case subscriptionGroupKey != "":
-			group = subscriptionGroupKey
-		case planGroupKey != "":
-			group = planGroupKey
-		case resolvedSubscriptionGroup != "":
-			group = resolvedSubscriptionGroup
-		case resolvedPlanGroup != "":
-			group = resolvedPlanGroup
 		case subscriptionGroup != "" && ratio_setting.ContainsGroupRatio(subscriptionGroup):
 			group = subscriptionGroup
 		case planGroup != "" && ratio_setting.ContainsGroupRatio(planGroup):
@@ -1045,28 +988,13 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
-func normalizeSubscriptionSummary(sub UserSubscription) UserSubscription {
-	sub.UpgradeGroupKeySnapshot = strings.TrimSpace(sub.UpgradeGroupKeySnapshot)
-	switch {
-	case sub.UpgradeGroupKeySnapshot != "":
-		sub.UpgradeGroup = sub.UpgradeGroupKeySnapshot
-	default:
-		if canonicalGroup := resolveCanonicalSubscriptionUpgradeGroup(sub.UpgradeGroup); canonicalGroup != "" {
-			sub.UpgradeGroup = canonicalGroup
-		} else {
-			sub.UpgradeGroup = strings.TrimSpace(sub.UpgradeGroup)
-		}
-	}
-	return sub
-}
-
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
 	}
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
-		subCopy := normalizeSubscriptionSummary(sub)
+		subCopy := sub
 		result = append(result, SubscriptionSummary{
 			Subscription: &subCopy,
 		})

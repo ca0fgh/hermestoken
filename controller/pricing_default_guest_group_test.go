@@ -18,11 +18,11 @@ import (
 )
 
 type pricingAPIResponse struct {
-	Success     bool               `json:"success"`
-	Data        []model.Pricing    `json:"data"`
-	GroupRatio  map[string]float64 `json:"group_ratio"`
-	UsableGroup map[string]string  `json:"usable_group"`
-	AutoGroups  []string           `json:"auto_groups"`
+	Success    bool              `json:"success"`
+	Data       []model.Pricing   `json:"data"`
+	GroupRatio map[string]float64 `json:"group_ratio"`
+	UsableGroup map[string]string `json:"usable_group"`
+	AutoGroups []string          `json:"auto_groups"`
 }
 
 func setupPricingControllerTestDB(t *testing.T) *gorm.DB {
@@ -112,6 +112,7 @@ func seedPricingAbility(t *testing.T, db *gorm.DB, group string, modelName strin
 	t.Helper()
 
 	channel := &model.Channel{
+		Id:     len(modelName) + len(group) + 1,
 		Name:   group + "-channel-" + modelName,
 		Key:    "test-key",
 		Status: common.ChannelStatusEnabled,
@@ -212,55 +213,5 @@ func TestGetPricingReturnsEmptyListWhenDefaultGroupHasNoModels(t *testing.T) {
 	}
 	if len(response.UsableGroup) != 1 || response.UsableGroup["default"] != "用户分组" {
 		t.Fatalf("expected guest usable groups to still resolve to default, got %#v", response.UsableGroup)
-	}
-}
-
-func TestGetPricingUsesCanonicalPricingGroupsBeforeLegacyFallback(t *testing.T) {
-	db := setupPricingControllerTestDB(t)
-	if err := db.AutoMigrate(
-		&model.PricingGroup{},
-		&model.PricingGroupRatioOverride{},
-		&model.PricingGroupVisibilityRule{},
-		&model.PricingGroupAutoPriority{},
-	); err != nil {
-		t.Fatalf("failed to migrate canonical pricing group tables: %v", err)
-	}
-	withPricingGuestSettings(
-		t,
-		`{"legacy-only":"旧分组"}`,
-		`{"legacy-only":2}`,
-		`{}`,
-	)
-	seedPricingAbility(t, db, "default", "gpt-default")
-	seedPricingAbility(t, db, "premium", "gpt-premium")
-	if err := model.SeedPricingGroupsFromLegacyOptions(
-		`{"default":1,"premium":1}`,
-		`{"premium":"Premium"}`,
-		`{"default":{"premium":0.8}}`,
-		`["premium"]`,
-		`{}`,
-	); err != nil {
-		t.Fatalf("failed to seed canonical pricing groups: %v", err)
-	}
-	model.RefreshPricing()
-
-	ctx, recorder := newGuestPricingContext(t)
-	GetPricing(ctx)
-
-	response := decodePricingResponse(t, recorder)
-	if !response.Success {
-		t.Fatalf("expected success response for canonical guest pricing")
-	}
-	if _, ok := response.UsableGroup["premium"]; !ok {
-		t.Fatalf("expected canonical premium group in usable groups, got %#v", response.UsableGroup)
-	}
-	if _, ok := response.UsableGroup["legacy-only"]; ok {
-		t.Fatalf("expected stale legacy-only group to be ignored, got %#v", response.UsableGroup)
-	}
-	if len(response.GroupRatio) != 2 || response.GroupRatio["default"] != 1 || response.GroupRatio["premium"] != 0.8 {
-		t.Fatalf("expected canonical group ratios for default/premium, got %#v", response.GroupRatio)
-	}
-	if len(response.AutoGroups) != 1 || response.AutoGroups[0] != "premium" {
-		t.Fatalf("expected canonical auto groups [premium], got %#v", response.AutoGroups)
 	}
 }

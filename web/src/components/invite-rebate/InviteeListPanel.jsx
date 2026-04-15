@@ -40,17 +40,23 @@ const InviteeListPanel = ({
   onSearch,
   onSelectInvitee,
   onPageChange,
+  emptyHint,
 }) => {
   const items = Array.isArray(pageData?.items) ? pageData.items : [];
 
   return (
     <Card
-      className='!rounded-2xl border-0 shadow-sm h-full'
+      className='!rounded-2xl border-0 shadow-sm h-full bg-white/95 backdrop-blur'
       title={t('邀请用户')}
-      bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+      bodyStyle={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        minHeight: 640,
+      }}
       loading={loading}
     >
-      <Space style={{ width: '100%' }}>
+      <Space style={{ width: '100%' }} align='start'>
         <Input
           value={keyword}
           showClear
@@ -59,13 +65,13 @@ const InviteeListPanel = ({
           onChange={onKeywordChange}
           onEnterPress={onSearch}
         />
-        <Button type='primary' onClick={onSearch}>
+        <Button type='primary' className='shrink-0' onClick={onSearch}>
           {t('搜索')}
         </Button>
       </Space>
 
       {items.length === 0 ? (
-        <Empty description={t('暂无邀请用户')} />
+        <Empty description={emptyHint || t('暂无邀请用户')} />
       ) : (
         <List
           dataSource={items}
@@ -73,10 +79,10 @@ const InviteeListPanel = ({
             const isActive = invitee.id === selectedInviteeId;
             return (
               <List.Item
-                className={`cursor-pointer rounded-2xl border px-3 py-2 transition ${
+                className={`cursor-pointer rounded-2xl border px-4 py-3 transition ${
                   isActive
-                    ? 'border-emerald-400 bg-emerald-50'
-                    : 'border-transparent bg-gray-50'
+                    ? 'border-emerald-400 bg-emerald-50 shadow-sm'
+                    : 'border-transparent bg-gray-50 hover:border-gray-200 hover:bg-white'
                 }`}
                 onClick={() => onSelectInvitee?.(invitee)}
                 main={
@@ -85,7 +91,9 @@ const InviteeListPanel = ({
                       <Typography.Text strong>
                         {invitee.username || `#${invitee.id}`}
                       </Typography.Text>
-                      <Tag color='light-blue'>{invitee.group || '-'}</Tag>
+                      <Tag color={isActive ? 'green' : 'light-blue'}>
+                        {invitee.group || '-'}
+                      </Tag>
                     </div>
                     <div className='flex items-center justify-between gap-3 text-xs'>
                       <Typography.Text type='tertiary'>
@@ -104,24 +112,26 @@ const InviteeListPanel = ({
         />
       )}
 
-      <Pagination
-        total={Number(pageData?.total || 0)}
-        pageSize={Number(pageData?.page_size || 10)}
-        currentPage={Number(pageData?.page || 1)}
-        pageSizeOpts={[10, 20, 50]}
-        onPageChange={(page) =>
-          onPageChange?.({
-            page,
-            page_size: Number(pageData?.page_size || 10),
-          })
-        }
-        onPageSizeChange={(page_size) =>
-          onPageChange?.({
-            page: 1,
-            page_size,
-          })
-        }
-      />
+      <div className='pt-1'>
+        <Pagination
+          total={Number(pageData?.total || 0)}
+          pageSize={Number(pageData?.page_size || 10)}
+          currentPage={Number(pageData?.page || 1)}
+          pageSizeOpts={[10, 20, 50]}
+          onPageChange={(page) =>
+            onPageChange?.({
+              page,
+              page_size: Number(pageData?.page_size || 10),
+            })
+          }
+          onPageSizeChange={(page_size) =>
+            onPageChange?.({
+              page: 1,
+              page_size,
+            })
+          }
+        />
+      </div>
     </Card>
   );
 };

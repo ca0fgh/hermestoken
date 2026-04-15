@@ -30,7 +30,6 @@ type userSchemaWithoutGroupDefault struct {
 	UsedQuota        int            `gorm:"column:used_quota;type:int;default:0"`
 	RequestCount     int            `gorm:"column:request_count;type:int;default:0"`
 	Group            string         `gorm:"column:group;type:varchar(64);not null"`
-	GroupKey         string         `gorm:"column:group_key;type:varchar(64);default:''"`
 	AffCode          string         `gorm:"column:aff_code;type:text"`
 	AffCount         int            `gorm:"column:aff_count;type:int;default:0"`
 	AffQuota         int            `gorm:"column:aff_quota;type:int;default:0"`

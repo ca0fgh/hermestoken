@@ -265,11 +265,6 @@ func migrateDB() error {
 
 	err := DB.AutoMigrate(
 		&Channel{},
-		&PricingGroup{},
-		&PricingGroupAlias{},
-		&PricingGroupRatioOverride{},
-		&PricingGroupVisibilityRule{},
-		&PricingGroupAutoPriority{},
 		&Token{},
 		&User{},
 		&PasskeyCredential{},
@@ -339,11 +334,6 @@ func migrateDBFast() error {
 		name  string
 	}{
 		{&Channel{}, "Channel"},
-		{&PricingGroup{}, "PricingGroup"},
-		{&PricingGroupAlias{}, "PricingGroupAlias"},
-		{&PricingGroupRatioOverride{}, "PricingGroupRatioOverride"},
-		{&PricingGroupVisibilityRule{}, "PricingGroupVisibilityRule"},
-		{&PricingGroupAutoPriority{}, "PricingGroupAutoPriority"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
 		{&PasskeyCredential{}, "PasskeyCredential"},
@@ -583,7 +573,6 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`stock_locked`" + ` integer DEFAULT 0,
 ` + "`stock_sold`" + ` integer DEFAULT 0,
 ` + "`upgrade_group`" + ` varchar(64) DEFAULT '',
-` + "`upgrade_group_key`" + ` varchar(64) DEFAULT '',
 ` + "`total_amount`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`quota_reset_period`" + ` varchar(16) DEFAULT 'never',
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
@@ -591,9 +580,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
 )`
-		if err := DB.Exec(createSQL).Error; err != nil {
-			return err
-		}
+		return DB.Exec(createSQL).Error
 	}
 	var cols []struct {
 		Name string `gorm:"column:name"`
@@ -622,7 +609,6 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "stock_locked", DDL: "`stock_locked` integer DEFAULT 0"},
 		{Name: "stock_sold", DDL: "`stock_sold` integer DEFAULT 0"},
 		{Name: "upgrade_group", DDL: "`upgrade_group` varchar(64) DEFAULT ''"},
-		{Name: "upgrade_group_key", DDL: "`upgrade_group_key` varchar(64) DEFAULT ''"},
 		{Name: "total_amount", DDL: "`total_amount` bigint NOT NULL DEFAULT 0"},
 		{Name: "quota_reset_period", DDL: "`quota_reset_period` varchar(16) DEFAULT 'never'"},
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
@@ -634,11 +620,6 @@ PRIMARY KEY (` + "`id`" + `)
 			continue
 		}
 		if err := DB.Exec("ALTER TABLE `" + tableName + "` ADD COLUMN " + col.DDL).Error; err != nil {
-			return err
-		}
-	}
-	if !DB.Migrator().HasIndex(&SubscriptionPlan{}, "UpgradeGroupKey") {
-		if err := DB.Migrator().CreateIndex(&SubscriptionPlan{}, "UpgradeGroupKey"); err != nil {
 			return err
 		}
 	}

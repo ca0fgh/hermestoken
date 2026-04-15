@@ -21,7 +21,6 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   API,
-  buildGroupCatalogOptions,
   showError,
   showSuccess,
   renderQuota,
@@ -94,7 +93,7 @@ const EditUserModal = (props) => {
   const fetchGroups = async () => {
     try {
       let res = await API.get(`/api/group/`);
-      setGroupOptions(buildGroupCatalogOptions(res.data.data || []));
+      setGroupOptions(res.data.data.map((g) => ({ label: g, value: g })));
     } catch (e) {
       showError(e.message);
     }

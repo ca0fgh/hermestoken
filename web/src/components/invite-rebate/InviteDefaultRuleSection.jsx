@@ -40,6 +40,11 @@ const InviteDefaultRuleSection = ({
   loading = false,
   onRulesChanged,
 }) => {
+  const getTypeLabel = (type) => {
+    if (type === 'subscription') return t('订阅返佣');
+    return type || t('未知类型');
+  };
+
   const [savingGroup, setSavingGroup] = useState('');
   const [deletingGroup, setDeletingGroup] = useState('');
   const [draftPercentByGroup, setDraftPercentByGroup] = useState({});
@@ -134,19 +139,22 @@ const InviteDefaultRuleSection = ({
                 key={row.id}
                 className='rounded-2xl border border-gray-100 bg-gray-50/60 p-4'
               >
-                <div className='grid grid-cols-1 gap-4 md:grid-cols-4'>
-                  <div>
-                    <Typography.Text type='tertiary' className='block text-xs'>
-                      {t('返佣类型')}
-                    </Typography.Text>
-                    <Typography.Text strong>{t('订阅返佣')}</Typography.Text>
-                  </div>
-                  <div>
-                    <Typography.Text type='tertiary' className='block text-xs'>
-                      {t('分组')}
-                    </Typography.Text>
-                    <Typography.Text strong>{group}</Typography.Text>
-                  </div>
+                <div className='mb-3 flex flex-wrap items-center gap-2'>
+                  <Typography.Text type='tertiary' className='text-xs'>
+                    {t('返佣类型')}
+                  </Typography.Text>
+                  <span className='rounded-full bg-white px-3 py-1 text-sm font-semibold text-gray-900 shadow-sm'>
+                    {getTypeLabel(row.type)}
+                  </span>
+                  <Typography.Text type='tertiary' className='ml-2 text-xs'>
+                    {t('分组')}
+                  </Typography.Text>
+                  <span className='rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700'>
+                    {group}
+                  </span>
+                </div>
+
+                <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                   <div>
                     <Typography.Text type='tertiary' className='block text-xs'>
                       {t('当前默认总返佣率')}

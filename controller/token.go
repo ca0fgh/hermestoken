@@ -45,114 +45,6 @@ func validateTokenGroupSelection(c *gin.Context, userID int, tokenGroup string) 
 	return true
 }
 
-func getRequestedTokenGroupKey(token *model.Token) string {
-	if token == nil {
-		return ""
-	}
-	switch service.NormalizeTokenSelectionMode(token.SelectionMode, token.GroupKey, token.Group) {
-	case "inherit_user_default", "":
-		return ""
-	case "auto":
-		return "auto"
-	case "fixed":
-		if groupKey := strings.TrimSpace(token.GroupKey); groupKey != "" {
-			return groupKey
-		}
-	}
-	return strings.TrimSpace(token.Group)
-}
-
-func canonicalizeTokenGroupForPersistence(raw string) (string, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" {
-		return "", nil
-	}
-
-	resolution, err := service.ResolveCanonicalPricingGroupKey(trimmed)
-	if err == nil && resolution.CanonicalKey != "" {
-		return resolution.CanonicalKey, nil
-	}
-	if err != nil {
-		switch resolution.Source {
-		case service.PricingGroupResolutionSourceUnknown, service.PricingGroupResolutionSourceEmpty:
-			return trimmed, nil
-		default:
-			if strings.Contains(err.Error(), "pricing group store unavailable") {
-				return trimmed, nil
-			}
-			return "", err
-		}
-	}
-	return trimmed, nil
-}
-
-func normalizeTokenSelectionForPersistence(c *gin.Context, userID int, token *model.Token) bool {
-	if token == nil {
-		common.ApiErrorMsg(c, "token is required")
-		return false
-	}
-
-	token.SelectionMode = service.NormalizeTokenSelectionMode(token.SelectionMode, token.GroupKey, token.Group)
-	requestedGroup := getRequestedTokenGroupKey(token)
-	if !validateTokenGroupSelection(c, userID, requestedGroup) {
-		return false
-	}
-
-	canonicalGroupKey, err := canonicalizeTokenGroupForPersistence(requestedGroup)
-	if err != nil {
-		common.ApiError(c, err)
-		return false
-	}
-
-	switch token.SelectionMode {
-	case "", "inherit_user_default":
-		token.SelectionMode = "inherit_user_default"
-		token.GroupKey = ""
-		token.Group = ""
-	case "fixed":
-		if canonicalGroupKey == "" {
-			common.ApiErrorMsg(c, "selection_mode=fixed requires a canonical group")
-			return false
-		}
-		token.GroupKey = canonicalGroupKey
-		token.Group = canonicalGroupKey
-	case "auto":
-		token.GroupKey = ""
-		token.Group = "auto"
-	default:
-		common.ApiErrorMsg(c, "invalid token selection mode")
-		return false
-	}
-	return true
-}
-
-func mergeTokenSelectionFields(existing *model.Token, incoming *model.Token) {
-	if incoming == nil || existing == nil {
-		return
-	}
-
-	if strings.TrimSpace(incoming.SelectionMode) == "" &&
-		strings.TrimSpace(incoming.GroupKey) == "" &&
-		strings.TrimSpace(incoming.Group) == "" {
-		incoming.SelectionMode = existing.SelectionMode
-		incoming.GroupKey = existing.GroupKey
-		incoming.Group = existing.Group
-		return
-	}
-
-	if service.NormalizeTokenSelectionMode(incoming.SelectionMode, incoming.GroupKey, incoming.Group) == "fixed" &&
-		strings.TrimSpace(incoming.GroupKey) == "" &&
-		strings.TrimSpace(incoming.Group) == "" {
-		incoming.SelectionMode = "fixed"
-		if strings.TrimSpace(incoming.GroupKey) == "" {
-			incoming.GroupKey = existing.GroupKey
-		}
-		if strings.TrimSpace(incoming.Group) == "" {
-			incoming.Group = existing.Group
-		}
-	}
-}
-
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -341,12 +233,10 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
-		SelectionMode:      token.SelectionMode,
-		GroupKey:           token.GroupKey,
 		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
-	if !normalizeTokenSelectionForPersistence(c, cleanToken.UserId, &cleanToken) {
+	if !validateTokenGroupSelection(c, cleanToken.UserId, cleanToken.Group) {
 		return
 	}
 	err = cleanToken.Insert()
@@ -417,7 +307,6 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.Status = token.Status
 	} else {
 		// If you add more fields, please also update token.Update()
-		mergeTokenSelectionFields(cleanToken, &token)
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
 		cleanToken.RemainQuota = token.RemainQuota
@@ -425,11 +314,9 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
-		cleanToken.SelectionMode = token.SelectionMode
-		cleanToken.GroupKey = token.GroupKey
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
-		if !normalizeTokenSelectionForPersistence(c, userId, cleanToken) {
+		if !validateTokenGroupSelection(c, userId, cleanToken.Group) {
 			return
 		}
 	}

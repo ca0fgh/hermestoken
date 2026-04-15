@@ -7,7 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -110,21 +110,6 @@ type AdminUpsertSubscriptionPlanRequest struct {
 	Plan model.SubscriptionPlan `json:"plan"`
 }
 
-func resolveSubscriptionPlanUpgradeGroup(rawKey string, rawLegacy string) (string, error) {
-	candidates := []string{strings.TrimSpace(rawKey), strings.TrimSpace(rawLegacy)}
-	for _, candidate := range candidates {
-		if candidate == "" {
-			continue
-		}
-		resolution, err := service.ResolveCanonicalPricingGroupKey(candidate)
-		if err != nil {
-			return "", err
-		}
-		return resolution.CanonicalKey, nil
-	}
-	return "", nil
-}
-
 func AdminCreateSubscriptionPlan(c *gin.Context) {
 	var req AdminUpsertSubscriptionPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -166,17 +151,13 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
-	upgradeGroupKey, err := resolveSubscriptionPlanUpgradeGroup(req.Plan.UpgradeGroupKey, req.Plan.UpgradeGroup)
-	if err != nil {
-		if strings.Contains(err.Error(), "unknown pricing group:") {
+	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
+	if req.Plan.UpgradeGroup != "" {
+		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
 			common.ApiErrorMsg(c, "升级分组不存在")
 			return
 		}
-		common.ApiError(c, err)
-		return
 	}
-	req.Plan.UpgradeGroupKey = upgradeGroupKey
-	req.Plan.UpgradeGroup = upgradeGroupKey
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -184,7 +165,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	}
 	req.Plan.StockLocked = 0
 	req.Plan.StockSold = 0
-	err = model.DB.Create(&req.Plan).Error
+	err := model.DB.Create(&req.Plan).Error
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -239,24 +220,20 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorMsg(c, "总额度不能为负数")
 		return
 	}
-	upgradeGroupKey, err := resolveSubscriptionPlanUpgradeGroup(req.Plan.UpgradeGroupKey, req.Plan.UpgradeGroup)
-	if err != nil {
-		if strings.Contains(err.Error(), "unknown pricing group:") {
+	req.Plan.UpgradeGroup = strings.TrimSpace(req.Plan.UpgradeGroup)
+	if req.Plan.UpgradeGroup != "" {
+		if _, ok := ratio_setting.GetGroupRatioCopy()[req.Plan.UpgradeGroup]; !ok {
 			common.ApiErrorMsg(c, "升级分组不存在")
 			return
 		}
-		common.ApiError(c, err)
-		return
 	}
-	req.Plan.UpgradeGroupKey = upgradeGroupKey
-	req.Plan.UpgradeGroup = upgradeGroupKey
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
 		return
 	}
 
-	err = model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		var current model.SubscriptionPlan
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id).First(&current).Error; err != nil {
 			return err
@@ -284,7 +261,6 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"stock_sold":                 nextSold,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
-			"upgrade_group_key":          req.Plan.UpgradeGroupKey,
 			"quota_reset_period":         req.Plan.QuotaResetPeriod,
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"updated_at":                 common.GetTimestamp(),

@@ -41,7 +41,14 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
     pageSource,
     /useEffect\(\(\) => \{\s*loadInvitees\(\);\s*\}, \[\]\);/s,
   );
-  assert.doesNotMatch(pageSource, /useEffect\(\(\) => \{[\s\S]*?\}, \[queryKeyword\]\);/);
+  assert.match(
+    pageSource,
+    /useEffect\(\(\) => \{\s*loadDefaultRules\(\);\s*\}, \[\]\);/s,
+  );
+  assert.match(
+    pageSource,
+    /useEffect\(\(\) => \{\s*loadInviteeDetail\(selectedInvitee\?\.id\);\s*\}, \[selectedInvitee\?\.id\]\);/s,
+  );
   assert.match(
     pageSource,
     /const handleSearch = \(\) => \{\s*setQueryKeyword\(keyword\);\s*setInviteePage\(\(currentPage\) => \([\s\S]*?page: 1,[\s\S]*?loadInvitees\(\{\s*page: 1,\s*page_size: inviteePage\.page_size,\s*keyword,\s*\}\);\s*\};/s,
@@ -79,6 +86,7 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
 
   assert.match(defaultRuleSource, /t\('默认返佣规则'\)/);
   assert.match(defaultRuleSource, /t\('返佣类型'\)/);
+  assert.match(defaultRuleSource, /getTypeLabel/);
   assert.match(defaultRuleSource, /t\('分组'\)/);
   assert.match(defaultRuleSource, /t\('被邀请人返佣比例'\)/);
   assert.match(
@@ -96,7 +104,9 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(overrideSource, /t\('邀请用户独立返佣'\)/);
   assert.match(overrideSource, /t\('未选择邀请用户'\)/);
   assert.match(overrideSource, /t\('未设置独立返佣时，使用默认规则'\)/);
+  assert.match(overrideSource, /t\('返佣类型'\)/);
   assert.match(overrideSource, /t\('当前默认返佣率'\)/);
+  assert.match(overrideSource, /getTypeLabel/);
   assert.match(
     overrideSource,
     /API\.put\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{invitee\.id\}`,\s*\{/,

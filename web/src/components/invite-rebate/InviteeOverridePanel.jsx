@@ -42,6 +42,11 @@ const InviteeOverridePanel = ({
   loading = false,
   onOverridesChanged,
 }) => {
+  const getTypeLabel = (type) => {
+    if (type === 'subscription') return t('订阅返佣');
+    return type || t('未知类型');
+  };
+
   const [draftPercentByGroup, setDraftPercentByGroup] = useState({});
   const [savingGroup, setSavingGroup] = useState('');
   const [deletingGroup, setDeletingGroup] = useState('');
@@ -124,7 +129,7 @@ const InviteeOverridePanel = ({
   if (!invitee) {
     return (
       <Card
-        className='!rounded-2xl border-0 shadow-sm h-full'
+        className='!rounded-2xl border-0 shadow-sm h-full bg-white/95 backdrop-blur'
         title={t('邀请用户独立返佣')}
       >
         <Empty description={t('未选择邀请用户')} />
@@ -134,12 +139,17 @@ const InviteeOverridePanel = ({
 
   return (
     <Card
-      className='!rounded-2xl border-0 shadow-sm h-full'
+      className='!rounded-2xl border-0 shadow-sm h-full bg-white/95 backdrop-blur'
       title={t('邀请用户独立返佣')}
       loading={loading}
-      bodyStyle={{ display: 'flex', flexDirection: 'column', gap: 16 }}
+      bodyStyle={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        minHeight: 640,
+      }}
     >
-      <div className='rounded-2xl bg-gray-50 p-4'>
+      <div className='rounded-2xl border border-gray-100 bg-gradient-to-br from-gray-50 to-white p-4'>
         <div className='flex items-center justify-between gap-3'>
           <Typography.Title heading={5} style={{ margin: 0 }}>
             {invitee.username || `#${invitee.id}`}
@@ -164,17 +174,26 @@ const InviteeOverridePanel = ({
               percentNumberToRateBps(currentPercent);
 
           return (
-            <div
+              <div
               key={row.id}
               className='rounded-2xl border border-gray-100 bg-white p-4'
             >
-              <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
-                <div>
-                  <Typography.Text type='tertiary' className='block text-xs'>
-                    {t('分组')}
-                  </Typography.Text>
-                  <Typography.Text strong>{group}</Typography.Text>
-                </div>
+              <div className='mb-3 flex flex-wrap items-center gap-2'>
+                <Typography.Text type='tertiary' className='text-xs'>
+                  {t('返佣类型')}
+                </Typography.Text>
+                <span className='rounded-full bg-white px-3 py-1 text-sm font-semibold text-gray-900 shadow-sm'>
+                  {getTypeLabel(row.type)}
+                </span>
+                <Typography.Text type='tertiary' className='ml-2 text-xs'>
+                  {t('分组')}
+                </Typography.Text>
+                <span className='rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700'>
+                  {group}
+                </span>
+              </div>
+
+              <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                 <div>
                   <Typography.Text type='tertiary' className='block text-xs'>
                     {t('当前默认返佣率')}
@@ -204,12 +223,13 @@ const InviteeOverridePanel = ({
                   step={0.01}
                   precision={2}
                   suffix='%'
+                  className='w-full'
                   style={{ width: '100%' }}
                   onChange={(value) => updateDraftPercent(group, value)}
                 />
               </div>
 
-              <Space className='mt-4'>
+              <Space className='mt-4 flex-wrap'>
                 <Button
                   type='primary'
                   loading={savingGroup === group}

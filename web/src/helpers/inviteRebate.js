@@ -73,6 +73,7 @@ export function buildInviteDefaultRuleRows(groups = []) {
     if (!group) {
       return rows;
     }
+    const type = String(groupItem?.type || 'subscription').trim() || 'subscription';
 
     const inputPercent = rateBpsToPercentNumber(
       normalizeRateBps(
@@ -83,8 +84,8 @@ export function buildInviteDefaultRuleRows(groups = []) {
     return [
       ...rows,
       {
-        id: `subscription:${group}`,
-        type: 'subscription',
+        id: `${type}:${group}`,
+        type,
         group,
         inputPercent,
         effectiveTotalRateBps: normalizeRateBps(
@@ -115,6 +116,7 @@ export function buildInviteeOverrideRows(payload = {}) {
   ]);
 
   return groups.map((group) => {
+    const type = 'subscription';
     const defaultInviteeRateBps = normalizeRateBps(
       defaultInviteeRateBpsByGroup[group],
     );
@@ -122,8 +124,8 @@ export function buildInviteeOverrideRows(payload = {}) {
     const hasOverride = overrideInviteeRateBps !== undefined;
 
     return {
-      id: `subscription:${group}`,
-      type: 'subscription',
+      id: `${type}:${group}`,
+      type,
       group,
       inputPercent: rateBpsToPercentNumber(
         hasOverride ? overrideInviteeRateBps : defaultInviteeRateBps,

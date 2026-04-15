@@ -56,10 +56,6 @@ const markdownRendererPath = new URL(
   '../src/components/common/markdown/MarkdownRenderer.jsx',
   import.meta.url,
 );
-const semiRuntimePath = new URL(
-  '../src/components/common/SemiRuntime.jsx',
-  import.meta.url,
-);
 
 test('heavy console routes are lazy loaded to keep the app entry chunk small', async () => {
   const source = await readFile(appPath, 'utf8');
@@ -151,12 +147,6 @@ test('vite build does not group @lobehub icons into one oversized manual chunk',
   assert.doesNotMatch(source, /brand-icons/);
 });
 
-test('SemiRuntime does not import the deprecated non-exported semi.css bundle path', async () => {
-  const source = await readFile(semiRuntimePath, 'utf8');
-
-  assert.doesNotMatch(source, /@douyinfe\/semi-ui\/dist\/css\/semi\.css/);
-});
-
 test('vite build does not carve markdown dependencies into a dedicated startup chunk', async () => {
   const source = await readFile(viteConfigPath, 'utf8');
 
@@ -188,14 +178,13 @@ test('render helper lazy loads lobe icons instead of importing the full icon reg
   assert.match(source, /const staticLobeIconRegistry = \{/);
   assert.match(
     source,
-    /import\.meta\.glob\([\s\S]*\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\*\/components\/Mono\.js[\s\S]*\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\*\/components\/Color\.js[\s\S]*\)/,
+    /import\.meta\.glob\([\s\S]*\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\*\/index\.js[\s\S]*\)/,
   );
   assert.match(
     source,
-    /!\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\{Ai360,Claude[\s\S]*components\/\{Mono,Color,Avatar,Text\}\.js/,
+    /!\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\{Ai360,Claude/,
   );
   assert.match(source, /function DynamicLobeHubIcon\(/);
-  assert.doesNotMatch(source, /@lobehub\/icons\/es\/\*\/index\.js/);
 });
 
 test('dashboard route lazy loads the search modal instead of bundling it into the main dashboard chunk', async () => {

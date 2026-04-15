@@ -85,18 +85,7 @@ export function normalizeGroupNames(groups = []) {
   }
 
   return Array.from(
-    new Set(
-      groups
-        .map((group) => {
-          if (typeof group === 'string') {
-            return String(group || '').trim();
-          }
-          return String(
-            group?.group_key ?? group?.group ?? group?.value ?? '',
-          ).trim();
-        })
-        .filter(Boolean),
-    ),
+    new Set(groups.map((group) => String(group || '').trim()).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
 }
 

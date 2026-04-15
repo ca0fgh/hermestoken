@@ -204,13 +204,13 @@ const InviteRebatePage = () => {
   };
 
   return (
-    <div className='mt-[60px] px-2 pb-6'>
-      <div className='mx-auto flex max-w-7xl flex-col gap-4'>
-        <div>
-          <Typography.Title heading={3} style={{ marginBottom: 8 }}>
+    <div className='mt-[60px] px-2 pb-8'>
+      <div className='mx-auto flex max-w-7xl flex-col gap-5'>
+        <div className='space-y-2'>
+          <Typography.Title heading={3} style={{ marginBottom: 0 }}>
             {t('邀请返佣')}
           </Typography.Title>
-          <Typography.Text type='secondary'>
+          <Typography.Text type='secondary' className='max-w-3xl block'>
             {t('按分组维护默认返佣规则，并为指定邀请用户设置独立返佣。')}
           </Typography.Text>
         </div>
@@ -229,25 +229,34 @@ const InviteRebatePage = () => {
         />
 
         <Spin spinning={loadingInvitees && inviteePage.items.length === 0}>
-          <div className='grid grid-cols-1 gap-4 xl:grid-cols-[360px_minmax(0,1fr)]'>
-            <InviteeListPanel
-              t={t}
-              loading={loadingInvitees}
-              keyword={keyword}
-              pageData={inviteePage}
-              selectedInviteeId={selectedInvitee?.id || null}
-              onKeywordChange={setKeyword}
-              onSearch={handleSearch}
-              onSelectInvitee={setSelectedInvitee}
-              onPageChange={handlePageChange}
-            />
-            <InviteeOverridePanel
-              t={t}
-              invitee={selectedInvitee}
-              rows={inviteeOverrideRows}
-              loading={loadingDetail}
-              onOverridesChanged={refreshOverrides}
-            />
+          <div className='grid grid-cols-1 gap-4 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start'>
+            <div className='xl:sticky xl:top-4'>
+              <InviteeListPanel
+                t={t}
+                loading={loadingInvitees}
+                keyword={keyword}
+                pageData={inviteePage}
+                selectedInviteeId={selectedInvitee?.id || null}
+                onKeywordChange={setKeyword}
+                onSearch={handleSearch}
+                onSelectInvitee={setSelectedInvitee}
+                onPageChange={handlePageChange}
+                emptyHint={
+                  queryKeyword
+                    ? t('暂无邀请用户')
+                    : t('请输入用户名后点击搜索')
+                }
+              />
+            </div>
+            <div className='xl:min-h-[680px]'>
+              <InviteeOverridePanel
+                t={t}
+                invitee={selectedInvitee}
+                rows={inviteeOverrideRows}
+                loading={loadingDetail}
+                onOverridesChanged={refreshOverrides}
+              />
+            </div>
           </div>
         </Spin>
       </div>

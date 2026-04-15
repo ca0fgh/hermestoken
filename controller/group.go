@@ -12,18 +12,14 @@ import (
 )
 
 func GetGroups(c *gin.Context) {
-	groups, err := model.LoadEffectivePricingGroups()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
+	groupNames := make([]string, 0)
+	for groupName := range ratio_setting.GetGroupRatioCopy() {
+		groupNames = append(groupNames, groupName)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    groups,
+		"data":    groupNames,
 	})
 }
 

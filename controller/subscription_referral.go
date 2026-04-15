@@ -515,11 +515,8 @@ func isValidSubscriptionReferralGroup(group string) bool {
 	if trimmedGroup == "" {
 		return false
 	}
-	groupRatios, err := model.LoadEffectivePricingGroupRatios()
-	if err == nil {
-		if _, ok := groupRatios[trimmedGroup]; ok {
-			return true
-		}
+	if _, ok := ratio_setting.GetGroupRatioCopy()[trimmedGroup]; ok {
+		return true
 	}
 	return model.IsSubscriptionReferralPlanBackedGroup(trimmedGroup)
 }

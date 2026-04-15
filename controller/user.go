@@ -212,7 +212,6 @@ func Register(c *gin.Context) {
 			ModelLimitsEnabled: false,
 		}
 		if setting.DefaultUseAutoGroup {
-			token.SelectionMode = "auto"
 			token.Group = "auto"
 		}
 		if err := token.Insert(); err != nil {

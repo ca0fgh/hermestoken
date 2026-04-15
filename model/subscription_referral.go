@@ -476,10 +476,7 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 		return nil
 	}
 
-	group := strings.TrimSpace(plan.UpgradeGroupKey)
-	if group == "" {
-		group = strings.TrimSpace(plan.UpgradeGroup)
-	}
+	group := strings.TrimSpace(plan.UpgradeGroup)
 	if group == "" {
 		return nil
 	}

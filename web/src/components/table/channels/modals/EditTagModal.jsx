@@ -20,7 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   API,
-  buildGroupCatalogOptions,
   showError,
   showInfo,
   showSuccess,
@@ -185,7 +184,12 @@ const EditTagModal = (props) => {
       if (res === undefined) {
         return;
       }
-      setGroupOptions(buildGroupCatalogOptions(res.data.data || []));
+      setGroupOptions(
+        res.data.data.map((group) => ({
+          label: group,
+          value: group,
+        })),
+      );
     } catch (error) {
       showError(error.message);
     }

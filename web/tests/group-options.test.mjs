@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import {
   buildGroupOption,
-  buildGroupCatalogOptions,
   buildGroupOptions,
 } from '../src/helpers/groupOptions.js';
 
@@ -52,37 +51,4 @@ test('buildGroupOptions moves the current user group to the front', () => {
     options.map((option) => option.value),
     ['vip', 'default'],
   );
-});
-
-test('buildGroupCatalogOptions accepts canonical group objects', () => {
-  const options = buildGroupCatalogOptions([
-    {
-      group_key: 'premium',
-      display_name: 'Premium',
-      status: 1,
-    },
-  ]);
-
-  assert.deepEqual(options, [
-    {
-      label: 'Premium',
-      value: 'premium',
-      group_key: 'premium',
-      display_name: 'Premium',
-      status: 1,
-    },
-  ]);
-});
-
-test('buildGroupCatalogOptions preserves string entries for backwards compatibility', () => {
-  const options = buildGroupCatalogOptions(['default']);
-
-  assert.deepEqual(options, [
-    {
-      label: 'default',
-      value: 'default',
-      group_key: 'default',
-      display_name: 'default',
-    },
-  ]);
 });

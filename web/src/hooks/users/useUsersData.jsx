@@ -20,7 +20,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
-import { buildGroupCatalogOptions } from '../../helpers/groupOptions';
 import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 
@@ -242,7 +241,12 @@ export const useUsersData = () => {
       if (res === undefined) {
         return;
       }
-      setGroupOptions(buildGroupCatalogOptions(res.data.data || []));
+      setGroupOptions(
+        res.data.data.map((group) => ({
+          label: group,
+          value: group,
+        })),
+      );
     } catch (error) {
       showError(error.message);
     }
