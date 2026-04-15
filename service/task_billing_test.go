@@ -42,6 +42,11 @@ func TestMain(m *testing.M) {
 		&model.Token{},
 		&model.Log{},
 		&model.Channel{},
+		&model.PricingGroup{},
+		&model.PricingGroupAlias{},
+		&model.PricingGroupRatioOverride{},
+		&model.PricingGroupVisibilityRule{},
+		&model.PricingGroupAutoPriority{},
 		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
 	); err != nil {

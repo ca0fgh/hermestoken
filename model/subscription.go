@@ -185,7 +185,8 @@ type SubscriptionPlan struct {
 	StockAvailable int `json:"stock_available" gorm:"-"`
 
 	// Upgrade user group after purchase (empty = no change)
-	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+	UpgradeGroup    string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+	UpgradeGroupKey string `json:"upgrade_group_key" gorm:"type:varchar(64);default:''"`
 
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
@@ -194,8 +195,8 @@ type SubscriptionPlan struct {
 	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
 	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
 
-	CreatedAt int64 `json:"created_at" gorm:"bigint"`
-	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+	CreatedAt int64          `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64          `json:"updated_at" gorm:"bigint"`
 	DeletedAt gorm.DeletedAt `json:"-" gorm:"index"`
 }
 
@@ -408,8 +409,10 @@ type UserSubscription struct {
 	LastResetTime int64 `json:"last_reset_time" gorm:"type:bigint;default:0"`
 	NextResetTime int64 `json:"next_reset_time" gorm:"type:bigint;default:0;index"`
 
-	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
-	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	UpgradeGroup             string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+	PrevUserGroup            string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
+	UpgradeGroupKeySnapshot  string `json:"upgrade_group_key_snapshot" gorm:"type:varchar(64);default:''"`
+	UpgradeGroupNameSnapshot string `json:"upgrade_group_name_snapshot" gorm:"type:varchar(128);default:''"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
