@@ -5,48 +5,58 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func TestMain(m *testing.M) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	tempDir, err := os.MkdirTemp("", "task-billing-test-*")
 	if err != nil {
-		panic("failed to open test db: " + err.Error())
+		panic("failed to create temp dir: " + err.Error())
 	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		panic("failed to get sql.DB: " + err.Error())
-	}
-	sqlDB.SetMaxOpenConns(1)
+	defer os.RemoveAll(tempDir)
 
-	model.DB = db
-	model.LOG_DB = db
+	originalSQLitePath := common.SQLitePath
+	originalSQLDSN := os.Getenv("SQL_DSN")
+	originalLOGSQLDSN := os.Getenv("LOG_SQL_DSN")
+	defer func() {
+		common.SQLitePath = originalSQLitePath
+		_ = os.Setenv("SQL_DSN", originalSQLDSN)
+		_ = os.Setenv("LOG_SQL_DSN", originalLOGSQLDSN)
+	}()
 
+	common.SQLitePath = filepath.Join(tempDir, "task-billing.db") + "?_busy_timeout=30000"
+	_ = os.Unsetenv("SQL_DSN")
+	_ = os.Unsetenv("LOG_SQL_DSN")
+
+	common.UsingSQLite = false
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
 	common.UsingSQLite = true
+	common.IsMasterNode = true
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
 
-	if err := db.AutoMigrate(
-		&model.Task{},
-		&model.User{},
-		&model.Token{},
-		&model.Log{},
-		&model.Channel{},
-		&model.SubscriptionPlan{},
-		&model.UserSubscription{},
-	); err != nil {
-		panic("failed to migrate: " + err.Error())
+	if err := model.InitDB(); err != nil {
+		panic("failed to init db: " + err.Error())
 	}
+	if err := model.InitLogDB(); err != nil {
+		panic("failed to init log db: " + err.Error())
+	}
+
+	sqlDB, err := model.DB.DB()
+	if err != nil {
+		panic("failed to get sql.DB: " + err.Error())
+	}
+	sqlDB.SetMaxOpenConns(1)
 
 	os.Exit(m.Run())
 }

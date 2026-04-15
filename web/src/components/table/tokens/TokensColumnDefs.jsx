@@ -89,7 +89,10 @@ const renderStatus = (text, record, t) => {
 
 // Render group column
 const renderGroupColumn = (text, record, t, groupRatios = {}) => {
-  if (text === 'auto') {
+  const selectionMode = record?.selection_mode || '';
+  const fixedGroup = record?.group_key || text;
+
+  if (selectionMode === 'auto' || text === 'auto') {
     return (
       <Tooltip
         content={t(
@@ -104,10 +107,20 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
       </Tooltip>
     );
   }
-  const ratio = groupRatios[text];
+  if (
+    (selectionMode === 'inherit_user_default' || (!selectionMode && !fixedGroup)) &&
+    !fixedGroup
+  ) {
+    return (
+      <Tag color='blue' shape='circle'>
+        {t('跟随用户默认')}
+      </Tag>
+    );
+  }
+  const ratio = groupRatios[fixedGroup];
   return (
     <span className='flex items-center gap-1'>
-      {renderGroup(text)}
+      {renderGroup(fixedGroup)}
       {ratio !== undefined && (
         <Tag size='small' color='green' shape='circle'>
           {ratio}x

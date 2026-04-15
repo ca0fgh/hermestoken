@@ -216,6 +216,9 @@ func loadOptionsFromDatabase() {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
+	if err := SyncCanonicalPricingGroupRulesFromCurrentOptions(); err != nil {
+		common.SysLog("failed to sync canonical pricing group rules from startup options: " + err.Error())
+	}
 }
 
 func SyncOptions(frequency int) {
@@ -239,12 +242,32 @@ func UpdateOption(key string, value string) error {
 	// otherwise it will execute Update (with all fields).
 	DB.Save(&option)
 	// Update OptionMap
-	return updateOptionMap(key, value)
+	if err := updateOptionMap(key, value); err != nil {
+		return err
+	}
+	if isPricingGroupRuleOptionKey(key) {
+		return SyncCanonicalPricingGroupRulesFromCurrentOptions()
+	}
+	return nil
+}
+
+func isPricingGroupRuleOptionKey(key string) bool {
+	switch key {
+	case "GroupRatio", "GroupGroupRatio", "UserUsableGroups", "AutoGroups":
+		return true
+	case "group_ratio_setting.group_special_usable_group":
+		return true
+	default:
+		return false
+	}
 }
 
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
+	if common.OptionMap == nil {
+		common.OptionMap = make(map[string]string)
+	}
 	common.OptionMap[key] = value
 
 	// 检查是否是模型配置 - 使用更规范的方式处理

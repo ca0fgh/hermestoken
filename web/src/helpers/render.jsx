@@ -54,9 +54,11 @@ import Wenxin from '@lobehub/icons/es/Wenxin';
 import XAI from '@lobehub/icons/es/XAI';
 import Xinference from '@lobehub/icons/es/Xinference';
 import Yi from '@lobehub/icons/es/Yi';
+import ZeroOne from '@lobehub/icons/es/ZeroOne';
 import Zhipu from '@lobehub/icons/es/Zhipu';
 
 import { Layers } from 'lucide-react';
+import { FaLinkedin } from 'react-icons/fa';
 import {
   SiAtlassian,
   SiAuth0,
@@ -70,7 +72,6 @@ import {
   SiGitlab,
   SiGoogle,
   SiKeycloak,
-  SiLinkedin,
   SiNextcloud,
   SiNotion,
   SiOkta,
@@ -83,9 +84,12 @@ import {
   SiX,
 } from 'react-icons/si';
 
-const lobeIconModuleLoaders = import.meta.glob([
-  '../../node_modules/@lobehub/icons/es/*/index.js',
-  '!../../node_modules/@lobehub/icons/es/{Ai360,Claude,Cloudflare,Cohere,Coze,DeepSeek,Dify,Doubao,FastGPT,Gemini,Hunyuan,Jina,Jimeng,Kling,Midjourney,Minimax,Mistral,Moonshot,Ollama,OpenAI,OpenRouter,Perplexity,Qwen,Replicate,SiliconCloud,Spark,Suno,Wenxin,XAI,Xinference,Yi,Zhipu}/index.js',
+const lobeIconComponentLoaders = import.meta.glob([
+  '../../node_modules/@lobehub/icons/es/*/components/Mono.js',
+  '../../node_modules/@lobehub/icons/es/*/components/Color.js',
+  '../../node_modules/@lobehub/icons/es/*/components/Avatar.js',
+  '../../node_modules/@lobehub/icons/es/*/components/Text.js',
+  '!../../node_modules/@lobehub/icons/es/{Ai360,Claude,Cloudflare,Cohere,Coze,DeepSeek,Dify,Doubao,FastGPT,Gemini,Hunyuan,Jina,Jimeng,Kling,Midjourney,Minimax,Mistral,Moonshot,Ollama,OpenAI,OpenRouter,Perplexity,Qwen,Replicate,SiliconCloud,Spark,Suno,Wenxin,XAI,Xinference,Yi,Zhipu,ZeroOne}/components/{Mono,Color,Avatar,Text}.js',
 ]);
 const lobeIconModuleCache = new Map();
 const lobeIconModulePromises = new Map();
@@ -121,11 +125,12 @@ const staticLobeIconRegistry = {
   XAI,
   Xinference,
   Yi,
+  ZeroOne,
   Zhipu,
 };
 
-function getLobeIconModulePath(baseKey) {
-  return `../../node_modules/@lobehub/icons/es/${baseKey}/index.js`;
+function getLobeIconComponentPath(baseKey, variant) {
+  return `../../node_modules/@lobehub/icons/es/${baseKey}/components/${variant}.js`;
 }
 
 async function loadLobeIconModule(baseKey) {
@@ -145,16 +150,50 @@ async function loadLobeIconModule(baseKey) {
     return lobeIconModulePromises.get(baseKey);
   }
 
-  const loader = lobeIconModuleLoaders[getLobeIconModulePath(baseKey)];
-  if (!loader) {
+  const componentLoaders = {
+    Mono: lobeIconComponentLoaders[getLobeIconComponentPath(baseKey, 'Mono')],
+    Color: lobeIconComponentLoaders[getLobeIconComponentPath(baseKey, 'Color')],
+    Avatar: lobeIconComponentLoaders[getLobeIconComponentPath(baseKey, 'Avatar')],
+    Text: lobeIconComponentLoaders[getLobeIconComponentPath(baseKey, 'Text')],
+  };
+
+  const entries = Object.entries(componentLoaders).filter(([, loader]) =>
+    Boolean(loader),
+  );
+  if (entries.length === 0) {
     return null;
   }
 
-  const loadPromise = loader()
-    .then((module) => {
-      const loadedModule = module?.default || module;
-      lobeIconModuleCache.set(baseKey, loadedModule);
-      return loadedModule;
+  const loadPromise = Promise.all(
+    entries.map(async ([variant, loader]) => {
+      const module = await loader();
+      return [variant, module?.default || module];
+    }),
+  )
+    .then((loadedEntries) => {
+      const loadedVariants = Object.fromEntries(loadedEntries);
+      const primaryIcon =
+        loadedVariants.Mono ||
+        loadedVariants.Color ||
+        loadedVariants.Avatar ||
+        loadedVariants.Text ||
+        null;
+      if (!primaryIcon) {
+        return null;
+      }
+
+      if (loadedVariants.Color) {
+        primaryIcon.Color = loadedVariants.Color;
+      }
+      if (loadedVariants.Avatar) {
+        primaryIcon.Avatar = loadedVariants.Avatar;
+      }
+      if (loadedVariants.Text) {
+        primaryIcon.Text = loadedVariants.Text;
+      }
+
+      lobeIconModuleCache.set(baseKey, primaryIcon);
+      return primaryIcon;
     })
     .finally(() => {
       lobeIconModulePromises.delete(baseKey);
@@ -590,7 +629,7 @@ const oauthProviderIconMap = {
   google: SiGoogle,
   discord: SiDiscord,
   facebook: SiFacebook,
-  linkedin: SiLinkedin,
+  linkedin: FaLinkedin,
   x: SiX,
   twitter: SiX,
   slack: SiSlack,

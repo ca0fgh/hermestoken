@@ -52,6 +52,7 @@ import {
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../../../context/Status';
+import { buildTokenPayload } from './tokenPayload';
 
 const { Text, Title } = Typography;
 
@@ -64,6 +65,20 @@ const EditTokenModal = (props) => {
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
   const isEdit = props.editingToken.id !== undefined;
+  const selectionModeOptions = [
+    {
+      label: t('跟随用户默认分组'),
+      value: 'inherit_user_default',
+    },
+    {
+      label: t('固定分组'),
+      value: 'fixed',
+    },
+    {
+      label: t('智能熔断'),
+      value: 'auto',
+    },
+  ];
 
   const getInitValues = () => ({
     name: '',
@@ -73,6 +88,9 @@ const EditTokenModal = (props) => {
     model_limits_enabled: false,
     model_limits: [],
     allow_ips: '',
+    selection_mode: statusState?.status?.default_use_auto_group
+      ? 'auto'
+      : 'inherit_user_default',
     group: '',
     cross_group_retry: false,
     tokenCount: 1,
@@ -152,6 +170,13 @@ const EditTokenModal = (props) => {
     let res = await API.get(`/api/token/${props.editingToken.id}`);
     const { success, message, data } = res.data;
     if (success) {
+      const selectionMode =
+        data.selection_mode ||
+        (data.group === 'auto'
+          ? 'auto'
+          : data.group_key || data.group
+            ? 'fixed'
+            : 'inherit_user_default');
       if (data.expired_time !== -1) {
         data.expired_time = timestamp2string(data.expired_time);
       }
@@ -160,6 +185,11 @@ const EditTokenModal = (props) => {
       } else {
         data.model_limits = [];
       }
+      data.selection_mode = selectionMode;
+      data.group =
+        selectionMode === 'fixed' ? data.group_key || data.group || '' : '';
+      data.cross_group_retry =
+        selectionMode === 'auto' ? !!data.cross_group_retry : false;
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
@@ -206,7 +236,7 @@ const EditTokenModal = (props) => {
   const submit = async (values) => {
     setLoading(true);
     if (isEdit) {
-      let { tokenCount: _tc, ...localInputs } = values;
+      let { tokenCount: _tc, ...localInputs } = buildTokenPayload(values);
       localInputs.remain_quota = parseInt(localInputs.remain_quota);
       if (localInputs.expired_time !== -1) {
         let time = Date.parse(localInputs.expired_time);
@@ -235,7 +265,7 @@ const EditTokenModal = (props) => {
       const count = parseInt(values.tokenCount, 10) || 1;
       let successCount = 0;
       for (let i = 0; i < count; i++) {
-        let { tokenCount: _tc, ...localInputs } = values;
+        let { tokenCount: _tc, ...localInputs } = buildTokenPayload(values);
         const baseName =
           values.name.trim() === '' ? 'default' : values.name.trim();
         if (i !== 0 || values.name.trim() === '') {
@@ -357,6 +387,19 @@ const EditTokenModal = (props) => {
                     />
                   </Col>
                   <Col span={24}>
+                    <Form.Select
+                      field='selection_mode'
+                      label={t('分组策略')}
+                      optionList={selectionModeOptions}
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col
+                    span={24}
+                    style={{
+                      display: values.selection_mode === 'fixed' ? 'block' : 'none',
+                    }}
+                  >
                     {groups.length > 0 ? (
                       <Form.Select
                         field='group'
@@ -379,7 +422,7 @@ const EditTokenModal = (props) => {
                   <Col
                     span={24}
                     style={{
-                      display: values.group === 'auto' ? 'block' : 'none',
+                      display: values.selection_mode === 'auto' ? 'block' : 'none',
                     }}
                   >
                     <Form.Switch
