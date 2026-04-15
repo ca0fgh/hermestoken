@@ -259,6 +259,51 @@ def require_cloudflared() -> str:
     )
 
 
+def remove_legacy_compose_containers(
+    *,
+    legacy_project_name: str,
+    compose_file_path: Path,
+    container_names: Sequence[str],
+    output: Optional[TextIO] = None,
+    repo_root: Optional[Path] = None,
+) -> list[str]:
+    stream = output or sys.stdout
+    effective_repo_root = repo_root or compose_file_path.parent
+    removed: list[str] = []
+    inspect_format = (
+        '{{ index .Config.Labels "com.docker.compose.project" }}'
+        '|{{ index .Config.Labels "com.docker.compose.project.config_files" }}'
+    )
+
+    for container_name in container_names:
+        inspection = run_command(
+            ["docker", "inspect", "-f", inspect_format, container_name],
+            check=False,
+            stream_output=False,
+            cwd=effective_repo_root,
+        )
+        if inspection.returncode != 0:
+            continue
+
+        project_name, _, config_files = (inspection.stdout or "").strip().partition("|")
+        compose_paths = {part.strip() for part in config_files.split(",") if part.strip()}
+        if project_name != legacy_project_name or str(compose_file_path) not in compose_paths:
+            continue
+
+        run_command(
+            ["docker", "rm", "-f", container_name],
+            check=True,
+            stream_output=False,
+            cwd=effective_repo_root,
+        )
+        removed.append(container_name)
+
+    if removed:
+        stream.write(f"[info] Removed legacy compose containers: {', '.join(removed)}\n")
+
+    return removed
+
+
 def run_command(
     command: Sequence[str],
     *,

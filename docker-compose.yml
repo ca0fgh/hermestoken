@@ -3,6 +3,7 @@
 # Quick Start:
 #   1. docker compose up --build -d
 #   2. Access at http://localhost:3000
+#   3. To force an in-container frontend rebuild, run with WEB_DIST_STRATEGY=build
 #
 # Using MySQL instead of PostgreSQL:
 #   1. Comment out the postgres service and SQL_DSN line 15
@@ -12,11 +13,15 @@
 #
 # ⚠️  IMPORTANT: Change all default passwords before deploying to production!
 
+name: hermestoken-local
+
 services:
   new-api:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}
     image: hermestoken-local:latest
     container_name: new-api
     restart: always
@@ -100,6 +105,7 @@ services:
 
 volumes:
   pg_data:
+    name: hermestoken_pg_data
 #  mysql_data:
 
 networks:

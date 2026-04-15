@@ -246,6 +246,90 @@ class LauncherCommonTests(unittest.TestCase):
         )
         run_command.assert_called_once_with(["docker", "compose", "version"], check=True, stream_output=False)
 
+    @mock.patch("launcher_common.run_command")
+    def test_remove_legacy_compose_containers_removes_only_matching_legacy_project_for_target_compose(self, run_command):
+        compose_file_path = Path("/repo/docker-compose.yml")
+        repo_root = Path("/repo")
+        output = io.StringIO()
+        run_command.side_effect = [
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="hermestoken|/repo/docker-compose.yml\n", stderr=""),
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr=""),
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="hermestoken|/repo/docker-compose.prod.yml\n", stderr=""),
+            subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="hermestoken-local|/repo/docker-compose.yml\n", stderr=""),
+        ]
+
+        removed = launcher_common.remove_legacy_compose_containers(
+            legacy_project_name="hermestoken",
+            compose_file_path=compose_file_path,
+            container_names=("new-api", "redis", "postgres"),
+            output=output,
+            repo_root=repo_root,
+        )
+
+        self.assertEqual(removed, ["new-api"])
+        run_command.assert_has_calls(
+            [
+                mock.call(
+                    [
+                        "docker",
+                        "inspect",
+                        "-f",
+                        '{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
+                        "new-api",
+                    ],
+                    check=False,
+                    stream_output=False,
+                    cwd=repo_root,
+                ),
+                mock.call(
+                    ["docker", "rm", "-f", "new-api"],
+                    check=True,
+                    stream_output=False,
+                    cwd=repo_root,
+                ),
+                mock.call(
+                    [
+                        "docker",
+                        "inspect",
+                        "-f",
+                        '{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
+                        "redis",
+                    ],
+                    check=False,
+                    stream_output=False,
+                    cwd=repo_root,
+                ),
+                mock.call(
+                    [
+                        "docker",
+                        "inspect",
+                        "-f",
+                        '{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
+                        "postgres",
+                    ],
+                    check=False,
+                    stream_output=False,
+                    cwd=repo_root,
+                ),
+            ]
+        )
+        self.assertIn("Removed legacy compose containers: new-api", output.getvalue())
+
+    @mock.patch("launcher_common.run_command")
+    def test_remove_legacy_compose_containers_skips_missing_containers(self, run_command):
+        run_command.return_value = subprocess.CompletedProcess(args=["docker"], returncode=1, stdout="", stderr="missing")
+
+        removed = launcher_common.remove_legacy_compose_containers(
+            legacy_project_name="hermestoken",
+            compose_file_path=Path("/repo/docker-compose.yml"),
+            container_names=("new-api",),
+            output=io.StringIO(),
+            repo_root=Path("/repo"),
+        )
+
+        self.assertEqual(removed, [])
+        run_command.assert_called_once()
+
     @mock.patch("launcher_common.subprocess.run")
     def test_run_command_non_streamed(self, run_mock):
         run_mock.return_value = subprocess.CompletedProcess(args=["docker", "version"], returncode=0, stdout="ok", stderr="")

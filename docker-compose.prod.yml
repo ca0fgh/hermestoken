@@ -1,3 +1,5 @@
+name: hermestoken-prod
+
 services:
   new-api:
     build:
@@ -62,6 +64,7 @@ services:
 
 volumes:
   pg_data_prod:
+    name: hermestoken_pg_data_prod
 
 
 networks:

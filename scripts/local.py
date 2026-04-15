@@ -8,6 +8,7 @@ from launcher_common import (
     load_launcher_config,
     poll_http_until_healthy,
     print_actionable_error,
+    remove_legacy_compose_containers,
     require_docker_and_compose,
     run_browser_smoke_check,
     run_command,
@@ -15,6 +16,7 @@ from launcher_common import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+LOCAL_CONTAINER_NAMES = ("new-api", "postgres", "redis")
 
 
 def _compose_file_path(compose_file: str, *, repo_root: Path) -> Path:
@@ -58,6 +60,14 @@ def run_local_stack(config: LauncherConfig, *, output: Optional[TextIO] = None, 
     compose_file_path = _compose_file_path(config.compose_file, repo_root=effective_repo_root)
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
+
+    remove_legacy_compose_containers(
+        legacy_project_name="hermestoken",
+        compose_file_path=compose_file_path,
+        container_names=LOCAL_CONTAINER_NAMES,
+        output=stream,
+        repo_root=effective_repo_root,
+    )
 
     run_command(
         ["docker", "compose", "-f", str(compose_file_path), "up", "-d", "--build"],

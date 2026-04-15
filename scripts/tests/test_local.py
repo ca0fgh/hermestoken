@@ -26,8 +26,17 @@ class LocalLauncherTests(unittest.TestCase):
             healthcheck_interval_seconds=1,
         )
 
+    def test_local_compose_uses_dedicated_project_name_and_prebuilt_frontend_by_default(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        compose_text = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
+
+        self.assertRegex(compose_text, r"(?m)^name:\s+hermestoken-local$")
+        self.assertIn("name: hermestoken_pg_data", compose_text)
+        self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
+
     @mock.patch("local.run_browser_smoke_check")
     @mock.patch("local.poll_http_until_healthy")
+    @mock.patch("local.remove_legacy_compose_containers")
     @mock.patch("local.run_command")
     @mock.patch("local.require_docker_and_compose")
     @mock.patch("local.load_launcher_config")
@@ -36,6 +45,7 @@ class LocalLauncherTests(unittest.TestCase):
         load_config,
         require_docker_and_compose,
         run_command,
+        remove_legacy_compose_containers,
         poll_http_until_healthy,
         run_browser_smoke_check,
     ):
@@ -49,6 +59,13 @@ class LocalLauncherTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         require_docker_and_compose.assert_called_once_with()
+        remove_legacy_compose_containers.assert_called_once_with(
+            legacy_project_name="hermestoken",
+            compose_file_path=repo_root / "docker-compose.yml",
+            container_names=local.LOCAL_CONTAINER_NAMES,
+            output=stdout,
+            repo_root=repo_root,
+        )
         run_command.assert_called_once_with(
             ["docker", "compose", "-f", str(repo_root / "docker-compose.yml"), "up", "-d", "--build"],
             check=True,
@@ -177,10 +194,16 @@ class LocalLauncherTests(unittest.TestCase):
 
     @mock.patch("local.run_browser_smoke_check")
     @mock.patch("local.poll_http_until_healthy")
+    @mock.patch("local.remove_legacy_compose_containers")
     @mock.patch("local.run_command")
     @mock.patch("local.require_docker_and_compose")
     def test_run_local_stack_uses_absolute_compose_path_without_rebasing(
-        self, _require_docker_and_compose, run_command, poll_http_until_healthy, run_browser_smoke_check
+        self,
+        _require_docker_and_compose,
+        run_command,
+        remove_legacy_compose_containers,
+        poll_http_until_healthy,
+        run_browser_smoke_check,
     ):
         absolute_compose = Path("/tmp/hermestoken-compose.yml")
         custom_repo_root = Path("/tmp/custom-repo-root")
@@ -188,6 +211,13 @@ class LocalLauncherTests(unittest.TestCase):
 
         local.run_local_stack(self._config(compose_file=str(absolute_compose)), output=stdout, repo_root=custom_repo_root)
 
+        remove_legacy_compose_containers.assert_called_once_with(
+            legacy_project_name="hermestoken",
+            compose_file_path=absolute_compose,
+            container_names=local.LOCAL_CONTAINER_NAMES,
+            output=stdout,
+            repo_root=custom_repo_root,
+        )
         run_command.assert_called_once_with(
             ["docker", "compose", "-f", str(absolute_compose), "up", "-d", "--build"],
             check=True,

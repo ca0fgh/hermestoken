@@ -18,6 +18,8 @@ class ProdLauncherTests(unittest.TestCase):
         compose_file = repo_root / "docker-compose.prod.yml"
         compose_text = compose_file.read_text(encoding="utf-8")
 
+        self.assertRegex(compose_text, r"(?m)^name:\s+hermestoken-prod$")
+        self.assertIn("name: hermestoken_pg_data_prod", compose_text)
         self.assertIn("image: postgres:latest", compose_text)
         self.assertIn("- pg_data_prod:/var/lib/postgresql", compose_text)
         self.assertNotIn("- pg_data_prod:/var/lib/postgresql/data", compose_text)
@@ -39,12 +41,14 @@ class ProdLauncherTests(unittest.TestCase):
         )
 
     @mock.patch("prod.poll_http_until_healthy")
+    @mock.patch("prod.remove_legacy_compose_containers")
     @mock.patch("prod.run_command")
     @mock.patch("prod.require_docker_and_compose")
     def test_run_stack_uses_prod_compose_and_env_file(
         self,
         require_docker_and_compose,
         run_command,
+        remove_legacy_compose_containers,
         poll_http_until_healthy,
     ):
         repo_root = Path(__file__).resolve().parents[2]
@@ -62,6 +66,13 @@ class ProdLauncherTests(unittest.TestCase):
         )
 
         require_docker_and_compose.assert_called_once_with()
+        remove_legacy_compose_containers.assert_called_once_with(
+            legacy_project_name="hermestoken",
+            compose_file_path=compose_file,
+            container_names=prod.PROD_CONTAINER_NAMES,
+            output=stdout,
+            repo_root=repo_root,
+        )
         run_command.assert_called_once_with(
             [
                 "docker",

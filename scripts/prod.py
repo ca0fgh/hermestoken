@@ -8,6 +8,7 @@ from launcher_common import (
     LauncherError,
     poll_http_until_healthy,
     print_actionable_error,
+    remove_legacy_compose_containers,
     require_docker_and_compose,
     run_command,
 )
@@ -18,6 +19,7 @@ DEFAULT_PROD_COMPOSE_FILE = "docker-compose.prod.yml"
 DEFAULT_PROD_ENV_FILE = ".env.production"
 DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 60
 DEFAULT_HEALTHCHECK_INTERVAL_SECONDS = 1
+PROD_CONTAINER_NAMES = ("hermestoken-prod", "hermestoken-prod-postgres", "hermestoken-prod-redis")
 
 
 def _resolve_repo_path(path_value: str, *, repo_root: Path) -> Path:
@@ -77,6 +79,14 @@ def run_stack(
 
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
+
+    remove_legacy_compose_containers(
+        legacy_project_name="hermestoken",
+        compose_file_path=compose_file_path,
+        container_names=PROD_CONTAINER_NAMES,
+        output=stream,
+        repo_root=effective_repo_root,
+    )
 
     run_command(
         _compose_command_prefix(compose_file_path, env_file_path) + ["up", "-d", "--build"],
