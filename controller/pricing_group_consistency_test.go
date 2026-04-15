@@ -181,6 +181,9 @@ func TestGetPricingGroupConsistencyReportIncludesUnknownLegacyReferences(t *test
 	if _, ok := reported["group_ratio|legacy-missing"]; !ok {
 		t.Fatalf("expected legacy-missing to be reported, got %#v", report.UnresolvedLegacyReferences)
 	}
+	if _, ok := reported["user_usable_groups|legacy-missing"]; !ok {
+		t.Fatalf("expected user-usable legacy-missing to be reported, got %#v", report.UnresolvedLegacyReferences)
+	}
 	if _, ok := reported["auto_groups|auto-missing"]; !ok {
 		t.Fatalf("expected auto-missing auto group to be reported, got %#v", report.UnresolvedLegacyReferences)
 	}
