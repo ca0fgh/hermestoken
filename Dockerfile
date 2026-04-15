@@ -1,6 +1,6 @@
 FROM mirror.gcr.io/oven/bun:1 AS builder
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG WEB_DIST_STRATEGY=build
+ARG WEB_DIST_STRATEGY=prebuilt
 ENV NPM_CONFIG_REGISTRY=${NPM_REGISTRY}
 
 WORKDIR /build
