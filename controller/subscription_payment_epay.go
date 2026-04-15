@@ -13,7 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
@@ -21,6 +21,9 @@ import (
 var subscriptionEpayClientProvider = GetEpayClient
 var subscriptionEpayPurchase = func(client *epay.Client, args *epay.PurchaseArgs) (string, map[string]string, error) {
 	return client.Purchase(args)
+}
+var subscriptionEpayVerify = func(client *epay.Client, params map[string]string) (*epay.VerifyRes, error) {
+	return client.Verify(params)
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
@@ -157,50 +160,56 @@ func SubscriptionEpayNotify(c *gin.Context) {
 // SubscriptionEpayReturn handles browser return after payment.
 // It verifies the payload and completes the order, then redirects to console.
 func SubscriptionEpayReturn(c *gin.Context) {
-	var params map[string]string
+	target := subscriptionResultURL("fail")
 
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
-		if err := c.Request.ParseForm(); err != nil {
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
-			return
-		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
-	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
-	}
-
-	if len(params) == 0 {
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+	params, err := parseEpayParams(c)
+	if err != nil || len(params) == 0 {
+		renderBrowserRedirect(c, target)
 		return
 	}
 
-	client := GetEpayClient()
+	client := subscriptionEpayClientProvider()
 	if client == nil {
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+		renderBrowserRedirect(c, target)
 		return
 	}
-	verifyInfo, err := client.Verify(params)
+	verifyInfo, err := subscriptionEpayVerify(client, params)
 	if err != nil || !verifyInfo.VerifyStatus {
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+		renderBrowserRedirect(c, target)
 		return
 	}
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo)); err != nil {
-			c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=fail")
+			renderBrowserRedirect(c, target)
 			return
 		}
-		c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=success")
+		restoreSubscriptionOrderSession(c, verifyInfo.ServiceTradeNo)
+		renderBrowserRedirect(c, subscriptionResultURL("success"))
 		return
 	}
-	c.Redirect(http.StatusFound, system_setting.ServerAddress+"/console/topup?pay=pending")
+	renderBrowserRedirect(c, subscriptionResultURL("pending"))
+}
+
+func subscriptionResultURL(status string) string {
+	return topUpResultURL(status)
+}
+
+func restoreSubscriptionOrderSession(c *gin.Context, tradeNo string) {
+	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
+	if order == nil || order.UserId <= 0 {
+		return
+	}
+	user, err := model.GetUserById(order.UserId, false)
+	if err != nil || user == nil {
+		return
+	}
+	session := sessions.Default(c)
+	session.Set("id", user.Id)
+	session.Set("username", user.Username)
+	session.Set("role", user.Role)
+	session.Set("status", user.Status)
+	session.Set("group", user.Group)
+	_ = session.Save()
 }

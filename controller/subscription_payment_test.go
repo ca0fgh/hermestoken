@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -12,6 +14,9 @@ import (
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
@@ -379,5 +384,127 @@ func TestSubscriptionRequestEpayPassesQuantityAndStoresAggregateTotal(t *testing
 	}
 	if updatedPlan.StockLocked != 3 {
 		t.Fatalf("expected locked stock 3, got %d", updatedPlan.StockLocked)
+	}
+}
+
+func TestSubscriptionResultURLUsesHistoryQueryForNonFailureStates(t *testing.T) {
+	previous := system_setting.ServerAddress
+	system_setting.ServerAddress = "https://pay-local.hermestoken.top"
+	t.Cleanup(func() {
+		system_setting.ServerAddress = previous
+	})
+
+	if got := subscriptionResultURL("success"); got != "https://pay-local.hermestoken.top/console/topup?pay=success&show_history=true" {
+		t.Fatalf("unexpected success redirect url: %s", got)
+	}
+	if got := subscriptionResultURL("pending"); got != "https://pay-local.hermestoken.top/console/topup?pay=pending&show_history=true" {
+		t.Fatalf("unexpected pending redirect url: %s", got)
+	}
+	if got := subscriptionResultURL("fail"); got != "https://pay-local.hermestoken.top/console/topup?pay=fail" {
+		t.Fatalf("unexpected fail redirect url: %s", got)
+	}
+}
+
+func TestSubscriptionEpayReturnWithoutParamsRendersBrowserRedirectPage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	previous := system_setting.ServerAddress
+	system_setting.ServerAddress = "https://pay-local.hermestoken.top"
+	t.Cleanup(func() {
+		system_setting.ServerAddress = previous
+	})
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/subscription/epay/return", nil)
+
+	SubscriptionEpayReturn(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "window.location.replace(") {
+		t.Fatalf("expected browser redirect script, got body: %s", body)
+	}
+	if !strings.Contains(body, "window.location.replace(\"https://pay-local.hermestoken.top/console/topup?pay=fail\")") {
+		t.Fatalf("expected fail redirect target in body, got body: %s", body)
+	}
+}
+
+func TestSubscriptionEpayReturnSuccessRestoresSessionCookie(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "return@example.com", "return_user", "")
+	plan := seedSubscriptionPlan(t, db, "return-plan")
+	order := &model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         plan.PriceAmount,
+		TradeNo:       "trade-return-success",
+		PaymentMethod: "alipay",
+		Status:        common.TopUpStatusPending,
+		CreateTime:    1,
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatalf("failed to create subscription order: %v", err)
+	}
+
+	previousServerAddress := system_setting.ServerAddress
+	previousSessionSecret := common.SessionSecret
+	system_setting.ServerAddress = "https://pay-local.hermestoken.top"
+	common.SessionSecret = "test-session-secret"
+	t.Cleanup(func() {
+		system_setting.ServerAddress = previousServerAddress
+		common.SessionSecret = previousSessionSecret
+	})
+
+	originalClientProvider := subscriptionEpayClientProvider
+	originalVerify := subscriptionEpayVerify
+	subscriptionEpayClientProvider = func() *epay.Client {
+		return &epay.Client{}
+	}
+	subscriptionEpayVerify = func(_ *epay.Client, _ map[string]string) (*epay.VerifyRes, error) {
+		return &epay.VerifyRes{
+			ServiceTradeNo: order.TradeNo,
+			TradeStatus:    epay.StatusTradeSuccess,
+			VerifyStatus:   true,
+		}, nil
+	}
+	t.Cleanup(func() {
+		subscriptionEpayClientProvider = originalClientProvider
+		subscriptionEpayVerify = originalVerify
+	})
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	router := gin.New()
+	store := cookie.NewStore([]byte(common.SessionSecret))
+	store.Options(sessions.Options{
+		Path:     "/",
+		MaxAge:   2592000,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
+	router.Use(sessions.Sessions("session", store))
+	router.GET("/api/subscription/epay/return", SubscriptionEpayReturn)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/subscription/epay/return?trade_no=ok", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
+	}
+
+	setCookieHeaders := recorder.Result().Header.Values("Set-Cookie")
+	if len(setCookieHeaders) == 0 {
+		t.Fatalf("expected Set-Cookie header, got none; headers=%v body=%s", recorder.Result().Header, recorder.Body.String())
+	}
+	if !strings.Contains(setCookieHeaders[0], "session=") {
+		t.Fatalf("expected session cookie to be set, got headers: %v", setCookieHeaders)
+	}
+	if !strings.Contains(recorder.Body.String(), "window.location.replace(\"https://pay-local.hermestoken.top/console/topup?pay=success\\u0026show_history=true\")") {
+		t.Fatalf("expected success redirect body, got body: %s", recorder.Body.String())
 	}
 }
