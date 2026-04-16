@@ -49,8 +49,6 @@ Session.vim
 *~
 
 # Agent and local tool state
-.superpowers/
-**/.superpowers/
 .serena/
 **/.serena/
 opencode.json

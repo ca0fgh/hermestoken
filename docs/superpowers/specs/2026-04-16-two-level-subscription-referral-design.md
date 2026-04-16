@@ -420,6 +420,9 @@
 
 ### Meaning
 
+- `enabled`
+  - `true` 表示该 `upgrade_group` 已切换到新两级返佣引擎
+  - `false` 表示该方案仅作为草稿保留，不参与实际结算
 - `direct_cap_bps`
   - 直推返佣上限
 - `team_cap_bps`
@@ -511,6 +514,32 @@
 则：
 
 - 不生成 `team_direct_reward` 明细
+
+### Record Field Semantics
+
+为了避免账本字段被不同实现者解释成不同含义，三类明细统一按以下口径落库：
+
+- `direct_reward`
+  - `applied_rate_bps = direct_cap_bps`
+  - `reward_quota` 是最近 `direct` 的最终结算额度
+- `team_direct_reward`
+  - `applied_rate_bps = team_cap_bps`
+  - `reward_quota` 是最近 `team` 的最终结算额度
+- `team_reward`
+  - `applied_rate_bps = NULL`
+  - 因为团队返佣不是单一 bps 直接得出，而是由团队池按权重拆分得到
+  - `reward_quota` 才是最终结算真相
+  - `share_snapshot` 记录该团队节点分到的最终池内比例
+  - `pool_rate_bps_snapshot` 记录该笔团队池对应的总差额 bps，即 `team_cap_bps - direct_cap_bps`
+
+这意味着：
+
+- `team_reward` 的审计真相来自：
+  - `reward_quota`
+  - `share_snapshot`
+  - `weight_snapshot`
+  - `pool_rate_bps_snapshot`
+- 不要求从 `applied_rate_bps` 反推出团队返佣
 
 ### Team Pool Allocation
 
@@ -788,9 +817,11 @@
   - `direct_reward`
   - `team_reward`
   - `team_direct_reward`
-- `depth`
+- `path_distance`
+- `matched_team_index`
 - `weight_snapshot`
 - `share_snapshot`
+- `pool_rate_bps_snapshot`
 - `applied_rate_bps`
 - `reward_quota`
 - `reversed_quota`
@@ -801,12 +832,23 @@
 
 说明：
 
-- `depth`
-  - 对于团队节点，表示在命中的团队链里的距离深度
+- `path_distance`
+  - 对于 `team_reward`，表示从最近 `direct` 节点向上走到该团队节点的真实边数距离
+  - 它直接参与 `team_max_depth` 判断和递减权重计算
+- `matched_team_index`
+  - 表示该团队节点在命中的团队节点里按“从近到远”排序后的序号
+  - 仅用于报表展示和调试，不参与实际结算
 - `weight_snapshot`
   - 保存递减计算时的原始权重
 - `share_snapshot`
   - 保存归一化后的实际分配比例
+- `pool_rate_bps_snapshot`
+  - 只对 `team_reward` 有意义
+  - 保存该笔团队池的总差额 bps，即 `team_cap_bps - direct_cap_bps`
+- `applied_rate_bps`
+  - 对 `direct_reward` 固定为 `direct_cap_bps`
+  - 对 `team_direct_reward` 固定为 `team_cap_bps`
+  - 对 `team_reward` 固定为 `NULL`
 
 ## Admin Surfaces
 
@@ -848,6 +890,10 @@
 - 若某个 `upgrade_group` 命中新模型方案，且 `enabled = true`
   - 只执行新模型结算
   - 跳过旧版 `subscription_referral_records` 逻辑
+- 若某个 `upgrade_group` 命中新模型方案，但 `enabled = false`
+  - 视为该方案尚未启用
+  - 新模型不参与结算
+  - 继续保持旧逻辑
 - 若该分组未命中新模型方案
   - 继续保持旧逻辑
 
@@ -855,6 +901,7 @@
 
 - 按分组灰度迁移
 - 避免同一笔订单被两套返佣引擎重复结算
+- 避免因为后台先建草稿方案而让某个分组意外进入“新旧都不结算”的黑洞状态
 
 ### Existing UI Boundary
 
@@ -880,3 +927,4 @@
 6. 付款用户身份不影响返佣链是否向上命中团队节点
 7. 历史订单在修改身份、邀请关系、返佣方案后仍保持原结算结果不变
 8. 同一笔订单不会同时命中新旧两套返佣引擎
+9. 某个 `upgrade_group` 即使已经存在新模型方案，只要 `enabled = false`，仍继续走旧逻辑
