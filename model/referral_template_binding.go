@@ -148,6 +148,37 @@ func ResolveBindingInviteeShareDefault(view ReferralTemplateBindingView) int {
 	return NormalizeSubscriptionReferralRateBps(view.Template.InviteeShareDefaultBps)
 }
 
+func GetReferralTemplateBindingViewByUserAndScope(userID int, referralType string, group string) (*ReferralTemplateBindingView, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var binding ReferralTemplateBinding
+	err := DB.Where(
+		"user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+		userID,
+		strings.TrimSpace(referralType),
+		strings.TrimSpace(group),
+	).First(&binding).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	template, err := GetReferralTemplateByID(binding.TemplateId)
+	if err != nil {
+		return nil, err
+	}
+
+	view := &ReferralTemplateBindingView{
+		Binding:  binding,
+		Template: *template,
+	}
+	return view, nil
+}
+
 func UpsertReferralTemplateBinding(binding *ReferralTemplateBinding) (*ReferralTemplateBinding, error) {
 	if binding == nil {
 		return nil, errors.New("binding is required")
@@ -185,4 +216,19 @@ func UpsertReferralTemplateBinding(binding *ReferralTemplateBinding) (*ReferralT
 		return nil, err
 	}
 	return binding, nil
+}
+
+func SetReferralTemplateBindingInviteeShareOverride(userID int, referralType string, group string, inviteeShareOverrideBps *int, operatorID int) (*ReferralTemplateBinding, error) {
+	view, err := GetReferralTemplateBindingViewByUserAndScope(userID, referralType, group)
+	if err != nil {
+		return nil, err
+	}
+	if view == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	binding := view.Binding
+	binding.InviteeShareOverrideBps = inviteeShareOverrideBps
+	binding.UpdatedBy = operatorID
+	return UpsertReferralTemplateBinding(&binding)
 }

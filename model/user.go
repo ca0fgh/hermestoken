@@ -590,6 +590,7 @@ func (user *User) Edit(updatePassword bool) error {
 		"display_name": newUser.DisplayName,
 		"group":        newUser.Group,
 		"quota":        newUser.Quota,
+		"inviter_id":   newUser.InviterId,
 		"remark":       newUser.Remark,
 	}
 	if updatePassword {
@@ -603,6 +604,35 @@ func (user *User) Edit(updatePassword bool) error {
 
 	// Update cache
 	return updateUserCache(*user)
+}
+
+func ValidateInviterAssignment(userID int, inviterID int) error {
+	if userID <= 0 {
+		return errors.New("user id is empty")
+	}
+	if inviterID <= 0 {
+		return nil
+	}
+	if inviterID == userID {
+		return errors.New("inviter cannot be self")
+	}
+
+	currentID := inviterID
+	for currentID > 0 {
+		if currentID == userID {
+			return errors.New("inviter assignment would create a cycle")
+		}
+
+		currentUser, err := GetUserById(currentID, false)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("inviter does not exist")
+			}
+			return err
+		}
+		currentID = currentUser.InviterId
+	}
+	return nil
 }
 
 func (user *User) ClearBinding(bindingType string) error {

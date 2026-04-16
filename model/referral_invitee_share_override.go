@@ -110,3 +110,102 @@ func UpsertReferralInviteeShareOverride(inviterUserID int, inviteeUserID int, re
 	}
 	return override, nil
 }
+
+func GetReferralInviteeShareOverrideByScope(inviterUserID int, inviteeUserID int, referralType string, group string) (*ReferralInviteeShareOverride, error) {
+	if inviterUserID <= 0 {
+		return nil, errors.New("invalid inviter user id")
+	}
+	if inviteeUserID <= 0 {
+		return nil, errors.New("invalid invitee user id")
+	}
+
+	var override ReferralInviteeShareOverride
+	if err := DB.Where(
+		"inviter_user_id = ? AND invitee_user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+		inviterUserID,
+		inviteeUserID,
+		strings.TrimSpace(referralType),
+		strings.TrimSpace(group),
+	).First(&override).Error; err != nil {
+		return nil, err
+	}
+	return &override, nil
+}
+
+func ListReferralInviteeShareOverrides(inviterUserID int, inviteeUserID int, referralType string) ([]ReferralInviteeShareOverride, error) {
+	if err := validateSubscriptionReferralInviteeOwnership(inviterUserID, inviteeUserID); err != nil {
+		return nil, err
+	}
+
+	var overrides []ReferralInviteeShareOverride
+	query := DB.Where(
+		"inviter_user_id = ? AND invitee_user_id = ?",
+		inviterUserID,
+		inviteeUserID,
+	).Order(commonGroupCol + " ASC")
+	if trimmedReferralType := strings.TrimSpace(referralType); trimmedReferralType != "" {
+		query = query.Where("referral_type = ?", trimmedReferralType)
+	}
+	if err := query.Find(&overrides).Error; err != nil {
+		return nil, err
+	}
+	return overrides, nil
+}
+
+func DeleteReferralInviteeShareOverride(inviterUserID int, inviteeUserID int, referralType string, group string) error {
+	if err := validateSubscriptionReferralInviteeOwnership(inviterUserID, inviteeUserID); err != nil {
+		return err
+	}
+
+	return DB.Where(
+		"inviter_user_id = ? AND invitee_user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+		inviterUserID,
+		inviteeUserID,
+		strings.TrimSpace(referralType),
+		strings.TrimSpace(group),
+	).Delete(&ReferralInviteeShareOverride{}).Error
+}
+
+func ListReferralInviteeShareOverrideCounts(inviterUserID int, inviteeUserIDs []int, referralType string) (map[int]int64, error) {
+	if inviterUserID <= 0 {
+		return nil, errors.New("invalid inviter user id")
+	}
+
+	counts := make(map[int]int64, len(inviteeUserIDs))
+	filteredInviteeUserIDs := make([]int, 0, len(inviteeUserIDs))
+	seenInviteeUserIDs := make(map[int]struct{}, len(inviteeUserIDs))
+	for _, inviteeUserID := range inviteeUserIDs {
+		if inviteeUserID <= 0 {
+			continue
+		}
+		if _, exists := seenInviteeUserIDs[inviteeUserID]; exists {
+			continue
+		}
+		seenInviteeUserIDs[inviteeUserID] = struct{}{}
+		filteredInviteeUserIDs = append(filteredInviteeUserIDs, inviteeUserID)
+	}
+	if len(filteredInviteeUserIDs) == 0 {
+		return counts, nil
+	}
+
+	rows := make([]struct {
+		InviteeUserId int   `gorm:"column:invitee_user_id"`
+		Count         int64 `gorm:"column:override_group_count"`
+	}, 0, len(filteredInviteeUserIDs))
+
+	query := DB.Model(&ReferralInviteeShareOverride{}).
+		Select("invitee_user_id, COUNT(*) AS override_group_count").
+		Where("inviter_user_id = ? AND invitee_user_id IN ?", inviterUserID, filteredInviteeUserIDs).
+		Group("invitee_user_id")
+	if trimmedReferralType := strings.TrimSpace(referralType); trimmedReferralType != "" {
+		query = query.Where("referral_type = ?", trimmedReferralType)
+	}
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		counts[row.InviteeUserId] = row.Count
+	}
+	return counts, nil
+}

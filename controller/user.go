@@ -630,6 +630,12 @@ func UpdateUser(c *gin.Context) {
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
+	if updatedUser.InviterId != originUser.InviterId {
+		if err := model.ValidateInviterAssignment(updatedUser.Id, updatedUser.InviterId); err != nil {
+			common.ApiErrorMsg(c, err.Error())
+			return
+		}
+	}
 	updatePassword := updatedUser.Password != ""
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		common.ApiError(c, err)

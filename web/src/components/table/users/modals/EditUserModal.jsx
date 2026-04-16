@@ -56,7 +56,7 @@ import {
   IconPlus,
 } from '@douyinfe/semi-icons';
 import UserBindingManagementModal from './UserBindingManagementModal';
-import SubscriptionReferralOverrideSection from './SubscriptionReferralOverrideSection';
+import ReferralTemplateBindingSection from './ReferralTemplateBindingSection';
 
 const { Text, Title } = Typography;
 
@@ -87,6 +87,7 @@ const EditUserModal = (props) => {
     email: '',
     quota: 0,
     group: 'default',
+    inviter_id: 0,
     remark: '',
   });
 
@@ -267,6 +268,16 @@ const EditUserModal = (props) => {
                         showClear
                       />
                     </Col>
+                    <Col span={24}>
+                      <Form.InputNumber
+                        field='inviter_id'
+                        label={t('直接邀请人 ID')}
+                        placeholder={t('未设置时填写 0')}
+                        min={0}
+                        step={1}
+                        style={{ width: '100%' }}
+                      />
+                    </Col>
                   </Row>
                 </Card>
 
@@ -328,9 +339,7 @@ const EditUserModal = (props) => {
                   </Card>
                 )}
 
-                {userId && (
-                  <SubscriptionReferralOverrideSection userId={userId} />
-                )}
+                {userId && <ReferralTemplateBindingSection userId={userId} />}
 
                 {/* 绑定信息入口 */}
                 {userId && (

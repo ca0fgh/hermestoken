@@ -49,6 +49,7 @@ import DrawingSetting from '../../components/settings/DrawingSetting';
 import PaymentSetting from '../../components/settings/PaymentSetting';
 import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
 import PerformanceSetting from '../../components/settings/PerformanceSetting';
+import ReferralSetting from '../../components/settings/ReferralSetting';
 
 const Setting = () => {
   const { t } = useTranslation();
@@ -107,6 +108,16 @@ const Setting = () => {
       ),
       content: <PaymentSetting />,
       itemKey: 'payment',
+    });
+    panes.push({
+      tab: (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <Settings size={18} />
+          {t('返佣模板设置')}
+        </span>
+      ),
+      content: <ReferralSetting />,
+      itemKey: 'referral',
     });
     panes.push({
       tab: (
