@@ -204,20 +204,66 @@ func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, key
 	}
 
 	keyword = strings.TrimSpace(keyword)
-	summaryQuery := DB.Table("users AS invitees").
+	legacySummaryQuery := DB.Table("subscription_referral_records AS records").
 		Select(strings.Join([]string{
-			"invitees.id AS invitee_user_id",
-			"COALESCE(invitees.username, '') AS invitee_username",
-			"COALESCE(invitees." + commonGroupCol + ", '') AS invitee_group",
+			"records.payer_user_id AS invitee_user_id",
 			"COALESCE(SUM(records.reward_quota - records.reversed_quota - records.debt_quota), 0) AS contribution_quota",
 			"COALESCE(SUM(records.reward_quota), 0) AS reward_quota",
 			"COALESCE(SUM(records.reversed_quota), 0) AS reversed_quota",
 			"COALESCE(SUM(records.debt_quota), 0) AS debt_quota",
 			"COUNT(DISTINCT records.order_id) AS order_count",
 		}, ", ")).
-		Joins("LEFT JOIN subscription_referral_records AS records ON records.payer_user_id = invitees.id AND records.inviter_user_id = ? AND records.beneficiary_role = ?", inviterUserId, SubscriptionReferralBeneficiaryRoleInviter).
+		Where("records.inviter_user_id = ? AND records.beneficiary_role = ?", inviterUserId, SubscriptionReferralBeneficiaryRoleInviter).
+		Group("records.payer_user_id")
+
+	templateSummaryQuery := DB.Table("referral_settlement_records AS records").
+		Select(strings.Join([]string{
+			"batches.payer_user_id AS invitee_user_id",
+			"COALESCE(SUM(records.reward_quota - records.reversed_quota - records.debt_quota), 0) AS contribution_quota",
+			"COALESCE(SUM(records.reward_quota), 0) AS reward_quota",
+			"COALESCE(SUM(records.reversed_quota), 0) AS reversed_quota",
+			"COALESCE(SUM(records.debt_quota), 0) AS debt_quota",
+			"COUNT(DISTINCT batches.source_id) AS order_count",
+		}, ", ")).
+		Joins("JOIN referral_settlement_batches AS batches ON batches.id = records.batch_id").
+		Where(
+			"records.referral_type = ? AND batches.immediate_inviter_user_id = ? AND records.beneficiary_user_id = ? AND records.reward_component IN ?",
+			ReferralTypeSubscription,
+			inviterUserId,
+			inviterUserId,
+			[]string{"direct_reward", "team_direct_reward"},
+		).
+		Group("batches.payer_user_id")
+
+	summaryQuery := DB.Table("users AS invitees").
+		Select(strings.Join([]string{
+			"invitees.id AS invitee_user_id",
+			"COALESCE(invitees.username, '') AS invitee_username",
+			"COALESCE(invitees." + commonGroupCol + ", '') AS invitee_group",
+			"COALESCE(legacy_records.contribution_quota, 0) + COALESCE(template_records.contribution_quota, 0) AS contribution_quota",
+			"COALESCE(legacy_records.reward_quota, 0) + COALESCE(template_records.reward_quota, 0) AS reward_quota",
+			"COALESCE(legacy_records.reversed_quota, 0) + COALESCE(template_records.reversed_quota, 0) AS reversed_quota",
+			"COALESCE(legacy_records.debt_quota, 0) + COALESCE(template_records.debt_quota, 0) AS debt_quota",
+			"COALESCE(legacy_records.order_count, 0) + COALESCE(template_records.order_count, 0) AS order_count",
+		}, ", ")).
+		Joins("LEFT JOIN (?) AS legacy_records ON legacy_records.invitee_user_id = invitees.id", legacySummaryQuery).
+		Joins("LEFT JOIN (?) AS template_records ON template_records.invitee_user_id = invitees.id", templateSummaryQuery).
 		Where("invitees.inviter_id = ? AND invitees.deleted_at IS NULL", inviterUserId).
-		Group("invitees.id, invitees.username, invitees." + commonGroupCol)
+		Group(strings.Join([]string{
+			"invitees.id",
+			"invitees.username",
+			"invitees." + commonGroupCol,
+			"legacy_records.contribution_quota",
+			"legacy_records.reward_quota",
+			"legacy_records.reversed_quota",
+			"legacy_records.debt_quota",
+			"legacy_records.order_count",
+			"template_records.contribution_quota",
+			"template_records.reward_quota",
+			"template_records.reversed_quota",
+			"template_records.debt_quota",
+			"template_records.order_count",
+		}, ", "))
 
 	if keyword != "" {
 		if inviteeId, err := strconv.Atoi(keyword); err == nil {

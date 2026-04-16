@@ -3,6 +3,8 @@ package model
 import (
 	"math"
 	"testing"
+
+	"github.com/QuantumNous/new-api/common"
 )
 
 func TestResolveSubscriptionTemplateSettlementContext_TeamDirect(t *testing.T) {
@@ -128,4 +130,78 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesMixedTeamChainS
 	}
 	assertRewardComponents(t, records, []string{"direct_reward", "invitee_reward", "team_reward", "team_reward"})
 	assertTeamChainSnapshotDistances(t, batch.TeamChainSnapshotJSON, []int{1, 3})
+}
+
+func TestApplySubscriptionReferralOnOrderSuccessTx_DispatchesByEngineRoute(t *testing.T) {
+	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		Money:                 10,
+	})
+
+	if _, err := UpsertReferralEngineRoute(&ReferralEngineRoute{
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		EngineMode:   ReferralEngineModeTemplate,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}); err != nil {
+		t.Fatalf("failed to upsert referral engine route: %v", err)
+	}
+
+	if err := ApplySubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplySubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	batch, _ := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	if batch.ReferralType != ReferralTypeSubscription {
+		t.Fatalf("ReferralType = %q, want %q", batch.ReferralType, ReferralTypeSubscription)
+	}
+}
+
+func TestListSubscriptionReferralInviteeContributionSummariesIncludesTemplateLedger(t *testing.T) {
+	fixture, _, _ := seedTemplateContributionLedger(t)
+
+	summaries, total, contributionTotal, err := ListSubscriptionReferralInviteeContributionSummaries(fixture.ImmediateInviter.Id, "", &common.PageInfo{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListSubscriptionReferralInviteeContributionSummaries() error = %v", err)
+	}
+	if total <= 0 {
+		t.Fatalf("total = %d, want > 0", total)
+	}
+	if contributionTotal <= 0 {
+		t.Fatalf("contributionTotal = %d, want > 0", contributionTotal)
+	}
+	if len(summaries) == 0 {
+		t.Fatal("expected at least one invitee summary")
+	}
+	if summaries[0].InviteeUserId != fixture.PayerUser.Id {
+		t.Fatalf("InviteeUserId = %d, want %d", summaries[0].InviteeUserId, fixture.PayerUser.Id)
+	}
+}
+
+func TestReverseSubscriptionReferralByTradeNoReversesTemplateBatch(t *testing.T) {
+	fixture, order, _ := seedTemplateContributionLedger(t)
+
+	if err := ReverseSubscriptionReferralByTradeNo(order.TradeNo, 1); err != nil {
+		t.Fatalf("ReverseSubscriptionReferralByTradeNo() error = %v", err)
+	}
+
+	batch, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	if batch == nil {
+		t.Fatal("expected settlement batch to remain after reverse")
+	}
+	for _, record := range records {
+		if record.Status != SubscriptionReferralStatusReversed {
+			t.Fatalf("record %s status = %q, want %q", record.RewardComponent, record.Status, SubscriptionReferralStatusReversed)
+		}
+	}
+
+	immediateInviter, err := GetUserById(fixture.ImmediateInviter.Id, false)
+	if err != nil {
+		t.Fatalf("GetUserById(immediate inviter) error = %v", err)
+	}
+	if immediateInviter.AffQuota != 0 {
+		t.Fatalf("immediate inviter aff_quota = %d, want 0", immediateInviter.AffQuota)
+	}
 }

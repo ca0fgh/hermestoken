@@ -397,18 +397,18 @@ func resolveTemplateInviteeShareBps(tx *gorm.DB, context *ReferralSettlementCont
 	}
 
 	var override ReferralInviteeShareOverride
-	err := tx.Where(
+	result := tx.Where(
 		"inviter_user_id = ? AND invitee_user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
 		context.ImmediateInviter.Id,
 		context.PayerUser.Id,
 		context.ReferralType,
 		context.Group,
-	).First(&override).Error
-	if err == nil {
+	).Limit(1).Find(&override)
+	if result.Error == nil && result.RowsAffected > 0 {
 		return NormalizeSubscriptionReferralRateBps(override.InviteeShareBps), nil
 	}
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return 0, err
+	if result.Error != nil {
+		return 0, result.Error
 	}
 
 	if context.ActiveBinding.InviteeShareOverrideBps != nil {

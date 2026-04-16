@@ -10,9 +10,6 @@ import (
 
 func TestAdminCreateReferralTemplate(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
-	if err := db.AutoMigrate(&model.ReferralTemplate{}); err != nil {
-		t.Fatalf("failed to migrate referral template: %v", err)
-	}
 
 	body := map[string]interface{}{
 		"referral_type":             model.ReferralTypeSubscription,

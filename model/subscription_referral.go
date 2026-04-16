@@ -504,6 +504,22 @@ func ApplySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionO
 		return nil
 	}
 
+	mode, err := ResolveReferralEngineMode(ReferralTypeSubscription, group)
+	if err != nil {
+		return err
+	}
+	if mode == ReferralEngineModeTemplate {
+		return ApplyTemplateSubscriptionReferralOnOrderSuccessTx(tx, order, plan)
+	}
+	return applyLegacySubscriptionReferralOnOrderSuccessTx(tx, order, plan)
+}
+
+func applyLegacySubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *SubscriptionOrder, plan *SubscriptionPlan) error {
+	group := strings.TrimSpace(plan.UpgradeGroup)
+	if group == "" {
+		return nil
+	}
+
 	var invitee User
 	if err := tx.First(&invitee, order.UserId).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -597,6 +613,21 @@ func ReverseSubscriptionReferralByTradeNo(tradeNo string, operatorId int) error 
 		return errors.New("tradeNo is empty")
 	}
 
+	mode, batch, err := findTemplateSettlementBatchByTradeNo(tradeNo)
+	if err != nil {
+		return err
+	}
+	if mode == ReferralEngineModeTemplate && batch != nil {
+		return reverseReferralSettlementBatch(batch.Id)
+	}
+	return reverseLegacySubscriptionReferralByTradeNo(tradeNo, operatorId)
+}
+
+func reverseLegacySubscriptionReferralByTradeNo(tradeNo string, operatorId int) error {
+	if tradeNo == "" {
+		return errors.New("tradeNo is empty")
+	}
+
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var records []SubscriptionReferralRecord
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("order_trade_no = ?", tradeNo).Find(&records).Error; err != nil {
@@ -608,6 +639,73 @@ func ReverseSubscriptionReferralByTradeNo(tradeNo string, operatorId int) error 
 
 		for i := range records {
 			record := &records[i]
+			reversible := record.RewardQuota - record.ReversedQuota - record.DebtQuota
+			if reversible <= 0 {
+				continue
+			}
+
+			var user User
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, record.BeneficiaryUserId).Error; err != nil {
+				return err
+			}
+
+			recovered := reversible
+			if int64(user.AffQuota) < recovered {
+				recovered = int64(user.AffQuota)
+			}
+			debt := reversible - recovered
+
+			if recovered > 0 {
+				if err := tx.Model(&User{}).Where("id = ?", user.Id).
+					Update("aff_quota", gorm.Expr("aff_quota - ?", recovered)).Error; err != nil {
+					return err
+				}
+			}
+
+			record.ReversedQuota += recovered
+			record.DebtQuota += debt
+			if debt > 0 {
+				record.Status = SubscriptionReferralStatusPartialRevert
+			} else {
+				record.Status = SubscriptionReferralStatusReversed
+			}
+			if err := tx.Save(record).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+func findTemplateSettlementBatchByTradeNo(tradeNo string) (string, *ReferralSettlementBatch, error) {
+	var batch ReferralSettlementBatch
+	err := DB.Where("referral_type = ? AND source_trade_no = ?", ReferralTypeSubscription, tradeNo).First(&batch).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return ReferralEngineModeLegacy, nil, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return ReferralEngineModeTemplate, &batch, nil
+}
+
+func reverseReferralSettlementBatch(batchID int) error {
+	if batchID <= 0 {
+		return ErrSubscriptionReferralRecordNotFound
+	}
+
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var records []ReferralSettlementRecord
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("batch_id = ?", batchID).Find(&records).Error; err != nil {
+			return err
+		}
+		if len(records) == 0 {
+			return ErrSubscriptionReferralRecordNotFound
+		}
+
+		for idx := range records {
+			record := &records[idx]
 			reversible := record.RewardQuota - record.ReversedQuota - record.DebtQuota
 			if reversible <= 0 {
 				continue
