@@ -95,3 +95,40 @@ func GetReferralTemplateByID(id int) (*ReferralTemplate, error) {
 	}
 	return &template, nil
 }
+
+func CreateReferralTemplate(template *ReferralTemplate) error {
+	if template == nil {
+		return fmt.Errorf("template is required")
+	}
+	return DB.Create(template).Error
+}
+
+func UpdateReferralTemplate(template *ReferralTemplate) error {
+	if template == nil {
+		return fmt.Errorf("template is required")
+	}
+	return DB.Save(template).Error
+}
+
+func DeleteReferralTemplate(id int) error {
+	if id <= 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return DB.Delete(&ReferralTemplate{}, id).Error
+}
+
+func ListReferralTemplates(referralType string, group string) ([]ReferralTemplate, error) {
+	query := DB.Model(&ReferralTemplate{}).Order("referral_type ASC, " + commonGroupCol + " ASC, name ASC")
+	if trimmedReferralType := strings.TrimSpace(referralType); trimmedReferralType != "" {
+		query = query.Where("referral_type = ?", trimmedReferralType)
+	}
+	if trimmedGroup := strings.TrimSpace(group); trimmedGroup != "" {
+		query = query.Where(commonGroupCol+" = ?", trimmedGroup)
+	}
+
+	var templates []ReferralTemplate
+	if err := query.Find(&templates).Error; err != nil {
+		return nil, err
+	}
+	return templates, nil
+}

@@ -219,6 +219,19 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
+		referralRoute := apiRouter.Group("/referral")
+		referralRoute.Use(middleware.RootAuth())
+		{
+			referralRoute.GET("/templates", controller.AdminListReferralTemplates)
+			referralRoute.POST("/templates", controller.AdminCreateReferralTemplate)
+			referralRoute.PUT("/templates/:id", controller.AdminUpdateReferralTemplate)
+			referralRoute.DELETE("/templates/:id", controller.AdminDeleteReferralTemplate)
+			referralRoute.GET("/bindings/users/:id", controller.AdminListReferralTemplateBindingsByUser)
+			referralRoute.PUT("/bindings/users/:id", controller.AdminUpsertReferralTemplateBindingForUser)
+			referralRoute.GET("/engine-routes", controller.AdminListReferralEngineRoutes)
+			referralRoute.PUT("/engine-routes", controller.AdminUpsertReferralEngineRoute)
+			referralRoute.GET("/legacy-seeds/subscription", controller.AdminListLegacySubscriptionReferralSeeds)
+		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())
 		{

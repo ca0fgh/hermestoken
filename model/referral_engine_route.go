@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -69,4 +70,49 @@ func ResolveReferralEngineMode(referralType string, group string) (string, error
 		return "", err
 	}
 	return route.EngineMode, nil
+}
+
+func ListReferralEngineRoutes(referralType string) ([]ReferralEngineRoute, error) {
+	query := DB.Model(&ReferralEngineRoute{}).Order("referral_type ASC, " + commonGroupCol + " ASC")
+	if trimmedReferralType := strings.TrimSpace(referralType); trimmedReferralType != "" {
+		query = query.Where("referral_type = ?", trimmedReferralType)
+	}
+
+	var routes []ReferralEngineRoute
+	if err := query.Find(&routes).Error; err != nil {
+		return nil, err
+	}
+	return routes, nil
+}
+
+func UpsertReferralEngineRoute(route *ReferralEngineRoute) (*ReferralEngineRoute, error) {
+	if route == nil {
+		return nil, errors.New("route is required")
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := route.Validate(); err != nil {
+			return err
+		}
+
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "referral_type"},
+				{Name: "group"},
+			},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"engine_mode": route.EngineMode,
+				"updated_by":  route.UpdatedBy,
+				"updated_at":  common.GetTimestamp(),
+			}),
+		}).Create(route).Error; err != nil {
+			return err
+		}
+
+		return tx.Where("referral_type = ? AND "+commonGroupCol+" = ?", route.ReferralType, route.Group).First(route).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return route, nil
 }

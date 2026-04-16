@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ReferralTemplateBinding struct {
@@ -145,4 +146,43 @@ func ResolveBindingInviteeShareDefault(view ReferralTemplateBindingView) int {
 		return NormalizeSubscriptionReferralRateBps(*view.Binding.InviteeShareOverrideBps)
 	}
 	return NormalizeSubscriptionReferralRateBps(view.Template.InviteeShareDefaultBps)
+}
+
+func UpsertReferralTemplateBinding(binding *ReferralTemplateBinding) (*ReferralTemplateBinding, error) {
+	if binding == nil {
+		return nil, errors.New("binding is required")
+	}
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := binding.validateWithTemplateID(tx); err != nil {
+			return err
+		}
+
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "user_id"},
+				{Name: "referral_type"},
+				{Name: "group"},
+			},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"template_id":                binding.TemplateId,
+				"invitee_share_override_bps": binding.InviteeShareOverrideBps,
+				"updated_by":                 binding.UpdatedBy,
+				"updated_at":                 common.GetTimestamp(),
+			}),
+		}).Create(binding).Error; err != nil {
+			return err
+		}
+
+		return tx.Where(
+			"user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+			binding.UserId,
+			binding.ReferralType,
+			binding.Group,
+		).First(binding).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return binding, nil
 }
