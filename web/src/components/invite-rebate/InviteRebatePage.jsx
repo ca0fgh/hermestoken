@@ -211,7 +211,7 @@ const InviteRebatePage = () => {
             {t('邀请返佣')}
           </Typography.Title>
           <Typography.Text type='secondary' className='max-w-3xl block'>
-            {t('按分组维护默认返佣规则，并为指定邀请用户设置独立返佣。')}
+            {t('按已授权订阅分组维护邀请分账，并为指定邀请用户设置独立返佣。')}
           </Typography.Text>
         </div>
 

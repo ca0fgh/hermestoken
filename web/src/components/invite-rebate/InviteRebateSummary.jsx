@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Card, Typography } from '@douyinfe/semi-ui';
+import { renderQuota } from '../../helpers';
 
 const numberFormatter = new Intl.NumberFormat();
 
@@ -29,7 +30,7 @@ const summaryItems = (t, inviteeCount, totalContributionQuota) => [
   },
   {
     label: t('累计返佣收益'),
-    value: numberFormatter.format(Number(totalContributionQuota || 0)),
+    value: renderQuota(totalContributionQuota),
   },
 ];
 

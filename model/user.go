@@ -309,6 +309,58 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 	return &user, err
 }
 
+func CountInviteesByInviterID(inviterID int) (int64, error) {
+	if inviterID <= 0 {
+		return 0, errors.New("inviter id 为空！")
+	}
+
+	var count int64
+	err := DB.Model(&User{}).
+		Where("inviter_id = ? AND deleted_at IS NULL", inviterID).
+		Count(&count).Error
+	return count, err
+}
+
+func CountInviteesByInviterIDs(inviterIDs []int) (map[int]int64, error) {
+	countByInviterID := make(map[int]int64, len(inviterIDs))
+	filteredInviterIDs := make([]int, 0, len(inviterIDs))
+	seenInviterIDs := make(map[int]struct{}, len(inviterIDs))
+
+	for _, inviterID := range inviterIDs {
+		if inviterID <= 0 {
+			continue
+		}
+		if _, exists := seenInviterIDs[inviterID]; exists {
+			continue
+		}
+		seenInviterIDs[inviterID] = struct{}{}
+		filteredInviterIDs = append(filteredInviterIDs, inviterID)
+	}
+
+	if len(filteredInviterIDs) == 0 {
+		return countByInviterID, nil
+	}
+
+	rows := make([]struct {
+		InviterID int   `gorm:"column:inviter_id"`
+		Count     int64 `gorm:"column:invitee_count"`
+	}, 0, len(filteredInviterIDs))
+
+	if err := DB.Model(&User{}).
+		Select("inviter_id, COUNT(*) AS invitee_count").
+		Where("inviter_id IN ? AND deleted_at IS NULL", filteredInviterIDs).
+		Group("inviter_id").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		countByInviterID[row.InviterID] = row.Count
+	}
+
+	return countByInviterID, nil
+}
+
 func GetUserIdByAffCode(affCode string) (int, error) {
 	if affCode == "" {
 		return 0, errors.New("affCode 为空！")
@@ -433,8 +485,8 @@ func (user *User) Insert(inviterId int) error {
 		if common.QuotaForInviter > 0 {
 			//_ = IncreaseUserQuota(inviterId, common.QuotaForInviter)
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
 		}
+		_ = inviteUser(inviterId)
 	}
 	return nil
 }
@@ -500,8 +552,8 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 		}
 		if common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请用户赠送 %s", logger.LogQuota(common.QuotaForInviter)))
-			_ = inviteUser(inviterId)
 		}
+		_ = inviteUser(inviterId)
 	}
 }
 

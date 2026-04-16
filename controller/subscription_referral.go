@@ -35,6 +35,11 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	inviterCount, err := model.CountInviteesByInviterID(userID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	groupViews := buildSubscriptionReferralSelfGroupViews(user)
 	common.ApiSuccess(c, gin.H{
@@ -42,7 +47,7 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		"groups":               groupViews,
 		"pending_reward_quota": user.AffQuota,
 		"history_reward_quota": user.AffHistoryQuota,
-		"inviter_count":        user.AffCount,
+		"inviter_count":        inviterCount,
 	})
 }
 

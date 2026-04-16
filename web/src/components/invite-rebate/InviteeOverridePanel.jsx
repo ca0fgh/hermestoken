@@ -157,12 +157,12 @@ const InviteeOverridePanel = ({
           <Tag color='white'>{invitee.group || '-'}</Tag>
         </div>
         <Typography.Text type='tertiary' className='mt-2 block text-sm'>
-          {t('未设置独立返佣时，使用默认规则')}
+          {t('未设置独立返佣时，使用邀请人分账规则')}
         </Typography.Text>
       </div>
 
       {normalizedRows.length === 0 ? (
-        <Empty description={t('暂无覆盖项，未设置时使用默认返佣规则')} />
+        <Empty description={t('暂无覆盖项，未设置时使用邀请人分账规则')} />
       ) : (
         normalizedRows.map((row) => {
           const group = String(row?.group || '').trim();
@@ -196,7 +196,7 @@ const InviteeOverridePanel = ({
               <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                 <div>
                   <Typography.Text type='tertiary' className='block text-xs'>
-                    {t('当前默认返佣率')}
+                    {t('当前邀请人分账比例')}
                   </Typography.Text>
                   <Typography.Text strong>
                     {formatRateBpsPercent(row.defaultInviteeRateBps)}
@@ -204,7 +204,7 @@ const InviteeOverridePanel = ({
                 </div>
                 <div>
                   <Typography.Text type='tertiary' className='block text-xs'>
-                    {t('当前默认总返佣率')}
+                    {t('当前授权总返佣率')}
                   </Typography.Text>
                   <Typography.Text strong>
                     {formatRateBpsPercent(row.effectiveTotalRateBps)}

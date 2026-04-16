@@ -29,6 +29,7 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
+import { renderQuota } from '../../helpers';
 
 const InviteeListPanel = ({
   t,
@@ -101,7 +102,7 @@ const InviteeListPanel = ({
                       </Typography.Text>
                       <Typography.Text type='tertiary'>
                         {t('累计返佣收益')}:{' '}
-                        {Number(invitee.contribution_quota || 0)}
+                        {renderQuota(invitee.contribution_quota || 0)}
                       </Typography.Text>
                     </div>
                   </div>

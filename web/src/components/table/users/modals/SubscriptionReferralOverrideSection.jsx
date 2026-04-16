@@ -108,7 +108,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
           <div>
             <Text className='text-lg font-medium'>{t('邀请人返佣覆盖')}</Text>
             <div className='text-xs text-gray-600'>
-              {t('暂无覆盖时使用默认返佣规则')}
+              {t('暂无覆盖时使用授权返佣规则')}
             </div>
           </div>
         </div>
@@ -116,7 +116,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
         {overrideRows.length === 0 ? (
           <div className='rounded-xl border border-dashed border-gray-200 py-8'>
             <Empty
-              title={t('暂无覆盖项，未设置时使用默认返佣规则')}
+              title={t('暂无覆盖项，未设置时使用授权返佣规则')}
               description=''
             />
           </div>
@@ -161,7 +161,7 @@ const SubscriptionReferralOverrideSection = ({ userId }) => {
                   </div>
 
                   <div className='mt-2 text-xs text-gray-500'>
-                    {`${t('当前默认总返佣')} ${formatRateBpsPercent(
+                    {`${t('当前授权总返佣')} ${formatRateBpsPercent(
                       getDefaultRateBpsByGroup(
                         row.group,
                         row.effectiveTotalRateBps,

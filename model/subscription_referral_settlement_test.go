@@ -43,6 +43,7 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionReferralOverride{},
+		&SubscriptionReferralInviteeOverride{},
 		&SubscriptionReferralRecord{},
 		&TopUp{},
 		&Log{},
@@ -316,6 +317,53 @@ func TestCompleteSubscriptionOrderCreditsConfiguredGroupReferral(t *testing.T) {
 		if record.InviteeRateBpsSnapshot != 500 {
 			t.Fatalf("InviteeRateBpsSnapshot = %d, want 500", record.InviteeRateBpsSnapshot)
 		}
+	}
+}
+
+func TestCompleteSubscriptionOrderUsesInviteeSpecificOverrideBeforeInviterDefaultRate(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	common.QuotaPerUnit = 100
+
+	inviter := seedReferralUser(t, db, "invitee-override-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 500},
+	})
+	if _, err := UpsertSubscriptionReferralOverride(inviter.Id, "vip", 4500, 1); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralOverride() error = %v", err)
+	}
+
+	invitee := seedReferralUser(t, db, "invitee-override-user", inviter.Id, dto.UserSetting{})
+	if _, err := UpsertSubscriptionReferralInviteeOverride(inviter.Id, invitee.Id, "vip", 1500); err != nil {
+		t.Fatalf("UpsertSubscriptionReferralInviteeOverride() error = %v", err)
+	}
+
+	plan := seedReferralPlan(t, db, 10)
+	setReferralPlanUpgradeGroup(t, db, plan, "vip")
+	order := seedPendingReferralOrder(t, db, invitee.Id, plan.Id, "trade-ref-invitee-override", 10)
+
+	if err := CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("CompleteSubscriptionOrder returned error: %v", err)
+	}
+
+	inviterAfter, _ := GetUserById(inviter.Id, true)
+	inviteeAfter, _ := GetUserById(invitee.Id, true)
+	if inviterAfter.AffQuota != 300 || inviteeAfter.AffQuota != 150 {
+		t.Fatalf("unexpected quotas inviter=%d invitee=%d", inviterAfter.AffQuota, inviteeAfter.AffQuota)
+	}
+
+	var inviteeRecord SubscriptionReferralRecord
+	if err := db.Where("order_trade_no = ? AND beneficiary_role = ?", order.TradeNo, SubscriptionReferralBeneficiaryRoleInvitee).First(&inviteeRecord).Error; err != nil {
+		t.Fatalf("failed to load invitee referral record: %v", err)
+	}
+	if inviteeRecord.InviteeRateBpsSnapshot != 1500 {
+		t.Fatalf("InviteeRateBpsSnapshot = %d, want 1500", inviteeRecord.InviteeRateBpsSnapshot)
+	}
+	if inviteeRecord.AppliedRateBps != 1500 {
+		t.Fatalf("AppliedRateBps = %d, want 1500", inviteeRecord.AppliedRateBps)
 	}
 }
 

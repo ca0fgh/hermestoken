@@ -10,6 +10,26 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+func GetSubscriptionReferralInviteeOverrideByIDsAndGroup(inviterUserId int, inviteeUserId int, group string) (*SubscriptionReferralInviteeOverride, error) {
+	if inviterUserId <= 0 {
+		return nil, errors.New("invalid inviter user id")
+	}
+	if inviteeUserId <= 0 {
+		return nil, errors.New("invalid invitee user id")
+	}
+
+	var override SubscriptionReferralInviteeOverride
+	if err := DB.Where(
+		"inviter_user_id = ? AND invitee_user_id = ? AND "+commonGroupCol+" = ?",
+		inviterUserId,
+		inviteeUserId,
+		strings.TrimSpace(group),
+	).First(&override).Error; err != nil {
+		return nil, err
+	}
+	return &override, nil
+}
+
 type SubscriptionReferralInviteeOverride struct {
 	Id             int    `json:"id"`
 	InviterUserId  int    `json:"inviter_user_id" gorm:"uniqueIndex:idx_sub_referral_invitee_override_group"`

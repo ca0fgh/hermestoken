@@ -177,3 +177,111 @@ func TestInsertInitializesInviteSidebarModuleForNewUsers(t *testing.T) {
 		t.Fatal("expected invite rebate module to be enabled")
 	}
 }
+
+func TestInsertCountsInviteesEvenWhenInviterQuotaRewardIsDisabled(t *testing.T) {
+	db := setupUserDefaultGroupModelTestDB(t)
+
+	originalQuotaForInviter := common.QuotaForInviter
+	originalQuotaForInvitee := common.QuotaForInvitee
+	originalQuotaForNewUser := common.QuotaForNewUser
+	t.Cleanup(func() {
+		common.QuotaForInviter = originalQuotaForInviter
+		common.QuotaForInvitee = originalQuotaForInvitee
+		common.QuotaForNewUser = originalQuotaForNewUser
+	})
+
+	common.QuotaForInviter = 0
+	common.QuotaForInvitee = 0
+	common.QuotaForNewUser = 0
+
+		inviter := &userSchemaWithoutGroupDefault{
+			Username: "inviter-no-quota",
+			Password: strings.Repeat("h", 16),
+			Group:    "default",
+			AffCode:  "INVQ",
+			Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username: "invitee-no-quota",
+		Password: "password123",
+		Group:    "default",
+	}
+	if err := invitee.Insert(inviter.Id); err != nil {
+		t.Fatalf("expected invitee insert to succeed, got error: %v", err)
+	}
+
+	var storedInviter User
+	if err := db.Where("id = ?", inviter.Id).First(&storedInviter).Error; err != nil {
+		t.Fatalf("failed to load inviter after invitee insert: %v", err)
+	}
+	if storedInviter.AffCount != 1 {
+		t.Fatalf("expected inviter aff_count to be 1, got %d", storedInviter.AffCount)
+	}
+	if storedInviter.AffQuota != 0 || storedInviter.AffHistoryQuota != 0 {
+		t.Fatalf("expected inviter quotas to remain 0, got aff_quota=%d aff_history=%d", storedInviter.AffQuota, storedInviter.AffHistoryQuota)
+	}
+}
+
+func TestFinalizeOAuthUserCreationCountsInviteesEvenWhenInviterQuotaRewardIsDisabled(t *testing.T) {
+	db := setupUserDefaultGroupModelTestDB(t)
+
+	originalQuotaForInviter := common.QuotaForInviter
+	originalQuotaForInvitee := common.QuotaForInvitee
+	originalQuotaForNewUser := common.QuotaForNewUser
+	t.Cleanup(func() {
+		common.QuotaForInviter = originalQuotaForInviter
+		common.QuotaForInvitee = originalQuotaForInvitee
+		common.QuotaForNewUser = originalQuotaForNewUser
+	})
+
+	common.QuotaForInviter = 0
+	common.QuotaForInvitee = 0
+	common.QuotaForNewUser = 0
+
+		inviter := &userSchemaWithoutGroupDefault{
+			Username: "oauth-inviter-no-quota",
+			Password: strings.Repeat("h", 16),
+			Group:    "default",
+			AffCode:  "OINV",
+			Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+
+	oauthUser := &User{
+		Username: "oauth-invitee-no-quota",
+		Password: "password123",
+		Group:    "default",
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("failed to begin transaction: %v", tx.Error)
+	}
+	if err := oauthUser.InsertWithTx(tx, inviter.Id); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("expected oauth invitee insert to succeed, got error: %v", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatalf("failed to commit oauth invitee insert: %v", err)
+	}
+
+	oauthUser.FinalizeOAuthUserCreation(inviter.Id)
+
+	var storedInviter User
+	if err := db.Where("id = ?", inviter.Id).First(&storedInviter).Error; err != nil {
+		t.Fatalf("failed to load inviter after oauth finalize: %v", err)
+	}
+	if storedInviter.AffCount != 1 {
+		t.Fatalf("expected inviter aff_count to be 1 after oauth finalize, got %d", storedInviter.AffCount)
+	}
+	if storedInviter.AffQuota != 0 || storedInviter.AffHistoryQuota != 0 {
+		t.Fatalf("expected inviter quotas to remain 0 after oauth finalize, got aff_quota=%d aff_history=%d", storedInviter.AffQuota, storedInviter.AffHistoryQuota)
+	}
+}

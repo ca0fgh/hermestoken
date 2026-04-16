@@ -58,3 +58,39 @@ func TestEnsureDefaultOptionRecordCreatesMissingFooterRow(t *testing.T) {
 		t.Fatalf("persisted Footer = %q, want default footer html", option.Value)
 	}
 }
+
+func TestLegacySubscriptionReferralOptionsAreNotExposedThroughOptionMap(t *testing.T) {
+	originalEnabled := common.SubscriptionReferralEnabled
+	originalGlobalRateBps := common.SubscriptionReferralGlobalRateBps
+	originalGroupRatesJSON := common.SubscriptionReferralGroupRates2JSONString()
+	originalMap := common.OptionMap
+	defer func() {
+		common.SubscriptionReferralEnabled = originalEnabled
+		common.SubscriptionReferralGlobalRateBps = originalGlobalRateBps
+		common.OptionMap = originalMap
+		_ = common.UpdateSubscriptionReferralGroupRatesByJSONString(originalGroupRatesJSON)
+	}()
+
+	common.OptionMap = make(map[string]string)
+
+	if err := updateOptionMap("SubscriptionReferralEnabled", "true"); err != nil {
+		t.Fatalf("updateOptionMap(enabled) returned error: %v", err)
+	}
+	if _, exists := common.OptionMap["SubscriptionReferralEnabled"]; exists {
+		t.Fatal("legacy SubscriptionReferralEnabled should not be exposed through OptionMap")
+	}
+
+	if err := updateOptionMap("SubscriptionReferralGlobalRateBps", "4500"); err != nil {
+		t.Fatalf("updateOptionMap(global_rate) returned error: %v", err)
+	}
+	if _, exists := common.OptionMap["SubscriptionReferralGlobalRateBps"]; exists {
+		t.Fatal("legacy SubscriptionReferralGlobalRateBps should not be exposed through OptionMap")
+	}
+
+	if err := updateOptionMap("SubscriptionReferralGroupRates", `{"vip":4500}`); err != nil {
+		t.Fatalf("updateOptionMap(group_rates) returned error: %v", err)
+	}
+	if _, exists := common.OptionMap["SubscriptionReferralGroupRates"]; exists {
+		t.Fatal("legacy SubscriptionReferralGroupRates should not be exposed through OptionMap")
+	}
+}

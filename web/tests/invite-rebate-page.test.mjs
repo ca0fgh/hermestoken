@@ -84,7 +84,7 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(summarySource, /t\('被邀请人数'\)/);
   assert.match(summarySource, /t\('累计返佣收益'\)/);
 
-  assert.match(defaultRuleSource, /t\('默认返佣规则'\)/);
+  assert.match(defaultRuleSource, /t\('邀请人分账规则'\)/);
   assert.match(defaultRuleSource, /t\('返佣类型'\)/);
   assert.match(defaultRuleSource, /getTypeLabel/);
   assert.match(defaultRuleSource, /t\('分组'\)/);
@@ -103,9 +103,12 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
 
   assert.match(overrideSource, /t\('邀请用户独立返佣'\)/);
   assert.match(overrideSource, /t\('未选择邀请用户'\)/);
-  assert.match(overrideSource, /t\('未设置独立返佣时，使用默认规则'\)/);
+  assert.match(
+    overrideSource,
+    /t\('未设置独立返佣时，使用邀请人分账规则'\)/,
+  );
   assert.match(overrideSource, /t\('返佣类型'\)/);
-  assert.match(overrideSource, /t\('当前默认返佣率'\)/);
+  assert.match(overrideSource, /t\('当前邀请人分账比例'\)/);
   assert.match(overrideSource, /getTypeLabel/);
   assert.match(
     overrideSource,

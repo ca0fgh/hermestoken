@@ -234,6 +234,10 @@ func GetAllUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if err := hydrateLiveInviteCounts(users); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
@@ -248,6 +252,10 @@ func SearchUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	users, total, err := model.SearchUsers(keyword, group, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := hydrateLiveInviteCounts(users); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -272,6 +280,10 @@ func GetUser(c *gin.Context) {
 	myRole := c.GetInt("role")
 	if myRole <= user.Role && myRole != common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
+		return
+	}
+	if err := hydrateLiveInviteCount(user); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -382,6 +394,10 @@ func GetSelf(c *gin.Context) {
 
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
+	if err := hydrateLiveInviteCount(user); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
@@ -418,6 +434,46 @@ func GetSelf(c *gin.Context) {
 		"data":    responseData,
 	})
 	return
+}
+
+func hydrateLiveInviteCount(user *model.User) error {
+	if user == nil || user.Id <= 0 {
+		return nil
+	}
+
+	inviteeCount, err := model.CountInviteesByInviterID(user.Id)
+	if err != nil {
+		return err
+	}
+	user.AffCount = int(inviteeCount)
+	return nil
+}
+
+func hydrateLiveInviteCounts(users []*model.User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int, 0, len(users))
+	for _, user := range users {
+		if user == nil || user.Id <= 0 {
+			continue
+		}
+		userIDs = append(userIDs, user.Id)
+	}
+
+	countByUserID, err := model.CountInviteesByInviterIDs(userIDs)
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		if user == nil || user.Id <= 0 {
+			continue
+		}
+		user.AffCount = int(countByUserID[user.Id])
+	}
+	return nil
 }
 
 // 计算用户权限的辅助函数

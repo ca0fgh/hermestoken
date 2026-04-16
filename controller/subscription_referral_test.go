@@ -278,6 +278,35 @@ func TestGetSubscriptionReferralSelfReturnsEmptyGroupsWhenNoRealGroupsExist(t *t
 	}
 }
 
+func TestGetSubscriptionReferralSelfUsesLiveInviteeCountInsteadOfStoredAffCount(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	common.SubscriptionReferralEnabled = true
+
+	inviter := seedSubscriptionReferralControllerUser(t, "self-user-live-invite-count", 0, dto.UserSetting{})
+	if err := model.DB.Model(&model.User{}).Where("id = ?", inviter.Id).Update("aff_count", 0).Error; err != nil {
+		t.Fatalf("failed to reset inviter aff_count: %v", err)
+	}
+	seedSubscriptionReferralControllerUser(t, "self-user-live-invitee", inviter.Id, dto.UserSetting{})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, inviter.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success")
+	}
+
+	var data struct {
+		InviterCount int64 `json:"inviter_count"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response data: %v", err)
+	}
+	if data.InviterCount != 1 {
+		t.Fatalf("inviter_count = %d, want 1", data.InviterCount)
+	}
+}
+
 func TestUpdateSubscriptionReferralSelfRejectsInviteeRateOverTotal(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true

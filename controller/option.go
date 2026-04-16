@@ -122,6 +122,13 @@ func UpdateOption(c *gin.Context) {
 	default:
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
+	if model.IsDeprecatedSubscriptionReferralOptionKey(option.Key) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "订阅返佣已改为按邀请人和订阅分组授权，该旧全局配置已停用",
+		})
+		return
+	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
@@ -257,15 +264,6 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": err.Error(),
-			})
-			return
-		}
-	case "SubscriptionReferralGroupRates":
-		err = common.UpdateSubscriptionReferralGroupRatesByJSONString(option.Value.(string))
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "订阅返佣分组费率设置失败: " + err.Error(),
 			})
 			return
 		}

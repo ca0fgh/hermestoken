@@ -119,12 +119,12 @@ const InviteDefaultRuleSection = ({
   return (
     <Card
       className='!rounded-2xl border-0 shadow-sm'
-      title={t('默认返佣规则')}
+      title={t('邀请人分账规则')}
       loading={loading}
     >
       <div className='flex flex-col gap-4'>
         {rows.length === 0 ? (
-          <Empty description={t('暂无覆盖时使用默认返佣规则')} />
+          <Empty description={t('暂无已授权返佣分组')} />
         ) : (
           rows.map((row) => {
             const group = String(row?.group || '').trim();
@@ -157,7 +157,7 @@ const InviteDefaultRuleSection = ({
                 <div className='grid grid-cols-1 gap-4 md:grid-cols-2'>
                   <div>
                     <Typography.Text type='tertiary' className='block text-xs'>
-                      {t('当前默认总返佣率')}
+                      {t('当前授权总返佣率')}
                     </Typography.Text>
                     <Typography.Text strong>
                       {formatRateBpsPercent(row.effectiveTotalRateBps)}

@@ -89,64 +89,6 @@ export function normalizeGroupNames(groups = []) {
   ).sort((left, right) => left.localeCompare(right));
 }
 
-export function mergeAdminReferralGroupNames(...groupLists) {
-  return normalizeGroupNames(groupLists.flat());
-}
-
-export function normalizeAdminReferralPayload({ enabled, totalRateBps }) {
-  return {
-    enabled: Boolean(enabled),
-    totalRateBps: normalizeRateBps(totalRateBps),
-  };
-}
-
-export function parseAdminReferralSettings(payload = {}) {
-  const rawEnabled = payload.enabled;
-  let enabled = false;
-  if (typeof rawEnabled === 'boolean') {
-    enabled = rawEnabled;
-  } else if (typeof rawEnabled === 'number') {
-    enabled = rawEnabled === 1;
-  } else if (typeof rawEnabled === 'string') {
-    const normalizedEnabled = rawEnabled.trim().toLowerCase();
-    enabled = normalizedEnabled === 'true' || normalizedEnabled === '1';
-  }
-
-  const groupRates = normalizeGroupRateMap(payload.group_rates);
-  const groups = normalizeGroupNames(payload.groups);
-
-  return {
-    enabled,
-    groups,
-    groupRates,
-  };
-}
-
-export function buildAdminReferralFormValues({
-  enabled = false,
-  totalRatePercent = 0,
-} = {}) {
-  return {
-    SubscriptionReferralEnabled: Boolean(enabled),
-    SubscriptionReferralGlobalRateBps: Number(totalRatePercent || 0),
-  };
-}
-
-export function buildAdminReferralRows(groupNames = [], groupRates = {}) {
-  const normalizedGroupRates = normalizeGroupRateMap(groupRates);
-  const normalizedGroupNames = normalizeGroupNames(groupNames);
-
-  return normalizedGroupNames.map((group) => {
-    const totalRateBps = normalizeRateBps(normalizedGroupRates[group] || 0);
-    return {
-      group,
-      enabled: totalRateBps > 0,
-      totalRateBps,
-      totalRatePercent: rateBpsToPercentNumber(totalRateBps),
-    };
-  });
-}
-
 export function buildAdminOverrideRows(groups = []) {
   return groups.map((groupItem) => {
     const group = String(groupItem?.group || '').trim();

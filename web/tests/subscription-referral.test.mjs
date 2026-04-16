@@ -23,15 +23,11 @@ import { readFileSync } from 'node:fs';
 import {
   buildAdminOverrideRows,
   buildAdminOverrideGroupOptions,
-  buildAdminReferralRows,
-  buildAdminReferralFormValues,
   buildGroupedReferralSummaries,
   buildInvitationDraftPercentInputs,
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
-  normalizeAdminReferralPayload,
-  parseAdminReferralSettings,
   createAdminOverrideDraftRow,
 } from '../src/helpers/subscriptionReferral.js';
 
@@ -144,156 +140,8 @@ test('formatRateBpsPercent formats basis points as percent strings', () => {
   assert.equal(formatRateBpsPercent(375), '3.75%');
 });
 
-test('normalizeAdminReferralPayload keeps BPS integers within 0-10000', () => {
-  assert.deepEqual(
-    normalizeAdminReferralPayload({ enabled: true, totalRateBps: 12000 }),
-    {
-      enabled: true,
-      totalRateBps: 10000,
-    },
-  );
-});
-
-test('parseAdminReferralSettings normalizes grouped admin API payload for local form state', () => {
-  assert.deepEqual(
-    parseAdminReferralSettings({
-      enabled: 1,
-      groups: ['default', 'vip'],
-      group_rates: {
-        default: '4500',
-        vip: 3000,
-      },
-    }),
-    {
-      enabled: true,
-      groups: ['default', 'vip'],
-      groupRates: {
-        default: 4500,
-        vip: 3000,
-      },
-    },
-  );
-});
-
-test('parseAdminReferralSettings does not synthesize default from legacy total_rate_bps', () => {
-  assert.deepEqual(
-    parseAdminReferralSettings({
-      enabled: true,
-      total_rate_bps: 4500,
-    }),
-    {
-      enabled: true,
-      groups: [],
-      groupRates: {},
-    },
-  );
-});
-
-test('buildAdminReferralRows does not invent default rows when group list is empty', () => {
-  assert.deepEqual(buildAdminReferralRows([], {}), []);
-});
-
 test('buildAdminOverrideRows returns no rows when grouped override payload is empty', () => {
   assert.deepEqual(buildAdminOverrideRows([]), []);
-});
-
-test('buildAdminReferralRows maps group names and rates into table rows', () => {
-  assert.deepEqual(
-    buildAdminReferralRows(['default', 'vip'], {
-      default: 4500,
-      vip: 3000,
-    }),
-    [
-      {
-        group: 'default',
-        enabled: true,
-        totalRateBps: 4500,
-        totalRatePercent: 45,
-      },
-      {
-        group: 'vip',
-        enabled: true,
-        totalRateBps: 3000,
-        totalRatePercent: 30,
-      },
-    ],
-  );
-});
-
-test('buildAdminReferralRows sorts rows alphabetically and includes rates missing from explicit group list', () => {
-  assert.deepEqual(
-    buildAdminReferralRows(['vip'], {
-      zeta: 1200,
-      default: 4500,
-      vip: 3000,
-    }),
-    [
-      {
-        group: 'vip',
-        enabled: true,
-        totalRateBps: 3000,
-        totalRatePercent: 30,
-      },
-    ],
-  );
-});
-
-test('parseAdminReferralSettings does not synthesize groups from group_rates when payload.groups is empty', () => {
-  assert.deepEqual(
-    parseAdminReferralSettings({
-      enabled: true,
-      group_rates: {
-        vip: 3000,
-        default: 4500,
-      },
-    }),
-    {
-      enabled: true,
-      groups: [],
-      groupRates: {
-        default: 4500,
-        vip: 3000,
-      },
-    },
-  );
-});
-
-test('buildAdminReferralRows ignores rates for groups not present in the provided group list', () => {
-  assert.deepEqual(
-    buildAdminReferralRows([], {
-      vip: 3000,
-      default: 4500,
-    }),
-    [],
-  );
-});
-
-test('plan-backed settings groups render rows even when missing from group_rates', () => {
-  const parsedSettings = parseAdminReferralSettings({
-    enabled: true,
-    groups: ['default', 'retired'],
-    group_rates: {
-      default: 4500,
-    },
-  });
-
-  assert.deepEqual(
-    buildAdminReferralRows(parsedSettings.groups, parsedSettings.groupRates),
-    [
-      {
-        group: 'default',
-        enabled: true,
-        totalRateBps: 4500,
-        totalRatePercent: 45,
-      },
-      {
-        group: 'retired',
-        enabled: false,
-        totalRateBps: 0,
-        totalRatePercent: 0,
-      },
-    ],
-  );
 });
 
 test('buildGroupedReferralSummaries derives inviter rate per group', () => {
@@ -533,7 +381,7 @@ test('OperationSetting no longer mounts the global subscription referral setting
   );
 });
 
-test('SubscriptionReferralOverrideSection keeps the extensible override list workflow', () => {
+test('SubscriptionReferralOverrideSection loads inviter override data without global settings workflow', () => {
   const overrideSource = readFileSync(
     new URL(
       '../src/components/table/users/modals/SubscriptionReferralOverrideSection.jsx',
@@ -551,9 +399,8 @@ test('SubscriptionReferralOverrideSection keeps the extensible override list wor
     /API\.get\(`\/api\/subscription\/admin\/referral\/users\/\$\{userId\}`\)/,
   );
   assert.match(overrideSource, /API\.get\(['"`]\/api\/group\/['"`]\)/);
-  assert.match(overrideSource, /createAdminOverrideDraftRow\(\)/);
-  assert.match(overrideSource, /buildAdminOverrideGroupOptions\(/);
-  assert.match(overrideSource, /t\('新增覆盖'\)/);
+  assert.equal(overrideSource.includes("默认返佣规则"), false);
+  assert.equal(overrideSource.includes("当前默认总返佣"), false);
   assert.equal(
     overrideSource.includes('/api/subscription/admin/referral/settings'),
     false,
@@ -571,15 +418,42 @@ test('topup wallet view no longer keeps grouped referral summary refresh logic',
   assert.equal(topupSource.includes('data.invitee_rate_bps'), false);
 });
 
-test('buildAdminReferralFormValues maps settings to Semi Form field names', () => {
-  assert.deepEqual(
-    buildAdminReferralFormValues({
-      enabled: true,
-      totalRatePercent: 45,
-    }),
-    {
-      SubscriptionReferralEnabled: true,
-      SubscriptionReferralGlobalRateBps: 45,
-    },
+test('invite rebate UI no longer describes inviter-authorized splits as platform default rules', () => {
+  const defaultRuleSource = readFileSync(
+    new URL(
+      '../src/components/invite-rebate/InviteDefaultRuleSection.jsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const inviteeOverrideSource = readFileSync(
+    new URL(
+      '../src/components/invite-rebate/InviteeOverridePanel.jsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.equal(defaultRuleSource.includes("默认返佣规则"), false);
+  assert.equal(defaultRuleSource.includes("当前默认总返佣率"), false);
+  assert.equal(inviteeOverrideSource.includes("未设置独立返佣时，使用默认规则"), false);
+  assert.equal(inviteeOverrideSource.includes("当前默认返佣率"), false);
+  assert.equal(inviteeOverrideSource.includes("当前默认总返佣率"), false);
+});
+
+test('option map no longer exposes legacy global subscription referral settings', () => {
+  const optionSource = readFileSync(
+    new URL('../../model/option.go', import.meta.url),
+    'utf8',
+  );
+
+  assert.equal(optionSource.includes('OptionMap["SubscriptionReferralEnabled"]'), false);
+  assert.equal(
+    optionSource.includes('OptionMap["SubscriptionReferralGlobalRateBps"]'),
+    false,
+  );
+  assert.equal(
+    optionSource.includes('OptionMap["SubscriptionReferralGroupRates"]'),
+    false,
   );
 });

@@ -3544,6 +3544,10 @@
     "暂无覆盖时使用默认返佣规则": "Default referral rules apply when no override is set",
     "暂无覆盖项，未设置时使用默认返佣规则": "No override items yet. Default referral rules apply",
     "当前默认总返佣率": "Current default total referral rate",
+    "暂无覆盖时使用授权返佣规则": "Authorized referral rules apply when no override is set",
+    "暂无覆盖项，未设置时使用授权返佣规则": "No override items yet. Authorized referral rules apply",
+    "当前授权总返佣率": "Current authorized total referral rate",
+    "当前授权总返佣": "Current authorized total referral",
     "请选择返佣类型": "Please select a referral type",
     "该返佣类型和分组组合已存在": "This referral type and group combination already exists",
     "覆盖总返佣率必须为数字": "The override total referral rate must be a number",
@@ -3552,6 +3556,8 @@
     "被邀请人数": "Invitee count",
     "累计返佣收益": "Total rebate earnings",
     "默认返佣规则": "Default rebate rules",
+    "邀请人分账规则": "Inviter split rules",
+    "暂无已授权返佣分组": "No authorized referral groups yet",
     "邀请用户": "Invited users",
     "邀请用户独立返佣": "Invitee-specific rebate",
     "未选择邀请用户": "No invited user selected",
@@ -3562,6 +3568,10 @@
     "被邀请人返佣比例": "Invitee rebate rate",
     "未设置独立返佣时，使用默认规则": "Default rules apply when no invitee-specific rebate is set",
     "当前默认返佣率": "Current default rebate rate",
-    "按分组维护默认返佣规则，并为指定邀请用户设置独立返佣。": "Manage default rebate rules by group and set invitee-specific rebates for selected users."
+    "未设置独立返佣时，使用邀请人分账规则": "Inviter split rules apply when no invitee-specific rebate is set",
+    "当前邀请人分账比例": "Current inviter split rate",
+    "按分组维护默认返佣规则，并为指定邀请用户设置独立返佣。": "Manage default rebate rules by group and set invitee-specific rebates for selected users.",
+    "按已授权订阅分组维护邀请分账，并为指定邀请用户设置独立返佣。": "Manage invite splits by authorized subscription group and set invitee-specific rebates for selected users.",
+    "暂无覆盖项，未设置时使用邀请人分账规则": "No override items yet. Inviter split rules apply"
   }
 }
