@@ -500,6 +500,14 @@
 
 - 始终只给最近直接邀请付款用户的那个 `direct`
 
+若：
+
+- `direct_reward <= 0`
+
+则：
+
+- 不生成 `direct_reward` 明细
+
 #### 2. Team Pool
 
 只在 `direct_with_team_chain` 模式存在。
@@ -528,6 +536,14 @@
 归属：
 
 - 始终只给最近直接邀请付款用户的那个 `team`
+
+若：
+
+- `team_direct_reward <= 0`
+
+则：
+
+- 不生成 `team_direct_reward` 明细
 
 ### Team Pool Allocation
 
@@ -702,11 +718,14 @@
 
 结果：
 
+- 整笔不返佣
 - `normalA = 0`
 
 说明：
 
+- 付款用户的直接邀请人是 `normalA`
 - `normal` 用户不能拿订阅返佣
+- 不允许跳过 `normalA` 去找更上层节点
 
 ### Example 11: `team1 -> normalA -> normalUser`
 
