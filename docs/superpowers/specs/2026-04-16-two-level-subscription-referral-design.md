@@ -31,7 +31,7 @@
 - 返佣受益资格由身份决定，而不是由普通邀请关系自然继承
 - 普通用户不能拿订阅返佣
 - 团队直邀用户时只给该团队本人结算
-- 付款用户自身身份会影响是否继续向上结算团队差额
+- 只要第一层直接邀请人是 `direct`，就触发返佣链并继续向上结算团队差额
 - 新规则不再需要邀请人给被邀请人手动分账
 
 因此，本次方案应被视为一个新的“订阅两级返佣模型”，而不是对旧模型的小修补。
@@ -65,9 +65,8 @@
   - 只给这个 `team` 本人结算
 - 如果付款用户的直接邀请人是 `direct`：
   - 最近这个 `direct` 拿直推返佣
-  - 是否继续给上层 `team` 返佣，取决于付款用户身份
-- 只有当付款用户本身是 `normal`，且其直接邀请人是 `direct` 时，才允许继续向上计算团队差额返佣
-- 如果付款用户本身已经是 `direct` 或 `team`，即使其直接邀请人是 `direct`，也只给最近这个 `direct` 结算，不再向上给团队返佣
+  - 一律触发返佣链
+  - 继续给上层 `team` 结算团队差额返佣
 - 一旦进入 `direct_with_team_chain` 模式，团队差额池按返佣路径上的实际距离递减，而不是只按团队节点命中顺序递减
 - 历史订单结算结果需要快照固化，后续改邀请关系、改身份、改返佣配置都不影响历史订单
 
@@ -188,7 +187,7 @@
 
 ### Trigger Modes
 
-新模型下，订单只会进入以下三种结算模式之一。
+新模型下，订单只会进入以下两种结算模式之一。
 
 #### Mode 1: `team_direct`
 
@@ -202,30 +201,11 @@
 - 只给这个直接邀请用户的 `team` 本人结算
 - 更上层节点全部不参与
 
-#### Mode 2: `direct_only`
+#### Mode 2: `direct_with_team_chain`
 
 条件：
 
 - 付款用户的直接邀请人身份是 `direct`
-- 且付款用户身份是：
-  - `direct`
-  - 或 `team`
-
-结果：
-
-- 只给最近这个 `direct` 结算直推返佣
-- 不再向上结算团队返佣
-
-说明：
-
-- 这条规则用于阻止“付款用户本身已经具备返佣身份时，再继续向上形成团队极差”
-
-#### Mode 3: `direct_with_team_chain`
-
-条件：
-
-- 付款用户的直接邀请人身份是 `direct`
-- 且付款用户身份是 `normal`
 
 结果：
 
@@ -273,21 +253,10 @@
 
 3. `L1 = direct`
    - 先给 `L1` 结算 `direct_reward`
-   - 再根据 `payer_level_type` 判断是否继续向上
+   - 进入 `direct_with_team_chain` 模式
+   - 继续向上找团队链
 
-#### Step 3: 判断是否允许继续向上
-
-只有在以下条件同时成立时，才继续向上找团队链：
-
-- `L1.referral_level_type = direct`
-- `payer.referral_level_type = normal`
-
-否则：
-
-- 进入 `direct_only` 模式
-- 本单在 `L1` 结算完 `direct_reward` 后直接结束
-
-#### Step 4: 从最近直推节点的上级开始向上遍历
+#### Step 3: 从最近直推节点的上级开始向上遍历
 
 只有 `direct_with_team_chain` 模式才执行本步骤。
 
@@ -312,7 +281,7 @@
 6. 将 `cursor = A.inviter_id`
 7. 重复直到链路结束
 
-#### Step 5: 团队链过滤与分配
+#### Step 4: 团队链过滤与分配
 
 遍历完成后，对命中的团队节点做两次过滤：
 
@@ -332,7 +301,6 @@
 - 付款用户没有直接邀请人
 - 付款用户的直接邀请人是 `normal`
 - 付款用户的直接邀请人是 `team`
-- 付款用户的直接邀请人是 `direct`，但付款用户身份不是 `normal`
 - 向上遍历时已经走到链路顶端
 
 ### Traversal Semantics
@@ -340,13 +308,13 @@
 为了避免实现歧义，补充以下硬规则：
 
 1. `只看第一层决定入口`
-   - 是否进入 `team_direct / direct_only / direct_with_team_chain`
+   - 是否进入 `team_direct / direct_with_team_chain`
    - 只由付款用户的直接邀请人身份决定
 
-2. `只看付款用户决定是否扩散`
+2. `付款用户身份不决定是否扩散`
    - 最近直接邀请人是 `direct` 时
-   - 是否允许继续向上找团队
-   - 只由付款用户自己的身份决定
+   - 无论付款用户是 `normal / direct / team`
+   - 都继续向上找团队链
 
 3. `上层 direct 永远不拿第二份返佣`
    - 除了最近直接邀请付款用户的那个 `direct`
@@ -414,6 +382,8 @@
 这意味着以下链路都合法：
 
 - `team1 -> direct1 -> normalUser`
+- `team1 -> direct1 -> directUser`
+- `team1 -> direct1 -> teamUser`
 - `team2 -> team1 -> direct1 -> normalUser`
 - `team2 -> direct2 -> team1 -> direct1 -> normalUser`
 
@@ -461,8 +431,6 @@
 
 - `team_direct` 模式时
   - 直接给团队本人结算到 `team_cap_bps`
-- `direct_only` 模式时
-  - 只结算 `direct_cap_bps`
 - `direct_with_team_chain` 模式时
   - 最近直推拿 `direct_cap_bps`
   - 命中的团队节点分 `team_cap_bps - direct_cap_bps`
@@ -489,7 +457,6 @@
 
 适用于：
 
-- `direct_only`
 - `direct_with_team_chain`
 
 公式：
@@ -692,23 +659,23 @@
 
 模式：
 
-- `direct_only`
+- `direct_with_team_chain`
 
 结果：
 
 - `direct1 = 100`
-- `team1 = 0`
+- `team1 = 150`
 
 ### Example 9: `team1 -> direct1 -> teamUser`
 
 模式：
 
-- `direct_only`
+- `direct_with_team_chain`
 
 结果：
 
 - `direct1 = 100`
-- `team1 = 0`
+- `team1 = 150`
 
 ### Example 10: `normalA -> direct1`
 
@@ -798,7 +765,6 @@
 - `team_chain_snapshot_json`
 - `settlement_mode`
   - `team_direct`
-  - `direct_only`
   - `direct_with_team_chain`
 - `status`
 - `settled_at`
@@ -908,11 +874,9 @@
 2. 管理员可以给用户指定 `normal / direct / team` 身份
 3. 付款用户直接邀请人为 `normal` 时，整笔不返佣
 4. 付款用户直接邀请人为 `team` 时，只给该 `team` 本人返佣
-5. 付款用户直接邀请人为 `direct` 且付款用户为 `normal` 时：
+5. 付款用户直接邀请人为 `direct` 时：
    - 最近 `direct` 拿直推返佣
    - 命中的 `team` 节点拿团队差额返佣
-6. 付款用户直接邀请人为 `direct` 且付款用户为 `direct / team` 时：
-   - 只给最近 `direct` 返佣
-   - 不向上结算团队返佣
+6. 付款用户身份不影响返佣链是否向上命中团队节点
 7. 历史订单在修改身份、邀请关系、返佣方案后仍保持原结算结果不变
 8. 同一笔订单不会同时命中新旧两套返佣引擎
