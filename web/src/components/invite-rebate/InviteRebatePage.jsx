@@ -55,7 +55,9 @@ const InviteRebatePage = () => {
   const [loadingDefaults, setLoadingDefaults] = useState(false);
   const [loadingInvitees, setLoadingInvitees] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const inviteeDetailRequestGuardRef = useRef(createInviteeDetailRequestGuard());
+  const inviteeDetailRequestGuardRef = useRef(
+    createInviteeDetailRequestGuard(),
+  );
 
   const clearInviteeSelection = () => {
     inviteeDetailRequestGuardRef.current.clear();
@@ -242,9 +244,7 @@ const InviteRebatePage = () => {
                 onSelectInvitee={setSelectedInvitee}
                 onPageChange={handlePageChange}
                 emptyHint={
-                  queryKeyword
-                    ? t('暂无邀请用户')
-                    : t('请输入用户名后点击搜索')
+                  queryKeyword ? t('暂无邀请用户') : t('请输入用户名后点击搜索')
                 }
               />
             </div>

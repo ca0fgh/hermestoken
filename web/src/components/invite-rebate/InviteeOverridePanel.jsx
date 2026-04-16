@@ -130,7 +130,7 @@ const InviteeOverridePanel = ({
     return (
       <Card
         className='!rounded-2xl border-0 shadow-sm h-full bg-white/95 backdrop-blur'
-        title={t('邀请用户独立返佣')}
+        title={t('邀请用户返佣指定')}
       >
         <Empty description={t('未选择邀请用户')} />
       </Card>
@@ -140,7 +140,7 @@ const InviteeOverridePanel = ({
   return (
     <Card
       className='!rounded-2xl border-0 shadow-sm h-full bg-white/95 backdrop-blur'
-      title={t('邀请用户独立返佣')}
+      title={t('邀请用户返佣指定')}
       loading={loading}
       bodyStyle={{
         display: 'flex',
@@ -157,12 +157,12 @@ const InviteeOverridePanel = ({
           <Tag color='white'>{invitee.group || '-'}</Tag>
         </div>
         <Typography.Text type='tertiary' className='mt-2 block text-sm'>
-          {t('未设置独立返佣时，使用邀请人分账规则')}
+          {t('未指定时使用邀请人分账规则')}
         </Typography.Text>
       </div>
 
       {normalizedRows.length === 0 ? (
-        <Empty description={t('暂无覆盖项，未设置时使用邀请人分账规则')} />
+        <Empty description={t('暂无指定项，未指定时使用邀请人分账规则')} />
       ) : (
         normalizedRows.map((row) => {
           const group = String(row?.group || '').trim();
@@ -174,7 +174,7 @@ const InviteeOverridePanel = ({
               percentNumberToRateBps(currentPercent);
 
           return (
-              <div
+            <div
               key={row.id}
               className='rounded-2xl border border-gray-100 bg-white p-4'
             >

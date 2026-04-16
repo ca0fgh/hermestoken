@@ -101,12 +101,10 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(listSource, /Pagination/);
   assert.match(listSource, /t\('暂无邀请用户'\)/);
 
-  assert.match(overrideSource, /t\('邀请用户独立返佣'\)/);
+  assert.match(overrideSource, /t\('邀请用户返佣指定'\)/);
   assert.match(overrideSource, /t\('未选择邀请用户'\)/);
-  assert.match(
-    overrideSource,
-    /t\('未设置独立返佣时，使用邀请人分账规则'\)/,
-  );
+  assert.match(overrideSource, /t\('未指定时使用邀请人分账规则'\)/);
+  assert.match(overrideSource, /t\('暂无指定项，未指定时使用邀请人分账规则'\)/);
   assert.match(overrideSource, /t\('返佣类型'\)/);
   assert.match(overrideSource, /t\('当前邀请人分账比例'\)/);
   assert.match(overrideSource, /getTypeLabel/);

@@ -29,7 +29,7 @@ const componentSource = readFileSync(
   'utf8',
 );
 
-test('SubscriptionReferralOverrideSection loads group catalog and renders extensible override controls', () => {
+test('SubscriptionReferralOverrideSection loads group catalog and renders editable override controls', () => {
   assert.match(
     componentSource,
     /API\.get\(`\/api\/subscription\/admin\/referral\/users\/\$\{userId\}`\)/,
@@ -42,8 +42,9 @@ test('SubscriptionReferralOverrideSection loads group catalog and renders extens
   assert.match(componentSource, /createAdminOverrideDraftRow\(\)/);
   assert.match(componentSource, /buildAdminOverrideGroupOptions\(/);
   assert.match(componentSource, /<Select/);
-  assert.match(componentSource, /t\('新增覆盖'\)/);
+  assert.match(componentSource, /t\('新增指定'\)/);
   assert.match(componentSource, /t\('返佣类型'\)/);
+  assert.match(componentSource, /t\('分组'\)/);
   assert.doesNotMatch(
     componentSource,
     /API\.get\(['"`]\/api\/subscription\/admin\/referral\/settings['"`]\)/,
@@ -51,11 +52,19 @@ test('SubscriptionReferralOverrideSection loads group catalog and renders extens
 });
 
 test('SubscriptionReferralOverrideSection copy reflects override list UX', () => {
-  assert.match(componentSource, /t\('暂无覆盖时使用默认返佣规则'\)/);
-  assert.match(componentSource, /t\('暂无覆盖项，未设置时使用默认返佣规则'\)/);
-  assert.match(componentSource, /t\('当前默认总返佣率'\)/);
+  assert.match(componentSource, /t\('邀请人返佣指定'\)/);
+  assert.match(componentSource, /t\('未指定时使用授权返佣规则'\)/);
+  assert.match(componentSource, /t\('暂无指定项，未指定时使用授权返佣规则'\)/);
+  assert.match(componentSource, /t\('指定总返佣率'\)/);
+  assert.match(componentSource, /t\('当前授权总返佣率'\)/);
+  assert.match(componentSource, /t\('保存'\)/);
   assert.match(componentSource, /t\('取消'\)/);
   assert.match(componentSource, /t\('删除'\)/);
+  assert.match(componentSource, /t\('请选择返佣类型'\)/);
+  assert.match(componentSource, /t\('请选择分组'\)/);
+  assert.match(componentSource, /t\('该返佣类型和分组组合已存在'\)/);
+  assert.match(componentSource, /t\('指定总返佣率必须为数字'\)/);
+  assert.match(componentSource, /t\('指定总返佣率必须在 0 到 100 之间'\)/);
   assert.doesNotMatch(
     componentSource,
     /t\('未设置覆盖时，该分组不启用订阅返佣'\)/,
