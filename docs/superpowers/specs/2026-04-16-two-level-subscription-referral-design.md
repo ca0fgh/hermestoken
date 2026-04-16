@@ -1043,11 +1043,14 @@
 
 迁移前置条件：
 
-- 只有当某个用户在对应的 `subscription_referral + group` 下已经绑定了模板
+- 只有当某个用户在对应的 `subscription_referral + group` 下已经绑定模板，且绑定模板 `enabled = true`
   - 该用户原有的 invitee default / invitee override 配置才可迁入新框架并立即生效
 - 若旧配置存在，但对应用户尚未绑定模板
   - 该配置进入“待迁移”清单
   - 不应在模板引擎下被默默生效
+- 若旧配置存在，且对应用户虽然已经绑定模板，但绑定模板 `enabled = false`
+  - 该配置可以迁入为保留数据
+  - 但必须保持为未生效状态，不能在模板引擎下被默默生效
 
 切换要求：
 
@@ -1084,7 +1087,7 @@
 10. 模板 `enabled` 只控制模板是否可被解析为活动模板；新旧引擎切换由 `referral_engine_routes` 控制
 11. 未配置 `referral_engine_routes` 的 `referral_type + group` 默认走 `legacy`
 12. 旧 `subscription_referral_overrides` 可以作为 direct 模板迁移种子，但不能自动推出 team 模板
-13. 旧 invitee 配置只有在对应用户完成模板绑定后才能迁入并生效
+13. 旧 invitee 配置只有在对应用户完成模板绑定，且绑定模板 `enabled = true` 后才能迁入并立即生效
 14. 最近直接邀请人可按默认比例或单个被邀请人覆盖，把自己本单即时返佣切一部分给付款用户
 15. `invitee_reward` 只来自最近直接邀请人的即时返佣，不来自更上层 `team_reward`
 16. 用户只能修改 invitee share，不能修改模板里的级别返佣规则
