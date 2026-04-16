@@ -68,6 +68,7 @@
   - 是否继续给上层 `team` 返佣，取决于付款用户身份
 - 只有当付款用户本身是 `normal`，且其直接邀请人是 `direct` 时，才允许继续向上计算团队差额返佣
 - 如果付款用户本身已经是 `direct` 或 `team`，即使其直接邀请人是 `direct`，也只给最近这个 `direct` 结算，不再向上给团队返佣
+- 一旦进入 `direct_with_team_chain` 模式，团队差额池按返佣路径上的实际距离递减，而不是只按团队节点命中顺序递减
 - 历史订单结算结果需要快照固化，后续改邀请关系、改身份、改返佣配置都不影响历史订单
 
 ## Out of Scope
@@ -249,6 +250,46 @@
    - `T3`
 5. 超过 `team_max_depth` 的团队节点不参与分配
 
+### Path Distance Rule
+
+`direct_with_team_chain` 模式下，团队池的“距离递减”按**真实返佣路径距离**计算，而不是只按“命中了第几个团队节点”计算。
+
+定义：
+
+- 返佣路径起点：最近直接邀请付款用户的那个 `direct`
+- 路径距离：从这个 `direct` 节点向上，沿真实邀请链走到某个 `team` 节点所经过的边数
+
+示例：
+
+- `team1 -> direct1 -> normalUser`
+  - `team1` 的路径距离 = `1`
+- `team2 -> team1 -> direct1 -> normalUser`
+  - `team1` 的路径距离 = `1`
+  - `team2` 的路径距离 = `2`
+- `team2 -> direct2 -> team1 -> direct1 -> normalUser`
+  - `team1` 的路径距离 = `1`
+  - `team2` 的路径距离 = `3`
+
+这意味着：
+
+- 链路中的 `normal` 和 `direct` 虽然不会拿团队返佣
+- 但它们仍然会拉长更远团队节点的路径距离
+- 因此更远的团队节点会拿到更少的团队池份额
+
+### Team Depth Guard
+
+`team_max_depth` 同样基于真实返佣路径距离判断。
+
+例如：
+
+- 若 `team_max_depth = 2`
+- 链路为 `team2 -> direct2 -> team1 -> direct1 -> normalUser`
+
+则：
+
+- `team1` 路径距离为 `1`，可参与分配
+- `team2` 路径距离为 `3`，不参与分配
+
 这意味着以下链路都合法：
 
 - `team1 -> direct1 -> normalUser`
@@ -372,12 +413,11 @@
 对命中的团队节点 `T1, T2, T3 ... Tk`，设：
 
 - `r = team_decay_ratio`
+- `d_i = 第 i 个命中团队节点的真实路径距离`
 
 则权重为：
 
-- `w1 = 1`
-- `w2 = r`
-- `w3 = r^2`
+- `w_i = r^(d_i - 1)`
 - `...`
 
 归一化后：
@@ -474,6 +514,16 @@
   - `team1`
   - `team2`
 - `direct2` 不参与返佣
+- 路径距离：
+  - `team1 = 1`
+  - `team2 = 3`
+- 若 `team_decay_ratio = 0.5`
+  - 权重：
+    - `team1 = 1`
+    - `team2 = 0.25`
+  - 分配结果：
+    - `team1 = 120`
+    - `team2 = 30`
 
 ### Example 6: `team1 -> normalUser`
 
