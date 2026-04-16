@@ -39,6 +39,9 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 	LOG_DB = db
 
 	if err := db.AutoMigrate(
+		&User{},
+		&SubscriptionPlan{},
+		&SubscriptionOrder{},
 		&ReferralTemplate{},
 		&ReferralTemplateBinding{},
 		&ReferralInviteeShareOverride{},

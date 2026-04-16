@@ -11,6 +11,7 @@ type seedTemplateEngineFixtureInput struct {
 	Group                 string
 	ImmediateInviterLevel string
 	AncestorLevels        []string
+	InviteeShareBps       int
 }
 
 type templateEngineFixture struct {
@@ -56,7 +57,7 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 		t.Fatalf("failed to update payer inviter id: %v", err)
 	}
 
-	createTemplateBindingForUser(t, immediateInviter.Id, input.Group, input.ImmediateInviterLevel)
+	createTemplateBindingForUser(t, immediateInviter.Id, input.Group, input.ImmediateInviterLevel, input.InviteeShareBps)
 
 	fixture := &templateEngineFixture{
 		PayerUser:        payer,
@@ -83,7 +84,7 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 			t.Fatalf("failed to update inviter chain: %v", err)
 		}
 
-		createTemplateBindingForUser(t, ancestor.Id, input.Group, levelType)
+		createTemplateBindingForUser(t, ancestor.Id, input.Group, levelType, 0)
 		fixture.Ancestors = append(fixture.Ancestors, ancestor)
 		parentID = ancestor.Id
 		nextID--
@@ -92,7 +93,7 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 	return fixture
 }
 
-func createTemplateBindingForUser(t *testing.T, userID int, group string, levelType string) {
+func createTemplateBindingForUser(t *testing.T, userID int, group string, levelType string, inviteeShareOverrideBps int) {
 	t.Helper()
 
 	template := &ReferralTemplate{
@@ -111,15 +112,115 @@ func createTemplateBindingForUser(t *testing.T, userID int, group string, levelT
 		t.Fatalf("failed to create template: %v", err)
 	}
 
+	var inviteeShareOverride *int
+	if inviteeShareOverrideBps > 0 {
+		inviteeShareOverride = &inviteeShareOverrideBps
+	}
+
 	binding := &ReferralTemplateBinding{
-		UserId:       userID,
-		ReferralType: ReferralTypeSubscription,
-		Group:        group,
-		TemplateId:   template.Id,
-		CreatedBy:    userID,
-		UpdatedBy:    userID,
+		UserId:                  userID,
+		ReferralType:            ReferralTypeSubscription,
+		Group:                   group,
+		TemplateId:              template.Id,
+		InviteeShareOverrideBps: inviteeShareOverride,
+		CreatedBy:               userID,
+		UpdatedBy:               userID,
 	}
 	if _, err := UpsertReferralTemplateBinding(binding); err != nil {
 		t.Fatalf("failed to create template binding: %v", err)
+	}
+}
+
+type seedTemplateSettlementOrderInput struct {
+	Group                 string
+	ImmediateInviterLevel string
+	AncestorLevels        []string
+	InviteeShareBps       int
+	Money                 float64
+}
+
+func seedTemplateSettlementOrder(t *testing.T, input seedTemplateSettlementOrderInput) (*SubscriptionOrder, *SubscriptionPlan, *templateEngineFixture) {
+	t.Helper()
+
+	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
+		Group:                 input.Group,
+		ImmediateInviterLevel: input.ImmediateInviterLevel,
+		AncestorLevels:        input.AncestorLevels,
+		InviteeShareBps:       input.InviteeShareBps,
+	})
+
+	plan := &SubscriptionPlan{
+		Title:         "template_engine_plan",
+		PriceAmount:   input.Money,
+		Currency:      "USD",
+		DurationUnit:  SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		UpgradeGroup:  input.Group,
+	}
+	if err := DB.Create(plan).Error; err != nil {
+		t.Fatalf("failed to create subscription plan: %v", err)
+	}
+
+	order := &SubscriptionOrder{
+		UserId:        fixture.PayerUser.Id,
+		PlanId:        plan.Id,
+		Money:         input.Money,
+		TradeNo:       fmt.Sprintf("template_order_%d", common.GetTimestamp()),
+		PaymentMethod: "epay",
+		Status:        common.TopUpStatusPending,
+		CreateTime:    common.GetTimestamp(),
+	}
+	if err := DB.Create(order).Error; err != nil {
+		t.Fatalf("failed to create subscription order: %v", err)
+	}
+
+	return order, plan, fixture
+}
+
+func loadReferralSettlementBatchByTradeNo(t *testing.T, tradeNo string) (*ReferralSettlementBatch, []ReferralSettlementRecord) {
+	t.Helper()
+
+	var batch ReferralSettlementBatch
+	if err := DB.Where("source_trade_no = ?", tradeNo).First(&batch).Error; err != nil {
+		t.Fatalf("failed to load settlement batch: %v", err)
+	}
+
+	var records []ReferralSettlementRecord
+	if err := DB.Where("batch_id = ?", batch.Id).Order("id ASC").Find(&records).Error; err != nil {
+		t.Fatalf("failed to load settlement records: %v", err)
+	}
+	return &batch, records
+}
+
+func assertRewardComponents(t *testing.T, records []ReferralSettlementRecord, expected []string) {
+	t.Helper()
+
+	if len(records) != len(expected) {
+		t.Fatalf("record length = %d, want %d", len(records), len(expected))
+	}
+	for idx, record := range records {
+		if record.RewardComponent != expected[idx] {
+			t.Fatalf("records[%d].RewardComponent = %q, want %q", idx, record.RewardComponent, expected[idx])
+		}
+	}
+}
+
+func assertTeamChainSnapshotDistances(t *testing.T, raw string, expected []int) {
+	t.Helper()
+
+	var snapshot []struct {
+		PathDistance int `json:"path_distance"`
+	}
+	if err := common.Unmarshal([]byte(raw), &snapshot); err != nil {
+		t.Fatalf("failed to decode team chain snapshot: %v", err)
+	}
+	if len(snapshot) != len(expected) {
+		t.Fatalf("snapshot length = %d, want %d", len(snapshot), len(expected))
+	}
+	for idx, item := range snapshot {
+		if item.PathDistance != expected[idx] {
+			t.Fatalf("snapshot[%d].PathDistance = %d, want %d", idx, item.PathDistance, expected[idx])
+		}
 	}
 }

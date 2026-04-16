@@ -82,3 +82,50 @@ func TestResolveSubscriptionTemplateSettlementContext_DirectWithMixedAncestors(t
 		t.Fatalf("second team weight = %f, want 0.25", secondTeam.WeightSnapshot)
 	}
 }
+
+func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesTeamDirectBatch(t *testing.T) {
+	order, plan, fixture := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeTeam,
+		InviteeShareBps:       4000,
+		Money:                 10,
+	})
+
+	if err := ApplyTemplateSubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplyTemplateSubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	batch, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	if batch.SettlementMode != ReferralSettlementModeTeamDirect {
+		t.Fatalf("SettlementMode = %q, want %q", batch.SettlementMode, ReferralSettlementModeTeamDirect)
+	}
+	if batch.ImmediateInviterUserId != fixture.ImmediateInviter.Id {
+		t.Fatalf("ImmediateInviterUserId = %d, want %d", batch.ImmediateInviterUserId, fixture.ImmediateInviter.Id)
+	}
+	assertRewardComponents(t, records, []string{"team_direct_reward", "invitee_reward"})
+}
+
+func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesMixedTeamChainSnapshots(t *testing.T) {
+	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		AncestorLevels: []string{
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeDirect,
+			ReferralLevelTypeTeam,
+		},
+		InviteeShareBps: 3000,
+		Money:           10,
+	})
+
+	if err := ApplyTemplateSubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplyTemplateSubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	batch, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	if batch.SettlementMode != ReferralSettlementModeDirectWithTeamChain {
+		t.Fatalf("SettlementMode = %q, want %q", batch.SettlementMode, ReferralSettlementModeDirectWithTeamChain)
+	}
+	assertRewardComponents(t, records, []string{"direct_reward", "invitee_reward", "team_reward", "team_reward"})
+	assertTeamChainSnapshotDistances(t, batch.TeamChainSnapshotJSON, []int{1, 3})
+}
