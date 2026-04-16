@@ -457,20 +457,24 @@ func copySubscriptionReferralInviteeRatesByGroup(src map[string]int) map[string]
 }
 
 func buildSubscriptionReferralSelfGroupViews(user *model.User) []gin.H {
+	templateViewsByGroup := make(map[string]gin.H)
 	if bindingViews, err := model.ListReferralTemplateBindingsByUser(user.Id, model.ReferralTypeSubscription); err == nil && len(bindingViews) > 0 {
-		groupViews := buildSubscriptionReferralTemplateGroupViews(bindingViews)
-		if len(groupViews) > 0 {
-			return groupViews
+		for _, groupView := range buildSubscriptionReferralTemplateGroupViews(bindingViews) {
+			group := strings.TrimSpace(common.Interface2String(groupView["group"]))
+			if group == "" {
+				continue
+			}
+			templateViewsByGroup[group] = groupView
 		}
 	}
 
 	setting := user.GetSetting()
 	overrides, err := model.ListSubscriptionReferralOverridesByUserID(user.Id)
 	if err != nil {
-		return []gin.H{}
+		return collectSortedSubscriptionReferralGroupViews(templateViewsByGroup, nil)
 	}
 
-	groupViews := make([]gin.H, 0, len(overrides))
+	legacyViews := make([]gin.H, 0, len(overrides))
 	for _, override := range overrides {
 		group := strings.TrimSpace(override.Group)
 		if group == "" {
@@ -485,14 +489,14 @@ func buildSubscriptionReferralSelfGroupViews(user *model.User) []gin.H {
 		}
 		inviteeRateBps := model.GetEffectiveSubscriptionReferralInviteeRateBps(setting, group, totalRateBps)
 		cfg := model.ResolveSubscriptionReferralConfig(totalRateBps, inviteeRateBps)
-		groupViews = append(groupViews, gin.H{
+		legacyViews = append(legacyViews, gin.H{
 			"group":            group,
 			"total_rate_bps":   cfg.TotalRateBps,
 			"invitee_rate_bps": cfg.InviteeRateBps,
 			"inviter_rate_bps": cfg.InviterRateBps,
 		})
 	}
-	return groupViews
+	return collectSortedSubscriptionReferralGroupViews(templateViewsByGroup, legacyViews)
 }
 
 func buildSubscriptionReferralTemplateGroupViews(bindingViews []model.ReferralTemplateBindingView) []gin.H {
@@ -736,10 +740,14 @@ func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries 
 }
 
 func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *model.User) (gin.H, error) {
+	var templateResponse gin.H
 	if bindingViews, err := model.ListReferralTemplateBindingsByUser(inviterUserID, model.ReferralTypeSubscription); err == nil && len(bindingViews) > 0 {
 		response, handled, responseErr := buildSubscriptionReferralInviteeDetailResponseFromTemplateBindings(inviterUserID, invitee, bindingViews)
+		if responseErr != nil {
+			return nil, responseErr
+		}
 		if handled {
-			return response, responseErr
+			templateResponse = response
 		}
 	}
 
@@ -779,7 +787,7 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		})
 	}
 
-	return gin.H{
+	legacyResponse := gin.H{
 		"invitee": gin.H{
 			"id":       invitee.Id,
 			"username": invitee.Username,
@@ -789,7 +797,11 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		"default_invitee_rate_bps_by_group": defaultInviteeRateBpsByGroup,
 		"effective_total_rate_bps_by_group": effectiveTotalRateBpsByGroup,
 		"overrides":                         overrideViews,
-	}, nil
+	}
+	if templateResponse != nil {
+		return mergeSubscriptionReferralInviteeDetailResponses(templateResponse, legacyResponse), nil
+	}
+	return legacyResponse, nil
 }
 
 func buildSubscriptionReferralInviteeDetailResponseFromTemplateBindings(inviterUserID int, invitee *model.User, bindingViews []model.ReferralTemplateBindingView) (gin.H, bool, error) {
@@ -842,6 +854,159 @@ func buildSubscriptionReferralInviteeDetailResponseFromTemplateBindings(inviterU
 		"effective_total_rate_bps_by_group": effectiveTotalRateBpsByGroup,
 		"overrides":                         overrideRows,
 	}, true, nil
+}
+
+func collectSortedSubscriptionReferralGroupViews(templateViewsByGroup map[string]gin.H, legacyViews []gin.H) []gin.H {
+	groupViews := make([]gin.H, 0, len(templateViewsByGroup)+len(legacyViews))
+	seenGroups := make(map[string]struct{}, len(templateViewsByGroup)+len(legacyViews))
+
+	for group, view := range templateViewsByGroup {
+		if group == "" {
+			continue
+		}
+		seenGroups[group] = struct{}{}
+		groupViews = append(groupViews, view)
+	}
+	for _, view := range legacyViews {
+		group := strings.TrimSpace(common.Interface2String(view["group"]))
+		if group == "" {
+			continue
+		}
+		if _, exists := seenGroups[group]; exists {
+			continue
+		}
+		seenGroups[group] = struct{}{}
+		groupViews = append(groupViews, view)
+	}
+
+	sort.Slice(groupViews, func(i, j int) bool {
+		return strings.TrimSpace(common.Interface2String(groupViews[i]["group"])) < strings.TrimSpace(common.Interface2String(groupViews[j]["group"]))
+	})
+	return groupViews
+}
+
+func mergeSubscriptionReferralInviteeDetailResponses(templateResponse gin.H, legacyResponse gin.H) gin.H {
+	availableGroupSet := make(map[string]struct{})
+	availableGroups := make([]string, 0)
+
+	appendGroup := func(group string) {
+		trimmedGroup := strings.TrimSpace(group)
+		if trimmedGroup == "" {
+			return
+		}
+		if _, exists := availableGroupSet[trimmedGroup]; exists {
+			return
+		}
+		availableGroupSet[trimmedGroup] = struct{}{}
+		availableGroups = append(availableGroups, trimmedGroup)
+	}
+
+	for _, rawValue := range toStringSlice(templateResponse["available_groups"]) {
+		appendGroup(rawValue)
+	}
+	for _, rawValue := range toStringSlice(legacyResponse["available_groups"]) {
+		appendGroup(rawValue)
+	}
+	sort.Strings(availableGroups)
+
+	defaultInviteeRateBpsByGroup := make(map[string]int)
+	effectiveTotalRateBpsByGroup := make(map[string]int)
+	overrideByGroup := make(map[string]gin.H)
+
+	mergeIntMap := func(rawMap interface{}, target map[string]int) {
+		if rawMap == nil {
+			return
+		}
+		if typedMap, ok := rawMap.(map[string]int); ok {
+			for group, value := range typedMap {
+				target[strings.TrimSpace(group)] = value
+			}
+			return
+		}
+		if typedMap, ok := rawMap.(map[string]interface{}); ok {
+			for group, value := range typedMap {
+				target[strings.TrimSpace(group)] = interfaceToInt(value)
+			}
+		}
+	}
+
+	mergeIntMap(legacyResponse["default_invitee_rate_bps_by_group"], defaultInviteeRateBpsByGroup)
+	mergeIntMap(templateResponse["default_invitee_rate_bps_by_group"], defaultInviteeRateBpsByGroup)
+	mergeIntMap(legacyResponse["effective_total_rate_bps_by_group"], effectiveTotalRateBpsByGroup)
+	mergeIntMap(templateResponse["effective_total_rate_bps_by_group"], effectiveTotalRateBpsByGroup)
+
+	if templateOverrides, ok := templateResponse["overrides"].([]gin.H); ok {
+		for _, row := range templateOverrides {
+			group := strings.TrimSpace(common.Interface2String(row["group"]))
+			if group != "" {
+				overrideByGroup[group] = row
+			}
+		}
+	}
+	if legacyOverrides, ok := legacyResponse["overrides"].([]gin.H); ok {
+		for _, row := range legacyOverrides {
+			group := strings.TrimSpace(common.Interface2String(row["group"]))
+			if group != "" {
+				if _, exists := overrideByGroup[group]; !exists {
+					overrideByGroup[group] = row
+				}
+			}
+		}
+	}
+
+	overrideRows := make([]gin.H, 0, len(overrideByGroup))
+	for _, group := range availableGroups {
+		if row, exists := overrideByGroup[group]; exists {
+			overrideRows = append(overrideRows, row)
+		}
+	}
+
+	inviteePayload := templateResponse["invitee"]
+	if inviteePayload == nil {
+		inviteePayload = legacyResponse["invitee"]
+	}
+
+	return gin.H{
+		"invitee": inviteePayload,
+		"available_groups": availableGroups,
+		"default_invitee_rate_bps_by_group": defaultInviteeRateBpsByGroup,
+		"effective_total_rate_bps_by_group": effectiveTotalRateBpsByGroup,
+		"overrides": overrideRows,
+	}
+}
+
+func toStringSlice(value interface{}) []string {
+	if value == nil {
+		return nil
+	}
+	if typed, ok := value.([]string); ok {
+		return typed
+	}
+	if typed, ok := value.([]interface{}); ok {
+		values := make([]string, 0, len(typed))
+		for _, item := range typed {
+			values = append(values, common.Interface2String(item))
+		}
+		return values
+	}
+	return nil
+}
+
+func interfaceToInt(value interface{}) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }
 
 func listAllSubscriptionReferralGroups() []string {

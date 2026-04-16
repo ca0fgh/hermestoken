@@ -166,6 +166,134 @@ func TestGetSubscriptionReferralSelfReturnsGroupedOnlyShape(t *testing.T) {
 	}
 }
 
+func TestGetSubscriptionReferralSelfMergesTemplateAndLegacyGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	user := seedSubscriptionReferralControllerUser(t, "self-user-template-legacy", 0, dto.UserSetting{})
+	legacyPlan := seedSubscriptionPlan(t, model.DB, "self-user-template-legacy-plan")
+	legacyPlan.UpgradeGroup = "legacy"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", legacyPlan.Id).Update("upgrade_group", legacyPlan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update legacy plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(legacyPlan.Id)
+	if _, err := model.UpsertSubscriptionReferralOverride(user.Id, "legacy", 1800, 1); err != nil {
+		t.Fatalf("failed to create legacy override: %v", err)
+	}
+
+	template := &model.ReferralTemplate{
+		ReferralType:           model.ReferralTypeSubscription,
+		Group:                  "vip",
+		Name:                   "vip-direct",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           2200,
+		TeamCapBps:             2600,
+		TeamDecayRatio:         0.5,
+		TeamMaxDepth:           3,
+		InviteeShareDefaultBps: 700,
+		CreatedBy:              1,
+		UpdatedBy:              1,
+	}
+	if err := model.CreateReferralTemplate(template); err != nil {
+		t.Fatalf("failed to create template: %v", err)
+	}
+	if _, err := model.UpsertReferralTemplateBinding(&model.ReferralTemplateBinding{
+		UserId:       user.Id,
+		ReferralType: model.ReferralTypeSubscription,
+		Group:        "vip",
+		TemplateId:   template.Id,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}); err != nil {
+		t.Fatalf("failed to create template binding: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var data struct {
+		Groups []struct {
+			Group string `json:"group"`
+		} `json:"groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(data.Groups) != 2 {
+		t.Fatalf("groups length = %d, want 2 (%+v)", len(data.Groups), data.Groups)
+	}
+}
+
+func TestGetSubscriptionReferralInviteeMergesTemplateAndLegacyGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	inviter := seedSubscriptionReferralControllerUser(t, "invitee-detail-template-legacy-inviter", 0, dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"legacy": 500},
+	})
+	invitee := seedSubscriptionReferralControllerUser(t, "invitee-detail-template-legacy-invitee", inviter.Id, dto.UserSetting{})
+
+	legacyPlan := seedSubscriptionPlan(t, model.DB, "invitee-detail-template-legacy-plan")
+	legacyPlan.UpgradeGroup = "legacy"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", legacyPlan.Id).Update("upgrade_group", legacyPlan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update legacy plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(legacyPlan.Id)
+	if _, err := model.UpsertSubscriptionReferralOverride(inviter.Id, "legacy", 2000, 1); err != nil {
+		t.Fatalf("failed to create legacy override: %v", err)
+	}
+	template := &model.ReferralTemplate{
+		ReferralType:           model.ReferralTypeSubscription,
+		Group:                  "vip",
+		Name:                   "vip-direct",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           2200,
+		TeamCapBps:             2600,
+		TeamDecayRatio:         0.5,
+		TeamMaxDepth:           3,
+		InviteeShareDefaultBps: 700,
+		CreatedBy:              1,
+		UpdatedBy:              1,
+	}
+	if err := model.CreateReferralTemplate(template); err != nil {
+		t.Fatalf("failed to create template: %v", err)
+	}
+	if _, err := model.UpsertReferralTemplateBinding(&model.ReferralTemplateBinding{
+		UserId:       inviter.Id,
+		ReferralType: model.ReferralTypeSubscription,
+		Group:        "vip",
+		TemplateId:   template.Id,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}); err != nil {
+		t.Fatalf("failed to create template binding: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription/invitees/"+strconv.Itoa(invitee.Id), nil, inviter.Id)
+	ctx.Params = gin.Params{{Key: "invitee_id", Value: strconv.Itoa(invitee.Id)}}
+	GetSubscriptionReferralInvitee(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var data struct {
+		AvailableGroups []string `json:"available_groups"`
+	} 
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(data.AvailableGroups) != 2 {
+		t.Fatalf("available_groups length = %d, want 2 (%+v)", len(data.AvailableGroups), data.AvailableGroups)
+	}
+}
+
 func TestGetSubscriptionReferralSelfOmitsRenamedRetiredOverrideGroup(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	common.SubscriptionReferralEnabled = true

@@ -25,6 +25,7 @@ import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
 const HOME_DEFERRED_PRELOAD_PATTERN = /(?:semi-core|visactor)-/;
+const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3000';
 
 function buildManualChunkName(id) {
   if (!id.includes('node_modules')) {
@@ -136,15 +137,15 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
       '/mj': {
-        target: 'http://localhost:3000',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
       '/pg': {
-        target: 'http://localhost:3000',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
     },

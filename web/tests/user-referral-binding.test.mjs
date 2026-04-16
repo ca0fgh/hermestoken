@@ -10,3 +10,14 @@ test('edit user modal mounts referral template binding section', () => {
   assert.match(source, /ReferralTemplateBindingSection/);
   assert.doesNotMatch(source, /SubscriptionReferralOverrideSection/);
 });
+
+test('referral template binding section uses explicit state updates instead of mutating response objects', () => {
+  const source = fs.readFileSync(
+    'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
+    'utf8',
+  );
+  assert.match(source, /updateRow/);
+  assert.match(source, /新增绑定/);
+  assert.doesNotMatch(source, /view\.binding\.template_id\s*=/);
+  assert.doesNotMatch(source, /view\.binding\.invitee_share_override_bps\s*=/);
+});
