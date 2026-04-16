@@ -235,6 +235,127 @@
 - 忽略链路中的 `normal` 和 `direct`
 - 命中的团队节点按距离递减分团队差额池
 
+### Settlement Traversal Logic
+
+返佣链的遍历逻辑统一按“从付款用户开始，先判入口，再决定是否继续向上”执行。
+
+建议后端实现时严格按以下顺序处理：
+
+#### Step 1: 读取付款用户和直接邀请人
+
+输入：
+
+- `payer_user_id`
+- `payer_level_type`
+- `payer.inviter_id`
+
+处理：
+
+1. 读取付款用户 `payer`
+2. 读取付款用户的直接邀请人 `L1`
+3. 如果 `L1` 不存在：
+   - 直接结束
+   - 本单不返佣
+
+#### Step 2: 判断第一层入口身份
+
+只看 `L1.referral_level_type`：
+
+1. `L1 = normal`
+   - 直接结束
+   - 本单不返佣
+   - 不允许继续往上跳过 `L1`
+
+2. `L1 = team`
+   - 进入 `team_direct` 模式
+   - 只给 `L1` 结算 `team_direct_reward`
+   - 直接结束，不再往上遍历
+
+3. `L1 = direct`
+   - 先给 `L1` 结算 `direct_reward`
+   - 再根据 `payer_level_type` 判断是否继续向上
+
+#### Step 3: 判断是否允许继续向上
+
+只有在以下条件同时成立时，才继续向上找团队链：
+
+- `L1.referral_level_type = direct`
+- `payer.referral_level_type = normal`
+
+否则：
+
+- 进入 `direct_only` 模式
+- 本单在 `L1` 结算完 `direct_reward` 后直接结束
+
+#### Step 4: 从最近直推节点的上级开始向上遍历
+
+只有 `direct_with_team_chain` 模式才执行本步骤。
+
+起点：
+
+- `cursor = L1.inviter_id`
+
+循环规则：
+
+1. 读取 `cursor` 对应节点 `A`
+2. 若 `A` 不存在：
+   - 结束遍历
+3. 若 `A.referral_level_type = team`
+   - 记录为命中的团队返佣节点
+   - 记录其真实路径距离
+4. 若 `A.referral_level_type = direct`
+   - 不拿团队返佣
+   - 但继续向上遍历
+5. 若 `A.referral_level_type = normal`
+   - 不拿团队返佣
+   - 但继续向上遍历
+6. 将 `cursor = A.inviter_id`
+7. 重复直到链路结束
+
+#### Step 5: 团队链过滤与分配
+
+遍历完成后，对命中的团队节点做两次过滤：
+
+1. 按真实路径距离过滤
+   - 超过 `team_max_depth` 的团队节点剔除
+2. 按团队池金额过滤
+   - 若 `team_pool <= 0`
+   - 或过滤后一个团队节点都不剩
+   - 则本单不生成 `team_reward`
+
+通过过滤后，再按“真实路径距离递减”分团队池。
+
+### Traversal Stop Rules
+
+返佣链必须在以下场景立即停止：
+
+- 付款用户没有直接邀请人
+- 付款用户的直接邀请人是 `normal`
+- 付款用户的直接邀请人是 `team`
+- 付款用户的直接邀请人是 `direct`，但付款用户身份不是 `normal`
+- 向上遍历时已经走到链路顶端
+
+### Traversal Semantics
+
+为了避免实现歧义，补充以下硬规则：
+
+1. `只看第一层决定入口`
+   - 是否进入 `team_direct / direct_only / direct_with_team_chain`
+   - 只由付款用户的直接邀请人身份决定
+
+2. `只看付款用户决定是否扩散`
+   - 最近直接邀请人是 `direct` 时
+   - 是否允许继续向上找团队
+   - 只由付款用户自己的身份决定
+
+3. `上层 direct 永远不拿第二份返佣`
+   - 除了最近直接邀请付款用户的那个 `direct`
+   - 其他更上层 `direct` 节点只参与“拉长路径”，不参与分账
+
+4. `normal 节点永远不拿返佣，但会影响路径`
+   - 作为第一层时会直接拦截整笔返佣
+   - 作为更上层祖先时不会拿返佣，但会拉长更远团队节点的真实路径距离
+
 ### Team Chain Collection
 
 只在 `direct_with_team_chain` 模式下执行。
