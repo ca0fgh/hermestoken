@@ -164,24 +164,33 @@
 
 一个模板只对应一个 `referral_type + group`。
 
-模板至少包含：
+通用模板层至少包含：
 
 - `referral_type`
 - `group`
 - `name`
 - `level_type`
 - `enabled`
+- `invitee_share_default_bps`
+
+当前首版为了先落地 `subscription_referral`，模板表会额外直接承载这组“订阅两级规则字段”：
+
 - `direct_cap_bps`
 - `team_cap_bps`
 - `team_decay_ratio`
 - `team_max_depth`
-- `invitee_share_default_bps`
 
 模板职责：
 
 - 定义用户在该 `referral_type + group` 下的返佣身份
-- 定义该类型和分组下的二级级别返佣规则
+- 定义该类型和分组下的返佣规则
 - 提供“给被邀请人返佣”的默认比例
+
+补充说明：
+
+- `direct_cap_bps / team_cap_bps / team_decay_ratio / team_max_depth` 只对采用 `direct + team` 两级规则的返佣类型生效
+- 当前只有 `subscription_referral` 使用这组字段
+- `trade_fee_referral / withdraw_referral` 等后续返佣类型，不因为复用同一模板表就自动继承订阅两级规则；它们的具体字段和结算公式在各自方案里单独定义
 
 对于采用 `direct + team` 两级规则的返佣类型（当前即 `subscription_referral`），模板参数还必须满足：
 
@@ -201,11 +210,13 @@
 - 同一个用户在同一个 `referral_type + group` 下，只能有一个生效模板
 - 同一个用户在同一个返佣类型下，可以按不同分组绑定不同模板
 
-用户绑定模板后：
+用户存在模板绑定记录后：
 
-- 获得该类型和分组下的返佣身份
-- 获得该类型和分组下的级别返佣规则
-- 获得该类型和分组下“给被邀请人返佣”的默认比例
+- 明确其在该类型和分组下的候选模板归属
+- 只有当绑定模板 `enabled = true` 时
+  - 该用户才在运行态获得该类型和分组下的活动返佣身份
+  - 才使用该类型和分组下的级别返佣规则
+  - 才以模板默认值参与“给被邀请人返佣”的默认比例解析
 
 ### Active Template Resolution
 
@@ -718,6 +729,12 @@
   - `0 < team_decay_ratio <= 1`
   - `team_max_depth >= 1`，且必须是正整数
 
+说明：
+
+- 当前首版把 `subscription_referral` 的两级规则字段直接放在 `referral_templates` 表里
+- 这些字段只在 `subscription_referral` 下参与解析与校验
+- 对其他返佣类型，若后续不采用 `direct + team` 两级规则，则不应强行套用这些字段语义
+
 ### 2. Binding Table
 
 新增表：`referral_template_bindings`
@@ -813,7 +830,9 @@
   - 在 `direct_with_team_chain` 模式下它可能是 `direct`
 - `active_template_snapshot_json`
   - 保存最近直接邀请人的活动模板快照
-  - 它是本单级别返佣参数和默认 invitee share 的唯一模板真相
+  - 它是本单级别返佣参数和“模板层默认 invitee share”的唯一模板真相
+  - 邀请人自己的默认比例或单个 invitee 覆盖不写入这里
+  - 它们只通过结算明细中的 `invitee_share_bps_snapshot` 体现最终生效结果
 - `team_chain_snapshot_json`
   - `team_direct` 模式下记 `NULL`
   - `direct_with_team_chain` 模式下至少记录：
@@ -1013,7 +1032,7 @@
 迁移方向：
 
 - `subscription_referral_overrides`
-  -> `subscription_referral` 下的模板和用户绑定的种子数据来源
+  -> `subscription_referral` 下的模板候选参数与待绑定用户清单的种子数据来源
 - `UserSetting.SubscriptionReferralInviteeRateBpsByGroup`
   -> `referral_template_bindings.invitee_share_override_bps`
 - `subscription_referral_invitee_overrides`
@@ -1026,7 +1045,10 @@
   - `team` 身份
   - 团队链参数
   - 团队模板
-- 因此它在迁移时只能作为模板种子数据来源，而不能独立完成模板落地
+- 它也不能自动决定：
+  - 用户最终应绑定哪个模板
+  - 是否应该复用共享模板，还是拆成多套模板
+- 因此它在迁移时只能作为模板候选参数和待绑定用户清单的种子数据来源，而不能独立完成模板落地
 - 当前订阅实现里的 invitee 比例，迁入新框架后应解释为“切最近直接邀请人即时返佣的比例”
 - 不再继续按旧实现中的“总返佣 bps 拆分”去理解新模板框架里的 invitee share
 
@@ -1078,22 +1100,25 @@
 4. `subscription_referral` 下模板身份只允许 `direct / team`
 5. 在 `subscription_referral + group` 下：
    - 第一层直接邀请人没有模板时，整笔不返佣
+   - 第一层直接邀请人虽然绑定了模板，但模板 `enabled = false` 时，等价于没有活动模板，整笔不返佣
    - 第一层是 `team` 模板时，只结算 `team_direct`
    - 第一层是 `direct` 模板时，触发团队返佣链
-6. 向上遍历时，未绑定当前 `referral_type + group` 模板的祖先节点会被跳过，但不会断链
+6. 向上遍历时，未绑定当前 `referral_type + group` 模板的祖先节点，或绑定模板但模板 `enabled = false` 的祖先节点，都会被跳过，但不会断链
 7. 一笔订单的 `direct_cap_bps / team_cap_bps / team_decay_ratio / team_max_depth / invitee_share_default_bps` 只由最近直接邀请人的活动模板决定
 8. `direct_reward` 和 `team_direct_reward` 的账本记录净额，毛额通过 `gross_reward_quota_snapshot` 审计
 9. `invitee_reward` 明确记录被邀请人拿到的切分额度，并标明来源是 `direct_reward` 或 `team_direct_reward`
 10. 模板 `enabled` 只控制模板是否可被解析为活动模板；新旧引擎切换由 `referral_engine_routes` 控制
 11. 未配置 `referral_engine_routes` 的 `referral_type + group` 默认走 `legacy`
-12. 旧 `subscription_referral_overrides` 可以作为 direct 模板迁移种子，但不能自动推出 team 模板
+12. 旧 `subscription_referral_overrides` 可以作为模板候选参数和待绑定用户清单的迁移种子，但不能自动推出 team 模板，也不能自动决定最终模板绑定
 13. 旧 invitee 配置只有在对应用户完成模板绑定，且绑定模板 `enabled = true` 后才能迁入并立即生效
 14. 最近直接邀请人可按默认比例或单个被邀请人覆盖，把自己本单即时返佣切一部分给付款用户
+    - 生效优先级必须是：单个被邀请人覆盖 > 邀请人自己的默认比例 > 模板默认比例
 15. `invitee_reward` 只来自最近直接邀请人的即时返佣，不来自更上层 `team_reward`
 16. 用户只能修改 invitee share，不能修改模板里的级别返佣规则
 17. 现有订阅 invitee rebate 配置可以迁移或兼容到新模板框架
 18. 历史订单在修改模板、绑定、邀请关系后仍保持原结算结果不变
 19. 对 `subscription_referral` 来说，模板参数必须满足 `0 <= direct_cap_bps <= team_cap_bps <= 10000`、`0 < team_decay_ratio <= 1`、`team_max_depth >= 1`
+    - 对其他返佣类型，若未采用 `direct + team` 两级规则，则不强行套用这组字段的解析、校验与结算语义
 20. `direct_with_team_chain` 模式下若最终没有命中任何有效 `team` 节点，则不生成 `team_reward`，且 `team_pool` 不改发给其他角色
 21. 每个用户只能有一个直接邀请人，邀请关系是单链，不支持多个第一层邀请人
 22. 付款用户自己在当前 `subscription_referral + group` 下是否有模板、模板身份是什么，都不改变返佣入口和是否向上扩散；只看第一层直接邀请人的模板身份
