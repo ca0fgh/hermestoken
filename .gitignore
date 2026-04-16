@@ -12,7 +12,7 @@ new-api
 tiktoken_cache
 .gocache
 .gomodcache/
-plans
+
 .claude
 
 data/
