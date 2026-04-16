@@ -83,3 +83,15 @@ func (t *ReferralTemplate) BeforeUpdate(tx *gorm.DB) error {
 	t.UpdatedAt = common.GetTimestamp()
 	return t.Validate()
 }
+
+func GetReferralTemplateByID(id int) (*ReferralTemplate, error) {
+	if id <= 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var template ReferralTemplate
+	if err := DB.First(&template, id).Error; err != nil {
+		return nil, err
+	}
+	return &template, nil
+}

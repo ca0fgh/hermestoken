@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ReferralInviteeShareOverride struct {
@@ -54,4 +55,58 @@ func (o *ReferralInviteeShareOverride) BeforeCreate(tx *gorm.DB) error {
 func (o *ReferralInviteeShareOverride) BeforeUpdate(tx *gorm.DB) error {
 	o.UpdatedAt = common.GetTimestamp()
 	return o.Validate()
+}
+
+func UpsertReferralInviteeShareOverride(inviterUserID int, inviteeUserID int, referralType string, group string, inviteeShareBps int, operatorID int) (*ReferralInviteeShareOverride, error) {
+	if err := validateSubscriptionReferralInviteeOwnership(inviterUserID, inviteeUserID); err != nil {
+		return nil, err
+	}
+
+	active, _, err := HasActiveReferralTemplateBinding(inviterUserID, referralType, group)
+	if err != nil {
+		return nil, err
+	}
+	if !active {
+		return nil, errors.New("active binding is required before invitee share override can be written")
+	}
+
+	override := &ReferralInviteeShareOverride{
+		InviterUserId:   inviterUserID,
+		InviteeUserId:   inviteeUserID,
+		ReferralType:    strings.TrimSpace(referralType),
+		Group:           strings.TrimSpace(group),
+		InviteeShareBps: NormalizeSubscriptionReferralRateBps(inviteeShareBps),
+		CreatedBy:       operatorID,
+		UpdatedBy:       operatorID,
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "inviter_user_id"},
+				{Name: "invitee_user_id"},
+				{Name: "referral_type"},
+				{Name: "group"},
+			},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"invitee_share_bps": override.InviteeShareBps,
+				"updated_by":        operatorID,
+				"updated_at":        common.GetTimestamp(),
+			}),
+		}).Create(override).Error; err != nil {
+			return err
+		}
+
+		return tx.Where(
+			"inviter_user_id = ? AND invitee_user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+			inviterUserID,
+			inviteeUserID,
+			override.ReferralType,
+			override.Group,
+		).First(override).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return override, nil
 }

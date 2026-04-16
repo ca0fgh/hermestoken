@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
@@ -179,5 +180,147 @@ func TestResolveReferralEngineModeDefaultsToLegacy(t *testing.T) {
 	}
 	if mode != ReferralEngineModeLegacy {
 		t.Fatalf("ResolveReferralEngineMode() = %q, want %q", mode, ReferralEngineModeLegacy)
+	}
+}
+
+func TestUpsertReferralInviteeShareOverrideRequiresActiveBinding(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+	if err := db.AutoMigrate(&User{}); err != nil {
+		t.Fatalf("failed to migrate users: %v", err)
+	}
+
+	inviter := &User{
+		Username: "referral_inviter",
+		Password: "password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		AffCode:  "referral_inviter_code",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username:  "referral_invitee",
+		Password:  "password",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		InviterId: inviter.Id,
+		AffCode:   "referral_invitee_code",
+	}
+	if err := db.Create(invitee).Error; err != nil {
+		t.Fatalf("failed to create invitee: %v", err)
+	}
+
+	_, err := UpsertReferralInviteeShareOverride(inviter.Id, invitee.Id, ReferralTypeSubscription, "vip", 1200, inviter.Id)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "active binding") {
+		t.Fatalf("UpsertReferralInviteeShareOverride() error = %v, want active binding validation", err)
+	}
+
+	template := &ReferralTemplate{
+		Name:                   "active-template",
+		ReferralType:           ReferralTypeSubscription,
+		Group:                  "vip",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1000,
+		TeamCapBps:             2000,
+		TeamDecayRatio:         0.5,
+		TeamMaxDepth:           2,
+		InviteeShareDefaultBps: 500,
+	}
+	if err := db.Create(template).Error; err != nil {
+		t.Fatalf("failed to create template: %v", err)
+	}
+
+	binding := &ReferralTemplateBinding{
+		UserId:       inviter.Id,
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		TemplateId:   template.Id,
+	}
+	if err := db.Create(binding).Error; err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+
+	override, err := UpsertReferralInviteeShareOverride(inviter.Id, invitee.Id, ReferralTypeSubscription, "vip", 1200, inviter.Id)
+	if err != nil {
+		t.Fatalf("UpsertReferralInviteeShareOverride() with active binding error = %v", err)
+	}
+	if override.InviteeShareBps != 1200 {
+		t.Fatalf("InviteeShareBps = %d, want 1200", override.InviteeShareBps)
+	}
+}
+
+func TestListLegacySubscriptionReferralSeedRowsReturnsOverrideAndInviteeSeeds(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+	if err := db.AutoMigrate(&User{}, &SubscriptionReferralOverride{}, &SubscriptionReferralInviteeOverride{}); err != nil {
+		t.Fatalf("failed to migrate legacy referral tables: %v", err)
+	}
+
+	inviter := &User{
+		Username: "legacy_seed_inviter",
+		Password: "password",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		AffCode:  "legacy_seed_inviter_code",
+	}
+	inviter.SetSetting(dto.UserSetting{
+		SubscriptionReferralInviteeRateBpsByGroup: map[string]int{"vip": 900},
+	})
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username:  "legacy_seed_invitee",
+		Password:  "password",
+		Role:      common.RoleCommonUser,
+		Status:    common.UserStatusEnabled,
+		InviterId: inviter.Id,
+		AffCode:   "legacy_seed_invitee_code",
+	}
+	if err := db.Create(invitee).Error; err != nil {
+		t.Fatalf("failed to create invitee: %v", err)
+	}
+
+	override := &SubscriptionReferralOverride{
+		UserId:       inviter.Id,
+		Group:        "vip",
+		TotalRateBps: 3200,
+		CreatedBy:    inviter.Id,
+		UpdatedBy:    inviter.Id,
+	}
+	if err := db.Create(override).Error; err != nil {
+		t.Fatalf("failed to create legacy override: %v", err)
+	}
+
+	inviteeOverride := &SubscriptionReferralInviteeOverride{
+		InviterUserId:  inviter.Id,
+		InviteeUserId:  invitee.Id,
+		Group:          "vip",
+		InviteeRateBps: 700,
+		CreatedBy:      inviter.Id,
+		UpdatedBy:      inviter.Id,
+	}
+	if err := db.Create(inviteeOverride).Error; err != nil {
+		t.Fatalf("failed to create legacy invitee override: %v", err)
+	}
+
+	seeds, err := ListLegacySubscriptionReferralSeedRows("vip")
+	if err != nil {
+		t.Fatalf("ListLegacySubscriptionReferralSeedRows() error = %v", err)
+	}
+	if seeds == nil {
+		t.Fatal("ListLegacySubscriptionReferralSeedRows() returned nil")
+	}
+	if len(seeds.OverrideSeeds) != 1 {
+		t.Fatalf("OverrideSeeds length = %d, want 1", len(seeds.OverrideSeeds))
+	}
+	if len(seeds.InviteeOverrideSeeds) != 1 {
+		t.Fatalf("InviteeOverrideSeeds length = %d, want 1", len(seeds.InviteeOverrideSeeds))
+	}
+	if got := seeds.InviteeRateSeeds[inviter.Id]; got != 900 {
+		t.Fatalf("InviteeRateSeeds[%d] = %d, want 900", inviter.Id, got)
 	}
 }

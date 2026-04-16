@@ -22,6 +22,11 @@ type ReferralTemplateBinding struct {
 	UpdatedAt               int64  `json:"updated_at" gorm:"bigint"`
 }
 
+type ReferralTemplateBindingView struct {
+	Binding  ReferralTemplateBinding `json:"binding"`
+	Template ReferralTemplate        `json:"template"`
+}
+
 func (b *ReferralTemplateBinding) normalize() {
 	b.ReferralType = strings.TrimSpace(b.ReferralType)
 	b.Group = strings.TrimSpace(b.Group)
@@ -76,4 +81,68 @@ func (b *ReferralTemplateBinding) BeforeCreate(tx *gorm.DB) error {
 func (b *ReferralTemplateBinding) BeforeUpdate(tx *gorm.DB) error {
 	b.UpdatedAt = common.GetTimestamp()
 	return b.validateWithTemplateID(tx)
+}
+
+func HasActiveReferralTemplateBinding(userID int, referralType string, group string) (bool, *ReferralTemplateBinding, error) {
+	if userID <= 0 {
+		return false, nil, errors.New("invalid user id")
+	}
+
+	var binding ReferralTemplateBinding
+	err := DB.Where(
+		"user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+		userID,
+		strings.TrimSpace(referralType),
+		strings.TrimSpace(group),
+	).First(&binding).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+
+	template, err := GetReferralTemplateByID(binding.TemplateId)
+	if err != nil {
+		return false, nil, err
+	}
+	if !template.Enabled {
+		return false, &binding, nil
+	}
+	return true, &binding, nil
+}
+
+func ListReferralTemplateBindingsByUser(userID int, referralType string) ([]ReferralTemplateBindingView, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+
+	var bindings []ReferralTemplateBinding
+	query := DB.Where("user_id = ?", userID).Order(commonGroupCol + " ASC")
+	if trimmedReferralType := strings.TrimSpace(referralType); trimmedReferralType != "" {
+		query = query.Where("referral_type = ?", trimmedReferralType)
+	}
+	if err := query.Find(&bindings).Error; err != nil {
+		return nil, err
+	}
+
+	views := make([]ReferralTemplateBindingView, 0, len(bindings))
+	for _, binding := range bindings {
+		template, err := GetReferralTemplateByID(binding.TemplateId)
+		if err != nil {
+			return nil, err
+		}
+		views = append(views, ReferralTemplateBindingView{
+			Binding:  binding,
+			Template: *template,
+		})
+	}
+	return views, nil
+}
+
+func ResolveBindingInviteeShareDefault(view ReferralTemplateBindingView) int {
+	if view.Binding.InviteeShareOverrideBps != nil {
+		return NormalizeSubscriptionReferralRateBps(*view.Binding.InviteeShareOverrideBps)
+	}
+	return NormalizeSubscriptionReferralRateBps(view.Template.InviteeShareDefaultBps)
 }
