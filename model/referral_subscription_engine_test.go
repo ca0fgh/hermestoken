@@ -132,6 +132,75 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesMixedTeamChainS
 	assertTeamChainSnapshotDistances(t, batch.TeamChainSnapshotJSON, []int{1, 3})
 }
 
+func TestResolveTeamDifferentialActivationReturnsNilWithoutMatchedTeam(t *testing.T) {
+	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		InviteeShareBps:       3000,
+	})
+
+	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
+	if err != nil {
+		t.Fatalf("ResolveSubscriptionTemplateSettlementContext() error = %v", err)
+	}
+	if context == nil {
+		t.Fatal("expected non-nil settlement context")
+	}
+
+	order := &SubscriptionOrder{Money: 10}
+	activation := resolveTeamDifferentialActivation(context, order)
+	if activation != nil {
+		t.Fatalf("expected nil team differential activation, got %+v", activation)
+	}
+}
+
+func TestResolveTeamDifferentialActivationReturnsAllocationWhenMatchedTeamExists(t *testing.T) {
+	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		AncestorLevels: []string{
+			ReferralLevelTypeTeam,
+		},
+		InviteeShareBps: 3000,
+	})
+
+	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
+	if err != nil {
+		t.Fatalf("ResolveSubscriptionTemplateSettlementContext() error = %v", err)
+	}
+	if context == nil {
+		t.Fatal("expected non-nil settlement context")
+	}
+
+	order := &SubscriptionOrder{Money: 10}
+	activation := resolveTeamDifferentialActivation(context, order)
+	if activation == nil {
+		t.Fatal("expected non-nil team differential activation")
+	}
+	if activation.DifferentialRateBps != 1500 {
+		t.Fatalf("DifferentialRateBps = %d, want 1500", activation.DifferentialRateBps)
+	}
+	if activation.DifferentialQuota <= 0 {
+		t.Fatalf("DifferentialQuota = %d, want > 0", activation.DifferentialQuota)
+	}
+}
+
+func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_DirectWithoutMatchedTeamWritesNoTeamReward(t *testing.T) {
+	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		InviteeShareBps:       3000,
+		Money:                 10,
+	})
+
+	if err := ApplyTemplateSubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplyTemplateSubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	_, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	assertRewardComponents(t, records, []string{"direct_reward", "invitee_reward"})
+}
+
 func TestApplySubscriptionReferralOnOrderSuccessTx_DispatchesByEngineRoute(t *testing.T) {
 	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",

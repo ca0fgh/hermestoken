@@ -36,6 +36,11 @@ type ResolvedTeamNode struct {
 	ShareSnapshot    float64
 }
 
+type TeamDifferentialActivation struct {
+	DifferentialRateBps int
+	DifferentialQuota   int64
+}
+
 func ResolveSubscriptionTemplateSettlementContext(tx *gorm.DB, referralType string, group string, payerUserID int, orderID int) (*ReferralSettlementContext, error) {
 	if tx == nil {
 		tx = DB
@@ -267,8 +272,6 @@ func buildSubscriptionSettlementComponents(tx *gorm.DB, context *ReferralSettlem
 
 	directGross := int64(CalculateSubscriptionReferralQuota(order.Money, context.ActiveTemplate.DirectCapBps))
 	teamDirectGross := int64(CalculateSubscriptionReferralQuota(order.Money, context.ActiveTemplate.TeamCapBps))
-	teamPoolRateBps := context.ActiveTemplate.TeamCapBps - context.ActiveTemplate.DirectCapBps
-	teamPoolQuota := int64(CalculateSubscriptionReferralQuota(order.Money, teamPoolRateBps))
 
 	records := make([]ReferralSettlementRecord, 0, 2+len(context.TeamChain))
 
@@ -283,7 +286,8 @@ func buildSubscriptionSettlementComponents(tx *gorm.DB, context *ReferralSettlem
 		if inviteeRecord := buildInviteeRewardRecord(context, "direct_reward", directGross, effectiveInviteeShareBps); inviteeRecord != nil {
 			records = append(records, *inviteeRecord)
 		}
-		records = append(records, buildTeamRewardRecords(context, teamPoolQuota, teamPoolRateBps)...)
+		activation := resolveTeamDifferentialActivation(context, order)
+		records = append(records, buildTeamDifferentialRewardRecords(context, activation)...)
 	}
 
 	filtered := make([]ReferralSettlementRecord, 0, len(records))
@@ -294,6 +298,33 @@ func buildSubscriptionSettlementComponents(tx *gorm.DB, context *ReferralSettlem
 		filtered = append(filtered, record)
 	}
 	return filtered, nil
+}
+
+func resolveTeamDifferentialActivation(context *ReferralSettlementContext, order *SubscriptionOrder) *TeamDifferentialActivation {
+	if context == nil || context.ActiveTemplate == nil || order == nil {
+		return nil
+	}
+	if context.Mode != ReferralSettlementModeDirectWithTeamChain {
+		return nil
+	}
+	if len(context.TeamChain) == 0 {
+		return nil
+	}
+
+	differentialRateBps := context.ActiveTemplate.TeamCapBps - context.ActiveTemplate.DirectCapBps
+	if differentialRateBps <= 0 {
+		return nil
+	}
+
+	differentialQuota := int64(CalculateSubscriptionReferralQuota(order.Money, differentialRateBps))
+	if differentialQuota <= 0 {
+		return nil
+	}
+
+	return &TeamDifferentialActivation{
+		DifferentialRateBps: differentialRateBps,
+		DifferentialQuota:   differentialQuota,
+	}
 }
 
 func buildImmediateRewardRecord(context *ReferralSettlementContext, component string, levelType string, grossQuota int64, appliedRateBps int, inviteeShareBps int) ReferralSettlementRecord {
@@ -339,8 +370,8 @@ func buildInviteeRewardRecord(context *ReferralSettlementContext, sourceComponen
 	}
 }
 
-func buildTeamRewardRecords(context *ReferralSettlementContext, teamPoolQuota int64, teamPoolRateBps int) []ReferralSettlementRecord {
-	if teamPoolQuota <= 0 || len(context.TeamChain) == 0 {
+func buildTeamDifferentialRewardRecords(context *ReferralSettlementContext, activation *TeamDifferentialActivation) []ReferralSettlementRecord {
+	if activation == nil || activation.DifferentialQuota <= 0 || len(context.TeamChain) == 0 {
 		return nil
 	}
 
@@ -352,7 +383,7 @@ func buildTeamRewardRecords(context *ReferralSettlementContext, teamPoolQuota in
 		return nil
 	}
 
-	poolRateSnapshot := teamPoolRateBps
+	differentialRateSnapshot := activation.DifferentialRateBps
 	beneficiaryLevelType := ReferralLevelTypeTeam
 	rewards := make([]ReferralSettlementRecord, 0, len(context.TeamChain))
 	allocated := int64(0)
@@ -360,7 +391,7 @@ func buildTeamRewardRecords(context *ReferralSettlementContext, teamPoolQuota in
 	for idx, node := range context.TeamChain {
 		share := node.WeightSnapshot / totalWeight
 		context.TeamChain[idx].ShareSnapshot = share
-		rewardQuota := int64(math.Floor(float64(teamPoolQuota) * share))
+		rewardQuota := int64(math.Floor(float64(activation.DifferentialQuota) * share))
 		allocated += rewardQuota
 
 		pathDistance := node.PathDistance
@@ -377,13 +408,13 @@ func buildTeamRewardRecords(context *ReferralSettlementContext, teamPoolQuota in
 			MatchedTeamIndex:     &matchedTeamIndex,
 			WeightSnapshot:       &weightSnapshot,
 			ShareSnapshot:        &shareSnapshot,
-			PoolRateBpsSnapshot:  &poolRateSnapshot,
+			PoolRateBpsSnapshot:  &differentialRateSnapshot,
 			RewardQuota:          rewardQuota,
 			Status:               SubscriptionReferralStatusCredited,
 		})
 	}
 
-	remainder := teamPoolQuota - allocated
+	remainder := activation.DifferentialQuota - allocated
 	if remainder > 0 && len(rewards) > 0 {
 		rewards[0].RewardQuota += remainder
 	}

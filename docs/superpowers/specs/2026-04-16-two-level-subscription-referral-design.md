@@ -398,7 +398,7 @@
 - 更上层 `direct` 永远不拿第二份返佣
 - `direct` 和 `team` 祖先节点允许混排；混排只会影响路径长度和团队命中结果，不改变“第一层决定入口”的原则
 
-### Team Pool Logic
+### Team Differential Logic
 
 统一基数：
 
@@ -413,13 +413,14 @@
 公式：
 
 - `direct_reward_gross = floor(B × direct_cap_bps / 10000)`
-- `team_pool = floor(B × (team_cap_bps - direct_cap_bps) / 10000)`
 - `team_direct_reward_gross = floor(B × team_cap_bps / 10000)`
+- `team_differential_quota = floor(B × (team_cap_bps - direct_cap_bps) / 10000)`
+  - 仅在 `direct_with_team_chain` 且至少命中一个有效 `team` 节点时成立
 
 其中：
 
 - `direct_reward_gross` 只属于最近 `direct`
-- `team_pool` 只属于向上命中的 `team`
+- `team_differential_quota` 只在命中有效 `team` 后成立，并只属于这些命中的 `team`
 - `team_direct_reward_gross` 只属于最近 `team`
 
 这里的参数来源统一是活动模板：
@@ -443,7 +444,7 @@
 
 ### Path Distance Rule
 
-`direct_with_team_chain` 模式下，团队池的递减按真实路径距离计算。
+`direct_with_team_chain` 模式下，团队级差返佣的递减按真实路径距离计算。
 
 定义：
 
@@ -466,14 +467,14 @@
 若过滤后没有任何有效 `team` 节点：
 
 - 不生成任何 `team_reward`
-- `team_pool` 不回补给最近 `direct`
-- `team_pool` 不回补给付款用户或 `invitee_reward`
-- 这部分额度视为本单未分配返佣，不发放
+- 不成立任何团队级差返佣
+- 最近 `direct` 仍只拿自己的 `direct_reward`
+- 付款用户仍只可能拿来自最近 `direct` 的 `invitee_reward`
 
 分配：
 
 - `share_i = w_i / Σw`
-- `team_reward_i = floor(team_pool × share_i)`
+- `team_reward_i = floor(team_differential_quota × share_i)`
 
 尾差：
 
@@ -487,8 +488,9 @@
 
 - 是否触发返佣
 - 是否触发返佣链
-- 团队池大小
-- 团队池分配
+- 是否成立团队级差返佣
+- 团队级差返佣总额
+- 团队级差返佣分配
 
 它只改变最近直接邀请人那一份“最近一层返佣”的最终落账结果。
 
@@ -629,7 +631,7 @@
 - `direct1 gross = 100`
 - 不生成 `invitee_reward`
 - `direct1 net = 100`
-- 未命中任何有效 `team` 节点，因此 `team_pool` 不发放
+- 未命中任何有效 `team` 节点，因此本单不成立团队级差返佣
 
 ### Example 2: `team1 -> direct1 -> user`
 
@@ -658,7 +660,7 @@
 
 - `direct1 gross = 100`
 - `direct1 net = 100`
-- `team_pool = 150`
+- `team_differential_quota = 150`
 - `team1` 距离 `1`
 - `team2` 距离 `3`
 - 若 `r = 0.5`
@@ -903,13 +905,13 @@
   - 记录命中团队节点按距离从近到远排序后的序号
 - `weight_snapshot`
   - 仅 `team_reward` 使用
-  - 记录该团队节点参与团队池计算时的原始权重
+  - 记录该团队节点参与团队级差分配时的原始权重
 - `share_snapshot`
   - 仅 `team_reward` 使用
-  - 记录该团队节点最终分到的团队池份额占比
+  - 记录该团队节点最终分到的团队级差份额占比
 - `pool_rate_bps_snapshot`
   - 仅 `team_reward` 使用
-  - 记录本单团队池对应的比例，即 `team_cap_bps - direct_cap_bps`
+  - 兼容字段名，记录本单团队级差对应的比例，即 `team_cap_bps - direct_cap_bps`
   - 对 `direct_reward / team_direct_reward / invitee_reward` 记 `NULL`
 - `reward_quota`
   - 该条明细最终实际到账额度
@@ -1119,7 +1121,7 @@
 18. 历史订单在修改模板、绑定、邀请关系后仍保持原结算结果不变
 19. 对 `subscription_referral` 来说，模板参数必须满足 `0 <= direct_cap_bps <= team_cap_bps <= 10000`、`0 < team_decay_ratio <= 1`、`team_max_depth >= 1`
     - 对其他返佣类型，若未采用 `direct + team` 两级规则，则不强行套用这组字段的解析、校验与结算语义
-20. `direct_with_team_chain` 模式下若最终没有命中任何有效 `team` 节点，则不生成 `team_reward`，且 `team_pool` 不改发给其他角色
+20. `direct_with_team_chain` 模式下只有在最终命中至少一个有效 `team` 节点时，团队级差返佣才成立；若没有命中，则不生成任何 `team_reward`
 21. 每个用户只能有一个直接邀请人，邀请关系是单链，不支持多个第一层邀请人
 22. 付款用户自己在当前 `subscription_referral + group` 下是否有模板、模板身份是什么，都不改变返佣入口和是否向上扩散；只看第一层直接邀请人的模板身份
 23. `subscription_referral` 的祖先链允许 `direct / team` 混排，混排会影响路径距离与团队命中，但不改变入口判定规则
