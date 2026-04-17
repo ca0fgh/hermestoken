@@ -76,10 +76,12 @@
   - 跳过
   - 不断链
 - 付款用户自己在当前 `subscription_referral + group` 下是否有模板、模板身份是什么，都不决定返佣入口和是否向上扩散
+- `group` 继续沿用系统现有统一维度，并与订阅计划、用户、渠道、令牌保持一致
 - 返佣链的级别参数只由“最近直接邀请人的活动模板”控制
 - 更上层模板只决定自己是否具备参与资格和身份，不反向改写本单的返佣参数
 - 模板的 `enabled` 只决定模板自己是否可被解析为活动模板
-- 新旧引擎切换不由模板 `enabled` 决定，而由平台按 `referral_type + group` 单独控制
+- 系统只保留新模板返佣引擎，不保留 `legacy/template` 双引擎切换
+- 某用户在某个 `referral_type + group` 下是否激活返佣资格，只由该用户是否存在绑定且绑定模板 `enabled = true` 决定
 - 只有真实支付成功的订阅订单才进入 `subscription_referral` 结算
 - 历史订单结算结果需要快照固化，后续改模板、改绑定、改邀请关系都不影响历史订单
 
@@ -252,6 +254,35 @@
   - 自己的参与资格
   - 自己的身份识别
 - 更上层模板不会改写本单已经锁定的返佣参数
+
+### Activation Model
+
+系统运行时不再区分 `legacy` 和 `template` 两套返佣引擎。
+
+统一规则：
+
+- 所有新订单只走模板返佣引擎
+- 返佣资格的最小粒度是 `user + referral_type + group`
+- 某用户在某个 `referral_type + group` 下存在绑定，且绑定模板 `enabled = true`
+  - 该用户在这个维度下已激活
+- 没有绑定，或绑定模板 `enabled = false`
+  - 该用户在这个维度下未激活
+
+对 `subscription_referral` 来说：
+
+- 订单的 `group` 直接取订阅计划的 `group / upgradeGroup`
+- 结算时固定 `referral_type = subscription_referral`
+- 第一层直接邀请人在这个 `referral_type + group` 下已激活
+  - 本单才可能返佣
+- 第一层直接邀请人在这个 `referral_type + group` 下未激活
+  - 本单不返佣
+
+向上遍历时：
+
+- 上层用户在当前 `referral_type + group` 下已激活
+  - 才具备参与资格
+- 上层用户未激活
+  - 跳过，但不断链
 
 ### Invitee Share Model
 
@@ -920,42 +951,11 @@
     - `direct_reward`
     - 或 `team_direct_reward`
 
-### 6. Engine Route Table
-
-新增表：`referral_engine_routes`
-
-建议字段：
-
-- `id`
-- `referral_type`
-- `group`
-- `engine_mode`
-- `created_by`
-- `updated_by`
-- `created_at`
-- `updated_at`
-
-其中：
-
-- `engine_mode`
-  - `legacy`
-  - `template`
-
-约束：
-
-- `referral_type + group` 唯一
-
-说明：
-
-- 新旧引擎切换由这张表控制
-- 模板本身的 `enabled` 只决定模板是否可被解析为活动模板
-- 两者职责不同，不能混用
-
 ## Admin and User Surfaces
 
 ### Admin Surfaces
 
-后台至少需要三块能力：
+后台至少需要两块核心能力和一块关系维护能力：
 
 1. 模板管理
 - 创建模板
@@ -964,8 +964,10 @@
 - 指定级别返佣规则
 - 指定模板默认 invitee share
 
-2. 用户模板绑定
+2. 用户模板绑定 / 激活管理
 - 给用户在某个 `referral_type + group` 下分配模板
+- 用户一旦完成绑定，且模板 `enabled = true`
+  - 即表示该用户在这个 `referral_type + group` 下被激活
 
 3. 邀请关系管理
 - 维护用户直接邀请人
@@ -994,38 +996,9 @@
 - 团队递减规则
 - 最大深度
 
-## Rollout and Migration
+## Existing Capability Reuse
 
-### Engine Boundary
-
-新模板框架与当前旧版订阅返佣引擎并存，但建议优先把现有订阅 invitee rebate 能力迁入新框架。
-
-建议策略：
-
-- 若 `referral_engine_routes.engine_mode = template`
-  - 只执行新框架结算
-- 若 `referral_engine_routes.engine_mode = legacy`
-  - 继续保持旧订阅返佣逻辑
-- 若某个 `referral_type + group` 没有配置 `referral_engine_routes`
-  - 默认按 `legacy` 处理
-  - 不允许因为缺少路由配置而进入不确定状态
-
-目标：
-
-- 避免同一笔订单被两套返佣逻辑重复结算
-- 允许按 `referral_type + group` 灰度切换
-
-补充规则：
-
-- 若某个用户绑定到了 `enabled = false` 的模板
-  - 该模板不会被解析为活动模板
-  - 在新框架里等价于“该用户在该 `referral_type + group` 下无活动模板”
-- 这不会自动把单个用户回退到旧引擎
-  - 订单是否走旧引擎，只看 `referral_engine_routes`
-
-### Existing Capability Reuse
-
-现有订阅实现里的以下能力应被视为迁移来源，而不是废弃物：
+现有订阅实现里的以下能力应被视为历史数据迁移来源，而不是新的运行时结算入口：
 
 - 邀请人按分组设置默认 invitee 比例
 - 邀请人按被邀请人 + 分组设置覆盖比例
@@ -1076,13 +1049,6 @@
   - 该配置可以迁入为保留数据
   - 但必须保持为未生效状态，不能在模板引擎下被默默生效
 
-切换要求：
-
-- 在某个 `subscription_referral + group` 切到 `template` 模式前
-  - 需要完成该分组内目标用户的模板绑定
-  - 需要完成旧 invitee 配置的迁移或显式放弃
-- 否则不应切换该分组的引擎路由
-
 ### Existing UI Boundary
 
 当前“邀请返佣”页面可以先继续作为 `subscription_referral` 的专用用户界面存在，只是底层数据来源改为通用模板框架。
@@ -1101,23 +1067,22 @@
 3. 模板绑定必须和模板自己的 `referral_type + group` 一致，不能跨维度脏绑
 4. `subscription_referral` 下模板身份只允许 `direct / team`
 5. 在 `subscription_referral + group` 下：
-   - 第一层直接邀请人没有模板时，整笔不返佣
-   - 第一层直接邀请人虽然绑定了模板，但模板 `enabled = false` 时，等价于没有活动模板，整笔不返佣
+   - 第一层直接邀请人没有绑定，或绑定模板 `enabled = false` 时，整笔不返佣
    - 第一层是 `team` 模板时，只结算 `team_direct`
    - 第一层是 `direct` 模板时，触发团队返佣链
 6. 向上遍历时，未绑定当前 `referral_type + group` 模板的祖先节点，或绑定模板但模板 `enabled = false` 的祖先节点，都会被跳过，但不会断链
 7. 一笔订单的 `direct_cap_bps / team_cap_bps / team_decay_ratio / team_max_depth / invitee_share_default_bps` 只由最近直接邀请人的活动模板决定
 8. `direct_reward` 和 `team_direct_reward` 的账本记录净额，毛额通过 `gross_reward_quota_snapshot` 审计
 9. `invitee_reward` 明确记录被邀请人拿到的切分额度，并标明来源是 `direct_reward` 或 `team_direct_reward`
-10. 模板 `enabled` 只控制模板是否可被解析为活动模板；新旧引擎切换由 `referral_engine_routes` 控制
-11. 未配置 `referral_engine_routes` 的 `referral_type + group` 默认走 `legacy`
+10. 模板 `enabled` 只控制模板是否可被解析为活动模板，同时直接决定该用户在该 `referral_type + group` 下是否激活
+11. 所有新订单统一只走模板返佣引擎，不存在 `legacy/template` 运行时切换
 12. 旧 `subscription_referral_overrides` 可以作为模板候选参数和待绑定用户清单的迁移种子，但不能自动推出 team 模板，也不能自动决定最终模板绑定
 13. 旧 invitee 配置只有在对应用户完成模板绑定，且绑定模板 `enabled = true` 后才能迁入并立即生效
 14. 最近直接邀请人可按默认比例或单个被邀请人覆盖，把自己本单即时返佣切一部分给付款用户
     - 生效优先级必须是：单个被邀请人覆盖 > 邀请人自己的默认比例 > 模板默认比例
 15. `invitee_reward` 只来自最近直接邀请人的即时返佣，不来自更上层 `team_reward`
 16. 用户只能修改 invitee share，不能修改模板里的级别返佣规则
-17. 现有订阅 invitee rebate 配置可以迁移或兼容到新模板框架
+17. 现有订阅 invitee rebate 配置只作为迁移来源，不再作为独立运行时返佣入口
 18. 历史订单在修改模板、绑定、邀请关系后仍保持原结算结果不变
 19. 对 `subscription_referral` 来说，模板参数必须满足 `0 <= direct_cap_bps <= team_cap_bps <= 10000`、`0 < team_decay_ratio <= 1`、`team_max_depth >= 1`
     - 对其他返佣类型，若未采用 `direct + team` 两级规则，则不强行套用这组字段的解析、校验与结算语义
