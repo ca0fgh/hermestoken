@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-type UpdateSubscriptionReferralSelfRequest struct {
+type upsertSubscriptionReferralInviteeOverrideRequest struct {
 	Group          string `json:"group"`
 	InviteeRateBps int    `json:"invitee_rate_bps"`
 }
@@ -46,14 +46,6 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		"history_reward_quota": user.AffHistoryQuota,
 		"inviter_count":        inviterCount,
 	})
-}
-
-func UpdateSubscriptionReferralSelf(c *gin.Context) {
-	common.ApiErrorMsg(c, "用户默认返给被邀请人比例已改为跟随模板，不支持单独修改")
-}
-
-func DeleteSubscriptionReferralSelf(c *gin.Context) {
-	common.ApiErrorMsg(c, "用户默认返给被邀请人比例已改为跟随模板，不支持单独修改")
 }
 
 func GetSubscriptionReferralInvitees(c *gin.Context) {
@@ -122,7 +114,7 @@ func UpsertSubscriptionReferralInviteeOverride(c *gin.Context) {
 		return
 	}
 
-	var req UpdateSubscriptionReferralSelfRequest
+	var req upsertSubscriptionReferralInviteeOverrideRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return

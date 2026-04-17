@@ -84,15 +84,14 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(summarySource, /t\('被邀请人数'\)/);
   assert.match(summarySource, /t\('累计返佣收益'\)/);
 
-  assert.match(defaultRuleSource, /t\('邀请人分账规则'\)/);
+  assert.match(defaultRuleSource, /t\('模板默认返给被邀请人比例'\)/);
   assert.match(defaultRuleSource, /t\('返佣类型'\)/);
   assert.match(defaultRuleSource, /getTypeLabel/);
   assert.match(defaultRuleSource, /t\('分组'\)/);
-  assert.match(defaultRuleSource, /t\('被邀请人返佣比例'\)/);
-  assert.match(
-    defaultRuleSource,
-    /API\.delete\('\/api\/user\/referral\/subscription', \{\s*params: \{ group \}/,
-  );
+  assert.match(defaultRuleSource, /t\('当前授权总返佣率'\)/);
+  assert.match(defaultRuleSource, /formatRateBpsPercent/);
+  assert.doesNotMatch(defaultRuleSource, /API\.put\('\/api\/user\/referral\/subscription'/);
+  assert.doesNotMatch(defaultRuleSource, /API\.delete\('\/api\/user\/referral\/subscription'/);
 
   assert.match(listSource, /t\('邀请用户'\)/);
   assert.match(listSource, /t\('搜索用户名'\)/);

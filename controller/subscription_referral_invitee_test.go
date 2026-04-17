@@ -53,7 +53,7 @@ func TestUpsertSubscriptionReferralInviteeOverrideRequiresActiveBinding(t *testi
 		t,
 		http.MethodPut,
 		"/api/user/referral/subscription/invitees/"+strconv.Itoa(invitee.Id),
-		UpdateSubscriptionReferralSelfRequest{Group: "vip", InviteeRateBps: 500},
+		upsertSubscriptionReferralInviteeOverrideRequest{Group: "vip", InviteeRateBps: 500},
 		inviter.Id,
 	)
 	ctx.Params = gin.Params{{Key: "invitee_id", Value: strconv.Itoa(invitee.Id)}}
@@ -77,7 +77,7 @@ func TestUpsertSubscriptionReferralInviteeOverrideRejectsForeignInvitee(t *testi
 		t,
 		http.MethodPut,
 		"/api/user/referral/subscription/invitees/"+strconv.Itoa(foreignInvitee.Id),
-		UpdateSubscriptionReferralSelfRequest{Group: "vip", InviteeRateBps: 500},
+		upsertSubscriptionReferralInviteeOverrideRequest{Group: "vip", InviteeRateBps: 500},
 		inviter.Id,
 	)
 	ctx.Params = gin.Params{{Key: "invitee_id", Value: strconv.Itoa(foreignInvitee.Id)}}
@@ -100,7 +100,7 @@ func TestUpsertAndDeleteSubscriptionReferralInviteeOverridePersistTemplateOverri
 		t,
 		http.MethodPut,
 		"/api/user/referral/subscription/invitees/"+strconv.Itoa(invitee.Id),
-		UpdateSubscriptionReferralSelfRequest{Group: "vip", InviteeRateBps: 500},
+		upsertSubscriptionReferralInviteeOverrideRequest{Group: "vip", InviteeRateBps: 500},
 		inviter.Id,
 	)
 	updateCtx.Params = gin.Params{{Key: "invitee_id", Value: strconv.Itoa(invitee.Id)}}

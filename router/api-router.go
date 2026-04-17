@@ -112,8 +112,6 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
 				selfRoute.GET("/referral/subscription", controller.GetSubscriptionReferralSelf)
-				selfRoute.PUT("/referral/subscription", controller.UpdateSubscriptionReferralSelf)
-				selfRoute.DELETE("/referral/subscription", controller.DeleteSubscriptionReferralSelf)
 				selfRoute.GET("/referral/subscription/invitees", controller.GetSubscriptionReferralInvitees)
 				selfRoute.GET("/referral/subscription/invitees/:invitee_id", controller.GetSubscriptionReferralInvitee)
 				selfRoute.PUT("/referral/subscription/invitees/:invitee_id", controller.UpsertSubscriptionReferralInviteeOverride)
