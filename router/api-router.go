@@ -163,9 +163,6 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.PATCH("/plans/:id", controller.AdminUpdateSubscriptionPlanStatus)
 			subscriptionAdminRoute.DELETE("/plans/:id", controller.AdminDeleteSubscriptionPlan)
 			subscriptionAdminRoute.POST("/bind", controller.AdminBindSubscription)
-			subscriptionAdminRoute.GET("/referral/users/:id", controller.AdminGetSubscriptionReferralOverride)
-			subscriptionAdminRoute.PUT("/referral/users/:id", controller.AdminUpsertSubscriptionReferralOverride)
-			subscriptionAdminRoute.DELETE("/referral/users/:id", controller.AdminDeleteSubscriptionReferralOverride)
 			subscriptionAdminRoute.POST("/referral/orders/:trade_no/reverse", controller.AdminReverseSubscriptionReferral)
 
 			// User subscription management (admin)
@@ -218,6 +215,18 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
+		}
+		referralRoute := apiRouter.Group("/referral")
+		referralRoute.Use(middleware.RootAuth())
+		{
+			referralRoute.GET("/settings/subscription", controller.AdminGetSubscriptionReferralGlobalSetting)
+			referralRoute.PUT("/settings/subscription", controller.AdminUpdateSubscriptionReferralGlobalSetting)
+			referralRoute.GET("/templates", controller.AdminListReferralTemplates)
+			referralRoute.POST("/templates", controller.AdminCreateReferralTemplate)
+			referralRoute.PUT("/templates/:id", controller.AdminUpdateReferralTemplate)
+			referralRoute.DELETE("/templates/:id", controller.AdminDeleteReferralTemplate)
+			referralRoute.GET("/bindings/users/:id", controller.AdminListReferralTemplateBindingsByUser)
+			referralRoute.PUT("/bindings/users/:id", controller.AdminUpsertReferralTemplateBindingForUser)
 		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())

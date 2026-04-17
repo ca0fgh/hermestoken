@@ -19,6 +19,10 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
 	gin.SetMode(gin.TestMode)
+	originalOptionMap := make(map[string]string, len(common.OptionMap))
+	for key, value := range common.OptionMap {
+		originalOptionMap[key] = value
+	}
 	common.UsingSQLite = true
 	common.UsingMySQL = false
 	common.UsingPostgreSQL = false
@@ -39,19 +43,24 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
-		&model.SubscriptionReferralOverride{},
-		&model.SubscriptionReferralRecord{},
+		&model.ReferralTemplate{},
+		&model.ReferralTemplateBinding{},
+		&model.ReferralInviteeShareOverride{},
+		&model.ReferralSettlementBatch{},
+		&model.ReferralSettlementRecord{},
 		&model.TopUp{},
 		&model.Log{},
 	); err != nil {
 		t.Fatalf("failed to migrate subscription tables: %v", err)
 	}
+	model.InitOptionMap()
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()
 		}
+		common.OptionMap = originalOptionMap
 	})
 
 	return db

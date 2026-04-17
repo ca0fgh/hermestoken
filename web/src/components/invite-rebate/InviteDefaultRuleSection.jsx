@@ -17,109 +17,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
-  Button,
   Card,
   Empty,
-  InputNumber,
-  Space,
   Typography,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess } from '../../helpers';
 import {
-  clampInviteeRateBps,
   formatRateBpsPercent,
-  percentNumberToRateBps,
-  rateBpsToPercentNumber,
 } from '../../helpers/subscriptionReferral';
 
 const InviteDefaultRuleSection = ({
   t,
   rows = [],
   loading = false,
-  onRulesChanged,
 }) => {
   const getTypeLabel = (type) => {
     if (type === 'subscription') return t('订阅返佣');
     return type || t('未知类型');
   };
 
-  const [savingGroup, setSavingGroup] = useState('');
-  const [deletingGroup, setDeletingGroup] = useState('');
-  const [draftPercentByGroup, setDraftPercentByGroup] = useState({});
-
-  const getDraftPercent = (row) => {
-    const group = String(row?.group || '').trim();
-    if (Object.prototype.hasOwnProperty.call(draftPercentByGroup, group)) {
-      return draftPercentByGroup[group];
-    }
-    return Number(row?.inputPercent || 0);
-  };
-
-  const updateDraftPercent = (group, value) => {
-    setDraftPercentByGroup((currentDrafts) => ({
-      ...currentDrafts,
-      [group]: Number(value || 0),
-    }));
-  };
-
-  const saveRow = async (row) => {
-    const group = String(row?.group || '').trim();
-    const inviteeRateBps = clampInviteeRateBps(
-      percentNumberToRateBps(getDraftPercent(row)),
-      row?.effectiveTotalRateBps,
-    );
-
-    setSavingGroup(group);
-    try {
-      const res = await API.put('/api/user/referral/subscription', {
-        group,
-        invitee_rate_bps: inviteeRateBps,
-      });
-
-      if (res.data?.success) {
-        showSuccess(t('保存成功'));
-        await onRulesChanged?.();
-      } else {
-        showError(res.data?.message || t('保存失败'));
-      }
-    } catch (error) {
-      showError(error?.message || t('保存失败'));
-    } finally {
-      setSavingGroup('');
-    }
-  };
-
-  const deleteRow = async (group) => {
-    setDeletingGroup(group);
-    try {
-      const res = await API.delete('/api/user/referral/subscription', {
-        params: { group },
-      });
-
-      if (res.data?.success) {
-        showSuccess(t('删除成功'));
-        setDraftPercentByGroup((currentDrafts) => {
-          const nextDrafts = { ...currentDrafts };
-          delete nextDrafts[group];
-          return nextDrafts;
-        });
-        await onRulesChanged?.();
-      } else {
-        showError(res.data?.message || t('删除失败'));
-      }
-    } catch (error) {
-      showError(error?.message || t('删除失败'));
-    } finally {
-      setDeletingGroup('');
-    }
-  };
-
   return (
     <Card
       className='!rounded-2xl border-0 shadow-sm'
-      title={t('邀请人分账规则')}
+      title={t('模板默认返给被邀请人比例')}
       loading={loading}
     >
       <div className='flex flex-col gap-4'>
@@ -128,11 +49,6 @@ const InviteDefaultRuleSection = ({
         ) : (
           rows.map((row) => {
             const group = String(row?.group || '').trim();
-            const inputPercent = getDraftPercent(row);
-            const canSave =
-              !savingGroup &&
-              percentNumberToRateBps(inputPercent) !==
-                percentNumberToRateBps(row?.inputPercent || 0);
 
             return (
               <div
@@ -165,39 +81,13 @@ const InviteDefaultRuleSection = ({
                   </div>
                   <div>
                     <Typography.Text type='tertiary' className='block text-xs'>
-                      {t('被邀请人返佣比例')}
+                      {t('模板默认返给被邀请人比例')}
                     </Typography.Text>
-                    <InputNumber
-                      value={inputPercent}
-                      min={0}
-                      max={rateBpsToPercentNumber(row.effectiveTotalRateBps)}
-                      step={0.01}
-                      precision={2}
-                      suffix='%'
-                      style={{ width: '100%' }}
-                      onChange={(value) => updateDraftPercent(group, value)}
-                    />
+                    <Typography.Text strong>
+                      {formatRateBpsPercent(row.effectiveInviteeRateBps)}
+                    </Typography.Text>
                   </div>
                 </div>
-
-                <Space className='mt-4'>
-                  <Button
-                    type='primary'
-                    loading={savingGroup === group}
-                    disabled={!canSave}
-                    onClick={() => saveRow(row)}
-                  >
-                    {t('保存')}
-                  </Button>
-                  <Button
-                    type='danger'
-                    theme='borderless'
-                    loading={deletingGroup === group}
-                    onClick={() => deleteRow(group)}
-                  >
-                    {t('删除')}
-                  </Button>
-                </Space>
               </div>
             );
           })

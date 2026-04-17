@@ -91,7 +91,9 @@ export function buildInviteDefaultRuleRows(groups = []) {
         effectiveTotalRateBps: normalizeRateBps(
           groupItem?.total_rate_bps ?? groupItem?.totalRateBps,
         ),
-        hasOverride: true,
+        effectiveInviteeRateBps: normalizeRateBps(
+          groupItem?.invitee_rate_bps ?? groupItem?.inviteeRateBps,
+        ),
         isDraft: false,
       },
     ];

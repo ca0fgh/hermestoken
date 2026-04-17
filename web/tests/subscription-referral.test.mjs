@@ -21,105 +21,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  buildAdminOverrideRows,
-  buildAdminOverrideGroupOptions,
   buildGroupedReferralSummaries,
   buildInvitationDraftPercentInputs,
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
-  createAdminOverrideDraftRow,
 } from '../src/helpers/subscriptionReferral.js';
-
-test('buildAdminOverrideRows maps grouped overrides into extensible rows', () => {
-  const rows = buildAdminOverrideRows([
-    {
-      group: 'alpha',
-      effective_total_rate_bps: 4000,
-      has_override: true,
-      override_rate_bps: 3000,
-    },
-    {
-      group: 'beta',
-      effectiveTotalRateBps: 2500,
-      hasOverride: false,
-      overrideRateBps: null,
-    },
-  ]);
-
-  assert.deepEqual(rows, [
-    {
-      id: 'subscription:alpha',
-      type: 'subscription',
-      group: 'alpha',
-      effectiveTotalRateBps: 4000,
-      hasOverride: true,
-      overrideRateBps: 3000,
-      overrideRatePercent: 30,
-      inputPercent: 30,
-      isDraft: false,
-    },
-    {
-      id: 'subscription:beta',
-      type: 'subscription',
-      group: 'beta',
-      effectiveTotalRateBps: 2500,
-      hasOverride: false,
-      overrideRateBps: null,
-      overrideRatePercent: 25,
-      inputPercent: 25,
-      isDraft: false,
-    },
-  ]);
-});
-
-test('buildAdminOverrideGroupOptions retains legacy group even when missing from catalog', () => {
-  const rows = [
-    { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
-    { id: 'subscription:legacy', type: 'subscription', group: 'legacy' },
-  ];
-  const options = buildAdminOverrideGroupOptions(
-    ['alpha', 'beta'],
-    rows,
-    rows[1],
-  );
-
-  assert.deepEqual(options, [
-    { label: 'alpha', value: 'alpha', disabled: true },
-    { label: 'beta', value: 'beta', disabled: false },
-    { label: 'legacy', value: 'legacy', disabled: false },
-  ]);
-});
-
-test('createAdminOverrideDraftRow creates a new draft entry with defaults', () => {
-  const draft = createAdminOverrideDraftRow();
-
-  assert.match(draft.id, /^draft:/);
-  assert.equal(draft.type, 'subscription');
-  assert.equal(draft.group, '');
-  assert.equal(draft.overrideRatePercent, 0);
-  assert.equal(draft.isDraft, true);
-  assert.equal(draft.hasOverride, false);
-  assert.equal(draft.inputPercent, 0);
-});
-
-test('buildAdminOverrideGroupOptions disables already used groups for the same type', () => {
-  const rows = [
-    { id: 'subscription:alpha', type: 'subscription', group: 'alpha' },
-    { id: 'subscription:beta', type: 'subscription', group: 'beta' },
-  ];
-  const options = buildAdminOverrideGroupOptions(
-    ['alpha', 'beta', 'gamma'],
-    rows,
-    rows[0],
-  );
-
-  assert.deepEqual(options, [
-    { label: 'alpha', value: 'alpha', disabled: false },
-    { label: 'beta', value: 'beta', disabled: true },
-    { label: 'gamma', value: 'gamma', disabled: false },
-  ]);
-});
 
 test('clampInviteeRateBps caps invitee rate to total rate', () => {
   assert.equal(clampInviteeRateBps(2600, 2000), 2000);
@@ -138,10 +45,6 @@ test('buildReferralRateSummary derives inviter rate from total minus invitee', (
 test('formatRateBpsPercent formats basis points as percent strings', () => {
   assert.equal(formatRateBpsPercent(2000), '20%');
   assert.equal(formatRateBpsPercent(375), '3.75%');
-});
-
-test('buildAdminOverrideRows returns no rows when grouped override payload is empty', () => {
-  assert.deepEqual(buildAdminOverrideRows([]), []);
 });
 
 test('buildGroupedReferralSummaries derives inviter rate per group', () => {
@@ -177,49 +80,6 @@ test('buildGroupedReferralSummaries derives inviter rate per group', () => {
 
 test('buildGroupedReferralSummaries returns no cards when grouped payload is empty', () => {
   assert.deepEqual(buildGroupedReferralSummaries([]), []);
-});
-
-test('buildAdminOverrideRows normalizes grouped override API payload', () => {
-  assert.deepEqual(
-    buildAdminOverrideRows([
-      {
-        group: 'default',
-        effective_total_rate_bps: 4500,
-        has_override: false,
-        override_rate_bps: null,
-      },
-      {
-        group: 'vip',
-        effective_total_rate_bps: 3000,
-        has_override: true,
-        override_rate_bps: 2500,
-      },
-    ]),
-    [
-      {
-        id: 'subscription:default',
-        type: 'subscription',
-        group: 'default',
-        effectiveTotalRateBps: 4500,
-        hasOverride: false,
-        overrideRateBps: null,
-        overrideRatePercent: 45,
-        inputPercent: 45,
-        isDraft: false,
-      },
-      {
-        id: 'subscription:vip',
-        type: 'subscription',
-        group: 'vip',
-        effectiveTotalRateBps: 3000,
-        hasOverride: true,
-        overrideRateBps: 2500,
-        overrideRatePercent: 25,
-        inputPercent: 25,
-        isDraft: false,
-      },
-    ],
-  );
 });
 
 test('buildGroupedReferralSummaries preserves group names for invitation cards', () => {
@@ -377,32 +237,6 @@ test('OperationSetting no longer mounts the global subscription referral setting
   );
   assert.equal(
     operationSettingSource.includes('SubscriptionReferralEnabled'),
-    false,
-  );
-});
-
-test('SubscriptionReferralOverrideSection loads inviter override data without global settings workflow', () => {
-  const overrideSource = readFileSync(
-    new URL(
-      '../src/components/table/users/modals/SubscriptionReferralOverrideSection.jsx',
-      import.meta.url,
-    ),
-    'utf8',
-  );
-
-  assert.match(
-    overrideSource,
-    /buildAdminOverrideRows\(\s*Array\.isArray\(next\.groups\) \? next\.groups : \[\],\s*\)/,
-  );
-  assert.match(
-    overrideSource,
-    /API\.get\(`\/api\/subscription\/admin\/referral\/users\/\$\{userId\}`\)/,
-  );
-  assert.match(overrideSource, /API\.get\(['"`]\/api\/group\/['"`]\)/);
-  assert.equal(overrideSource.includes("默认返佣规则"), false);
-  assert.equal(overrideSource.includes("当前默认总返佣"), false);
-  assert.equal(
-    overrideSource.includes('/api/subscription/admin/referral/settings'),
     false,
   );
 });

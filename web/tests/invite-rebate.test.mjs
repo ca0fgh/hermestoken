@@ -57,7 +57,7 @@ test('normalizeInviteeContributionPage coerces invitee page fields and preserves
   });
 });
 
-test('buildInviteDefaultRuleRows maps grouped inviter defaults into editable helper rows', () => {
+test('buildInviteDefaultRuleRows maps grouped template defaults into read-only helper rows', () => {
   assert.deepEqual(
     buildInviteDefaultRuleRows([
       {
@@ -78,7 +78,7 @@ test('buildInviteDefaultRuleRows maps grouped inviter defaults into editable hel
         group: 'default',
         inputPercent: 5,
         effectiveTotalRateBps: 4500,
-        hasOverride: true,
+        effectiveInviteeRateBps: 500,
         isDraft: false,
       },
       {
@@ -87,7 +87,7 @@ test('buildInviteDefaultRuleRows maps grouped inviter defaults into editable hel
         group: 'vip',
         inputPercent: 0,
         effectiveTotalRateBps: 3000,
-        hasOverride: true,
+        effectiveInviteeRateBps: 0,
         isDraft: false,
       },
     ],

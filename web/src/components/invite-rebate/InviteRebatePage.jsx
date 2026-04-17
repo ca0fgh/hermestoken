@@ -227,7 +227,6 @@ const InviteRebatePage = () => {
           t={t}
           rows={defaultRuleRows}
           loading={loadingDefaults}
-          onRulesChanged={loadDefaultRules}
         />
 
         <Spin spinning={loadingInvitees && inviteePage.items.length === 0}>
