@@ -12,22 +12,22 @@ import (
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {
-	return getUserGroupsByMode(0, userGroup, true)
+	return getUserGroupsByMode(0, userGroup)
 }
 
 func GetUserUsableGroupsForUser(userId int, userGroup string) map[string]string {
-	return getUserGroupsByMode(userId, userGroup, true)
+	return getUserGroupsByMode(userId, userGroup)
 }
 
 func GetUserSelectableGroups(userGroup string) map[string]string {
-	return getUserGroupsByMode(0, userGroup, false)
+	return getUserGroupsByMode(0, userGroup)
 }
 
 func GetUserSelectableGroupsForUser(userId int, userGroup string) map[string]string {
-	return getUserGroupsByMode(userId, userGroup, false)
+	return getUserGroupsByMode(userId, userGroup)
 }
 
-func getUserGroupsByMode(userId int, userGroup string, includeAssignedGroup bool) map[string]string {
+func getUserGroupsByMode(userId int, userGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
 	if userGroup != "" {
 		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
@@ -48,11 +48,9 @@ func getUserGroupsByMode(userId int, userGroup string, includeAssignedGroup bool
 				}
 			}
 		}
-		// 已分配的用户分组始终可用，但未必应该出现在用户自选列表中。
-		if includeAssignedGroup {
-			if _, ok := groupsCopy[userGroup]; !ok {
-				groupsCopy[userGroup] = "用户分组"
-			}
+		// 已分配的用户分组始终可用，也应该对令牌/调试等自选场景可见。
+		if _, ok := groupsCopy[userGroup]; !ok {
+			groupsCopy[userGroup] = "用户分组"
 		}
 	}
 	if userId > 0 {

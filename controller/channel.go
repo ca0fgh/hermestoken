@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -432,6 +433,38 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 	return false
 }
 
+func normalizeAndValidateChannelGroups(raw string, defaultToSystemGroup bool) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		if defaultToSystemGroup {
+			return "default", nil
+		}
+		return "", nil
+	}
+
+	channel := &model.Channel{Group: raw}
+	groups := channel.GetGroups()
+	if len(groups) == 0 {
+		if defaultToSystemGroup {
+			return "default", nil
+		}
+		return "", fmt.Errorf("渠道分组不能为空")
+	}
+
+	configuredGroups := ratio_setting.GetGroupRatioCopy()
+	invalidGroups := make([]string, 0)
+	for _, group := range groups {
+		if _, ok := configuredGroups[group]; !ok {
+			invalidGroups = append(invalidGroups, group)
+		}
+	}
+	if len(invalidGroups) > 0 {
+		return "", fmt.Errorf("渠道分组未配置：%s", strings.Join(invalidGroups, ", "))
+	}
+
+	return strings.Join(groups, ","), nil
+}
+
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
 	// 校验 channel settings
@@ -451,6 +484,18 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 				return fmt.Errorf("模型名称过长: %s", m)
 			}
 		}
+	}
+
+	if channel.Models != "" {
+		channel.Models = strings.Join(channel.GetModels(), ",")
+	}
+
+	normalizedGroup, err := normalizeAndValidateChannelGroups(channel.Group, isAdd)
+	if err != nil {
+		return err
+	}
+	if normalizedGroup != "" {
+		channel.Group = normalizedGroup
 	}
 
 	// VertexAI 特殊校验
@@ -790,6 +835,21 @@ func EditTagChannels(c *gin.Context) {
 			return
 		}
 		channelTag.HeaderOverride = common.GetPointer[string](trimmed)
+	}
+	if channelTag.Groups != nil {
+		normalizedGroup, err := normalizeAndValidateChannelGroups(*channelTag.Groups, false)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
+		channelTag.Groups = common.GetPointer(normalizedGroup)
+	}
+	if channelTag.Models != nil {
+		channel := &model.Channel{Models: *channelTag.Models}
+		channelTag.Models = common.GetPointer(strings.Join(channel.GetModels(), ","))
 	}
 	err = model.EditChannelByTag(channelTag.Tag, channelTag.NewTag, channelTag.ModelMapping, channelTag.Models, channelTag.Groups, channelTag.Priority, channelTag.Weight, channelTag.ParamOverride, channelTag.HeaderOverride)
 	if err != nil {
@@ -1194,6 +1254,10 @@ func CopyChannel(c *gin.Context) {
 	if resetBalance {
 		clone.Balance = 0
 		clone.UsedQuota = 0
+	}
+	if err := validateChannel(&clone, true); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
 	}
 
 	// insert

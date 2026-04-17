@@ -285,7 +285,7 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 }
 
-func TestAddTokenRejectsBlankGroupWhenUserDefaultGroupIsNotSelectable(t *testing.T) {
+func TestAddTokenAllowsBlankGroupWhenUserDefaultGroupIsAssigned(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	seedUser(t, db, 1, "default")
 	withTokenGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
@@ -305,11 +305,8 @@ func TestAddTokenRejectsBlankGroupWhenUserDefaultGroupIsNotSelectable(t *testing
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	if response.Success {
-		t.Fatalf("expected token creation to fail when implicit user group is not selectable")
-	}
-	if !strings.Contains(response.Message, "用户可选分组") {
-		t.Fatalf("expected selectable-group validation message, got %q", response.Message)
+	if !response.Success {
+		t.Fatalf("expected token creation to succeed with assigned user group fallback, got %q", response.Message)
 	}
 }
 

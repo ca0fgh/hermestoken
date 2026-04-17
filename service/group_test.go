@@ -90,20 +90,20 @@ func seedGroupTestSubscription(t *testing.T, userID int, upgradeGroup string, st
 	}
 }
 
-func TestGetUserSelectableGroupsDoesNotAutoIncludeAssignedGroup(t *testing.T) {
+func TestGetUserSelectableGroupsIncludesAssignedGroup(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
 	groups := GetUserSelectableGroups("default")
 
-	if _, ok := groups["default"]; ok {
-		t.Fatalf("expected assigned user group to stay hidden when it is not selectable")
+	if got := groups["default"]; got != "用户分组" {
+		t.Fatalf("expected assigned user group to stay visible, got %q", got)
 	}
 	if got := groups["standard"]; got != "标准价格" {
 		t.Fatalf("expected standard group to remain selectable, got %q", got)
 	}
 }
 
-func TestGetUserSelectableGroupsAppliesPerUserOverridesWithoutAutoFallback(t *testing.T) {
+func TestGetUserSelectableGroupsAppliesPerUserOverridesAndKeepsAssignedGroupVisible(t *testing.T) {
 	withSelectableGroupSettings(
 		t,
 		`{"standard":"标准价格","default":"默认分组"}`,
@@ -112,8 +112,8 @@ func TestGetUserSelectableGroupsAppliesPerUserOverridesWithoutAutoFallback(t *te
 
 	groups := GetUserSelectableGroups("vip")
 
-	if _, ok := groups["vip"]; ok {
-		t.Fatalf("expected current user group to stay hidden when not explicitly selectable")
+	if got := groups["vip"]; got != "用户分组" {
+		t.Fatalf("expected current user group to stay visible, got %q", got)
 	}
 	if _, ok := groups["default"]; ok {
 		t.Fatalf("expected removed default group to stay hidden")
@@ -123,23 +123,26 @@ func TestGetUserSelectableGroupsAppliesPerUserOverridesWithoutAutoFallback(t *te
 	}
 }
 
-func TestValidateTokenSelectableGroupRejectsImplicitNonSelectableUserGroup(t *testing.T) {
+func TestValidateTokenSelectableGroupAllowsImplicitAssignedUserGroup(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
 	err := ValidateTokenSelectableGroup("default", "")
 
-	if err == nil {
-		t.Fatalf("expected blank token group to be rejected when user group is not selectable")
+	if err != nil {
+		t.Fatalf("expected blank token group to fall back to assigned user group, got %v", err)
 	}
 }
 
-func TestResolveTokenGroupForRequestRejectsBlankFallbackWhenUserGroupIsNotSelectable(t *testing.T) {
+func TestResolveTokenGroupForRequestUsesAssignedUserGroupAsBlankFallback(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
-	_, err := ResolveTokenGroupForRequest("default", "")
+	resolvedGroup, err := ResolveTokenGroupForRequest("default", "")
 
-	if err == nil {
-		t.Fatalf("expected runtime fallback to be rejected when user group is not selectable")
+	if err != nil {
+		t.Fatalf("expected runtime fallback to use assigned user group, got %v", err)
+	}
+	if resolvedGroup != "default" {
+		t.Fatalf("expected resolved group default, got %q", resolvedGroup)
 	}
 }
 

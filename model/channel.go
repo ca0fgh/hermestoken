@@ -193,22 +193,34 @@ func (channel *Channel) SaveChannelInfo() error {
 	return DB.Model(channel).Update("channel_info", channel.ChannelInfo).Error
 }
 
-func (channel *Channel) GetModels() []string {
-	if channel.Models == "" {
+func normalizeCommaSeparatedValues(raw string) []string {
+	if raw == "" {
 		return []string{}
 	}
-	return strings.Split(strings.Trim(channel.Models, ","), ",")
+
+	parts := strings.Split(strings.Trim(raw, ","), ",")
+	values := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
+}
+
+func (channel *Channel) GetModels() []string {
+	return normalizeCommaSeparatedValues(channel.Models)
 }
 
 func (channel *Channel) GetGroups() []string {
-	if channel.Group == "" {
-		return []string{}
-	}
-	groups := strings.Split(strings.Trim(channel.Group, ","), ",")
-	for i, group := range groups {
-		groups[i] = strings.TrimSpace(group)
-	}
-	return groups
+	return normalizeCommaSeparatedValues(channel.Group)
 }
 
 func (channel *Channel) GetOtherInfo() map[string]interface{} {
