@@ -209,3 +209,21 @@ func ListReferralInviteeShareOverrideCounts(inviterUserID int, inviteeUserIDs []
 	}
 	return counts, nil
 }
+
+func validateSubscriptionReferralInviteeOwnership(inviterUserID int, inviteeUserID int) error {
+	if inviterUserID <= 0 {
+		return errors.New("invalid inviter user id")
+	}
+	if inviteeUserID <= 0 {
+		return errors.New("invalid invitee user id")
+	}
+
+	invitee, err := GetUserById(inviteeUserID, false)
+	if err != nil {
+		return err
+	}
+	if invitee.InviterId != inviterUserID {
+		return errors.New("invitee does not belong to inviter")
+	}
+	return nil
+}

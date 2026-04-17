@@ -1,20 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../../../helpers';
-import { Button, Card, Empty, InputNumber, Select, Space, Typography } from '@douyinfe/semi-ui';
+import { Button, Card, Empty, Select, Space, Typography } from '@douyinfe/semi-ui';
+import { formatReferralTemplateOptionLabel } from '../../../../helpers/referralLabels';
 
 const normalizeBindingRows = (items = []) =>
   (Array.isArray(items) ? items : []).map((view) => ({
-    id: `${view.binding?.referral_type || 'subscription_referral'}:${view.binding?.group || ''}`,
+    id: `binding-${Number(view.binding?.id || view.binding?.template_id || 0)}`,
     bindingId: Number(view.binding?.id || 0),
     referralType: String(view.binding?.referral_type || 'subscription_referral').trim(),
-    group: String(view.binding?.group || '').trim(),
     templateId: Number(view.binding?.template_id || 0),
-    inviteeShareOverrideBps:
-      view.binding?.invitee_share_override_bps === null ||
-      view.binding?.invitee_share_override_bps === undefined
-        ? null
-        : Number(view.binding?.invitee_share_override_bps || 0),
     isDraft: false,
   }));
 
@@ -24,9 +19,7 @@ const createDraftBinding = (templates = []) => {
     id: `draft-${Date.now()}-${Math.random()}`,
     bindingId: 0,
     referralType: 'subscription_referral',
-    group: String(firstTemplate?.group || '').trim(),
     templateId: Number(firstTemplate?.id || 0),
-    inviteeShareOverrideBps: null,
     isDraft: true,
   };
 };
@@ -41,11 +34,10 @@ const ReferralTemplateBindingSection = ({ userId }) => {
   const templateOptions = useMemo(
     () =>
       templates.map((template) => ({
-        label: `${template.name} · ${template.group} · ${template.level_type}`,
+        label: formatReferralTemplateOptionLabel(template, t),
         value: template.id,
-        group: template.group,
       })),
-    [templates],
+    [t, templates],
   );
 
   const load = async () => {
@@ -105,9 +97,7 @@ const ReferralTemplateBindingSection = ({ userId }) => {
     try {
       const res = await API.put(`/api/referral/bindings/users/${userId}`, {
         referral_type: row.referralType,
-        group: row.group,
         template_id: row.templateId,
-        invitee_share_override_bps: row.inviteeShareOverrideBps,
       });
       if (res.data?.success) {
         showSuccess(t('保存成功'));
@@ -135,7 +125,7 @@ const ReferralTemplateBindingSection = ({ userId }) => {
               {t('返佣模板绑定')}
             </Typography.Text>
             <div className='text-xs text-gray-600'>
-              {t('按返佣类型与分组管理用户当前绑定的模板和默认分账比例。')}
+              {t('给当前用户选择生效模板。分组和默认返给被邀请人比例都直接跟模板走。')}
             </div>
           </div>
           <Button type='primary' onClick={addDraft} disabled={templates.length === 0}>
@@ -147,13 +137,7 @@ const ReferralTemplateBindingSection = ({ userId }) => {
         ) : (
           bindingRows.map((row) => (
             <div key={row.id} className='rounded-xl border border-gray-200 p-4'>
-              <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
-                <div>
-                  <Typography.Text type='tertiary' className='text-xs block mb-2'>
-                    {t('分组')}
-                  </Typography.Text>
-                  <Typography.Text>{row.group || '-'}</Typography.Text>
-                </div>
+              <div className='grid grid-cols-1 gap-3'>
                 <div>
                   <Typography.Text type='tertiary' className='text-xs block mb-2'>
                     {t('模板')}
@@ -163,30 +147,10 @@ const ReferralTemplateBindingSection = ({ userId }) => {
                     style={{ width: '100%' }}
                     optionList={templateOptions}
                     onChange={(value) => {
-                      const selectedTemplate = templates.find((template) => Number(template.id) === Number(value));
                       updateRow(row.id, {
                         templateId: Number(value || 0),
-                        group: String(selectedTemplate?.group || '').trim(),
                       });
                     }}
-                  />
-                </div>
-                <div>
-                  <Typography.Text type='tertiary' className='text-xs block mb-2'>
-                    {t('默认分账比例')}
-                  </Typography.Text>
-                  <InputNumber
-                    value={row.inviteeShareOverrideBps ?? 0}
-                    min={0}
-                    max={10000}
-                    step={100}
-                    style={{ width: '100%' }}
-                    onChange={(value) =>
-                      updateRow(row.id, {
-                        inviteeShareOverrideBps:
-                          value === null || Number(value) === 0 ? null : Number(value),
-                      })
-                    }
                   />
                 </div>
               </div>

@@ -85,6 +85,73 @@ func TestResolveSubscriptionTemplateSettlementContext_DirectWithMixedAncestors(t
 	}
 }
 
+func TestResolveSubscriptionTemplateSettlementContext_ZeroMaxDepthMeansUnlimited(t *testing.T) {
+	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		AncestorLevels: []string{
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeTeam,
+		},
+	})
+
+	if err := UpdateSubscriptionReferralGlobalSetting(SubscriptionReferralGlobalSetting{
+		TeamDecayRatio: 0.5,
+		TeamMaxDepth:   0,
+	}); err != nil {
+		t.Fatalf("failed to update subscription referral global setting: %v", err)
+	}
+
+	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
+	if err != nil {
+		t.Fatalf("ResolveSubscriptionTemplateSettlementContext() error = %v", err)
+	}
+	if context == nil {
+		t.Fatal("expected non-nil settlement context")
+	}
+	if got := len(context.TeamChain); got != 6 {
+		t.Fatalf("len(TeamChain) = %d, want 6", got)
+	}
+}
+
+func TestResolveSubscriptionTemplateSettlementContext_UsesGlobalTeamDecayRatio(t *testing.T) {
+	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		AncestorLevels: []string{
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeDirect,
+			ReferralLevelTypeTeam,
+		},
+	})
+
+	if err := UpdateSubscriptionReferralGlobalSetting(SubscriptionReferralGlobalSetting{
+		TeamDecayRatio: 0.25,
+		TeamMaxDepth:   0,
+	}); err != nil {
+		t.Fatalf("failed to update subscription referral global setting: %v", err)
+	}
+
+	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
+	if err != nil {
+		t.Fatalf("ResolveSubscriptionTemplateSettlementContext() error = %v", err)
+	}
+	if context == nil {
+		t.Fatal("expected non-nil settlement context")
+	}
+	if got := len(context.TeamChain); got != 2 {
+		t.Fatalf("len(TeamChain) = %d, want 2", got)
+	}
+	secondTeam := context.TeamChain[1]
+	if math.Abs(secondTeam.WeightSnapshot-0.0625) > 1e-9 {
+		t.Fatalf("second team weight = %f, want 0.0625", secondTeam.WeightSnapshot)
+	}
+}
+
 func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesTeamDirectBatch(t *testing.T) {
 	order, plan, fixture := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
@@ -185,6 +252,44 @@ func TestResolveTeamDifferentialActivationReturnsAllocationWhenMatchedTeamExists
 	}
 }
 
+func TestResolveTeamDifferentialActivationUsesFirstMatchedTeamRateOnly(t *testing.T) {
+	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		ImmediateDirectCapBps: 1000,
+		AncestorLevels: []string{
+			ReferralLevelTypeTeam,
+			ReferralLevelTypeDirect,
+			ReferralLevelTypeTeam,
+		},
+		AncestorTeamCapBps: []int{
+			3000,
+			0,
+			4500,
+		},
+	})
+
+	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
+	if err != nil {
+		t.Fatalf("ResolveSubscriptionTemplateSettlementContext() error = %v", err)
+	}
+	if context == nil {
+		t.Fatal("expected non-nil settlement context")
+	}
+	if got := len(context.TeamChain); got != 2 {
+		t.Fatalf("len(TeamChain) = %d, want 2", got)
+	}
+
+	order := &SubscriptionOrder{Money: 10}
+	activation := resolveTeamDifferentialActivation(context, order)
+	if activation == nil {
+		t.Fatal("expected non-nil team differential activation")
+	}
+	if activation.DifferentialRateBps != 2000 {
+		t.Fatalf("DifferentialRateBps = %d, want 2000 (first matched team 3000 - direct 1000)", activation.DifferentialRateBps)
+	}
+}
+
 func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_DirectWithoutMatchedTeamWritesNoTeamReward(t *testing.T) {
 	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
@@ -201,22 +306,12 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_DirectWithoutMatchedT
 	assertRewardComponents(t, records, []string{"direct_reward", "invitee_reward"})
 }
 
-func TestApplySubscriptionReferralOnOrderSuccessTx_DispatchesByEngineRoute(t *testing.T) {
+func TestApplySubscriptionReferralOnOrderSuccessTxAlwaysUsesTemplateEngine(t *testing.T) {
 	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
 		ImmediateInviterLevel: ReferralLevelTypeDirect,
 		Money:                 10,
 	})
-
-	if _, err := UpsertReferralEngineRoute(&ReferralEngineRoute{
-		ReferralType: ReferralTypeSubscription,
-		Group:        "vip",
-		EngineMode:   ReferralEngineModeTemplate,
-		CreatedBy:    1,
-		UpdatedBy:    1,
-	}); err != nil {
-		t.Fatalf("failed to upsert referral engine route: %v", err)
-	}
 
 	if err := ApplySubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
 		t.Fatalf("ApplySubscriptionReferralOnOrderSuccessTx() error = %v", err)

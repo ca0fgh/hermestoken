@@ -18,6 +18,9 @@ test('referral template binding section uses explicit state updates instead of m
   );
   assert.match(source, /updateRow/);
   assert.match(source, /新增绑定/);
+  assert.doesNotMatch(source, /import \{[^}]*\bInput\b/);
   assert.doesNotMatch(source, /view\.binding\.template_id\s*=/);
   assert.doesNotMatch(source, /view\.binding\.invitee_share_override_bps\s*=/);
+  assert.doesNotMatch(source, /默认分账比例/);
+  assert.doesNotMatch(source, /{t\('分组'\)}/);
 });

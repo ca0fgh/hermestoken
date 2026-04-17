@@ -12,6 +12,10 @@ type seedTemplateEngineFixtureInput struct {
 	ImmediateInviterLevel string
 	AncestorLevels        []string
 	InviteeShareBps       int
+	ImmediateDirectCapBps int
+	ImmediateTeamCapBps   int
+	AncestorDirectCapBps  []int
+	AncestorTeamCapBps    []int
 }
 
 type templateEngineFixture struct {
@@ -57,7 +61,15 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 		t.Fatalf("failed to update payer inviter id: %v", err)
 	}
 
-	createTemplateBindingForUser(t, immediateInviter.Id, input.Group, input.ImmediateInviterLevel, input.InviteeShareBps)
+	createTemplateBindingForUser(
+		t,
+		immediateInviter.Id,
+		input.Group,
+		input.ImmediateInviterLevel,
+		input.InviteeShareBps,
+		resolveTemplateDirectCapBps(input.ImmediateInviterLevel, input.ImmediateDirectCapBps),
+		resolveTemplateTeamCapBps(input.ImmediateInviterLevel, input.ImmediateTeamCapBps),
+	)
 
 	fixture := &templateEngineFixture{
 		PayerUser:        payer,
@@ -84,16 +96,24 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 			t.Fatalf("failed to update inviter chain: %v", err)
 		}
 
-		createTemplateBindingForUser(t, ancestor.Id, input.Group, levelType, 0)
-		fixture.Ancestors = append(fixture.Ancestors, ancestor)
-		parentID = ancestor.Id
-		nextID--
-	}
+			createTemplateBindingForUser(
+				t,
+				ancestor.Id,
+				input.Group,
+				levelType,
+				0,
+				resolveTemplateDirectCapBps(levelType, rateAt(input.AncestorDirectCapBps, idx)),
+				resolveTemplateTeamCapBps(levelType, rateAt(input.AncestorTeamCapBps, idx)),
+			)
+			fixture.Ancestors = append(fixture.Ancestors, ancestor)
+			parentID = ancestor.Id
+			nextID--
+		}
 
 	return fixture
 }
 
-func createTemplateBindingForUser(t *testing.T, userID int, group string, levelType string, inviteeShareOverrideBps int) {
+func createTemplateBindingForUser(t *testing.T, userID int, group string, levelType string, _ int, directCapBps int, teamCapBps int) {
 	t.Helper()
 
 	template := &ReferralTemplate{
@@ -102,33 +122,52 @@ func createTemplateBindingForUser(t *testing.T, userID int, group string, levelT
 		Group:                  group,
 		LevelType:              levelType,
 		Enabled:                true,
-		DirectCapBps:           1000,
-		TeamCapBps:             2500,
-		TeamDecayRatio:         0.5,
-		TeamMaxDepth:           5,
+		DirectCapBps:           directCapBps,
+		TeamCapBps:             teamCapBps,
 		InviteeShareDefaultBps: 800,
 	}
 	if err := CreateReferralTemplate(template); err != nil {
 		t.Fatalf("failed to create template: %v", err)
 	}
 
-	var inviteeShareOverride *int
-	if inviteeShareOverrideBps > 0 {
-		inviteeShareOverride = &inviteeShareOverrideBps
-	}
-
 	binding := &ReferralTemplateBinding{
-		UserId:                  userID,
-		ReferralType:            ReferralTypeSubscription,
-		Group:                   group,
-		TemplateId:              template.Id,
-		InviteeShareOverrideBps: inviteeShareOverride,
-		CreatedBy:               userID,
-		UpdatedBy:               userID,
+		UserId:       userID,
+		ReferralType: ReferralTypeSubscription,
+		Group:        group,
+		TemplateId:   template.Id,
+		CreatedBy:    userID,
+		UpdatedBy:    userID,
 	}
 	if _, err := UpsertReferralTemplateBinding(binding); err != nil {
 		t.Fatalf("failed to create template binding: %v", err)
 	}
+}
+
+func rateAt(items []int, idx int) int {
+	if idx < 0 || idx >= len(items) {
+		return 0
+	}
+	return items[idx]
+}
+
+func resolveTemplateDirectCapBps(levelType string, configured int) int {
+	if configured > 0 {
+		return configured
+	}
+	if levelType == ReferralLevelTypeDirect {
+		return 1000
+	}
+	return 0
+}
+
+func resolveTemplateTeamCapBps(levelType string, configured int) int {
+	if configured > 0 {
+		return configured
+	}
+	if levelType == ReferralLevelTypeTeam {
+		return 2500
+	}
+	return 0
 }
 
 type seedTemplateSettlementOrderInput struct {

@@ -18,6 +18,7 @@ type ReferralSettlementBatch struct {
 	PayerUserId                int     `json:"payer_user_id" gorm:"type:int;not null;index"`
 	ImmediateInviterUserId     int     `json:"immediate_inviter_user_id" gorm:"type:int;not null;index"`
 	ActiveTemplateSnapshotJSON string  `json:"active_template_snapshot_json" gorm:"type:text"`
+	GlobalSettingSnapshotJSON  string  `json:"global_setting_snapshot_json" gorm:"type:text"`
 	TeamChainSnapshotJSON      string  `json:"team_chain_snapshot_json" gorm:"type:text"`
 	SettlementMode             string  `json:"settlement_mode" gorm:"type:varchar(64);not null;index"`
 	QuotaPerUnitSnapshot       float64 `json:"quota_per_unit_snapshot" gorm:"type:decimal(18,6);not null;default:0"`

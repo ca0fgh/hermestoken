@@ -22,6 +22,7 @@ type ReferralSettlementContext struct {
 	ImmediateInviter *User
 	ActiveBinding    *ReferralTemplateBinding
 	ActiveTemplate   *ReferralTemplate
+	GlobalSetting    SubscriptionReferralGlobalSetting
 	Mode             string
 	TeamChain        []ResolvedTeamNode
 }
@@ -30,6 +31,7 @@ type ResolvedTeamNode struct {
 	UserId           int
 	BindingId        int
 	TemplateId       int
+	TeamRateBps      int
 	PathDistance     int
 	MatchedTeamIndex int
 	WeightSnapshot   float64
@@ -67,6 +69,7 @@ func ResolveSubscriptionTemplateSettlementContext(tx *gorm.DB, referralType stri
 		ImmediateInviter: inviter,
 		ActiveBinding:    binding,
 		ActiveTemplate:   template,
+		GlobalSetting:    GetSubscriptionReferralGlobalSetting(),
 		TeamChain:        make([]ResolvedTeamNode, 0),
 	}
 
@@ -76,7 +79,14 @@ func ResolveSubscriptionTemplateSettlementContext(tx *gorm.DB, referralType stri
 		return context, nil
 	case ReferralLevelTypeDirect:
 		context.Mode = ReferralSettlementModeDirectWithTeamChain
-		teamChain, err := resolveSubscriptionTeamChain(tx, inviter.InviterId, trimmedReferralType, trimmedGroup, template.TeamDecayRatio, template.TeamMaxDepth)
+		teamChain, err := resolveSubscriptionTeamChain(
+			tx,
+			inviter.InviterId,
+			trimmedReferralType,
+			trimmedGroup,
+			context.GlobalSetting.TeamDecayRatio,
+			context.GlobalSetting.TeamMaxDepth,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -142,12 +152,14 @@ func resolveSubscriptionTeamChain(tx *gorm.DB, ancestorUserID int, referralType 
 		if err != nil {
 			return nil, err
 		}
-		if active && binding != nil && template != nil && template.LevelType == ReferralLevelTypeTeam && pathDistance <= maxDepth {
+		withinMaxDepth := maxDepth <= 0 || pathDistance <= maxDepth
+		if active && binding != nil && template != nil && template.LevelType == ReferralLevelTypeTeam && withinMaxDepth {
 			matchedTeamIndex++
 			teamChain = append(teamChain, ResolvedTeamNode{
 				UserId:           user.Id,
 				BindingId:        binding.Id,
 				TemplateId:       template.Id,
+				TeamRateBps:      NormalizeSubscriptionReferralRateBps(template.TeamCapBps),
 				PathDistance:     pathDistance,
 				MatchedTeamIndex: matchedTeamIndex,
 				WeightSnapshot:   math.Pow(decayRatio, float64(pathDistance-1)),
@@ -221,6 +233,10 @@ func ApplyTemplateSubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *Subsc
 	if err != nil {
 		return err
 	}
+	globalSettingSnapshotJSON, err := mustMarshalJSON(globalSettingSnapshotFromContext(context))
+	if err != nil {
+		return err
+	}
 	teamChainSnapshotJSON, err := mustMarshalJSON(teamChainSnapshotFromContext(context))
 	if err != nil {
 		return err
@@ -235,6 +251,7 @@ func ApplyTemplateSubscriptionReferralOnOrderSuccessTx(tx *gorm.DB, order *Subsc
 		PayerUserId:                order.UserId,
 		ImmediateInviterUserId:     context.ImmediateInviter.Id,
 		ActiveTemplateSnapshotJSON: activeTemplateSnapshotJSON,
+		GlobalSettingSnapshotJSON:  globalSettingSnapshotJSON,
 		TeamChainSnapshotJSON:      teamChainSnapshotJSON,
 		SettlementMode:             context.Mode,
 		QuotaPerUnitSnapshot:       common.QuotaPerUnit,
@@ -311,7 +328,8 @@ func resolveTeamDifferentialActivation(context *ReferralSettlementContext, order
 		return nil
 	}
 
-	differentialRateBps := context.ActiveTemplate.TeamCapBps - context.ActiveTemplate.DirectCapBps
+	firstMatchedTeamRateBps := NormalizeSubscriptionReferralRateBps(context.TeamChain[0].TeamRateBps)
+	differentialRateBps := firstMatchedTeamRateBps - context.ActiveTemplate.DirectCapBps
 	if differentialRateBps <= 0 {
 		return nil
 	}
@@ -442,10 +460,6 @@ func resolveTemplateInviteeShareBps(tx *gorm.DB, context *ReferralSettlementCont
 		return 0, result.Error
 	}
 
-	if context.ActiveBinding.InviteeShareOverrideBps != nil {
-		return NormalizeSubscriptionReferralRateBps(*context.ActiveBinding.InviteeShareOverrideBps), nil
-	}
-
 	return NormalizeSubscriptionReferralRateBps(context.ActiveTemplate.InviteeShareDefaultBps), nil
 }
 
@@ -469,9 +483,17 @@ func activeTemplateSnapshotFromContext(context *ReferralSettlementContext) map[s
 		"level_type":                context.ActiveTemplate.LevelType,
 		"direct_cap_bps":            context.ActiveTemplate.DirectCapBps,
 		"team_cap_bps":              context.ActiveTemplate.TeamCapBps,
-		"team_decay_ratio":          context.ActiveTemplate.TeamDecayRatio,
-		"team_max_depth":            context.ActiveTemplate.TeamMaxDepth,
 		"invitee_share_default_bps": context.ActiveTemplate.InviteeShareDefaultBps,
+	}
+}
+
+func globalSettingSnapshotFromContext(context *ReferralSettlementContext) map[string]interface{} {
+	if context == nil {
+		return map[string]interface{}{}
+	}
+	return map[string]interface{}{
+		"team_decay_ratio": context.GlobalSetting.TeamDecayRatio,
+		"team_max_depth":   context.GlobalSetting.TeamMaxDepth,
 	}
 }
 
@@ -482,15 +504,16 @@ func teamChainSnapshotFromContext(context *ReferralSettlementContext) []map[stri
 
 	snapshot := make([]map[string]interface{}, 0, len(context.TeamChain))
 	for _, node := range context.TeamChain {
-		snapshot = append(snapshot, map[string]interface{}{
-			"user_id":            node.UserId,
-			"binding_id":         node.BindingId,
-			"template_id":        node.TemplateId,
-			"path_distance":      node.PathDistance,
-			"matched_team_index": node.MatchedTeamIndex,
-			"weight_snapshot":    node.WeightSnapshot,
-			"share_snapshot":     node.ShareSnapshot,
-		})
+			snapshot = append(snapshot, map[string]interface{}{
+				"user_id":            node.UserId,
+				"binding_id":         node.BindingId,
+				"template_id":        node.TemplateId,
+				"team_rate_bps":      node.TeamRateBps,
+				"path_distance":      node.PathDistance,
+				"matched_team_index": node.MatchedTeamIndex,
+				"weight_snapshot":    node.WeightSnapshot,
+				"share_snapshot":     node.ShareSnapshot,
+			})
 	}
 	return snapshot
 }

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -19,13 +20,11 @@ type ReferralTemplate struct {
 	Id                     int     `json:"id"`
 	ReferralType           string  `json:"referral_type" gorm:"type:varchar(64);not null;index:idx_referral_template_scope_name,priority:1"`
 	Group                  string  `json:"group" gorm:"type:varchar(64);not null;default:'';index:idx_referral_template_scope_name,priority:2"`
-	Name                   string  `json:"name" gorm:"type:varchar(128);not null;index:idx_referral_template_scope_name,priority:3"`
+	Name                   string  `json:"name" gorm:"type:varchar(128);not null;index:idx_referral_template_scope_name,priority:3;uniqueIndex:uk_referral_template_name"`
 	LevelType              string  `json:"level_type" gorm:"type:varchar(32);not null;index"`
 	Enabled                bool    `json:"enabled" gorm:"not null;default:false"`
 	DirectCapBps           int     `json:"direct_cap_bps" gorm:"type:int;not null;default:0"`
 	TeamCapBps             int     `json:"team_cap_bps" gorm:"type:int;not null;default:0"`
-	TeamDecayRatio         float64 `json:"team_decay_ratio" gorm:"type:decimal(10,6);not null;default:0"`
-	TeamMaxDepth           int     `json:"team_max_depth" gorm:"type:int;not null;default:0"`
 	InviteeShareDefaultBps int     `json:"invitee_share_default_bps" gorm:"type:int;not null;default:0"`
 	CreatedBy              int     `json:"created_by" gorm:"type:int;not null;default:0"`
 	UpdatedBy              int     `json:"updated_by" gorm:"type:int;not null;default:0"`
@@ -39,6 +38,14 @@ func (t *ReferralTemplate) normalize() {
 	t.Name = strings.TrimSpace(t.Name)
 	t.LevelType = strings.TrimSpace(t.LevelType)
 	t.InviteeShareDefaultBps = NormalizeSubscriptionReferralRateBps(t.InviteeShareDefaultBps)
+	if t.ReferralType == ReferralTypeSubscription {
+		switch t.LevelType {
+		case ReferralLevelTypeDirect:
+			t.TeamCapBps = 0
+		case ReferralLevelTypeTeam:
+			t.DirectCapBps = 0
+		}
+	}
 }
 
 func (t *ReferralTemplate) Validate() error {
@@ -60,28 +67,66 @@ func (t *ReferralTemplate) Validate() error {
 	if t.LevelType != ReferralLevelTypeDirect && t.LevelType != ReferralLevelTypeTeam {
 		return fmt.Errorf("invalid subscription level type: %s", t.LevelType)
 	}
-	if t.DirectCapBps < 0 || t.TeamCapBps < t.DirectCapBps || t.TeamCapBps > SubscriptionReferralMaxRateBps {
-		return fmt.Errorf("invalid subscription cap bps")
-	}
-	if t.TeamDecayRatio <= 0 || t.TeamDecayRatio > 1 {
-		return fmt.Errorf("invalid subscription decay ratio")
-	}
-	if t.TeamMaxDepth < 1 {
-		return fmt.Errorf("invalid subscription max depth")
+	switch t.LevelType {
+	case ReferralLevelTypeDirect:
+		if t.DirectCapBps < 0 || t.DirectCapBps > SubscriptionReferralMaxRateBps {
+			return fmt.Errorf("invalid subscription cap bps")
+		}
+	case ReferralLevelTypeTeam:
+		if t.TeamCapBps < 0 || t.TeamCapBps > SubscriptionReferralMaxRateBps {
+			return fmt.Errorf("invalid subscription cap bps")
+		}
 	}
 	return nil
+}
+
+func (t *ReferralTemplate) validateUniqueName(tx *gorm.DB) error {
+	if tx == nil {
+		tx = DB
+	}
+	if tx == nil {
+		return errors.New("database is not initialized")
+	}
+
+	var existing ReferralTemplate
+	err := tx.Where("name = ? AND id <> ?", t.Name, t.Id).First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return fmt.Errorf("template name already exists")
 }
 
 func (t *ReferralTemplate) BeforeCreate(tx *gorm.DB) error {
 	now := common.GetTimestamp()
 	t.CreatedAt = now
 	t.UpdatedAt = now
-	return t.Validate()
+	if err := t.Validate(); err != nil {
+		return err
+	}
+	return t.validateUniqueName(tx)
 }
 
 func (t *ReferralTemplate) BeforeUpdate(tx *gorm.DB) error {
 	t.UpdatedAt = common.GetTimestamp()
-	return t.Validate()
+	if err := t.Validate(); err != nil {
+		return err
+	}
+	return t.validateUniqueName(tx)
+}
+
+func normalizeReferralTemplatePersistenceError(err error) error {
+	if err == nil {
+		return nil
+	}
+	lowerError := strings.ToLower(err.Error())
+	if strings.Contains(lowerError, "uk_referral_template_name") ||
+		strings.Contains(lowerError, "referral_templates.name") {
+		return fmt.Errorf("template name already exists")
+	}
+	return err
 }
 
 func GetReferralTemplateByID(id int) (*ReferralTemplate, error) {
@@ -100,14 +145,14 @@ func CreateReferralTemplate(template *ReferralTemplate) error {
 	if template == nil {
 		return fmt.Errorf("template is required")
 	}
-	return DB.Create(template).Error
+	return normalizeReferralTemplatePersistenceError(DB.Create(template).Error)
 }
 
 func UpdateReferralTemplate(template *ReferralTemplate) error {
 	if template == nil {
 		return fmt.Errorf("template is required")
 	}
-	return DB.Save(template).Error
+	return normalizeReferralTemplatePersistenceError(DB.Save(template).Error)
 }
 
 func DeleteReferralTemplate(id int) error {

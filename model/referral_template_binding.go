@@ -16,7 +16,6 @@ type ReferralTemplateBinding struct {
 	ReferralType            string `json:"referral_type" gorm:"type:varchar(64);not null;uniqueIndex:idx_referral_template_binding_scope"`
 	Group                   string `json:"group" gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_referral_template_binding_scope"`
 	TemplateId              int    `json:"template_id" gorm:"type:int;not null;index"`
-	InviteeShareOverrideBps *int   `json:"invitee_share_override_bps" gorm:"type:int"`
 	CreatedBy               int    `json:"created_by" gorm:"type:int;not null;default:0"`
 	UpdatedBy               int    `json:"updated_by" gorm:"type:int;not null;default:0"`
 	CreatedAt               int64  `json:"created_at" gorm:"bigint"`
@@ -31,10 +30,6 @@ type ReferralTemplateBindingView struct {
 func (b *ReferralTemplateBinding) normalize() {
 	b.ReferralType = strings.TrimSpace(b.ReferralType)
 	b.Group = strings.TrimSpace(b.Group)
-	if b.InviteeShareOverrideBps != nil {
-		normalized := NormalizeSubscriptionReferralRateBps(*b.InviteeShareOverrideBps)
-		b.InviteeShareOverrideBps = &normalized
-	}
 }
 
 func (b *ReferralTemplateBinding) ValidateAgainstTemplate(template *ReferralTemplate) error {
@@ -42,21 +37,17 @@ func (b *ReferralTemplateBinding) ValidateAgainstTemplate(template *ReferralTemp
 	if template == nil {
 		return errors.New("template is required")
 	}
-	if b.ReferralType == "" {
-		return errors.New("binding referral type is required")
-	}
-	if b.Group == "" {
-		return errors.New("binding group is required")
-	}
 
 	templateReferralType := strings.TrimSpace(template.ReferralType)
 	templateGroup := strings.TrimSpace(template.Group)
-	if b.ReferralType != templateReferralType {
-		return fmt.Errorf("binding referral type %q does not match template referral type %q", b.ReferralType, templateReferralType)
+	if templateReferralType == "" {
+		return fmt.Errorf("template %d referral type is required", template.Id)
 	}
-	if b.Group != templateGroup {
-		return fmt.Errorf("binding group %q does not match template group %q", b.Group, templateGroup)
+	if templateGroup == "" {
+		return fmt.Errorf("template %d group is required", template.Id)
 	}
+	b.ReferralType = templateReferralType
+	b.Group = templateGroup
 	return nil
 }
 
@@ -142,9 +133,6 @@ func ListReferralTemplateBindingsByUser(userID int, referralType string) ([]Refe
 }
 
 func ResolveBindingInviteeShareDefault(view ReferralTemplateBindingView) int {
-	if view.Binding.InviteeShareOverrideBps != nil {
-		return NormalizeSubscriptionReferralRateBps(*view.Binding.InviteeShareOverrideBps)
-	}
 	return NormalizeSubscriptionReferralRateBps(view.Template.InviteeShareDefaultBps)
 }
 
@@ -196,10 +184,9 @@ func UpsertReferralTemplateBinding(binding *ReferralTemplateBinding) (*ReferralT
 				{Name: "group"},
 			},
 			DoUpdates: clause.Assignments(map[string]interface{}{
-				"template_id":                binding.TemplateId,
-				"invitee_share_override_bps": binding.InviteeShareOverrideBps,
-				"updated_by":                 binding.UpdatedBy,
-				"updated_at":                 common.GetTimestamp(),
+				"template_id": binding.TemplateId,
+				"updated_by":  binding.UpdatedBy,
+				"updated_at":  common.GetTimestamp(),
 			}),
 		}).Create(binding).Error; err != nil {
 			return err
@@ -216,19 +203,4 @@ func UpsertReferralTemplateBinding(binding *ReferralTemplateBinding) (*ReferralT
 		return nil, err
 	}
 	return binding, nil
-}
-
-func SetReferralTemplateBindingInviteeShareOverride(userID int, referralType string, group string, inviteeShareOverrideBps *int, operatorID int) (*ReferralTemplateBinding, error) {
-	view, err := GetReferralTemplateBindingViewByUserAndScope(userID, referralType, group)
-	if err != nil {
-		return nil, err
-	}
-	if view == nil {
-		return nil, gorm.ErrRecordNotFound
-	}
-
-	binding := view.Binding
-	binding.InviteeShareOverrideBps = inviteeShareOverrideBps
-	binding.UpdatedBy = operatorID
-	return UpsertReferralTemplateBinding(&binding)
 }

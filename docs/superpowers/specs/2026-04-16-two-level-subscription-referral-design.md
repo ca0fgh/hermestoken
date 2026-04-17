@@ -17,9 +17,8 @@
 当前项目已经有一套可运行的订阅返佣实现，核心能力包括：
 
 - 管理员按分组给邀请人开通订阅返佣总比例
-- 邀请人按分组设置“给被邀请人的返佣比例”
 - 邀请人可以对单个被邀请人做分组级覆盖
-- 订单支付成功时，系统会先查单个被邀请人覆盖，没有再回退到邀请人的默认比例
+- 订单支付成功时，系统会先查单个被邀请人覆盖，没有再回退到默认比例
 - 结算结果会直接拆成两份：
   - 邀请人净得
   - 被邀请人得到
@@ -33,7 +32,7 @@
 - 模板决定用户在某个 `返佣类型 + 分组` 下的返佣身份
 - 模板决定该类型和分组下的二级级别返佣规则
 - 模板提供“给被邀请人返佣”的默认规则
-- 用户只能调整自己给被邀请人的默认比例和单个被邀请人覆盖，不能改模板里的级别返佣规则
+- 用户只能调整单个被邀请人覆盖，不能改模板里的级别返佣规则和模板默认比例
 
 ## Confirmed Product Decisions
 
@@ -53,9 +52,7 @@
   - 返佣率
   - 被邀请人返佣率
 - 用户不能修改模板里的二级级别返佣规则
-- 用户只能修改自己“给被邀请人的返佣比例”：
-  - 可改自己的默认比例
-  - 可改单个被邀请人的覆盖比例
+- 用户只能修改自己对单个被邀请人的覆盖比例，默认比例由模板决定
 - “给被邀请人的返佣”只作用于付款用户的直接邀请人那一份返佣
 - 更上层节点不能直接把自己的返佣分给付款用户
 - 被邀请人返佣来自直接邀请人本单本来应得返佣，不是平台额外加发
@@ -92,7 +89,7 @@
 - 通用返佣模板框架
 - `subscription_referral` 的两级返佣规则
 - 现有订阅“给被邀请人返佣”能力的抽象与复用
-- 模板绑定、默认比例、单个被邀请人覆盖的统一模型
+- 模板绑定、模板默认比例、单个被邀请人覆盖的统一模型
 
 本次方案不包含：
 
@@ -179,8 +176,6 @@
 
 - `direct_cap_bps`
 - `team_cap_bps`
-- `team_decay_ratio`
-- `team_max_depth`
 
 模板职责：
 
@@ -190,31 +185,51 @@
 
 补充说明：
 
-- `direct_cap_bps / team_cap_bps / team_decay_ratio / team_max_depth` 只对采用 `direct + team` 两级规则的返佣类型生效
+- `direct_cap_bps` 只对 `direct` 模板生效
+- `team_cap_bps` 只对 `team` 模板生效
 - 当前只有 `subscription_referral` 使用这组字段
 - `trade_fee_referral / withdraw_referral` 等后续返佣类型，不因为复用同一模板表就自动继承订阅两级规则；它们的具体字段和结算公式在各自方案里单独定义
 
 对于采用 `direct + team` 两级规则的返佣类型（当前即 `subscription_referral`），模板参数还必须满足：
 
-- `0 <= direct_cap_bps <= team_cap_bps <= 10000`
-- `0 < team_decay_ratio <= 1`
-- `team_max_depth >= 1`，且必须是正整数
+- `direct` 模板：`0 <= direct_cap_bps <= 10000`，并且 `team_cap_bps = 0`
+- `team` 模板：`0 <= team_cap_bps <= 10000`，并且 `direct_cap_bps = 0`
 - `0 <= invitee_share_default_bps <= 10000`
+
+### Subscription Referral Global Settings
+
+`subscription_referral` 额外有一组全局链路参数，不属于任何单个模板：
+
+- `team_decay_ratio`
+- `team_max_depth`
+
+职责：
+
+- 对所有 `direct_with_team_chain` 订单统一控制团队链权重衰减
+- 对所有 `direct_with_team_chain` 订单统一控制向上遍历深度
+
+校验：
+
+- `0 < team_decay_ratio <= 1`
+- `team_max_depth >= 0`
+- `team_max_depth = 0` 表示不限深度
 
 ### User Binding Model
 
 用户绑定模板的粒度是：
 
-- `user_id + referral_type + group`
+- 管理动作上是“给 `user_id` 选择一个模板”
 
 约束：
 
-- 同一个用户在同一个 `referral_type + group` 下，只能有一个生效模板
-- 同一个用户在同一个返佣类型下，可以按不同分组绑定不同模板
+- 用户绑定时只选择模板，不再单独填写 `group`
+- 模板自己的 `referral_type + group` 是绑定 scope 的唯一事实来源
+- 同一个用户在同一个 `template.referral_type + template.group` 下，只能有一个生效模板
+- 同一个用户在同一个返佣类型下，可以按不同分组绑定不同模板，但每个分组只能命中一个模板
 
 用户存在模板绑定记录后：
 
-- 明确其在该类型和分组下的候选模板归属
+- 明确其在模板对应的类型和分组下的候选模板归属
 - 只有当绑定模板 `enabled = true` 时
   - 该用户才在运行态获得该类型和分组下的活动返佣身份
   - 才使用该类型和分组下的级别返佣规则
@@ -243,9 +258,12 @@
 - `level_type`
 - `direct_cap_bps`
 - `team_cap_bps`
+- `invitee_share_default_bps`
+
+`subscription_referral` 的全局链路参数包括：
+
 - `team_decay_ratio`
 - `team_max_depth`
-- `invitee_share_default_bps`
 
 这意味着：
 
@@ -298,21 +316,20 @@
 有效比例优先级：
 
 1. 单个被邀请人覆盖
-2. 邀请人自己的默认比例
-3. 模板默认比例
+2. 模板默认比例
 
-用户可修改的只有两层：
+用户可修改的只有一层：
 
-- 邀请人自己的默认比例
 - 单个被邀请人覆盖比例
 
 用户不可修改：
 
+- 模板默认 invitee 比例
 - 模板身份
 - `direct_cap_bps`
 - `team_cap_bps`
-- `team_decay_ratio`
-- `team_max_depth`
+- `subscription_referral.team_decay_ratio`
+- `subscription_referral.team_max_depth`
 
 生效前提：
 
@@ -395,8 +412,11 @@
 
 - 最近这个 `direct` 先拿直推返佣
 - 再从这个 `direct` 的上级开始，继续往上解析 `subscription_referral + group` 模板
-- 命中的 `team` 参与团队差额池
-- 本单的 `direct_cap_bps / team_cap_bps / team_decay_ratio / team_max_depth / invitee_share_default_bps` 都取自最近 `direct` 的活动模板
+- 第一个命中的有效 `team` 决定团队池上限
+- 所有命中的 `team` 参与同一个团队池分配
+- 本单的 `direct_cap_bps / invitee_share_default_bps` 取自最近 `direct` 的活动模板
+- 本单团队池锚点比例 `first_team_cap_bps` 取自第一个命中的有效 `team` 模板
+- 本单的 `team_decay_ratio / team_max_depth` 取自 `subscription_referral` 全局设置
 
 ### Traversal Rules
 
@@ -445,8 +465,9 @@
 
 - `direct_reward_gross = floor(B × direct_cap_bps / 10000)`
 - `team_direct_reward_gross = floor(B × team_cap_bps / 10000)`
-- `team_differential_quota = floor(B × (team_cap_bps - direct_cap_bps) / 10000)`
+- `team_differential_quota = floor(B × (first_team_cap_bps - direct_cap_bps) / 10000)`
   - 仅在 `direct_with_team_chain` 且至少命中一个有效 `team` 节点时成立
+  - 仅在 `first_team_cap_bps > direct_cap_bps` 时成立
 
 其中：
 
@@ -459,9 +480,10 @@
 - `team_direct` 模式下：
   - 使用最近 `team` 的活动模板
 - `direct_with_team_chain` 模式下：
-  - 使用最近 `direct` 的活动模板
+  - 最近 `direct` 的活动模板提供 `direct_cap_bps / invitee_share_default_bps`
+  - 第一个命中的有效 `team` 模板提供 `first_team_cap_bps`
 
-更上层 `team` 节点即使拥有自己的模板，也不会把自己的 `team_cap_bps / team_decay_ratio / team_max_depth` 带入本单
+更上层 `team` 节点即使拥有自己的模板，也不会继续抬高团队池；它们只参与已经成立的团队池分配。`team_decay_ratio / team_max_depth` 也不属于任何上层节点模板，而是全局设置
 
 零金额规则：
 
@@ -488,12 +510,13 @@
 
 其中：
 
-- `r = team_decay_ratio`
+- `r = subscription_referral.team_decay_ratio`
 - `d_i = 第 i 个团队节点的真实路径距离`
 
 过滤：
 
-- 超过 `team_max_depth` 的团队节点不参与分配
+- 超过 `subscription_referral.team_max_depth` 的团队节点不参与分配
+  - 当 `team_max_depth = 0` 时表示不限深度
 
 若过滤后没有任何有效 `team` 节点：
 
@@ -562,18 +585,16 @@
 
 当前项目已经存在两层订阅 invitee rebate 配置能力：
 
-- 邀请人按分组设置默认比例
 - 邀请人按“被邀请人 + 分组”设置覆盖比例
 
-新框架应直接复用这两层能力的产品语义与优先级，只把维度扩展为：
+新框架应直接复用“单个被邀请人覆盖”这层能力，并把默认比例收回到模板层，只把维度扩展为：
 
-- 默认比例：`inviter + referral_type + group`
 - 覆盖比例：`inviter + invitee + referral_type + group`
 
 对于 `subscription_referral`，这意味着：
 
 - 当前已有的订阅“给被邀请人返佣”功能不是废弃，而是迁移进通用框架
-- 现有前端交互可以先保留为 `subscription_referral` 的专用 facade
+- 现有前端交互只保留单个 invitee 覆盖 facade，默认比例展示改为模板只读
 
 ## Ledger Semantics
 
@@ -646,9 +667,9 @@
 
 - `B = 1000 quota`
 - `direct_cap_bps = 1000`
-- `team_cap_bps = 2500`
-- `team_decay_ratio = 0.5`
-- `team_max_depth = 10`
+- `first_team_cap_bps = 2500`
+- `subscription_referral.team_decay_ratio = 0.5`
+- `subscription_referral.team_max_depth = 10`
 
 ### Example 1: `direct1 -> user`
 
@@ -744,8 +765,6 @@
 - `enabled`
 - `direct_cap_bps`
 - `team_cap_bps`
-- `team_decay_ratio`
-- `team_max_depth`
 - `invitee_share_default_bps`
 - `created_by`
 - `updated_by`
@@ -754,19 +773,31 @@
 
 约束：
 
-- `referral_type + group + name` 唯一
+- `name` 全局唯一
 - `invitee_share_default_bps` 范围为 `0 ~ 10000`
 - 对 `subscription_referral` 来说：
   - `level_type` 只能是 `direct / team`
-  - `0 <= direct_cap_bps <= team_cap_bps <= 10000`
-  - `0 < team_decay_ratio <= 1`
-  - `team_max_depth >= 1`，且必须是正整数
+  - `direct` 模板：`0 <= direct_cap_bps <= 10000` 且 `team_cap_bps = 0`
+  - `team` 模板：`0 <= team_cap_bps <= 10000` 且 `direct_cap_bps = 0`
 
 说明：
 
-- 当前首版把 `subscription_referral` 的两级规则字段直接放在 `referral_templates` 表里
-- 这些字段只在 `subscription_referral` 下参与解析与校验
+- 当前首版把 `subscription_referral` 的模板级字段直接放在 `referral_templates` 表里
+- `team_decay_ratio / team_max_depth` 不属于模板表，属于 `subscription_referral` 全局设置
 - 对其他返佣类型，若后续不采用 `direct + team` 两级规则，则不应强行套用这些字段语义
+
+### 1.5 Subscription Referral Global Setting
+
+建议持久化键：
+
+- `SubscriptionReferralTeamDecayRatio`
+- `SubscriptionReferralTeamMaxDepth`
+
+约束：
+
+- `0 < team_decay_ratio <= 1`
+- `team_max_depth >= 0`
+- `team_max_depth = 0` 表示不限深度
 
 ### 2. Binding Table
 
@@ -779,7 +810,6 @@
 - `referral_type`
 - `group`
 - `template_id`
-- `invitee_share_override_bps`
 - `created_by`
 - `updated_by`
 - `created_at`
@@ -788,17 +818,14 @@
 约束：
 
 - `user_id + referral_type + group` 唯一
-- 同一个用户在同一个 `referral_type + group` 下只能有一个生效模板
-- `binding.referral_type` 必须等于 `template.referral_type`
-- `binding.group` 必须等于 `template.group`
-- `invitee_share_override_bps` 若不为空，范围必须为 `0 ~ 10000`
+- 同一个用户在同一个 `template.referral_type + template.group` 下只能有一个生效模板
+- 绑定 scope 只由 `template.referral_type + template.group` 决定
+- 管理入口不允许在绑定层单独填写 `group`
 
 说明：
 
-- `invitee_share_override_bps`
-  - 是用户自己覆盖模板默认 invitee share 的默认值
-  - 只影响“给被邀请人返佣”
-  - 不影响模板里的级别返佣规则
+- 若实现层为了索引或查询效率缓存了 `referral_type / group` 派生列
+  - 它们也必须完全跟随模板，不得作为独立业务输入
 
 ### 3. Invitee Override Table
 
@@ -864,8 +891,8 @@
 - `active_template_snapshot_json`
   - 保存最近直接邀请人的活动模板快照
   - 它是本单级别返佣参数和“模板层默认 invitee share”的唯一模板真相
-  - 邀请人自己的默认比例或单个 invitee 覆盖不写入这里
-  - 它们只通过结算明细中的 `invitee_share_bps_snapshot` 体现最终生效结果
+  - 单个 invitee 覆盖不写入这里
+  - 它只通过结算明细中的 `invitee_share_bps_snapshot` 体现最终生效结果
 - `team_chain_snapshot_json`
   - `team_direct` 模式下记 `NULL`
   - `direct_with_team_chain` 模式下至少记录：
@@ -942,7 +969,7 @@
   - 记录该团队节点最终分到的团队级差份额占比
 - `pool_rate_bps_snapshot`
   - 仅 `team_reward` 使用
-  - 兼容字段名，记录本单团队级差对应的比例，即 `team_cap_bps - direct_cap_bps`
+  - 兼容字段名，记录本单团队级差对应的比例，即 `first_team_cap_bps - direct_cap_bps`
   - 对 `direct_reward / team_direct_reward / invitee_reward` 记 `NULL`
 - `reward_quota`
   - 该条明细最终实际到账额度
@@ -965,7 +992,7 @@
 - 指定模板默认 invitee share
 
 2. 用户模板绑定 / 激活管理
-- 给用户在某个 `referral_type + group` 下分配模板
+- 给用户分配模板，模板自身决定命中的 `referral_type + group`
 - 用户一旦完成绑定，且模板 `enabled = true`
   - 即表示该用户在这个 `referral_type + group` 下被激活
 
@@ -980,18 +1007,17 @@
 用户侧至少需要两块能力：
 
 1. 查看自己在命中的 `referral_type + group` 下的返佣配置摘要
-2. 修改自己给被邀请人的返佣比例：
-- 修改默认比例
-- 修改单个被邀请人覆盖
+2. 修改自己对单个被邀请人的返佣覆盖比例
 
 补充规则：
 
 - 只有当用户自己在对应的 `referral_type + group` 下存在绑定，且绑定模板 `enabled = true` 时
-  - 才允许在用户侧修改默认 invitee share 或单个 invitee 覆盖
+  - 才允许在用户侧修改单个 invitee 覆盖
 
 用户侧不能修改：
 
 - 模板身份
+- 模板默认 invitee 比例
 - 级别返佣率
 - 团队递减规则
 - 最大深度
@@ -1000,16 +1026,13 @@
 
 现有订阅实现里的以下能力应被视为历史数据迁移来源，而不是新的运行时结算入口：
 
-- 邀请人按分组设置默认 invitee 比例
 - 邀请人按被邀请人 + 分组设置覆盖比例
-- 结算时“单独覆盖优先，默认分组比例次之”的优先级
+- 结算时“单独覆盖优先，模板默认比例次之”的优先级
 
 迁移方向：
 
 - `subscription_referral_overrides`
   -> `subscription_referral` 下的模板候选参数与待绑定用户清单的种子数据来源
-- `UserSetting.SubscriptionReferralInviteeRateBpsByGroup`
-  -> `referral_template_bindings.invitee_share_override_bps`
 - `subscription_referral_invitee_overrides`
   -> `referral_invitee_share_overrides`
 
@@ -1034,9 +1057,12 @@
    - 若目标是 `direct` 模板
      - 可用其 `total_rate_bps` 作为 `direct_cap_bps` 的种子来源
    - 若目标是 `team` 模板
-     - 需要平台显式指定 `team_cap_bps / team_decay_ratio / team_max_depth`
-     - 不能从旧 override 自动推断
-3. 再迁移用户默认 invitee share 和单个 invitee override
+     - 需要平台显式指定 `team_cap_bps`
+3. 平台同时需要补齐 `subscription_referral` 全局链路参数：
+   - `team_decay_ratio`
+   - `team_max_depth`
+   - 不能从旧 override 自动推断
+4. 只迁移单个 invitee override；默认 invitee share 一律由模板提供
 
 迁移前置条件：
 
@@ -1063,36 +1089,36 @@
 满足以下条件即可认为本次方案成立：
 
 1. 平台可以创建按 `referral_type + group` 区分的返佣模板
-2. 平台可以把模板绑定给用户，绑定粒度是 `user + referral_type + group`
-3. 模板绑定必须和模板自己的 `referral_type + group` 一致，不能跨维度脏绑
+2. 平台可以把模板绑定给用户，绑定动作只需要选择模板本身
+3. 模板绑定的 `referral_type + group` 必须完全跟随模板自身，不能在绑定层单独改写
 4. `subscription_referral` 下模板身份只允许 `direct / team`
 5. 在 `subscription_referral + group` 下：
    - 第一层直接邀请人没有绑定，或绑定模板 `enabled = false` 时，整笔不返佣
    - 第一层是 `team` 模板时，只结算 `team_direct`
    - 第一层是 `direct` 模板时，触发团队返佣链
 6. 向上遍历时，未绑定当前 `referral_type + group` 模板的祖先节点，或绑定模板但模板 `enabled = false` 的祖先节点，都会被跳过，但不会断链
-7. 一笔订单的 `direct_cap_bps / team_cap_bps / team_decay_ratio / team_max_depth / invitee_share_default_bps` 只由最近直接邀请人的活动模板决定
+7. 一笔订单的 `direct_cap_bps / invitee_share_default_bps` 只由最近直接邀请人的活动模板决定；若进入 `direct_with_team_chain`，团队池锚点比例 `first_team_cap_bps` 由邀请链中第一个命中的有效 `team` 模板决定；`team_decay_ratio / team_max_depth` 由 `subscription_referral` 全局设置统一决定
 8. `direct_reward` 和 `team_direct_reward` 的账本记录净额，毛额通过 `gross_reward_quota_snapshot` 审计
 9. `invitee_reward` 明确记录被邀请人拿到的切分额度，并标明来源是 `direct_reward` 或 `team_direct_reward`
 10. 模板 `enabled` 只控制模板是否可被解析为活动模板，同时直接决定该用户在该 `referral_type + group` 下是否激活
 11. 所有新订单统一只走模板返佣引擎，不存在 `legacy/template` 运行时切换
 12. 旧 `subscription_referral_overrides` 可以作为模板候选参数和待绑定用户清单的迁移种子，但不能自动推出 team 模板，也不能自动决定最终模板绑定
 13. 旧 invitee 配置只有在对应用户完成模板绑定，且绑定模板 `enabled = true` 后才能迁入并立即生效
-14. 最近直接邀请人可按默认比例或单个被邀请人覆盖，把自己本单即时返佣切一部分给付款用户
-    - 生效优先级必须是：单个被邀请人覆盖 > 邀请人自己的默认比例 > 模板默认比例
-15. `invitee_reward` 只来自最近直接邀请人的即时返佣，不来自更上层 `team_reward`
+14. 最近直接邀请人可按模板默认比例或单个被邀请人覆盖，把自己本单即时返佣切一部分给付款用户
+    - 生效优先级必须是：单个被邀请人覆盖 > 模板默认比例
+15. `invitee_reward` 只来自最近邀请人的即时返佣，即 `direct_reward` 或 `team_direct_reward`，不来自更上层 `team_reward`
 16. 用户只能修改 invitee share，不能修改模板里的级别返佣规则
 17. 现有订阅 invitee rebate 配置只作为迁移来源，不再作为独立运行时返佣入口
 18. 历史订单在修改模板、绑定、邀请关系后仍保持原结算结果不变
-19. 对 `subscription_referral` 来说，模板参数必须满足 `0 <= direct_cap_bps <= team_cap_bps <= 10000`、`0 < team_decay_ratio <= 1`、`team_max_depth >= 1`
+19. 对 `subscription_referral` 来说，`direct` 模板必须满足 `0 <= direct_cap_bps <= 10000` 且 `team_cap_bps = 0`；`team` 模板必须满足 `0 <= team_cap_bps <= 10000` 且 `direct_cap_bps = 0`；全局参数必须满足 `0 < team_decay_ratio <= 1`、`team_max_depth >= 0`
     - 对其他返佣类型，若未采用 `direct + team` 两级规则，则不强行套用这组字段的解析、校验与结算语义
-20. `direct_with_team_chain` 模式下只有在最终命中至少一个有效 `team` 节点时，团队级差返佣才成立；若没有命中，则不生成任何 `team_reward`
+20. `direct_with_team_chain` 模式下只有在最终命中至少一个有效 `team` 节点，且第一个命中的 `team` 比例高于 `direct` 直推比例时，团队级差返佣才成立；若没有命中，或首个 `team` 比例不高于 `direct`，则不生成任何 `team_reward`
 21. 每个用户只能有一个直接邀请人，邀请关系是单链，不支持多个第一层邀请人
 22. 付款用户自己在当前 `subscription_referral + group` 下是否有模板、模板身份是什么，都不改变返佣入口和是否向上扩散；只看第一层直接邀请人的模板身份
 23. `subscription_referral` 的祖先链允许 `direct / team` 混排，混排会影响路径距离与团队命中，但不改变入口判定规则
-24. `invitee_share_override_bps` 和 `invitee_share_bps` 的取值范围都必须是 `0 ~ 10000`
+24. `invitee_share_bps` 的取值范围必须是 `0 ~ 10000`
 25. `invitee_reward` 的 `beneficiary_level_type` 必须按付款用户在当前 `referral_type + group` 下已启用模板的实际身份落账；无模板或模板 `enabled = false` 时记 `NULL`
-26. invitee share 默认值和单个 invitee 覆盖只有在邀请人自己已绑定对应 `referral_type + group` 模板，且模板 `enabled = true` 时才允许生效
+26. 模板默认 invitee share 和单个 invitee 覆盖只有在邀请人自己已绑定对应 `referral_type + group` 模板，且模板 `enabled = true` 时才允许生效
 27. 任一 `reward_component` 只要最终 `reward_quota <= 0`，就不生成该条结算明细
 28. `referral_invitee_share_overrides` 写入时必须校验邀请人在对应 `referral_type + group` 下已存在绑定
 29. `direct_with_team_chain` 模式下，`team_chain_snapshot_json` 即使没有命中任何有效团队节点，也必须记录空链快照而不是 `NULL`
