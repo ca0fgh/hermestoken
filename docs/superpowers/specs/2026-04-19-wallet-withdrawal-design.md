@@ -56,6 +56,8 @@
   - 比例金额
 - 用户申请的是“提现金额”
 - 实际打款金额 = 申请金额 - 手续费
+- 提现申请、手续费展示、管理员打款金额统一使用货币金额口径，不使用 tokens 作为提现申请输入单位
+- 若系统当前主界面采用 tokens 展示，提现区域仍需单独按当前货币金额展示
 - 同一用户同一时间只允许存在 1 笔未完结提现单
   - `pending`
   - `approved`
@@ -181,6 +183,11 @@
 - `withdraw_frozen_quota`
   - 已冻结、不可再消费的提现余额
 
+补充要求：
+
+- 所有涉及用户余额的后台展示与运营视图，都应同时展示 `quota` 与 `withdraw_frozen_quota`
+- 现有管理员用户编辑弹窗至少需要增加冻结余额的只读展示，避免运营误把冻结中的金额当成可用余额
+
 ### Withdrawal Table
 
 新增表：`user_withdrawals`
@@ -193,9 +200,13 @@
 - `channel`
   - 第一版固定为 `alipay`
 - `currency`
-  - 第一版可固定为当前系统展示币种，例如 `CNY`
+  - 第一版固定为当前提现使用的货币币种
 - `exchange_rate_snapshot`
   - 申请时的汇率快照
+- `available_quota_snapshot`
+  - 用户提交申请前的可用余额快照
+- `frozen_quota_snapshot`
+  - 用户提交申请后的冻结余额快照
 - `apply_amount`
   - 用户申请提现金额，面向管理员与财务查看
 - `fee_amount`
@@ -217,10 +228,16 @@
   - `rejected`
 - `fee_rule_snapshot_json`
   - 命中的手续费规则快照
-- `admin_id`
-  - 最后处理该单的管理员
-- `admin_note`
-  - 审核说明或驳回原因
+- `review_admin_id`
+  - 审核通过的管理员
+- `rejected_admin_id`
+  - 驳回该单的管理员
+- `paid_admin_id`
+  - 确认已打款的管理员
+- `review_note`
+  - 审核通过备注
+- `rejection_note`
+  - 驳回原因
 - `pay_receipt_no`
   - 可选，支付宝流水号/回执号
 - `pay_receipt_url`
@@ -300,11 +317,11 @@
 
 - `pending -> approved`
 - `pending -> rejected`
+- `approved -> rejected`
 - `approved -> paid`
 
 不允许：
 
-- `approved -> rejected`
 - `paid -> 其他状态`
 - `rejected -> 其他状态`
 
@@ -315,6 +332,7 @@
 用户提交提现申请时：
 
 - 锁定用户记录
+- 在同一事务内校验当前用户不存在未完结提现单
 - 校验主余额足够
 - `quota -= apply_quota`
 - `withdraw_frozen_quota += apply_quota`
@@ -393,6 +411,7 @@
 - 命中的手续费规则
 - 手续费
 - 实际到账金额
+- 提现币种
 - 提现说明
 
 交互规则：
@@ -465,7 +484,8 @@
   - 仅用于 `pending`
   - 可填写审核备注
 - `驳回`
-  - 仅用于 `pending`
+  - 可用于 `pending`
+  - 也可用于 `approved`
   - 驳回原因必填
 - `确认已打款`
   - 仅用于 `approved`
@@ -476,12 +496,13 @@
 ### User APIs
 
 - `GET /api/user/withdrawal/config`
-  - 返回提现开关、最低提现金额、提现说明、手续费规则摘要、可提现余额、冻结余额、是否存在未完结提现单
+  - 返回提现开关、最低提现金额、提现说明、手续费规则摘要、可提现余额、冻结余额、是否存在未完结提现单、提现币种、提现展示口径
 
 - `POST /api/user/withdrawals`
   - 提交提现申请
   - 请求体：
     - `amount`
+      - 单位为提现币种金额，不是内部 quota 值
     - `alipay_account`
     - `alipay_real_name`
 
@@ -504,12 +525,12 @@
 - `POST /api/admin/withdrawals/:id/approve`
   - `pending -> approved`
   - 请求体可带：
-    - `admin_note`
+    - `review_note`
 
 - `POST /api/admin/withdrawals/:id/reject`
-  - `pending -> rejected`
+  - `pending/approved -> rejected`
   - 请求体：
-    - `admin_note`
+    - `rejection_note`
   - 说明：
     - 驳回原因必填
 
@@ -532,6 +553,7 @@
   - `approved`
 - 申请金额大于等于最低提现金额
 - 申请金额小于等于当前可用主余额
+- 申请金额必须按提现币种金额提交，不允许以前端 tokens 展示值直接作为申请金额
 - 申请金额命中的手续费规则合法
 - 实际到账金额必须大于 `0`
 - `alipay_account` 必填
@@ -555,7 +577,7 @@
 管理员状态流转时：
 
 - `approve` 只能处理 `pending`
-- `reject` 只能处理 `pending`
+- `reject` 只能处理 `pending` 或 `approved`
 - `mark-paid` 只能处理 `approved`
 - 所有状态流转必须在事务中完成
 - 所有写操作都应带行锁，避免并发修改
@@ -589,8 +611,10 @@
 ### Integration Tests
 
 - 提现申请创建时正确冻结余额
+- 提现申请在同一事务内阻止并发创建第二笔未完结单
 - 驳回时正确退回余额
 - 审批通过时不重复改余额
+- 审批通过后再次驳回时能正确退回余额
 - 确认打款时正确释放冻结余额
 - 非法状态流转被拒绝
 
