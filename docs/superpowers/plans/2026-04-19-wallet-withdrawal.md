@@ -18,6 +18,8 @@
   - Withdrawal entity, status constants, fee rule structs, transactional create/approve/reject/mark-paid helpers, list/detail queries.
 - Create: `model/user_withdrawal_test.go`
   - Model-level tests for fee rules, frozen balance accounting, and state transitions.
+- Create: `model/user_withdrawal_test_helpers_test.go`
+  - SQLite test DB setup and withdrawal-specific seed helpers, following the existing subscription test-helper pattern.
 - Modify: `model/user.go`
   - Add `WithdrawFrozenQuota` field, helper methods for loading wallet snapshots, and safe balance mutation helpers used by withdrawals.
 - Modify: `model/main.go`
@@ -118,6 +120,7 @@
 **Files:**
 - Create: `model/user_withdrawal.go`
 - Create: `model/user_withdrawal_setting.go`
+- Create: `model/user_withdrawal_test_helpers_test.go`
 - Modify: `model/user.go`
 - Modify: `model/main.go`
 - Modify: `model/option.go`
@@ -132,11 +135,17 @@ import (
     "testing"
 
     "github.com/QuantumNous/new-api/common"
+    "github.com/shopspring/decimal"
 )
 
 func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
-    db := setupTestDB(t)
-    user := seedUserWithQuota(t, db, 1, 100000)
+    db := setupWithdrawalModelDB(t)
+    originalQuotaPerUnit := common.QuotaPerUnit
+    common.QuotaPerUnit = 100
+    t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+    user := seedWithdrawalUser(t, db, "withdraw-model-user", 100000)
+    applyQuota := int(decimal.NewFromFloat(100).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
     common.OptionMap = map[string]string{
         "WithdrawalEnabled":    "true",
         "WithdrawalMinAmount":  "10",
@@ -155,11 +164,11 @@ func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
     }
 
     refreshed, _ := GetUserById(user.Id, true)
-    if refreshed.Quota != 99900 {
-        t.Fatalf("quota = %d, want 99900", refreshed.Quota)
+    if refreshed.Quota != 100000-applyQuota {
+        t.Fatalf("quota = %d, want %d", refreshed.Quota, 100000-applyQuota)
     }
-    if refreshed.WithdrawFrozenQuota != 100 {
-        t.Fatalf("withdraw_frozen_quota = %d, want 100", refreshed.WithdrawFrozenQuota)
+    if refreshed.WithdrawFrozenQuota != applyQuota {
+        t.Fatalf("withdraw_frozen_quota = %d, want %d", refreshed.WithdrawFrozenQuota, applyQuota)
     }
     if order.Status != UserWithdrawalStatusPending {
         t.Fatalf("status = %s, want pending", order.Status)
@@ -170,8 +179,12 @@ func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
 }
 
 func TestRejectApprovedWithdrawalReturnsFrozenQuota(t *testing.T) {
-    db := setupTestDB(t)
-    user := seedUserWithQuota(t, db, 1, 100000)
+    db := setupWithdrawalModelDB(t)
+    originalQuotaPerUnit := common.QuotaPerUnit
+    common.QuotaPerUnit = 100
+    t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+    user := seedWithdrawalUser(t, db, "withdraw-approved-user", 100000)
     withdrawal := seedApprovedWithdrawal(t, db, user.Id, 100)
 
     if err := RejectUserWithdrawal(withdrawal.Id, 99, "manual reject"); err != nil {
@@ -250,6 +263,114 @@ type WithdrawalFeeRule struct {
 }
 ```
 
+```go
+// model/user_withdrawal_test_helpers_test.go
+func setupWithdrawalModelDB(t *testing.T) *gorm.DB {
+    t.Helper()
+
+    originalDB := DB
+    originalLogDB := LOG_DB
+    originalUsingSQLite := common.UsingSQLite
+    originalUsingMySQL := common.UsingMySQL
+    originalUsingPostgreSQL := common.UsingPostgreSQL
+    originalRedisEnabled := common.RedisEnabled
+    originalBatchUpdateEnabled := common.BatchUpdateEnabled
+
+    common.UsingSQLite = true
+    common.UsingMySQL = false
+    common.UsingPostgreSQL = false
+    common.RedisEnabled = false
+    common.BatchUpdateEnabled = false
+
+    dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+    db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+    if err != nil {
+        t.Fatalf("failed to open sqlite db: %v", err)
+    }
+    DB = db
+    LOG_DB = db
+
+    if err := db.AutoMigrate(&User{}, &Option{}, &UserWithdrawal{}, &Log{}); err != nil {
+        t.Fatalf("failed to migrate withdrawal tables: %v", err)
+    }
+    InitOptionMap()
+
+    t.Cleanup(func() {
+        sqlDB, err := db.DB()
+        if err == nil {
+            _ = sqlDB.Close()
+        }
+        DB = originalDB
+        LOG_DB = originalLogDB
+        common.UsingSQLite = originalUsingSQLite
+        common.UsingMySQL = originalUsingMySQL
+        common.UsingPostgreSQL = originalUsingPostgreSQL
+        common.RedisEnabled = originalRedisEnabled
+        common.BatchUpdateEnabled = originalBatchUpdateEnabled
+    })
+
+    return db
+}
+
+func seedWithdrawalUser(t *testing.T, db *gorm.DB, username string, quota int) *User {
+    t.Helper()
+
+    user := &User{
+        Username: username,
+        Password: "password",
+        AffCode:  username + "_code",
+        Group:    "default",
+        Quota:    quota,
+    }
+    if err := db.Create(user).Error; err != nil {
+        t.Fatalf("failed to create withdrawal user: %v", err)
+    }
+    return user
+}
+
+func seedPendingWithdrawal(t *testing.T, db *gorm.DB, userID int, amount float64) *UserWithdrawal {
+    t.Helper()
+
+    applyQuota := int(decimal.NewFromFloat(amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+    withdrawal := &UserWithdrawal{
+        UserId:              userID,
+        TradeNo:             "WDR-PENDING-" + strconv.Itoa(userID),
+        Channel:             "alipay",
+        Currency:            "CNY",
+        ExchangeRateSnapshot: 1,
+        ApplyAmount:         amount,
+        FeeAmount:           2,
+        NetAmount:           amount - 2,
+        ApplyQuota:          applyQuota,
+        FeeQuota:            int(decimal.NewFromFloat(2).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()),
+        NetQuota:            int(decimal.NewFromFloat(amount-2).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()),
+        AlipayAccount:       "alice@example.com",
+        Status:              UserWithdrawalStatusPending,
+    }
+    if err := db.Create(withdrawal).Error; err != nil {
+        t.Fatalf("failed to create pending withdrawal: %v", err)
+    }
+    if err := db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
+        "quota":                 gorm.Expr("quota - ?", applyQuota),
+        "withdraw_frozen_quota": gorm.Expr("withdraw_frozen_quota + ?", applyQuota),
+    }).Error; err != nil {
+        t.Fatalf("failed to freeze quota for pending withdrawal: %v", err)
+    }
+    return withdrawal
+}
+
+func seedApprovedWithdrawal(t *testing.T, db *gorm.DB, userID int, amount float64) *UserWithdrawal {
+    t.Helper()
+
+    withdrawal := seedPendingWithdrawal(t, db, userID, amount)
+    withdrawal.Status = UserWithdrawalStatusApproved
+    if err := db.Save(withdrawal).Error; err != nil {
+        t.Fatalf("failed to update withdrawal status to approved: %v", err)
+    }
+    return withdrawal
+}
+```
+
 - [ ] **Step 4: Wire migration/default options and add the user field**
 
 ```go
@@ -281,14 +402,15 @@ git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet w
 **Files:**
 - Modify: `model/user_withdrawal.go`
 - Modify: `model/user.go`
+- Modify: `model/user_withdrawal_test_helpers_test.go`
 - Test: `model/user_withdrawal_test.go`
 
 - [ ] **Step 1: Write failing tests for single-open-order, list queries, and mark-paid behavior**
 
 ```go
 func TestCreateUserWithdrawalRejectsSecondOpenOrder(t *testing.T) {
-    db := setupTestDB(t)
-    user := seedUserWithQuota(t, db, 2, 100000)
+    db := setupWithdrawalModelDB(t)
+    user := seedWithdrawalUser(t, db, "withdraw-open-order-user", 100000)
     seedPendingWithdrawal(t, db, user.Id, 100)
 
     _, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
@@ -302,8 +424,8 @@ func TestCreateUserWithdrawalRejectsSecondOpenOrder(t *testing.T) {
 }
 
 func TestMarkPaidConsumesFrozenQuotaWithoutTouchingAvailableQuota(t *testing.T) {
-    db := setupTestDB(t)
-    user := seedUserWithQuota(t, db, 3, 99900)
+    db := setupWithdrawalModelDB(t)
+    user := seedWithdrawalUser(t, db, "withdraw-paid-user", 99900)
     withdrawal := seedApprovedWithdrawal(t, db, user.Id, 100)
 
     if err := MarkUserWithdrawalPaid(withdrawal.Id, 88, MarkUserWithdrawalPaidParams{PayReceiptNo: "ALI123"}); err != nil {
@@ -402,26 +524,60 @@ git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet w
 
 ```go
 func TestUserCreateWithdrawal(t *testing.T) {
-    router, user := setupWithdrawalRouter(t)
+    db := setupSubscriptionControllerTestDB(t)
+    user := seedSubscriptionReferralControllerUser(t, "withdraw-controller-user", 0, dto.UserSetting{})
+    if err := db.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", 100000).Error; err != nil {
+        t.Fatalf("failed to seed quota: %v", err)
+    }
 
-    w := performAuthJSONRequest(router, user, "POST", "/api/user/withdrawals", `{
+    ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/user/withdrawals", map[string]any{
         "amount": 100,
         "alipay_account": "alice@example.com",
-        "alipay_real_name": "Alice"
-    }`)
+        "alipay_real_name": "Alice",
+    }, user.Id)
+    CreateUserWithdrawal(ctx)
 
-    if w.Code != http.StatusOK {
-        t.Fatalf("status = %d, want 200", w.Code)
+    if recorder.Code != http.StatusOK {
+        t.Fatalf("status = %d, want 200", recorder.Code)
     }
-    assertJSONSuccess(t, w.Body.Bytes())
+    response := decodeAPIResponse(t, recorder)
+    if !response.Success {
+        t.Fatalf("expected success, got message: %s", response.Message)
+    }
 }
 
 func TestAdminApproveRejectAndMarkPaidWithdrawal(t *testing.T) {
-    router, admin, withdrawal := setupAdminWithdrawalRouter(t)
+    db := setupSubscriptionControllerTestDB(t)
+    admin := seedSubscriptionReferralControllerUser(t, "withdraw-admin-user", 0, dto.UserSetting{})
+    if err := db.Model(&model.User{}).Where("id = ?", admin.Id).Update("role", common.RoleRootUser).Error; err != nil {
+        t.Fatalf("failed to promote admin: %v", err)
+    }
+    user := seedSubscriptionReferralControllerUser(t, "withdraw-target-user", 0, dto.UserSetting{})
+    if err := db.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", 100000).Error; err != nil {
+        t.Fatalf("failed to seed withdrawal user quota: %v", err)
+    }
+    withdrawal, err := model.CreateUserWithdrawal(&model.CreateUserWithdrawalParams{
+        UserID:         user.Id,
+        Amount:         100,
+        AlipayAccount:  "alice@example.com",
+        AlipayRealName: "Alice",
+    })
+    if err != nil {
+        t.Fatalf("failed to create withdrawal: %v", err)
+    }
 
-    approve := performAdminJSONRequest(router, admin, "POST", fmt.Sprintf("/api/admin/withdrawals/%d/approve", withdrawal.Id), `{"review_note":"ok"}`)
-    if approve.Code != http.StatusOK {
-        t.Fatalf("approve status = %d", approve.Code)
+    ctx, recorder := newAuthenticatedContext(t, http.MethodPost, fmt.Sprintf("/api/admin/withdrawals/%d/approve", withdrawal.Id), map[string]any{
+        "review_note": "ok",
+    }, admin.Id)
+    ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(withdrawal.Id)}}
+    AdminApproveWithdrawal(ctx)
+
+    if recorder.Code != http.StatusOK {
+        t.Fatalf("approve status = %d", recorder.Code)
+    }
+    response := decodeAPIResponse(t, recorder)
+    if !response.Success {
+        t.Fatalf("expected approve success, got message: %s", response.Message)
     }
 }
 ```
@@ -534,14 +690,14 @@ export default function SettingsWithdrawal({ options, refresh }) {
     WithdrawalEnabled: toBoolean(options.WithdrawalEnabled),
     WithdrawalMinAmount: parseFloat(options.WithdrawalMinAmount || 10),
     WithdrawalInstruction: options.WithdrawalInstruction || '',
-    WithdrawalFeeRules: formatJSONOption(options.WithdrawalFeeRules || '[]'),
+    WithdrawalFeeRules: JSON.stringify(JSON.parse(options.WithdrawalFeeRules || '[]'), null, 2),
   });
 
   const submit = async () => {
     await API.put('/api/option/', { key: 'WithdrawalEnabled', value: inputs.WithdrawalEnabled });
     await API.put('/api/option/', { key: 'WithdrawalMinAmount', value: inputs.WithdrawalMinAmount });
     await API.put('/api/option/', { key: 'WithdrawalInstruction', value: inputs.WithdrawalInstruction });
-    await API.put('/api/option/', { key: 'WithdrawalFeeRules', value: normalizeJSON(inputs.WithdrawalFeeRules) });
+    await API.put('/api/option/', { key: 'WithdrawalFeeRules', value: JSON.stringify(JSON.parse(inputs.WithdrawalFeeRules)) });
     refresh();
   };
 }
@@ -650,6 +806,7 @@ git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet w
 - Modify: `web/src/pages/Setting/Operation/SettingsSidebarModulesAdmin.jsx`
 - Modify: `web/src/components/settings/personal/cards/NotificationSettings.jsx`
 - Modify: `model/user.go`
+- Modify: `controller/user.go`
 - Test: `web/tests/withdrawal-admin-route.test.mjs`
 
 - [ ] **Step 1: Write the failing route/sidebar tests**
@@ -699,6 +856,11 @@ const Withdrawal = lazyWithRetry(() => import('./pages/Withdrawal'), 'withdrawal
 // SiderBar routerMap/adminItems
 withdrawal: '/console/withdrawal'
 { text: t('提现管理'), itemKey: 'withdrawal', to: '/withdrawal' }
+```
+
+```go
+// model/user.go + controller/user.go default admin sidebar config
+"withdrawal": true,
 ```
 
 Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-admin-route.test.mjs`
