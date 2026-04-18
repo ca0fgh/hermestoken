@@ -39,14 +39,10 @@ const DeploymentsTable = (deploymentsData) => {
     loading,
     searching,
     activePage,
-    pageSize,
-    deploymentCount,
     compactMode,
     visibleColumns,
     rowSelection,
     batchOperationsEnabled = true,
-    handlePageChange,
-    handlePageSizeChange,
     handleRow,
     t,
     COLUMN_KEYS,
@@ -171,15 +167,6 @@ const DeploymentsTable = (deploymentsData) => {
         columns={tableColumns}
         dataSource={deployments}
         scroll={compactMode ? { x: 800 } : { x: 1200 }}
-        pagination={{
-          currentPage: activePage,
-          pageSize: pageSize,
-          total: deploymentCount,
-          pageSizeOpts: [10, 20, 50, 100],
-          showSizeChanger: true,
-          onPageSizeChange: handlePageSizeChange,
-          onPageChange: handlePageChange,
-        }}
         hidePagination={true}
         expandAllRows={false}
         onRow={handleRow}

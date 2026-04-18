@@ -33,6 +33,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, showError } from '../../../../helpers';
+import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
@@ -164,13 +165,13 @@ const MissingModelsModal = ({ visible, onClose, onConfigureModel, t }) => {
               <Table
                 columns={columns}
                 dataSource={dataSource}
-                pagination={{
-                  currentPage: currentPage,
+                pagination={createUnifiedPaginationProps({
+                  currentPage,
                   pageSize: MODEL_TABLE_PAGE_SIZE,
                   total: filteredModels.length,
                   showSizeChanger: false,
                   onPageChange: (page) => setCurrentPage(page),
-                }}
+                })}
               />
             ) : (
               <Empty

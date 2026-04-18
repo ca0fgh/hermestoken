@@ -32,14 +32,10 @@ const ChannelsTable = (channelsData) => {
     loading,
     searching,
     activePage,
-    pageSize,
-    channelCount,
     enableBatchDelete,
     compactMode,
     visibleColumns,
     setSelectedChannels,
-    handlePageChange,
-    handlePageSizeChange,
     handleRow,
     t,
     COLUMN_KEYS,
@@ -136,15 +132,6 @@ const ChannelsTable = (channelsData) => {
       columns={tableColumns}
       dataSource={channels}
       scroll={compactMode ? undefined : { x: 'max-content' }}
-      pagination={{
-        currentPage: activePage,
-        pageSize: pageSize,
-        total: channelCount,
-        pageSizeOpts: [10, 20, 50, 100],
-        showSizeChanger: true,
-        onPageSizeChange: handlePageSizeChange,
-        onPageChange: handlePageChange,
-      }}
       hidePagination={true}
       expandAllRows={false}
       onRow={handleRow}

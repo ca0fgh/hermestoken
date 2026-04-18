@@ -37,17 +37,13 @@ const UsersTable = (usersData) => {
   const {
     users,
     loading,
-    activePage,
-    pageSize,
-    userCount,
     compactMode,
-    handlePageChange,
-    handlePageSizeChange,
     handleRow,
     setEditingUser,
     setShowEditUser,
     manageUser,
     refresh,
+    activePage,
     resetUserPasskey,
     resetUserTwoFA,
     t,
@@ -174,15 +170,6 @@ const UsersTable = (usersData) => {
         columns={tableColumns}
         dataSource={users}
         scroll={compactMode ? undefined : { x: 'max-content' }}
-        pagination={{
-          currentPage: activePage,
-          pageSize: pageSize,
-          total: userCount,
-          pageSizeOpts: [10, 20, 50, 100],
-          showSizeChanger: true,
-          onPageSizeChange: handlePageSizeChange,
-          onPageChange: handlePageChange,
-        }}
         hidePagination={true}
         loading={loading}
         onRow={handleRow}

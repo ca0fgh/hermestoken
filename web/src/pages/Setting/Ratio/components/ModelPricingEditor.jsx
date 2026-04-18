@@ -48,6 +48,7 @@ import {
   hasValue,
   useModelPricingEditorState,
 } from '../hooks/useModelPricingEditorState';
+import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text } = Typography;
@@ -316,14 +317,14 @@ export default function ModelPricingEditor({
                 dataSource={pagedData}
                 rowKey='name'
                 rowSelection={rowSelection}
-                pagination={{
+                pagination={createUnifiedPaginationProps({
                   currentPage,
                   pageSize: PAGE_SIZE,
                   total: filteredModels.length,
                   onPageChange: (page) => setCurrentPage(page),
                   showTotal: true,
                   showSizeChanger: false,
-                }}
+                })}
                 empty={
                   <div style={{ textAlign: 'center', padding: '20px' }}>
                     {emptyTitle || t('暂无模型')}

@@ -103,7 +103,6 @@ const ChannelsPage = () => {
           onPageChange: channelsData.handlePageChange,
           onPageSizeChange: channelsData.handlePageSizeChange,
           isMobile: isMobile,
-          t: channelsData.t,
         })}
         t={channelsData.t}
       >

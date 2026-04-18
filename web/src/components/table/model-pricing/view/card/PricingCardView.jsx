@@ -24,7 +24,6 @@ import {
   Tooltip,
   Checkbox,
   Empty,
-  Pagination,
   Button,
   Avatar,
 } from '@douyinfe/semi-ui';
@@ -43,7 +42,7 @@ import {
 import PricingCardSkeleton from './PricingCardSkeleton';
 import { useMinimumLoadingTime } from '../../../../../hooks/common/useMinimumLoadingTime';
 import { renderLimitedItems } from '../../../../common/ui/RenderUtils';
-import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
+import ListPagination from '../../../../common/ui/ListPagination';
 
 const CARD_STYLES = {
   container:
@@ -83,7 +82,6 @@ const PricingCardView = ({
     startIndex + pageSize,
   );
   const getModelKey = (model) => model.key ?? model.model_name ?? model.id;
-  const isMobile = useIsMobile();
 
   const handleCheckboxChange = (model, checked) => {
     if (!setSelectedRowKeys) return;
@@ -360,22 +358,20 @@ const PricingCardView = ({
 
       {/* 分页 */}
       {filteredModels.length > 0 && (
-        <div className='flex justify-center mt-6 py-4 border-t pricing-pagination-divider'>
-          <Pagination
-            currentPage={currentPage}
-            pageSize={pageSize}
-            total={filteredModels.length}
-            showSizeChanger={true}
-            pageSizeOptions={[10, 20, 50, 100]}
-            size={isMobile ? 'small' : 'default'}
-            showQuickJumper={isMobile}
-            onPageChange={(page) => setCurrentPage(page)}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setCurrentPage(1);
-            }}
-          />
-        </div>
+        <ListPagination
+          className='mt-6 py-4 border-t pricing-pagination-divider'
+          currentPage={currentPage}
+          pageSize={pageSize}
+          total={filteredModels.length}
+          showSizeChanger={true}
+          hideOnSinglePage={false}
+          pageSizeOpts={[10, 20, 50, 100]}
+          onPageChange={(page) => setCurrentPage(page)}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setCurrentPage(1);
+          }}
+        />
       )}
     </div>
   );

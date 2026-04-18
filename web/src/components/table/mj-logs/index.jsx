@@ -51,7 +51,6 @@ const MjLogsPage = () => {
             onPageChange: mjLogsData.handlePageChange,
             onPageSizeChange: mjLogsData.handlePageSizeChange,
             isMobile: isMobile,
-            t: mjLogsData.t,
           })}
           t={mjLogsData.t}
         >

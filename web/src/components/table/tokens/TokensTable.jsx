@@ -30,12 +30,7 @@ const TokensTable = (tokensData) => {
   const {
     tokens,
     loading,
-    activePage,
-    pageSize,
-    tokenCount,
     compactMode,
-    handlePageChange,
-    handlePageSizeChange,
     rowSelection,
     handleRow,
     showKeys,
@@ -104,15 +99,6 @@ const TokensTable = (tokensData) => {
       columns={tableColumns}
       dataSource={tokens}
       scroll={compactMode ? undefined : { x: 'max-content' }}
-      pagination={{
-        currentPage: activePage,
-        pageSize: pageSize,
-        total: tokenCount,
-        showSizeChanger: true,
-        pageSizeOptions: [10, 20, 50, 100],
-        onPageSizeChange: handlePageSizeChange,
-        onPageChange: handlePageChange,
-      }}
       hidePagination={true}
       loading={loading}
       rowSelection={rowSelection}

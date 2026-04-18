@@ -35,7 +35,10 @@ import {
 import { Coins } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
-import { isAdmin } from '../../../helpers/utils';
+import {
+  createUnifiedPaginationProps,
+  isAdmin,
+} from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 
@@ -264,15 +267,15 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         dataSource={topups}
         loading={loading}
         rowKey='id'
-        pagination={{
+        pagination={createUnifiedPaginationProps({
           currentPage: page,
-          pageSize: pageSize,
-          total: total,
+          pageSize,
+          total,
           showSizeChanger: true,
           pageSizeOpts: [10, 20, 50, 100],
           onPageChange: handlePageChange,
           onPageSizeChange: handlePageSizeChange,
-        }}
+        })}
         size='small'
         empty={
           <Empty

@@ -47,6 +47,7 @@ import {
   showSuccess,
   timestamp2string,
 } from '../../../../helpers';
+import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 
 const { Text } = Typography;
 
@@ -693,22 +694,19 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                 )}
                 columns={columns}
                 dataSource={keyStatusList}
-                pagination={{
-                  currentPage: currentPage,
-                  pageSize: pageSize,
-                  total: total,
+                pagination={createUnifiedPaginationProps({
+                  currentPage,
+                  pageSize,
+                  total,
                   showSizeChanger: true,
                   showQuickJumper: true,
                   pageSizeOpts: [10, 20, 50, 100],
-                  onChange: (page, size) => {
+                  onPageChange: (page, size) => {
                     setCurrentPage(page);
                     loadKeyStatus(page, size);
                   },
-                  onShowSizeChange: (current, size) => {
-                    setCurrentPage(1);
-                    handlePageSizeChange(size);
-                  },
-                }}
+                  onPageSizeChange: handlePageSizeChange,
+                })}
                 size='small'
                 bordered={false}
                 rowKey='index'

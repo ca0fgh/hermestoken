@@ -34,6 +34,7 @@ import {
   Tag,
 } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { createUnifiedPaginationProps } from '../../helpers/utils';
 
 const OFFICIAL_RATIO_PRESET_ID = -100;
 const MODELS_DEV_PRESET_ID = -101;
@@ -283,22 +284,16 @@ const ChannelSelectorModal = forwardRef(
             dataSource={paginatedData}
             rowKey='key'
             rowSelection={rowSelection}
-            pagination={{
-              currentPage: currentPage,
-              pageSize: pageSize,
-              total: total,
+            pagination={createUnifiedPaginationProps({
+              currentPage,
+              pageSize,
+              total,
               showSizeChanger: true,
               showQuickJumper: true,
-              pageSizeOptions: ['10', '20', '50', '100'],
-              onChange: (page, size) => {
-                setCurrentPage(page);
-                setPageSize(size);
-              },
-              onShowSizeChange: (curr, size) => {
-                setCurrentPage(1);
-                setPageSize(size);
-              },
-            }}
+              pageSizeOpts: ['10', '20', '50', '100'],
+              setCurrentPage,
+              setPageSize,
+            })}
             size='small'
           />
         </Space>

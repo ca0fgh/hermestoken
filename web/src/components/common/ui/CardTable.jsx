@@ -23,7 +23,6 @@ import {
   Table,
   Card,
   Skeleton,
-  Pagination,
   Empty,
   Button,
   Collapsible,
@@ -32,6 +31,7 @@ import { IconChevronDown, IconChevronUp } from '@douyinfe/semi-icons';
 import PropTypes from 'prop-types';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { useMinimumLoadingTime } from '../../../hooks/common/useMinimumLoadingTime';
+import ListPagination from './ListPagination';
 
 /**
  * CardTable 响应式表格组件
@@ -51,6 +51,12 @@ const CardTable = ({
   const { t } = useTranslation();
 
   const showSkeleton = useMinimumLoadingTime(loading);
+  const paginationConfig =
+    !hidePagination &&
+    tableProps.pagination &&
+    tableProps.pagination !== false
+      ? tableProps.pagination
+      : null;
 
   const getRowKey = (record, index) => {
     if (typeof rowKey === 'function') return rowKey(record);
@@ -58,18 +64,28 @@ const CardTable = ({
   };
 
   if (!isMobile) {
-    const finalTableProps = hidePagination
-      ? { ...tableProps, pagination: false }
-      : tableProps;
+    const finalTableProps = {
+      ...tableProps,
+      pagination: false,
+    };
 
     return (
-      <Table
-        columns={columns}
-        dataSource={dataSource}
-        loading={loading}
-        rowKey={rowKey}
-        {...finalTableProps}
-      />
+      <div className='flex flex-col gap-2'>
+        <Table
+          columns={columns}
+          dataSource={dataSource}
+          loading={loading}
+          rowKey={rowKey}
+          {...finalTableProps}
+        />
+        {paginationConfig ? (
+          <ListPagination
+            hideOnSinglePage={false}
+            className='mt-2'
+            {...paginationConfig}
+          />
+        ) : null}
+      </div>
     );
   }
 
@@ -222,11 +238,13 @@ const CardTable = ({
           index={index}
         />
       ))}
-      {!hidePagination && tableProps.pagination && dataSource.length > 0 && (
-        <div className='mt-2 flex justify-center'>
-          <Pagination {...tableProps.pagination} />
-        </div>
-      )}
+      {paginationConfig && dataSource.length > 0 ? (
+        <ListPagination
+          hideOnSinglePage={false}
+          className='mt-2'
+          {...paginationConfig}
+        />
+      ) : null}
     </div>
   );
 };

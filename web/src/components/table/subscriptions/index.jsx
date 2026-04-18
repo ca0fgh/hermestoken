@@ -90,7 +90,6 @@ const SubscriptionsPage = () => {
           onPageChange: subscriptionsData.handlePageChange,
           onPageSizeChange: subscriptionsData.handlePageSizeChange,
           isMobile,
-          t: subscriptionsData.t,
         })}
         t={t}
       >

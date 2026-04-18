@@ -51,14 +51,18 @@ export function resolveInviteeSelectionAfterPageRefresh({
   requestGuard,
   onSelectionCleared = () => {},
 } = {}) {
+  const normalizedItems = Array.isArray(nextItems) ? nextItems : [];
+
   if (!currentInvitee) {
-    return currentInvitee;
+    return normalizedItems[0] || null;
   }
 
   const nextInvitee =
-    (Array.isArray(nextItems) ? nextItems : []).find(
+    normalizedItems.find(
       (item) => item?.id === currentInvitee.id,
-    ) || null;
+    ) ||
+    normalizedItems[0] ||
+    null;
 
   if (!nextInvitee) {
     requestGuard?.clear?.();

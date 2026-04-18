@@ -344,6 +344,78 @@ func TestListSubscriptionReferralInviteeContributionSummariesIncludesTemplateLed
 	}
 }
 
+func TestListSubscriptionReferralInviteeContributionDetailsForDirectInviter(t *testing.T) {
+	fixture, order, _ := seedTemplateContributionLedger(t)
+
+	details, err := ListSubscriptionReferralInviteeContributionDetails(
+		fixture.ImmediateInviter.Id,
+		fixture.PayerUser.Id,
+	)
+	if err != nil {
+		t.Fatalf("ListSubscriptionReferralInviteeContributionDetails() error = %v", err)
+	}
+	if len(details) != 2 {
+		t.Fatalf("len(details) = %d, want 2", len(details))
+	}
+	if details[0].TradeNo != order.TradeNo || details[1].TradeNo != order.TradeNo {
+		t.Fatalf("unexpected trade numbers: %+v", details)
+	}
+	if details[0].RewardComponent != "direct_reward" {
+		t.Fatalf("details[0].RewardComponent = %q, want direct_reward", details[0].RewardComponent)
+	}
+	if details[0].RoleType != ReferralLevelTypeDirect {
+		t.Fatalf("details[0].RoleType = %q, want %q", details[0].RoleType, ReferralLevelTypeDirect)
+	}
+	if details[1].RewardComponent != "invitee_reward" {
+		t.Fatalf("details[1].RewardComponent = %q, want invitee_reward", details[1].RewardComponent)
+	}
+	if details[1].RoleType != ReferralLevelTypeDirect {
+		t.Fatalf("details[1].RoleType = %q, want %q", details[1].RoleType, ReferralLevelTypeDirect)
+	}
+	if details[0].EffectiveRewardQuota <= 0 {
+		t.Fatalf("details[0].EffectiveRewardQuota = %d, want > 0", details[0].EffectiveRewardQuota)
+	}
+	if details[1].EffectiveRewardQuota <= 0 {
+		t.Fatalf("details[1].EffectiveRewardQuota = %d, want > 0", details[1].EffectiveRewardQuota)
+	}
+}
+
+func TestListSubscriptionReferralInviteeContributionDetailsForTeamInviter(t *testing.T) {
+	order, plan, fixture := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeTeam,
+		InviteeShareBps:       3000,
+		Money:                 10,
+	})
+
+	if err := ApplyTemplateSubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplyTemplateSubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	details, err := ListSubscriptionReferralInviteeContributionDetails(
+		fixture.ImmediateInviter.Id,
+		fixture.PayerUser.Id,
+	)
+	if err != nil {
+		t.Fatalf("ListSubscriptionReferralInviteeContributionDetails() error = %v", err)
+	}
+	if len(details) != 2 {
+		t.Fatalf("len(details) = %d, want 2", len(details))
+	}
+	if details[0].RewardComponent != "team_direct_reward" {
+		t.Fatalf("details[0].RewardComponent = %q, want team_direct_reward", details[0].RewardComponent)
+	}
+	if details[0].RoleType != ReferralLevelTypeTeam {
+		t.Fatalf("details[0].RoleType = %q, want %q", details[0].RoleType, ReferralLevelTypeTeam)
+	}
+	if details[1].RewardComponent != "invitee_reward" {
+		t.Fatalf("details[1].RewardComponent = %q, want invitee_reward", details[1].RewardComponent)
+	}
+	if details[1].RoleType != ReferralLevelTypeTeam {
+		t.Fatalf("details[1].RoleType = %q, want %q", details[1].RoleType, ReferralLevelTypeTeam)
+	}
+}
+
 func TestReverseSubscriptionReferralByTradeNoReversesTemplateBatch(t *testing.T) {
 	fixture, order, _ := seedTemplateContributionLedger(t)
 

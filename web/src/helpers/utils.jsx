@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { Toast, Pagination } from '@douyinfe/semi-ui';
+import { Toast } from '@douyinfe/semi-ui';
 import { toastConstants } from '../constants';
 import React from 'react';
 import { toast } from 'react-toastify';
@@ -27,6 +27,7 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import ListPagination from '../components/common/ui/ListPagination';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -916,41 +917,77 @@ export const createCardProPagination = ({
   isMobile = false,
   pageSizeOpts = [10, 20, 50, 100],
   showSizeChanger = true,
-  t = (key) => key,
 }) => {
   if (!total || total <= 0) return null;
 
-  const start = (currentPage - 1) * pageSize + 1;
-  const end = Math.min(currentPage * pageSize, total);
-  const totalText = `${t('显示第')} ${start} ${t('条 - 第')} ${end} ${t('条，共')} ${total} ${t('条')}`;
-
   return (
-    <>
-      {/* 桌面端左侧总数信息 */}
-      {!isMobile && (
-        <span
-          className='text-sm select-none'
-          style={{ color: 'var(--semi-color-text-2)' }}
-        >
-          {totalText}
-        </span>
-      )}
-
-      {/* 右侧分页控件 */}
-      <Pagination
-        currentPage={currentPage}
-        pageSize={pageSize}
-        total={total}
-        pageSizeOpts={pageSizeOpts}
-        showSizeChanger={showSizeChanger}
-        onPageSizeChange={onPageSizeChange}
-        onPageChange={onPageChange}
-        size={isMobile ? 'small' : 'default'}
-        showQuickJumper={isMobile}
-        showTotal
-      />
-    </>
+    <ListPagination
+      currentPage={currentPage}
+      pageSize={pageSize}
+      total={total}
+      pageSizeOpts={pageSizeOpts}
+      showSizeChanger={showSizeChanger}
+      onPageSizeChange={onPageSizeChange}
+      onPageChange={onPageChange}
+      isMobile={isMobile}
+      hideOnSinglePage={false}
+    />
   );
+};
+
+export const createUnifiedPaginationProps = ({
+  currentPage,
+  pageSize,
+  total,
+  onPageChange,
+  onPageSizeChange,
+  setCurrentPage,
+  setPageSize,
+  pageSizeOpts = [10, 20, 50, 100],
+  showSizeChanger = true,
+  showQuickJumper = true,
+}) => {
+  const handleUnifiedPageChange = (page, size) => {
+    if (typeof onPageChange === 'function') {
+      onPageChange(page, size);
+      return;
+    }
+
+    if (typeof setCurrentPage === 'function') {
+      setCurrentPage(page);
+    }
+    if (typeof size === 'number' && typeof setPageSize === 'function') {
+      setPageSize(size);
+    }
+  };
+
+  const handleUnifiedPageSizeChange = (size) => {
+    if (typeof onPageSizeChange === 'function') {
+      onPageSizeChange(size);
+      return;
+    }
+
+    if (typeof setCurrentPage === 'function') {
+      setCurrentPage(1);
+    }
+    if (typeof setPageSize === 'function') {
+      setPageSize(size);
+    }
+  };
+
+  return {
+    currentPage,
+    pageSize,
+    total,
+    pageSizeOpts,
+    pageSizeOptions: pageSizeOpts,
+    showSizeChanger,
+    showQuickJumper,
+    onPageChange: handleUnifiedPageChange,
+    onPageSizeChange: handleUnifiedPageSizeChange,
+    onChange: handleUnifiedPageChange,
+    onShowSizeChange: (_current, size) => handleUnifiedPageSizeChange(size),
+  };
 };
 
 // 模型定价筛选条件默认值

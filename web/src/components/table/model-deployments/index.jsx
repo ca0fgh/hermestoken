@@ -136,7 +136,6 @@ const DeploymentsPage = () => {
           onPageChange: deploymentsData.handlePageChange,
           onPageSizeChange: deploymentsData.handlePageSizeChange,
           isMobile: isMobile,
-          t: deploymentsData.t,
         })}
         t={deploymentsData.t}
       >

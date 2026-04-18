@@ -27,6 +27,7 @@ import {
 } from '../../helpers/inviteeDetailRequestGuard';
 import {
   buildInviteDefaultRuleRows,
+  buildInviteeContributionDetailCards,
   buildInviteeOverrideRows,
   normalizeInviteeContributionPage,
 } from '../../helpers/inviteRebate';
@@ -52,6 +53,7 @@ const InviteRebatePage = () => {
   const [queryKeyword, setQueryKeyword] = useState('');
   const [selectedInvitee, setSelectedInvitee] = useState(null);
   const [inviteeOverrideRows, setInviteeOverrideRows] = useState([]);
+  const [inviteeContributionCards, setInviteeContributionCards] = useState([]);
   const [loadingDefaults, setLoadingDefaults] = useState(false);
   const [loadingInvitees, setLoadingInvitees] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -63,6 +65,7 @@ const InviteRebatePage = () => {
     inviteeDetailRequestGuardRef.current.clear();
     setSelectedInvitee(null);
     setInviteeOverrideRows([]);
+    setInviteeContributionCards([]);
   };
 
   const loadDefaultRules = async () => {
@@ -106,7 +109,10 @@ const InviteRebatePage = () => {
             currentInvitee,
             nextItems: nextPage.items,
             requestGuard: inviteeDetailRequestGuardRef.current,
-            onSelectionCleared: () => setInviteeOverrideRows([]),
+            onSelectionCleared: () => {
+              setInviteeOverrideRows([]);
+              setInviteeContributionCards([]);
+            },
           });
         });
       } else {
@@ -127,6 +133,7 @@ const InviteRebatePage = () => {
     if (!inviteeId) {
       inviteeDetailRequestGuardRef.current.clear();
       setInviteeOverrideRows([]);
+      setInviteeContributionCards([]);
       return;
     }
 
@@ -141,10 +148,15 @@ const InviteRebatePage = () => {
       }
       if (res.data?.success) {
         const data = res.data?.data || {};
-        setSelectedInvitee((currentInvitee) => data.invitee || currentInvitee);
+        setSelectedInvitee((currentInvitee) => ({
+          ...(currentInvitee || {}),
+          ...(data.invitee || {}),
+        }));
         setInviteeOverrideRows(buildInviteeOverrideRows(data));
+        setInviteeContributionCards(buildInviteeContributionDetailCards(data));
       } else {
         setInviteeOverrideRows([]);
+        setInviteeContributionCards([]);
         showError(res.data?.message || t('加载失败'));
       }
     } catch (error) {
@@ -152,6 +164,7 @@ const InviteRebatePage = () => {
         return;
       }
       setInviteeOverrideRows([]);
+      setInviteeContributionCards([]);
       showError(error?.message || t('加载失败'));
     } finally {
       if (inviteeDetailRequestGuardRef.current.isCurrent(detailRequest)) {
@@ -213,7 +226,7 @@ const InviteRebatePage = () => {
             {t('邀请返佣')}
           </Typography.Title>
           <Typography.Text type='secondary' className='max-w-3xl block'>
-            {t('按已授权订阅分组维护邀请分账，并为指定邀请用户设置独立返佣。')}
+            {t('查看邀请用户贡献给你的返佣流水，并为个别用户单独设置返佣比例。')}
           </Typography.Text>
         </div>
 
@@ -243,7 +256,7 @@ const InviteRebatePage = () => {
                 onSelectInvitee={setSelectedInvitee}
                 onPageChange={handlePageChange}
                 emptyHint={
-                  queryKeyword ? t('暂无邀请用户') : t('请输入用户名后点击搜索')
+                  queryKeyword ? t('未找到匹配邀请用户') : t('暂无邀请用户数据')
                 }
               />
             </div>
@@ -252,6 +265,7 @@ const InviteRebatePage = () => {
                 t={t}
                 invitee={selectedInvitee}
                 rows={inviteeOverrideRows}
+                contributionCards={inviteeContributionCards}
                 loading={loadingDetail}
                 onOverridesChanged={refreshOverrides}
               />

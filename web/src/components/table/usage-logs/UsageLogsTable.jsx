@@ -31,13 +31,8 @@ const LogsTable = (logsData) => {
     logs,
     expandData,
     loading,
-    activePage,
-    pageSize,
-    logCount,
     compactMode,
     visibleColumns,
-    handlePageChange,
-    handlePageSizeChange,
     copyText,
     showUserInfoFunc,
     openChannelAffinityUsageCacheModal,
@@ -113,17 +108,6 @@ const LogsTable = (logsData) => {
           style={{ padding: 30 }}
         />
       }
-      pagination={{
-        currentPage: activePage,
-        pageSize: pageSize,
-        total: logCount,
-        pageSizeOptions: [10, 20, 50, 100],
-        showSizeChanger: true,
-        onPageSizeChange: (size) => {
-          handlePageSizeChange(size);
-        },
-        onPageChange: handlePageChange,
-      }}
       hidePagination={true}
     />
   );

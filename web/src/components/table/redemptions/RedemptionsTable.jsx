@@ -32,10 +32,7 @@ const RedemptionsTable = (redemptionsData) => {
     redemptions,
     loading,
     activePage,
-    pageSize,
-    tokenCount,
     compactMode,
-    handlePageChange,
     rowSelection,
     handleRow,
     manageRedemption,
@@ -100,15 +97,6 @@ const RedemptionsTable = (redemptionsData) => {
         columns={tableColumns}
         dataSource={redemptions}
         scroll={compactMode ? undefined : { x: 'max-content' }}
-        pagination={{
-          currentPage: activePage,
-          pageSize: pageSize,
-          total: tokenCount,
-          showSizeChanger: true,
-          pageSizeOptions: [10, 20, 50, 100],
-          onPageSizeChange: redemptionsData.handlePageSizeChange,
-          onPageChange: handlePageChange,
-        }}
         hidePagination={true}
         loading={loading}
         rowSelection={rowSelection}

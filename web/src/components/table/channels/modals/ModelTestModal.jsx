@@ -31,6 +31,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { IconSearch, IconInfoCircle } from '@douyinfe/semi-icons';
 import { copy, showError, showInfo, showSuccess } from '../../../../helpers';
+import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
 
 const ModelTestModal = ({
@@ -352,13 +353,13 @@ const ModelTestModal = ({
                 setSelectedModelKeys(checked ? filteredModels : []);
               },
             }}
-            pagination={{
+            pagination={createUnifiedPaginationProps({
               currentPage: modelTablePage,
               pageSize: MODEL_TABLE_PAGE_SIZE,
               total: filteredModels.length,
               showSizeChanger: false,
               onPageChange: (page) => setModelTablePage(page),
-            }}
+            })}
           />
         </div>
       )}

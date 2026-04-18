@@ -430,7 +430,6 @@ function TokensPage() {
           onPageChange: tokensData.handlePageChange,
           onPageSizeChange: tokensData.handlePageSizeChange,
           isMobile: isMobile,
-          t: tokensData.t,
         })}
         t={tokensData.t}
       >

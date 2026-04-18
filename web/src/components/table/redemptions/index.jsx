@@ -109,7 +109,6 @@ const RedemptionsPage = () => {
           onPageChange: redemptionsData.handlePageChange,
           onPageSizeChange: redemptionsData.handlePageSizeChange,
           isMobile: isMobile,
-          t: redemptionsData.t,
         })}
         t={redemptionsData.t}
       >

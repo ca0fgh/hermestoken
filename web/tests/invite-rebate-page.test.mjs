@@ -27,6 +27,7 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
   assert.match(pageSource, /InviteeOverridePanel/);
   assert.match(pageSource, /normalizeInviteeContributionPage/);
   assert.match(pageSource, /buildInviteDefaultRuleRows/);
+  assert.match(pageSource, /buildInviteeContributionDetailCards/);
   assert.match(pageSource, /buildInviteeOverrideRows/);
   assert.match(pageSource, /API\.get\('\/api\/user\/referral\/subscription'\)/);
   assert.match(
@@ -55,7 +56,11 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
   );
   assert.match(
     pageSource,
-    /const clearInviteeSelection = \(\) => \{[\s\S]*?setSelectedInvitee\(null\);\s*setInviteeOverrideRows\(\[\]\);\s*\};/s,
+    /resolveInviteeSelectionAfterPageRefresh\(\{[\s\S]*?currentInvitee,[\s\S]*?nextItems: nextPage\.items,[\s\S]*?onSelectionCleared:[\s\S]*?setInviteeOverrideRows\(\[\]\);[\s\S]*?setInviteeContributionCards\(\[\]\);[\s\S]*?\}\)/s,
+  );
+  assert.match(
+    pageSource,
+    /const clearInviteeSelection = \(\) => \{[\s\S]*?setSelectedInvitee\(null\);\s*setInviteeOverrideRows\(\[\]\);\s*setInviteeContributionCards\(\[\]\);\s*\};/s,
   );
   assert.match(
     pageSource,
@@ -84,29 +89,88 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(summarySource, /t\('被邀请人数'\)/);
   assert.match(summarySource, /t\('累计返佣收益'\)/);
 
-  assert.match(defaultRuleSource, /t\('模板默认返给被邀请人比例'\)/);
-  assert.match(defaultRuleSource, /t\('返佣类型'\)/);
-  assert.match(defaultRuleSource, /getTypeLabel/);
-  assert.match(defaultRuleSource, /t\('分组'\)/);
-  assert.match(defaultRuleSource, /t\('当前授权总返佣率'\)/);
+  assert.match(defaultRuleSource, /t\('我的返佣方案'\)/);
+  assert.match(defaultRuleSource, /t\('当前返佣方案'\)/);
+  assert.match(defaultRuleSource, /t\('返佣模式'\)/);
+  assert.match(defaultRuleSource, /t\('所在分组'\)/);
+  assert.match(defaultRuleSource, /t\('本组总返佣比例'\)/);
+  assert.match(defaultRuleSource, /t\('默认返给对方比例'\)/);
   assert.match(defaultRuleSource, /formatRateBpsPercent/);
+  assert.match(defaultRuleSource, /ListPagination/);
+  assert.doesNotMatch(defaultRuleSource, /Pagination,/);
+  assert.match(defaultRuleSource, /slice\(/);
   assert.doesNotMatch(defaultRuleSource, /API\.put\('\/api\/user\/referral\/subscription'/);
   assert.doesNotMatch(defaultRuleSource, /API\.delete\('\/api\/user\/referral\/subscription'/);
 
-  assert.match(listSource, /t\('邀请用户'\)/);
-  assert.match(listSource, /t\('搜索用户名'\)/);
+  assert.match(listSource, /t\('我的邀请用户'\)/);
+  assert.match(listSource, /t\('搜索用户名 \/ 用户ID \/ 分组'\)/);
+  assert.match(
+    listSource,
+    /t\('按返佣收益排序，支持按用户名、用户ID或分组查找。'\)/,
+  );
+  assert.match(
+    listSource,
+    /t\('共 {{count}} 位邀请用户'\s*,\s*\{\s*count:\s*totalInvitees\s*\}\)/,
+  );
   assert.match(listSource, /keyword/);
   assert.match(listSource, /page_size/);
-  assert.match(listSource, /Pagination/);
-  assert.match(listSource, /t\('暂无邀请用户'\)/);
+  assert.match(listSource, /ListPagination/);
+  assert.match(listSource, /t\('暂无邀请用户数据'\)/);
+  assert.match(listSource, /t\('未找到匹配邀请用户'\)/);
+  assert.match(listSource, /t\('已单独设置'\)/);
+  assert.match(listSource, /t\('购买订单'\)/);
+  assert.match(listSource, /t\('使用默认'\)/);
+  assert.match(listSource, /t\('已单独设置返佣'\)/);
 
-  assert.match(overrideSource, /t\('邀请用户返佣指定'\)/);
-  assert.match(overrideSource, /t\('未选择邀请用户'\)/);
-  assert.match(overrideSource, /t\('未指定时使用邀请人分账规则'\)/);
-  assert.match(overrideSource, /t\('暂无指定项，未指定时使用邀请人分账规则'\)/);
+  assert.match(overrideSource, /t\('邀请用户返佣详情'\)/);
+  assert.match(overrideSource, /t\('贡献流水'\)/);
+  assert.match(overrideSource, /t\('贡献概览'\)/);
+  assert.match(overrideSource, /t\('按订单看'\)/);
+  assert.match(overrideSource, /t\('按分录看'\)/);
+  assert.match(overrideSource, /t\('贡献订单数'\)/);
+  assert.match(overrideSource, /t\('你累计到账'\)/);
+  assert.match(overrideSource, /t\('累计返给对方'\)/);
+  assert.match(overrideSource, /t\('直推分录'\)/);
+  assert.match(overrideSource, /t\('团队分录'\)/);
+  assert.match(overrideSource, /t\('贡献分录明细'\)/);
+  assert.match(overrideSource, /t\('单独返佣设置'\)/);
+  assert.match(overrideSource, /t\('返佣明细'\)/);
+  assert.match(overrideSource, /t\('你的到账返佣'\)/);
+  assert.match(overrideSource, /t\('返给对方'\)/);
+  assert.match(overrideSource, /t\('本笔身份'\)/);
   assert.match(overrideSource, /t\('返佣类型'\)/);
-  assert.match(overrideSource, /t\('当前邀请人分账比例'\)/);
-  assert.match(overrideSource, /getTypeLabel/);
+  assert.match(overrideSource, /t\('订单号'\)/);
+  assert.match(overrideSource, /t\('结算时间'\)/);
+  assert.match(overrideSource, /t\('暂无返佣明细'\)/);
+  assert.match(overrideSource, /t\('未选择邀请用户'\)/);
+  assert.match(
+    overrideSource,
+    /t\('从左侧选择一位邀请用户后，可查看返佣流水并单独设置返佣比例。'\)/,
+  );
+  assert.match(overrideSource, /t\('未单独设置时，自动使用当前返佣方案默认值。'\)/);
+  assert.match(overrideSource, /t\('暂无可覆盖的模板作用域'\)/);
+  assert.match(overrideSource, /t\('当前返佣方案'\)/);
+  assert.match(overrideSource, /t\('返佣模式'\)/);
+  assert.match(overrideSource, /t\('默认返给对方比例'\)/);
+  assert.match(overrideSource, /t\('实际返给对方比例'\)/);
+  assert.match(overrideSource, /t\('你本单保留比例'\)/);
+  assert.match(overrideSource, /t\('使用默认'\)/);
+  assert.match(overrideSource, /t\('已单独设置返佣'\)/);
+  assert.match(overrideSource, /buildInviteeOverrideDraftPercentMap/);
+  assert.match(overrideSource, /buildInviteeContributionSummary/);
+  assert.match(overrideSource, /buildInviteeContributionLedgerRows/);
+  assert.match(overrideSource, /<Tabs/);
+  assert.match(overrideSource, /useEffect\(\(\) => \{\s*setDraftPercentByGroup\(buildInviteeOverrideDraftPercentMap\(normalizedRows\)\);\s*\}, \[invitee\?\.id, normalizedRows\]\);/s);
+  assert.match(overrideSource, /t\(item\.roleLabel\)/);
+  assert.match(overrideSource, /t\(item\.componentLabel\)/);
+  assert.match(overrideSource, /formatContributionStatusLabel/);
+  assert.match(overrideSource, /ListPagination/);
+  assert.doesNotMatch(overrideSource, /Pagination,/);
+  assert.match(overrideSource, /slice\(/);
+  assert.match(
+    overrideSource,
+    /t\('贡献流水'\)[\s\S]*t\('单独返佣设置'\)/,
+  );
   assert.match(
     overrideSource,
     /API\.put\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{invitee\.id\}`,\s*\{/,

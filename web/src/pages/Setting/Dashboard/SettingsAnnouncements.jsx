@@ -44,6 +44,7 @@ import {
   getRelativeTime,
   formatDateTimeString,
 } from '../../../helpers';
+import { createUnifiedPaginationProps } from '../../../helpers/utils';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
@@ -483,22 +484,16 @@ const SettingsAnnouncements = ({ options, refresh }) => {
           rowSelection={rowSelection}
           rowKey='id'
           scroll={{ x: 'max-content' }}
-          pagination={{
-            currentPage: currentPage,
-            pageSize: pageSize,
+          pagination={createUnifiedPaginationProps({
+            currentPage,
+            pageSize,
             total: announcementsList.length,
             showSizeChanger: true,
             showQuickJumper: true,
-            pageSizeOptions: ['5', '10', '20', '50'],
-            onChange: (page, size) => {
-              setCurrentPage(page);
-              setPageSize(size);
-            },
-            onShowSizeChange: (current, size) => {
-              setCurrentPage(1);
-              setPageSize(size);
-            },
-          }}
+            pageSizeOpts: ['5', '10', '20', '50'],
+            setCurrentPage,
+            setPageSize,
+          })}
           size='middle'
           loading={loading}
           empty={

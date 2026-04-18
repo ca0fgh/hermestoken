@@ -32,6 +32,7 @@ import { MousePointerClick } from 'lucide-react';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 
 const { Text } = Typography;
 
@@ -298,13 +299,13 @@ const UpstreamConflictModal = ({
             <Table
               columns={columns}
               dataSource={pagedDataSource}
-              pagination={{
-                currentPage: currentPage,
+              pagination={createUnifiedPaginationProps({
+                currentPage,
                 pageSize: MODEL_TABLE_PAGE_SIZE,
                 total: filteredDataSource.length,
                 showSizeChanger: false,
                 onPageChange: (page) => setCurrentPage(page),
-              }}
+              })}
               scroll={{ x: 'max-content' }}
             />
           ) : (

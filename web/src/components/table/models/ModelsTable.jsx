@@ -30,12 +30,7 @@ const ModelsTable = (modelsData) => {
   const {
     models,
     loading,
-    activePage,
-    pageSize,
-    modelCount,
     compactMode,
-    handlePageChange,
-    handlePageSizeChange,
     rowSelection,
     handleRow,
     manageModel,
@@ -76,15 +71,6 @@ const ModelsTable = (modelsData) => {
       columns={tableColumns}
       dataSource={models}
       scroll={compactMode ? undefined : { x: 'max-content' }}
-      pagination={{
-        currentPage: activePage,
-        pageSize: pageSize,
-        total: modelCount,
-        showSizeChanger: true,
-        pageSizeOptions: [10, 20, 50, 100],
-        onPageSizeChange: handlePageSizeChange,
-        onPageChange: handlePageChange,
-      }}
       hidePagination={true}
       loading={loading}
       rowSelection={rowSelection}

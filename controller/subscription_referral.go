@@ -220,21 +220,10 @@ func buildSubscriptionReferralSelfGroupViews(userID int) ([]gin.H, error) {
 		if !view.Template.Enabled {
 			continue
 		}
-		totalRateBps := subscriptionTemplateVisibleTotalRateBps(view.Template)
-		inviteeRateBps := model.ResolveBindingInviteeShareDefault(view)
-		if inviteeRateBps > totalRateBps {
-			inviteeRateBps = totalRateBps
-		}
-		groupViews = append(groupViews, gin.H{
-			"group":            view.Binding.Group,
-			"type":             "subscription",
-			"template_id":      view.Template.Id,
-			"template_name":    view.Template.Name,
-			"level_type":       view.Template.LevelType,
-			"total_rate_bps":   totalRateBps,
-			"invitee_rate_bps": inviteeRateBps,
-			"inviter_rate_bps": totalRateBps - inviteeRateBps,
-		})
+		scopePayload := buildSubscriptionReferralScopePayload(view, nil)
+		scopePayload["invitee_rate_bps"] = scopePayload["default_invitee_rate_bps"]
+		scopePayload["inviter_rate_bps"] = scopePayload["effective_inviter_rate_bps"]
+		groupViews = append(groupViews, scopePayload)
 	}
 
 	sort.Slice(groupViews, func(i, j int) bool {
@@ -254,6 +243,41 @@ func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries 
 	return model.ListReferralInviteeShareOverrideCounts(inviterUserID, inviteeUserIDs, model.ReferralTypeSubscription)
 }
 
+func buildSubscriptionReferralScopePayload(view model.ReferralTemplateBindingView, override *model.ReferralInviteeShareOverride) gin.H {
+	group := strings.TrimSpace(view.Binding.Group)
+	totalRateBps := subscriptionTemplateVisibleTotalRateBps(view.Template)
+	defaultInviteeRateBps := model.ResolveBindingInviteeShareDefault(view)
+	if defaultInviteeRateBps > totalRateBps {
+		defaultInviteeRateBps = totalRateBps
+	}
+
+	overrideInviteeRateBps := 0
+	effectiveInviteeRateBps := defaultInviteeRateBps
+	hasOverride := false
+	if override != nil {
+		hasOverride = true
+		overrideInviteeRateBps = model.NormalizeSubscriptionReferralRateBps(override.InviteeShareBps)
+		if overrideInviteeRateBps > totalRateBps {
+			overrideInviteeRateBps = totalRateBps
+		}
+		effectiveInviteeRateBps = overrideInviteeRateBps
+	}
+
+	return gin.H{
+		"group":                      group,
+		"type":                       "subscription",
+		"template_id":                view.Template.Id,
+		"template_name":              view.Template.Name,
+		"level_type":                 view.Template.LevelType,
+		"total_rate_bps":             totalRateBps,
+		"default_invitee_rate_bps":   defaultInviteeRateBps,
+		"override_invitee_rate_bps":  overrideInviteeRateBps,
+		"effective_invitee_rate_bps": effectiveInviteeRateBps,
+		"effective_inviter_rate_bps": totalRateBps - effectiveInviteeRateBps,
+		"has_override":               hasOverride,
+	}
+}
+
 func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *model.User) (gin.H, error) {
 	bindingViews, err := model.ListReferralTemplateBindingsByUser(inviterUserID, model.ReferralTypeSubscription)
 	if err != nil {
@@ -267,10 +291,7 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		}
 	}
 
-	availableGroups := make([]string, 0, len(activeBindings))
-	defaultInviteeRateBpsByGroup := make(map[string]int, len(activeBindings))
-	effectiveTotalRateBpsByGroup := make(map[string]int, len(activeBindings))
-	overrideRows := make([]gin.H, 0)
+	scopeRows := make([]gin.H, 0, len(activeBindings))
 
 	overrides, err := model.ListReferralInviteeShareOverrides(inviterUserID, invitee.Id, model.ReferralTypeSubscription)
 	if err != nil {
@@ -283,19 +304,42 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 
 	for _, view := range activeBindings {
 		group := strings.TrimSpace(view.Binding.Group)
-		totalRateBps := subscriptionTemplateVisibleTotalRateBps(view.Template)
-		availableGroups = append(availableGroups, group)
-		effectiveTotalRateBpsByGroup[group] = totalRateBps
-		defaultInviteeRateBpsByGroup[group] = model.ResolveBindingInviteeShareDefault(view)
 		if override, ok := overrideByGroup[group]; ok {
-			overrideRows = append(overrideRows, gin.H{
-				"group":            group,
-				"invitee_rate_bps": override.InviteeShareBps,
-			})
+			scopeRows = append(scopeRows, buildSubscriptionReferralScopePayload(view, &override))
+			continue
 		}
+		scopeRows = append(scopeRows, buildSubscriptionReferralScopePayload(view, nil))
 	}
 
-	sort.Strings(availableGroups)
+	sort.Slice(scopeRows, func(i, j int) bool {
+		return strings.TrimSpace(common.Interface2String(scopeRows[i]["group"])) < strings.TrimSpace(common.Interface2String(scopeRows[j]["group"]))
+	})
+
+	contributionDetails, err := model.ListSubscriptionReferralInviteeContributionDetails(inviterUserID, invitee.Id)
+	if err != nil {
+		return nil, err
+	}
+	detailRows := make([]gin.H, 0, len(contributionDetails))
+	for _, detail := range contributionDetails {
+		if detail == nil {
+			continue
+		}
+		detailRows = append(detailRows, gin.H{
+			"batch_id":                detail.BatchId,
+			"trade_no":                detail.TradeNo,
+			"group":                   detail.Group,
+			"reward_component":        detail.RewardComponent,
+			"source_reward_component": detail.SourceRewardComponent,
+			"role_type":               detail.RoleType,
+			"reward_quota":            detail.RewardQuota,
+			"reversed_quota":          detail.ReversedQuota,
+			"debt_quota":              detail.DebtQuota,
+			"effective_reward_quota":  detail.EffectiveRewardQuota,
+			"status":                  detail.Status,
+			"settled_at":              detail.SettledAt,
+			"created_at":              detail.CreatedAt,
+		})
+	}
 
 	return gin.H{
 		"invitee": gin.H{
@@ -303,10 +347,8 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 			"username": invitee.Username,
 			"group":    invitee.Group,
 		},
-		"available_groups":                  availableGroups,
-		"default_invitee_rate_bps_by_group": defaultInviteeRateBpsByGroup,
-		"effective_total_rate_bps_by_group": effectiveTotalRateBpsByGroup,
-		"overrides":                         overrideRows,
+		"scopes":               scopeRows,
+		"contribution_details": detailRows,
 	}, nil
 }
 

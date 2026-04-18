@@ -44,6 +44,7 @@ import {
   showWarning,
   stringToColor,
 } from '../../../helpers';
+import { createUnifiedPaginationProps } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { DEFAULT_ENDPOINT } from '../../../constants';
 import { useTranslation } from 'react-i18next';
@@ -817,22 +818,16 @@ export default function UpstreamRatioSync(props) {
       <Table
         columns={columns}
         dataSource={getCurrentPageData(filteredDataSource)}
-        pagination={{
-          currentPage: currentPage,
-          pageSize: pageSize,
+        pagination={createUnifiedPaginationProps({
+          currentPage,
+          pageSize,
           total: filteredDataSource.length,
           showSizeChanger: true,
           showQuickJumper: true,
-          pageSizeOptions: ['5', '10', '20', '50'],
-          onChange: (page, size) => {
-            setCurrentPage(page);
-            setPageSize(size);
-          },
-          onShowSizeChange: (current, size) => {
-            setCurrentPage(1);
-            setPageSize(size);
-          },
-        }}
+          pageSizeOpts: ['5', '10', '20', '50'],
+          setCurrentPage,
+          setPageSize,
+        })}
         scroll={{ x: 'max-content' }}
         size='middle'
         loading={loading || syncLoading}

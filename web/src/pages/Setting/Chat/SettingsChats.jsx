@@ -48,6 +48,7 @@ import {
   showWarning,
   verifyJSON,
 } from '../../../helpers';
+import { createUnifiedPaginationProps } from '../../../helpers/utils';
 import { useTranslation } from 'react-i18next';
 
 export default function SettingsChats(props) {
@@ -64,6 +65,7 @@ export default function SettingsChats(props) {
   const [editingConfig, setEditingConfig] = useState(null);
   const [isEdit, setIsEdit] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
   const modalFormRef = useRef();
 
   const BUILTIN_TEMPLATES = [
@@ -475,17 +477,20 @@ export default function SettingsChats(props) {
                 columns={columns}
                 dataSource={filteredConfigs}
                 rowKey='id'
-                pagination={{
+                pagination={createUnifiedPaginationProps({
+                  currentPage,
                   pageSize: 10,
+                  total: filteredConfigs.length,
                   showSizeChanger: false,
                   showQuickJumper: true,
+                  onPageChange: (page) => setCurrentPage(page),
                   showTotal: (total, range) =>
                     t('共 {{total}} 项，当前显示 {{start}}-{{end}} 项', {
                       total,
                       start: range[0],
                       end: range[1],
                     }),
-                }}
+                })}
               />
             </div>
           ) : (

@@ -17,13 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, Table, Empty } from '@douyinfe/semi-ui';
 import {
   IllustrationNoResult,
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getPricingTableColumns } from './PricingTableColumns';
+import { createUnifiedPaginationProps } from '../../../../../helpers/utils';
 
 const PricingTable = ({
   filteredModels,
@@ -46,6 +47,7 @@ const PricingTable = ({
   openModelDetail,
   t,
 }) => {
+  const [currentPage, setCurrentPage] = useState(1);
   const columns = useMemo(() => {
     return getPricingTableColumns({
       t,
@@ -118,13 +120,15 @@ const PricingTable = ({
               style={{ padding: 30 }}
             />
           }
-          pagination={{
-            defaultPageSize: 20,
-            pageSize: pageSize,
+          pagination={createUnifiedPaginationProps({
+            currentPage,
+            pageSize,
+            total: filteredModels.length,
             showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50, 100],
+            pageSizeOpts: [10, 20, 50, 100],
+            onPageChange: (page) => setCurrentPage(page),
             onPageSizeChange: (size) => setPageSize(size),
-          }}
+          })}
         />
       </Card>
     ),
@@ -133,6 +137,7 @@ const PricingTable = ({
       loading,
       processedColumns,
       rowSelection,
+      currentPage,
       pageSize,
       setPageSize,
       openModelDetail,

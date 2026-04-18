@@ -111,7 +111,6 @@ const UsersPage = () => {
           onPageChange: usersData.handlePageChange,
           onPageSizeChange: usersData.handlePageSizeChange,
           isMobile: isMobile,
-          t: usersData.t,
         })}
         t={usersData.t}
       >

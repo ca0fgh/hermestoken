@@ -416,7 +416,6 @@ func migrateLOGDB() error {
 	return nil
 }
 
-
 type sqliteColumnDef struct {
 	Name string
 	DDL  string
@@ -451,9 +450,13 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
+` + "`deleted_at`" + ` datetime,
 PRIMARY KEY (` + "`id`" + `)
 )`
-		return DB.Exec(createSQL).Error
+		if err := DB.Exec(createSQL).Error; err != nil {
+			return err
+		}
+		return ensureSubscriptionPlanDeletedAtIndexSQLite(tableName)
 	}
 	var cols []struct {
 		Name string `gorm:"column:name"`
@@ -487,6 +490,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
+		{Name: "deleted_at", DDL: "`deleted_at` datetime"},
 	}
 	for _, col := range required {
 		if _, ok := existing[col.Name]; ok {
@@ -496,7 +500,14 @@ PRIMARY KEY (` + "`id`" + `)
 			return err
 		}
 	}
-	return nil
+	return ensureSubscriptionPlanDeletedAtIndexSQLite(tableName)
+}
+
+func ensureSubscriptionPlanDeletedAtIndexSQLite(tableName string) error {
+	if !common.UsingSQLite {
+		return nil
+	}
+	return DB.Exec("CREATE INDEX IF NOT EXISTS `idx_subscription_plans_deleted_at` ON `" + tableName + "`(`deleted_at`)").Error
 }
 
 func ensureSubscriptionOrderStockReservedSQLite() error {

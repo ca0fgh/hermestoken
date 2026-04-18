@@ -34,6 +34,7 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { API, showError, showSuccess } from '../../../../helpers';
+import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 import { convertUSDToCurrency } from '../../../../helpers/render';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
@@ -403,14 +404,14 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
           loading={loading}
           scroll={{ x: 'max-content' }}
           hidePagination={false}
-          pagination={{
+          pagination={createUnifiedPaginationProps({
             currentPage,
             pageSize,
             total: subs.length,
             pageSizeOpts: [10, 20, 50],
             showSizeChanger: false,
             onPageChange: handlePageChange,
-          }}
+          })}
           empty={
             <Empty
               image={

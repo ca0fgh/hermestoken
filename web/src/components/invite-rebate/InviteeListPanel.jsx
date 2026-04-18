@@ -24,12 +24,12 @@ import {
   Empty,
   Input,
   List,
-  Pagination,
   Space,
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
 import { renderQuota } from '../../helpers';
+import ListPagination from '../common/ui/ListPagination';
 
 const InviteeListPanel = ({
   t,
@@ -44,11 +44,12 @@ const InviteeListPanel = ({
   emptyHint,
 }) => {
   const items = Array.isArray(pageData?.items) ? pageData.items : [];
+  const totalInvitees = Number(pageData?.total || items.length || 0);
 
   return (
     <Card
       className='!rounded-2xl border-0 shadow-sm h-full bg-white/95 backdrop-blur'
-      title={t('邀请用户')}
+      title={t('我的邀请用户')}
       bodyStyle={{
         display: 'flex',
         flexDirection: 'column',
@@ -57,12 +58,21 @@ const InviteeListPanel = ({
       }}
       loading={loading}
     >
+      <div className='rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3'>
+        <Typography.Text type='secondary' className='block text-sm'>
+          {t('按返佣收益排序，支持按用户名、用户ID或分组查找。')}
+        </Typography.Text>
+        <Typography.Text type='tertiary' className='mt-1 block text-xs'>
+          {t('共 {{count}} 位邀请用户', { count: totalInvitees })}
+        </Typography.Text>
+      </div>
+
       <Space style={{ width: '100%' }} align='start'>
         <Input
           value={keyword}
           showClear
           style={{ flex: 1 }}
-          placeholder={t('搜索用户名')}
+          placeholder={t('搜索用户名 / 用户ID / 分组')}
           onChange={onKeywordChange}
           onEnterPress={onSearch}
         />
@@ -72,7 +82,11 @@ const InviteeListPanel = ({
       </Space>
 
       {items.length === 0 ? (
-        <Empty description={emptyHint || t('暂无邀请用户')} />
+        <Empty
+          description={
+            emptyHint || (keyword ? t('未找到匹配邀请用户') : t('暂无邀请用户数据'))
+          }
+        />
       ) : (
         <List
           dataSource={items}
@@ -105,6 +119,28 @@ const InviteeListPanel = ({
                         {renderQuota(invitee.contribution_quota || 0)}
                       </Typography.Text>
                     </div>
+                    <div className='flex items-center justify-between gap-3 text-xs'>
+                      <Typography.Text type='tertiary'>
+                        {t('已单独设置')}: {Number(invitee.override_group_count || 0)}
+                      </Typography.Text>
+                      <Typography.Text type='tertiary'>
+                        {t('购买订单')}: {Number(invitee.order_count || 0)}
+                      </Typography.Text>
+                    </div>
+                    <div className='flex items-center justify-between gap-3 text-xs'>
+                      <Tag
+                        size='small'
+                        color={
+                          Number(invitee.override_group_count || 0) > 0
+                            ? 'green'
+                            : 'grey'
+                        }
+                      >
+                        {Number(invitee.override_group_count || 0) > 0
+                          ? t('已单独设置返佣')
+                          : t('使用默认')}
+                      </Tag>
+                    </div>
                   </div>
                 }
               />
@@ -113,26 +149,24 @@ const InviteeListPanel = ({
         />
       )}
 
-      <div className='pt-1'>
-        <Pagination
-          total={Number(pageData?.total || 0)}
-          pageSize={Number(pageData?.page_size || 10)}
-          currentPage={Number(pageData?.page || 1)}
-          pageSizeOpts={[10, 20, 50]}
-          onPageChange={(page) =>
-            onPageChange?.({
-              page,
-              page_size: Number(pageData?.page_size || 10),
-            })
-          }
-          onPageSizeChange={(page_size) =>
-            onPageChange?.({
-              page: 1,
-              page_size,
-            })
-          }
-        />
-      </div>
+      <ListPagination
+        total={Number(pageData?.total || 0)}
+        pageSize={Number(pageData?.page_size || 10)}
+        currentPage={Number(pageData?.page || 1)}
+        pageSizeOpts={[10, 20, 50]}
+        onPageChange={(page) =>
+          onPageChange?.({
+            page,
+            page_size: Number(pageData?.page_size || 10),
+          })
+        }
+        onPageSizeChange={(page_size) =>
+          onPageChange?.({
+            page: 1,
+            page_size,
+          })
+        }
+      />
     </Card>
   );
 };
