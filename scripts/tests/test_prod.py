@@ -62,6 +62,65 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("server_name hermestoken.top;", config)
         self.assertIn("proxy_pass http://127.0.0.1:4567;", config)
 
+    def test_build_nginx_site_config_can_skip_cloudflare_real_ip_block(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            include_real_ip_directives=False,
+        )
+
+        self.assertNotIn("real_ip_header CF-Connecting-IP;", config)
+        self.assertNotIn("set_real_ip_from 173.245.48.0/20;", config)
+        self.assertIn("proxy_pass http://127.0.0.1:3000;", config)
+
+    def test_detect_real_ip_conf_returns_true_when_conf_d_already_manages_directives(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            conf_d_path = Path(tmp_dir) / "conf.d"
+            conf_d_path.mkdir(parents=True, exist_ok=True)
+            (conf_d_path / "cloudflare-real-ip.conf").write_text(
+                "real_ip_header CF-Connecting-IP;\nset_real_ip_from 173.245.48.0/20;\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(
+                prod.detect_real_ip_conf_in_conf_d(conf_d_path=conf_d_path)
+            )
+
+    @mock.patch("prod.run_command")
+    @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
+    def test_sync_nginx_site_config_avoids_duplicate_real_ip_block_when_conf_d_exists(
+        self,
+        which,
+        run_command,
+    ):
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            site_path = tmp_path / "sites-available" / "default"
+            conf_d_path = tmp_path / "conf.d"
+            conf_d_path.mkdir(parents=True, exist_ok=True)
+            conf_d_file = conf_d_path / "cloudflare-real-ip.conf"
+            conf_d_file.write_text(
+                "real_ip_header CF-Connecting-IP;\nset_real_ip_from 173.245.48.0/20;\n",
+                encoding="utf-8",
+            )
+
+            changed = prod.sync_nginx_site_config(
+                public_url="https://hermestoken.top",
+                env_values={"APP_PORT": "3000"},
+                output=stdout,
+                site_path=site_path,
+                conf_d_path=conf_d_path,
+            )
+
+            rendered = site_path.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        which.assert_called_once_with("nginx")
+        self.assertNotIn("real_ip_header CF-Connecting-IP;", rendered)
+        self.assertIn("proxy_pass http://127.0.0.1:3000;", rendered)
+        self.assertIn("existing real_ip nginx config", stdout.getvalue())
+
     @mock.patch("prod.run_command")
     @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
     def test_sync_nginx_site_config_writes_file_and_reloads_nginx(

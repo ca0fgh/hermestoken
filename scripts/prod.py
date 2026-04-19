@@ -26,6 +26,7 @@ DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 60
 DEFAULT_HEALTHCHECK_INTERVAL_SECONDS = 1
 PROD_CONTAINER_NAMES = ("hermestoken-prod", "hermestoken-prod-postgres", "hermestoken-prod-redis")
 DEFAULT_NGINX_SITE_PATH = Path("/etc/nginx/sites-available/default")
+DEFAULT_NGINX_CONF_D_PATH = Path("/etc/nginx/conf.d")
 
 CLOUDFLARE_REAL_IP_CIDRS = (
     "173.245.48.0/20",
@@ -96,7 +97,12 @@ def _compose_command_prefix(compose_file_path: Path, env_file_path: Path) -> lis
     ]
 
 
-def build_nginx_site_config(*, public_url: str, app_port: str = "3000") -> str:
+def build_nginx_site_config(
+    *,
+    public_url: str,
+    app_port: str = "3000",
+    include_real_ip_directives: bool = True,
+) -> str:
     parsed = urlparse(public_url)
     hostname = (parsed.hostname or "").strip()
     if not hostname:
@@ -109,12 +115,9 @@ def build_nginx_site_config(*, public_url: str, app_port: str = "3000") -> str:
 
     real_ip_lines = "\n".join(f"set_real_ip_from {cidr};" for cidr in CLOUDFLARE_REAL_IP_CIDRS)
 
-    return f"""map $http_upgrade $connection_upgrade {{
-    default upgrade;
-    '' close;
-}}
-
-# If the site is proxied by Cloudflare, enable real client IP restoration.
+    real_ip_block = ""
+    if include_real_ip_directives:
+        real_ip_block = f"""# If the site is proxied by Cloudflare, enable real client IP restoration.
 # Source of CIDRs:
 # https://www.cloudflare.com/ips-v4
 # https://www.cloudflare.com/ips-v6
@@ -123,6 +126,14 @@ real_ip_recursive on;
 
 {real_ip_lines}
 
+"""
+
+    return f"""map $http_upgrade $connection_upgrade {{
+    default upgrade;
+    '' close;
+}}
+
+{real_ip_block}\
 server {{
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -177,12 +188,29 @@ server {{
 """
 
 
+def detect_real_ip_conf_in_conf_d(*, conf_d_path: Path = DEFAULT_NGINX_CONF_D_PATH) -> bool:
+    if not conf_d_path.is_dir():
+        return False
+
+    for conf_path in sorted(conf_d_path.glob("*.conf")):
+        try:
+            content = conf_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        if "real_ip_header" in content or "set_real_ip_from" in content:
+            return True
+
+    return False
+
+
 def sync_nginx_site_config(
     *,
     public_url: str,
     env_values: Mapping[str, str],
     output: Optional[TextIO] = None,
     site_path: Optional[Path] = None,
+    conf_d_path: Optional[Path] = None,
 ) -> bool:
     stream = output or sys.stdout
 
@@ -191,11 +219,25 @@ def sync_nginx_site_config(
         return False
 
     target_path = site_path or DEFAULT_NGINX_SITE_PATH
+    effective_conf_d_path = conf_d_path or DEFAULT_NGINX_CONF_D_PATH
     app_port = env_values.get("APP_PORT", "3000").strip()
     if not app_port.isdigit():
         app_port = "3000"
 
-    rendered = build_nginx_site_config(public_url=public_url, app_port=app_port)
+    include_real_ip_directives = not detect_real_ip_conf_in_conf_d(
+        conf_d_path=effective_conf_d_path
+    )
+    if not include_real_ip_directives:
+        stream.write(
+            f"[info] Detected existing real_ip nginx config in {effective_conf_d_path}; "
+            "site config will not duplicate Cloudflare real IP directives\n"
+        )
+
+    rendered = build_nginx_site_config(
+        public_url=public_url,
+        app_port=app_port,
+        include_real_ip_directives=include_real_ip_directives,
+    )
     current = target_path.read_text(encoding="utf-8") if target_path.exists() else None
     if current == rendered:
         stream.write(f"[ok] Nginx site config already up to date: {target_path}\n")
