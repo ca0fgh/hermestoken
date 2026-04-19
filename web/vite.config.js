@@ -48,12 +48,16 @@ function buildManualChunkName(id) {
     return 'react-core';
   }
 
-  if (
-    id.includes('axios') ||
-    id.includes('/history/') ||
-    id.includes('/marked/')
-  ) {
-    return 'tools';
+  if (id.includes('/history/')) {
+    return 'history';
+  }
+
+  if (id.includes('axios')) {
+    return 'api-client';
+  }
+
+  if (id.includes('/marked/')) {
+    return 'markdown-runtime';
   }
 
   return undefined;

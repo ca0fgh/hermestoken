@@ -21,11 +21,11 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-import zhCNTranslation from './locales/zh-CN.json';
 import { normalizeLanguage, supportedLanguages } from './language';
 
 const DEFAULT_LANGUAGE = 'zh-CN';
 const localeLoaders = {
+  'zh-CN': () => import('./locales/zh-CN.json'),
   en: () => import('./locales/en.json'),
   'zh-TW': () => import('./locales/zh-TW.json'),
   fr: () => import('./locales/fr.json'),
@@ -33,7 +33,7 @@ const localeLoaders = {
   ja: () => import('./locales/ja.json'),
   vi: () => import('./locales/vi.json'),
 };
-const loadedLanguages = new Set([DEFAULT_LANGUAGE]);
+const loadedLanguages = new Set();
 const languageLoads = new Map();
 
 function getTranslationMessages(module) {
@@ -107,9 +107,7 @@ i18n
     load: 'currentOnly',
     supportedLngs: supportedLanguages,
     partialBundledLanguages: true,
-    resources: {
-      'zh-CN': zhCNTranslation,
-    },
+    resources: {},
     fallbackLng: DEFAULT_LANGUAGE,
     nsSeparator: false,
     interpolation: {

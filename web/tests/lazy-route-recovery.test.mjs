@@ -3,37 +3,41 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const appPath = new URL('../src/App.jsx', import.meta.url);
+const consoleRoutesPath = new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url);
+const publicRoutesPath = new URL('../src/routes/PublicRoutes.jsx', import.meta.url);
 
-test('auth routes stay in the startup shell and lazy routes use retry recovery', async () => {
-  const source = await readFile(appPath, 'utf8');
+test('route groups keep auth screens and console pages behind lazy retry recovery boundaries', async () => {
+  const appSource = await readFile(appPath, 'utf8');
+  const consoleRoutesSource = await readFile(consoleRoutesPath, 'utf8');
+  const publicRoutesSource = await readFile(publicRoutesPath, 'utf8');
 
   assert.match(
-    source,
-    /import LoginForm from '\.\/components\/auth\/LoginForm';/,
+    appSource,
+    /const PublicRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/PublicRoutes'\),/,
   );
   assert.match(
-    source,
-    /import RegisterForm from '\.\/components\/auth\/RegisterForm';/,
-  );
-  assert.doesNotMatch(
-    source,
-    /const LoginForm = lazy\(\(\) => import\('\.\/components\/auth\/LoginForm'\)\);/,
-  );
-  assert.doesNotMatch(
-    source,
-    /const RegisterForm = lazy\(\(\) => import\('\.\/components\/auth\/RegisterForm'\)\);/,
+    appSource,
+    /const ConsoleRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/ConsoleRoutes'\),/,
   );
   assert.match(
-    source,
+    appSource,
     /import \{ lazyWithRetry \} from '\.\/helpers\/lazyWithRetry';/,
   );
   assert.match(
-    source,
-    /const Dashboard = lazyWithRetry\([\s\S]*import\('\.\/pages\/Dashboard'\),[\s\S]*'dashboard-route',[\s\S]*\);/,
+    publicRoutesSource,
+    /const LoginForm = lazyWithRetry\([\s\S]*import\('\.\.\/components\/auth\/LoginForm'\),[\s\S]*'login-route',[\s\S]*\);/,
   );
   assert.match(
-    source,
-    /const OAuth2Callback = lazyWithRetry\([\s\S]*import\('\.\/components\/auth\/OAuth2Callback'\),[\s\S]*'oauth-callback-route',[\s\S]*\);/,
+    publicRoutesSource,
+    /const RegisterForm = lazyWithRetry\([\s\S]*import\('\.\.\/components\/auth\/RegisterForm'\),[\s\S]*'register-route',[\s\S]*\);/,
+  );
+  assert.match(
+    consoleRoutesSource,
+    /const Dashboard = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/Dashboard'\),[\s\S]*'dashboard-route',[\s\S]*\);/,
+  );
+  assert.match(
+    publicRoutesSource,
+    /const OAuth2Callback = lazyWithRetry\([\s\S]*import\('\.\.\/components\/auth\/OAuth2Callback'\),[\s\S]*'oauth-callback-route',[\s\S]*\);/,
   );
 });
 

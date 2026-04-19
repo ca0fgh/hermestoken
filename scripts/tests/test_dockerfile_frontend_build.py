@@ -13,6 +13,8 @@ class DockerfileFrontendBuildTests(unittest.TestCase):
         self.assertIn('prebuilt)', dockerfile)
         self.assertNotIn('auto)', dockerfile)
         self.assertIn('web/dist is empty; use WEB_DIST_STRATEGY=build or provide a prebuilt dist', dockerfile)
+        self.assertIn('validate_dist_integrity()', dockerfile)
+        self.assertIn('missing asset referenced by index.html', dockerfile)
         self.assertIn('ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096', dockerfile)
         self.assertIn('version="${APP_VERSION:-dev}"', dockerfile)
 

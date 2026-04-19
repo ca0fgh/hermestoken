@@ -102,6 +102,7 @@ def build_nginx_site_config(
     public_url: str,
     app_port: str = "3000",
     include_real_ip_directives: bool = True,
+    frontend_dist_path: Optional[Path] = None,
 ) -> str:
     parsed = urlparse(public_url)
     hostname = (parsed.hostname or "").strip()
@@ -125,6 +126,19 @@ real_ip_header CF-Connecting-IP;
 real_ip_recursive on;
 
 {real_ip_lines}
+
+"""
+
+    static_assets_block = ""
+    if frontend_dist_path is not None:
+        dist_root = Path(frontend_dist_path).expanduser()
+        static_assets_block = f"""    location ^~ /assets/ {{
+        root {dist_root.as_posix()};
+        access_log off;
+        etag on;
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }}
 
 """
 
@@ -167,6 +181,7 @@ server {{
 
     client_max_body_size 100m;
 
+{static_assets_block}\
     location / {{
         proxy_pass http://127.0.0.1:{app_port};
         proxy_http_version 1.1;
@@ -211,6 +226,7 @@ def sync_nginx_site_config(
     output: Optional[TextIO] = None,
     site_path: Optional[Path] = None,
     conf_d_path: Optional[Path] = None,
+    frontend_dist_path: Optional[Path] = None,
 ) -> bool:
     stream = output or sys.stdout
 
@@ -237,6 +253,7 @@ def sync_nginx_site_config(
         public_url=public_url,
         app_port=app_port,
         include_real_ip_directives=include_real_ip_directives,
+        frontend_dist_path=frontend_dist_path,
     )
     current = target_path.read_text(encoding="utf-8") if target_path.exists() else None
     if current == rendered:
@@ -425,6 +442,7 @@ def main() -> int:
                 public_url=args.domain,
                 env_values=env_values,
                 output=sys.stdout,
+                frontend_dist_path=REPO_ROOT / "web" / "dist",
             )
 
         return 0

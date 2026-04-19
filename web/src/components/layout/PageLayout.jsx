@@ -25,7 +25,6 @@ import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
-import { API } from '../../helpers/api';
 import { setStatusData } from '../../helpers/data';
 import { getLogo, getSystemName } from '../../helpers/branding';
 import { getOptimizedLogoUrl } from '../../helpers/logo';
@@ -44,6 +43,21 @@ const SemiRuntime = lazy(() => import('../common/SemiRuntime'));
 const MINIMAL_SHELL_FALLBACK = (
   <div className='min-h-screen bg-white dark:bg-slate-950' />
 );
+
+
+async function fetchStatusPayload() {
+  const response = await fetch('/api/status', {
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
 
 const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
@@ -101,8 +115,7 @@ const PageLayout = () => {
   useEffect(() => {
     const loadStatus = async () => {
       try {
-        const res = await API.get('/api/status');
-        const { success, data } = res.data;
+        const { success, data } = await fetchStatusPayload();
         if (success) {
           statusDispatch({ type: 'set', payload: data });
           setStatusData(data);

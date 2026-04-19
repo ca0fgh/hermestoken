@@ -56,29 +56,55 @@ const markdownRendererPath = new URL(
   '../src/components/common/markdown/MarkdownRenderer.jsx',
   import.meta.url,
 );
+const consoleRoutesPath = new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url);
+const publicRoutesPath = new URL('../src/routes/PublicRoutes.jsx', import.meta.url);
+const headerBarHookPath = new URL(
+  '../src/hooks/common/useHeaderBar.js',
+  import.meta.url,
+);
 
-test('heavy console routes are lazy loaded to keep the app entry chunk small', async () => {
-  const source = await readFile(appPath, 'utf8');
+test('app entry lazy loads public and console route groups to keep unrelated route graphs off first paint', async () => {
+  const appSource = await readFile(appPath, 'utf8');
+  const consoleSource = await readFile(consoleRoutesPath, 'utf8');
+  const publicSource = await readFile(publicRoutesPath, 'utf8');
 
   assert.match(
-    source,
-    /const Playground = lazyWithRetry\([\s\S]*import\('\.\/pages\/Playground'\),/,
+    appSource,
+    /const ConsoleRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/ConsoleRoutes'\),/,
   );
   assert.match(
-    source,
-    /const Setting = lazyWithRetry\([\s\S]*import\('\.\/pages\/Setting'\),/,
+    appSource,
+    /const PublicRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/PublicRoutes'\),/,
+  );
+  assert.doesNotMatch(appSource, /import\('\.\/pages\/Setting'\)/);
+  assert.doesNotMatch(appSource, /import\('\.\/pages\/Playground'\)/);
+  assert.match(
+    consoleSource,
+    /const Playground = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/Playground'\),/,
   );
   assert.match(
-    source,
-    /const ModelPage = lazyWithRetry\([\s\S]*import\('\.\/pages\/Model'\),/,
+    consoleSource,
+    /const Setting = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/Setting'\),/,
   );
   assert.match(
-    source,
-    /const Token = lazyWithRetry\([\s\S]*import\('\.\/pages\/Token'\),/,
+    consoleSource,
+    /const ModelPage = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/Model'\),/,
   );
   assert.match(
-    source,
-    /const Chat = lazyWithRetry\([\s\S]*import\('\.\/pages\/Chat'\),/,
+    consoleSource,
+    /const Token = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/Token'\),/,
+  );
+  assert.match(
+    consoleSource,
+    /const Chat = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/Chat'\),/,
+  );
+  assert.match(
+    publicSource,
+    /const LoginForm = lazyWithRetry\([\s\S]*import\('\.\.\/components\/auth\/LoginForm'\),/,
+  );
+  assert.match(
+    publicSource,
+    /const RegisterForm = lazyWithRetry\([\s\S]*import\('\.\.\/components\/auth\/RegisterForm'\),/,
   );
 });
 
@@ -134,6 +160,19 @@ test('startup shell files avoid the helpers barrel so render utilities stay out 
   );
 });
 
+test('startup shell avoids the heavyweight axios helper and lazy loads markdown parsing for the home page', async () => {
+  const pageLayoutSource = await readFile(pageLayoutPath, 'utf8');
+  const homeSource = await readFile(homePath, 'utf8');
+  const headerBarHookSource = await readFile(headerBarHookPath, 'utf8');
+
+  assert.doesNotMatch(pageLayoutSource, /from '\.\.\/\.\.\/helpers\/api';/);
+  assert.doesNotMatch(homeSource, /from '\.\.\/\.\.\/helpers\/api';/);
+  assert.doesNotMatch(headerBarHookSource, /from '\.\.\/\.\.\/helpers\/api';/);
+  assert.doesNotMatch(homeSource, /from 'marked';/);
+  assert.match(homeSource, /await import\('marked'\)/);
+  assert.match(headerBarHookSource, /await import\('\.\.\/\.\.\/helpers\/api'\)/);
+});
+
 test('shared render helpers do not statically import rich-content traversal utilities', async () => {
   const source = await readFile(renderHelperPath, 'utf8');
 
@@ -153,21 +192,27 @@ test('vite build does not carve markdown dependencies into a dedicated startup c
   assert.doesNotMatch(source, /return 'rich-content';/);
 });
 
-test('i18n keeps zh-CN bundled by default and lazy loads only non-default locales', async () => {
+test('vite build isolates route-guard history imports from axios so startup no longer preloads the full API helper chunk', async () => {
+  const source = await readFile(viteConfigPath, 'utf8');
+
+  assert.match(source, /id\.includes\('axios'\)[\s\S]*return 'api-client';/);
+  assert.match(source, /id\.includes\('\/history\/'\)[\s\S]*return 'history';/);
+  assert.match(source, /id\.includes\('\/marked\/'\)[\s\S]*return 'markdown-runtime';/);
+});
+
+test('i18n lazy loads every locale so the default language no longer bloats the startup bundle', async () => {
   const source = await readFile(i18nPath, 'utf8');
 
-  assert.match(
+  assert.doesNotMatch(
     source,
     /import zhCNTranslation from '\.\/locales\/zh-CN\.json';/,
   );
   assert.match(source, /const localeLoaders = \{/);
   assert.doesNotMatch(source, /import\.meta\.glob\('\.\/locales\/\*\.json'\)/);
-  assert.doesNotMatch(
-    source,
-    /'zh-CN': \(\) => import\('\.\/locales\/zh-CN\.json'\)/,
-  );
+  assert.match(source, /'zh-CN': \(\) => import\('\.\/locales\/zh-CN\.json'\)/);
   assert.match(source, /en: \(\) => import\('\.\/locales\/en\.json'\)/);
   assert.match(source, /'zh-TW': \(\) => import\('\.\/locales\/zh-TW\.json'\)/);
+  assert.doesNotMatch(source, /resources:\s*\{\s*'zh-CN': zhCNTranslation,/);
 });
 
 test('render helper lazy loads lobe icons instead of importing the full icon registry upfront', async () => {

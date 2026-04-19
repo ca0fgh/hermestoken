@@ -40,6 +40,7 @@ DEFAULT_CA_BUNDLE_CANDIDATES = (
 )
 DEFAULT_WEB_DIST_STRATEGY = "prebuilt"
 DEFAULT_WEB_BUILD_NODE_OPTIONS = "--max-old-space-size=4096"
+FRONTEND_DIST_ASSET_REFERENCE_PATTERN = re.compile(r"""(?:src|href)=["'](/assets/[^"']+)["']""")
 
 
 @dataclass(frozen=True)
@@ -324,6 +325,35 @@ def resolve_application_version(*, repo_root: Path) -> str:
     )
 
 
+def validate_frontend_dist_integrity(dist_dir: Path) -> None:
+    index_path = dist_dir / "index.html"
+    if not index_path.is_file():
+        raise LauncherError(
+            _build_actionable_message(
+                f"Frontend dist integrity check failed: missing index.html at {index_path}.",
+                "Rebuild the frontend so `web/dist/index.html` exists before packaging.",
+            )
+        )
+
+    index_html = index_path.read_text(encoding="utf-8")
+    referenced_assets = sorted(
+        {
+            match.group(1).split("?", 1)[0].split("#", 1)[0]
+            for match in FRONTEND_DIST_ASSET_REFERENCE_PATTERN.finditer(index_html)
+        }
+    )
+    missing_assets = [asset for asset in referenced_assets if not (dist_dir / asset.lstrip("/")).is_file()]
+    if missing_assets:
+        missing_asset_list = ", ".join(missing_assets)
+        raise LauncherError(
+            _build_actionable_message(
+                "Frontend dist integrity check failed: "
+                f"`index.html` references missing assets: {missing_asset_list}.",
+                "Rebuild the frontend so `web/dist/index.html` and `web/dist/assets` stay in sync before packaging.",
+            )
+        )
+
+
 def prepare_frontend_dist_for_docker_packaging(
     *,
     output: TextIO,
@@ -377,6 +407,8 @@ def prepare_frontend_dist_for_docker_packaging(
         env=build_env,
         stdout_stream=output,
     )
+    validate_frontend_dist_integrity(web_dir / "dist")
+    output.write("[ok] Frontend dist integrity verified\n")
     output.write("[ok] Host frontend build ready\n")
 
 

@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
-import { Layout, TabPane, Tabs } from '@douyinfe/semi-ui';
+import React, { Suspense, useEffect, useState } from 'react';
+import { Layout, Spin, TabPane, Tabs } from '@douyinfe/semi-ui';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -35,27 +35,67 @@ import {
   Server,
   Activity,
 } from 'lucide-react';
-
-import SystemSetting from '../../components/settings/SystemSetting';
 import { isRoot } from '../../helpers';
-import OtherSetting from '../../components/settings/OtherSetting';
-import OperationSetting from '../../components/settings/OperationSetting';
-import RateLimitSetting from '../../components/settings/RateLimitSetting';
-import ModelSetting from '../../components/settings/ModelSetting';
-import DashboardSetting from '../../components/settings/DashboardSetting';
-import RatioSetting from '../../components/settings/RatioSetting';
-import ChatsSetting from '../../components/settings/ChatsSetting';
-import DrawingSetting from '../../components/settings/DrawingSetting';
-import PaymentSetting from '../../components/settings/PaymentSetting';
-import ModelDeploymentSetting from '../../components/settings/ModelDeploymentSetting';
-import PerformanceSetting from '../../components/settings/PerformanceSetting';
-import ReferralSetting from '../../components/settings/ReferralSetting';
+import { lazyWithRetry } from '../../helpers/lazyWithRetry';
+
+const SystemSetting = lazyWithRetry(
+  () => import('../../components/settings/SystemSetting'),
+  'setting-system-tab',
+);
+const OtherSetting = lazyWithRetry(
+  () => import('../../components/settings/OtherSetting'),
+  'setting-other-tab',
+);
+const OperationSetting = lazyWithRetry(
+  () => import('../../components/settings/OperationSetting'),
+  'setting-operation-tab',
+);
+const RateLimitSetting = lazyWithRetry(
+  () => import('../../components/settings/RateLimitSetting'),
+  'setting-ratelimit-tab',
+);
+const ModelSetting = lazyWithRetry(
+  () => import('../../components/settings/ModelSetting'),
+  'setting-models-tab',
+);
+const DashboardSetting = lazyWithRetry(
+  () => import('../../components/settings/DashboardSetting'),
+  'setting-dashboard-tab',
+);
+const RatioSetting = lazyWithRetry(
+  () => import('../../components/settings/RatioSetting'),
+  'setting-ratio-tab',
+);
+const ChatsSetting = lazyWithRetry(
+  () => import('../../components/settings/ChatsSetting'),
+  'setting-chats-tab',
+);
+const DrawingSetting = lazyWithRetry(
+  () => import('../../components/settings/DrawingSetting'),
+  'setting-drawing-tab',
+);
+const PaymentSetting = lazyWithRetry(
+  () => import('../../components/settings/PaymentSetting'),
+  'setting-payment-tab',
+);
+const ModelDeploymentSetting = lazyWithRetry(
+  () => import('../../components/settings/ModelDeploymentSetting'),
+  'setting-model-deployment-tab',
+);
+const PerformanceSetting = lazyWithRetry(
+  () => import('../../components/settings/PerformanceSetting'),
+  'setting-performance-tab',
+);
+const ReferralSetting = lazyWithRetry(
+  () => import('../../components/settings/ReferralSetting'),
+  'setting-referral-tab',
+);
 
 const Setting = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const [tabActiveKey, setTabActiveKey] = useState('1');
+  const [tabActiveKey, setTabActiveKey] = useState('operation');
   let panes = [];
 
   if (isRoot()) {
@@ -190,19 +230,22 @@ const Setting = () => {
       itemKey: 'other',
     });
   }
+
   const onChangeTab = (key) => {
     setTabActiveKey(key);
     navigate(`?tab=${key}`);
   };
+
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const tab = searchParams.get('tab');
     if (tab) {
       setTabActiveKey(tab);
-    } else {
-      onChangeTab('operation');
+      return;
     }
+    onChangeTab('operation');
   }, [location.search]);
+
   return (
     <div className='mt-[60px] px-2'>
       <Layout>
@@ -215,7 +258,11 @@ const Setting = () => {
           >
             {panes.map((pane) => (
               <TabPane itemKey={pane.itemKey} tab={pane.tab} key={pane.itemKey}>
-                {tabActiveKey === pane.itemKey && pane.content}
+                {tabActiveKey === pane.itemKey ? (
+                  <Suspense fallback={<Spin spinning />}>
+                    {pane.content}
+                  </Suspense>
+                ) : null}
               </TabPane>
             ))}
           </Tabs>

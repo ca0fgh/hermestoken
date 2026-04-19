@@ -293,8 +293,10 @@ class LauncherCommonTests(unittest.TestCase):
     @mock.patch.dict(os.environ, {}, clear=True)
     @mock.patch("launcher_common.run_command")
     @mock.patch("launcher_common.require_executable")
+    @mock.patch("launcher_common.validate_frontend_dist_integrity")
     def test_prepare_frontend_dist_for_docker_packaging_builds_on_host(
         self,
+        validate_frontend_dist_integrity,
         require_executable,
         run_command,
     ):
@@ -331,13 +333,16 @@ class LauncherCommonTests(unittest.TestCase):
                 ),
             ]
         )
+        validate_frontend_dist_integrity.assert_called_once_with(web_dir / "dist")
         self.assertIn("WEB_DIST_STRATEGY=prebuilt", stdout.getvalue())
 
     @mock.patch.dict(os.environ, {}, clear=True)
     @mock.patch("launcher_common.run_command")
     @mock.patch("launcher_common.require_executable")
+    @mock.patch("launcher_common.validate_frontend_dist_integrity")
     def test_prepare_frontend_dist_for_docker_packaging_falls_back_to_git_describe_when_version_file_empty(
         self,
+        validate_frontend_dist_integrity,
         require_executable,
         run_command,
     ):
@@ -390,7 +395,64 @@ class LauncherCommonTests(unittest.TestCase):
                 ),
             ]
         )
+        validate_frontend_dist_integrity.assert_called_once_with(web_dir / "dist")
         self.assertIn("git describe fallback", stdout.getvalue())
+
+    def test_validate_frontend_dist_integrity_accepts_index_references_that_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dist_dir = Path(tmpdir)
+            assets_dir = dist_dir / "assets"
+            assets_dir.mkdir()
+            (dist_dir / "index.html").write_text(
+                """
+                <!doctype html>
+                <html>
+                  <head>
+                    <link rel="stylesheet" href="/assets/index-abc123.css" />
+                  </head>
+                  <body>
+                    <script type="module" src="/assets/index-xyz789.js"></script>
+                  </body>
+                </html>
+                """,
+                encoding="utf-8",
+            )
+            (assets_dir / "index-abc123.css").write_text("body{}", encoding="utf-8")
+            (assets_dir / "index-xyz789.js").write_text("console.log('ok')", encoding="utf-8")
+
+            launcher_common.validate_frontend_dist_integrity(dist_dir)
+
+    def test_validate_frontend_dist_integrity_rejects_missing_asset_reference(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dist_dir = Path(tmpdir)
+            assets_dir = dist_dir / "assets"
+            assets_dir.mkdir()
+            (dist_dir / "index.html").write_text(
+                """
+                <!doctype html>
+                <html>
+                  <body>
+                    <script type="module" src="/assets/index-missing.js"></script>
+                  </body>
+                </html>
+                """,
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(launcher_common.LauncherError) as context:
+                launcher_common.validate_frontend_dist_integrity(dist_dir)
+
+        self.assertIn("/assets/index-missing.js", str(context.exception))
+        self.assertIn("stay in sync", str(context.exception))
+
+    def test_validate_frontend_dist_integrity_rejects_missing_index_html(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dist_dir = Path(tmpdir)
+
+            with self.assertRaises(launcher_common.LauncherError) as context:
+                launcher_common.validate_frontend_dist_integrity(dist_dir)
+
+        self.assertIn("index.html", str(context.exception))
 
     @mock.patch("launcher_common.run_command")
     def test_remove_legacy_compose_containers_removes_only_matching_legacy_project_for_target_compose(self, run_command):

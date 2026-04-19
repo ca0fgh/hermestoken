@@ -10,7 +10,7 @@ const readSource = (relativePath) =>
   );
 
 test('admin route tree exposes wallet withdrawal management', () => {
-  const appSource = readSource('src/App.jsx');
+  const appSource = readSource('src/routes/ConsoleRoutes.jsx');
   const sidebarSource = readSource('src/components/layout/SiderBar.jsx');
   const useSidebarSource = readSource('src/hooks/common/useSidebar.js');
   const adminSettingsSource = readSource(

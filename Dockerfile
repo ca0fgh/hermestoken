@@ -15,6 +15,28 @@ RUN set -eux; \
       fi; \
       printf '%s' "$version"; \
     }; \
+    validate_dist_integrity() { \
+      dist_dir="$1"; \
+      index_path="$dist_dir/index.html"; \
+      if [ ! -f "$index_path" ]; then \
+        echo "missing index.html in frontend dist: $index_path" >&2; \
+        exit 1; \
+      fi; \
+      missing_assets_file="$(mktemp)"; \
+      grep -Eo '/assets/[^"'"'"'?# ]+' "$index_path" | sort -u > "$missing_assets_file.refs"; \
+      while IFS= read -r asset; do \
+        [ -n "$asset" ] || continue; \
+        if [ ! -f "$dist_dir/${asset#/}" ]; then \
+          echo "missing asset referenced by index.html: $asset" >> "$missing_assets_file"; \
+        fi; \
+      done < "$missing_assets_file.refs"; \
+      if [ -s "$missing_assets_file" ]; then \
+        cat "$missing_assets_file" >&2; \
+        rm -f "$missing_assets_file" "$missing_assets_file.refs"; \
+        exit 1; \
+      fi; \
+      rm -f "$missing_assets_file" "$missing_assets_file.refs"; \
+    }; \
     build_web_dist() { \
       version="$(resolve_version)"; \
       cd web; \
@@ -22,6 +44,7 @@ RUN set -eux; \
       DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$version" bun run build; \
       mkdir -p /build/dist; \
       cp -R dist/. /build/dist/; \
+      validate_dist_integrity /build/dist; \
     }; \
     copy_prebuilt_dist() { \
       if [ ! -d web/dist ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then \
@@ -30,6 +53,7 @@ RUN set -eux; \
       fi; \
       mkdir -p /build/dist; \
       cp -R web/dist/. /build/dist/; \
+      validate_dist_integrity /build/dist; \
     }; \
     case "$WEB_DIST_STRATEGY" in \
       build) \

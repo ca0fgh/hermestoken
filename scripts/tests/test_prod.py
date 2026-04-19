@@ -73,6 +73,18 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertNotIn("set_real_ip_from 173.245.48.0/20;", config)
         self.assertIn("proxy_pass http://127.0.0.1:3000;", config)
 
+    def test_build_nginx_site_config_can_serve_fingerprinted_assets_directly_from_host_dist(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            frontend_dist_path=Path("/opt/hermestoken/web/dist"),
+        )
+
+        self.assertIn("location ^~ /assets/ {", config)
+        self.assertIn("root /opt/hermestoken/web/dist;", config)
+        self.assertIn('add_header Cache-Control "public, max-age=31536000, immutable" always;', config)
+        self.assertIn("try_files $uri =404;", config)
+
     def test_detect_real_ip_conf_returns_true_when_conf_d_already_manages_directives(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             conf_d_path = Path(tmp_dir) / "conf.d"
@@ -359,6 +371,7 @@ class ProdLauncherTests(unittest.TestCase):
             public_url="https://hermestoken.top",
             env_values={"APP_PORT": "3000"},
             output=stdout,
+            frontend_dist_path=prod.REPO_ROOT / "web" / "dist",
         )
 
     @mock.patch(

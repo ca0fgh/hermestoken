@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 
 const appSource = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const consoleRoutesSource = readFileSync(
+  new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url),
+  'utf8',
+);
 const appRoutesPath = new URL('../src/AppRoutes.jsx', import.meta.url);
 const siderBarSource = readFileSync(
   new URL('../src/components/layout/SiderBar.jsx', import.meta.url),
@@ -30,10 +34,14 @@ const adminSidebarSettingsSource = readFileSync(
 test('app entry lazy loads the invite rebate console page on the live route tree', () => {
   assert.match(
     appSource,
-    /const InviteRebate = lazyWithRetry\(\n  \(\) => import\('\.\/pages\/InviteRebate'\),\n  'invite-rebate-route',\n\);/,
+    /const ConsoleRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/ConsoleRoutes'\),/,
   );
   assert.match(
-    appSource,
+    consoleRoutesSource,
+    /const InviteRebate = lazyWithRetry\([\s\S]*import\('\.\.\/pages\/InviteRebate'\),[\s\S]*'invite-rebate-route',[\s\S]*\);/,
+  );
+  assert.match(
+    consoleRoutesSource,
     /path='\/console\/invite\/rebate'[\s\S]*<PrivateRoute>\{renderWithSuspense\(<InviteRebate \/>\)\}<\/PrivateRoute>/,
   );
   assert.doesNotMatch(

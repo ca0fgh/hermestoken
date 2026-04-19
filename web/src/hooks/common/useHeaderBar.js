@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 import { useSetTheme, useTheme, useActualTheme } from '../../context/Theme';
-import { API } from '../../helpers/api';
 import { getLogo } from '../../helpers/branding';
 import {
   getPricingRequireAuth,
@@ -35,6 +34,11 @@ import { showSuccess } from '../../helpers/notifications';
 import { useIsMobile } from './useIsMobile';
 import { useSidebarCollapsed } from './useSidebarCollapsed';
 import { useMinimumLoadingTime } from './useMinimumLoadingTime';
+
+async function getApiClient() {
+  const { API } = await import('../../helpers/api');
+  return API;
+}
 
 export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
   const { t, i18n } = useTranslation();
@@ -115,6 +119,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
 
   // Actions
   const logout = useCallback(async () => {
+    const API = await getApiClient();
     await API.get('/api/user/logout');
     showSuccess(t('注销成功!'));
     userDispatch({ type: 'logout' });
@@ -133,6 +138,7 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
       // If user is logged in, save preference to backend
       if (userState?.user?.id) {
         try {
+          const API = await getApiClient();
           const res = await API.put('/api/user/self', {
             language: lang,
           });

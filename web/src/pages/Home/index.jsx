@@ -25,16 +25,34 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { API } from '../../helpers/api';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
-import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { showError } from '../../helpers/notifications';
 
 const MarketingNoticeModal = lazy(
   () => import('../../components/layout/MarketingNoticeModal'),
 );
+
+
+async function fetchHomePayload(path) {
+  const response = await fetch(path, {
+    headers: {
+      'Cache-Control': 'no-store',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function renderHomePageMarkdown(markdown) {
+  const { marked } = await import('marked');
+  return marked.parse(markdown);
+}
 
 const Home = () => {
   const { t, i18n } = useTranslation();
@@ -100,12 +118,13 @@ const Home = () => {
       cachedHomePageContent = '';
     }
     try {
-      const res = await API.get('/api/home_page_content');
-      const { success, message, data } = res.data;
+      const { success, message, data } = await fetchHomePayload(
+        '/api/home_page_content',
+      );
       if (success) {
         let content = data;
         if (!data.startsWith('https://')) {
-          content = marked.parse(data);
+          content = await renderHomePageMarkdown(data);
         }
         setHomePageContent(content);
         try {
@@ -138,8 +157,7 @@ const Home = () => {
       const today = new Date().toDateString();
       if (lastCloseDate !== today) {
         try {
-          const res = await API.get('/api/notice');
-          const { success, data } = res.data;
+          const { success, data } = await fetchHomePayload('/api/notice');
           if (success && data && data.trim() !== '') {
             setNoticeVisible(true);
           }
