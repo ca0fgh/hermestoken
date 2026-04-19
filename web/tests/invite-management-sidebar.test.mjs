@@ -58,10 +58,9 @@ test('sidebar renders a standalone invite management group with the rebate item'
     /from '\.\.\/\.\.\/helpers\/notifications';/,
   );
   assert.doesNotMatch(siderBarSource, /from '\.\.\/\.\.\/helpers\/session';/);
-  assert.match(siderBarSource, /document\.body\.classList\.add\('sidebar-collapsed'\)/);
-  assert.match(
+  assert.doesNotMatch(
     siderBarSource,
-    /document\.body\.classList\.remove\('sidebar-collapsed'\)/,
+    /document\.body\.classList\.(add|remove)\('sidebar-collapsed'\)/,
   );
   assert.match(siderBarSource, /const sidebarWidth = collapsed\s*\?/);
   assert.match(siderBarSource, /width:\s*sidebarWidth/);

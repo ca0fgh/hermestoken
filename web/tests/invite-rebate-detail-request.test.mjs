@@ -49,21 +49,22 @@ test('createInviteeDetailRequestGuard invalidates in-flight detail requests when
   assert.equal(guard.isCurrent(request), false);
 });
 
-test('resolveInviteeSelectionAfterPageRefresh clears the guard when the selected invitee disappears from the next page', () => {
+test('resolveInviteeSelectionAfterPageRefresh falls back to the first next-page invitee without clearing detail state', () => {
   const guard = createInviteeDetailRequestGuard();
   const request = guard.begin(404);
   let cleared = false;
+  const replacementInvitee = { id: 505, username: 'other-user' };
 
   const nextInvitee = resolveInviteeSelectionAfterPageRefresh({
     currentInvitee: { id: 404, username: 'gone-user' },
-    nextItems: [{ id: 505, username: 'other-user' }],
+    nextItems: [replacementInvitee],
     requestGuard: guard,
     onSelectionCleared: () => {
       cleared = true;
     },
   });
 
-  assert.equal(nextInvitee, null);
-  assert.equal(cleared, true);
-  assert.equal(guard.isCurrent(request), false);
+  assert.deepEqual(nextInvitee, replacementInvitee);
+  assert.equal(cleared, false);
+  assert.equal(guard.isCurrent(request), true);
 });
