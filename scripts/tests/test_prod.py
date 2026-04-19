@@ -60,7 +60,15 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("server_name hermestoken.top www.hermestoken.top _;", config)
         self.assertIn("server_name www.hermestoken.top _;", config)
         self.assertIn("server_name hermestoken.top;", config)
+        self.assertIn("listen 443 ssl http2 default_server;", config)
+        self.assertIn("listen [::]:443 ssl http2 default_server;", config)
+        self.assertIn("listen 443 ssl http2;", config)
+        self.assertIn("listen [::]:443 ssl http2;", config)
         self.assertIn("proxy_pass http://127.0.0.1:4567;", config)
+        self.assertIn("gzip on;", config)
+        self.assertIn("gzip_comp_level 5;", config)
+        self.assertIn("application/javascript", config)
+        self.assertIn("application/json", config)
 
     def test_build_nginx_site_config_can_skip_cloudflare_real_ip_block(self):
         config = prod.build_nginx_site_config(

@@ -11,6 +11,7 @@ const paymentSettingSource = readFileSync(
   'web/src/components/settings/PaymentSetting.jsx',
   'utf8',
 );
+const apiHelperSource = readFileSync('web/src/helpers/api.js', 'utf8');
 
 test('settings page lazy loads heavyweight tab surfaces instead of importing every tab into one chunk', () => {
   assert.match(settingPageSource, /import \{ lazyWithRetry \} from '\.\.\/\.\.\/helpers\/lazyWithRetry';/);
@@ -63,4 +64,12 @@ test('payment settings lazy load provider panels so the settings route stops inh
     /const SettingsWithdrawal = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsWithdrawal'\),/,
   );
   assert.match(paymentSettingSource, /<Suspense fallback=\{null\}>/);
+});
+
+test('api helper reuses recent admin option responses and invalidates them after option writes', () => {
+  assert.match(apiHelperSource, /const OPTION_RESPONSE_CACHE_TTL_MS = 30_000;/);
+  assert.match(apiHelperSource, /url === '\/api\/option\/'/);
+  assert.match(apiHelperSource, /config\?\.disableResponseCache/);
+  assert.match(apiHelperSource, /startsWith\('\/api\/option\/'\)/);
+  assert.match(apiHelperSource, /const cachedGetResponses = new Map\(\);/);
 });

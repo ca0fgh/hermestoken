@@ -32,6 +32,8 @@ export let API = axios.create({
     'Cache-Control': 'no-store',
   },
 });
+const OPTION_RESPONSE_CACHE_TTL_MS = 30_000;
+
 function redirectToOAuthUrl(url, options = {}) {
   const { openInNewTab = false } = options;
   const targetUrl = typeof url === 'string' ? url : url.toString();
@@ -45,11 +47,63 @@ function redirectToOAuthUrl(url, options = {}) {
 }
 function patchAPIInstance(instance) {
   const originalGet = instance.get.bind(instance);
+  const originalDelete = instance.delete.bind(instance);
+  const originalPost = instance.post.bind(instance);
+  const originalPut = instance.put.bind(instance);
+  const originalPatch = instance.patch?.bind(instance);
   const inFlightGetRequests = new Map();
+  const cachedGetResponses = new Map();
+
+  const cloneResponseData = (value) => {
+    if (value === undefined) {
+      return value;
+    }
+    if (typeof structuredClone === 'function') {
+      return structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value));
+  };
+
+  const cloneAxiosResponse = (response) => ({
+    ...response,
+    data: cloneResponseData(response.data),
+  });
 
   const genKey = (url, config = {}) => {
     const params = config.params ? JSON.stringify(config.params) : '{}';
     return `${url}?${params}`;
+  };
+
+  const getResponseCacheTTL = (url) => {
+    if (url === '/api/option/') {
+      return OPTION_RESPONSE_CACHE_TTL_MS;
+    }
+    return 0;
+  };
+
+  const clearCachedGetResponse = (url) => {
+    if (!url.startsWith('/api/option/')) {
+      return;
+    }
+
+    for (const key of cachedGetResponses.keys()) {
+      if (key.startsWith('/api/option/?')) {
+        cachedGetResponses.delete(key);
+      }
+    }
+  };
+
+  const patchMutationMethod = (methodName, originalMethod) => {
+    if (!originalMethod) {
+      return;
+    }
+
+    instance[methodName] = (url, ...args) => {
+      if (typeof url === 'string') {
+        clearCachedGetResponse(url);
+      }
+      return originalMethod(url, ...args);
+    };
   };
 
   instance.get = (url, config = {}) => {
@@ -58,17 +112,42 @@ function patchAPIInstance(instance) {
     }
 
     const key = genKey(url, config);
-    if (inFlightGetRequests.has(key)) {
-      return inFlightGetRequests.get(key);
+    const cacheTTL = config?.disableResponseCache ? 0 : getResponseCacheTTL(url);
+
+    if (cacheTTL > 0) {
+      const cachedResponse = cachedGetResponses.get(key);
+      if (cachedResponse && cachedResponse.expiresAt > Date.now()) {
+        return Promise.resolve(cloneAxiosResponse(cachedResponse.response));
+      }
+      cachedGetResponses.delete(key);
     }
 
-    const reqPromise = originalGet(url, config).finally(() => {
-      inFlightGetRequests.delete(key);
-    });
+    if (inFlightGetRequests.has(key)) {
+      return inFlightGetRequests.get(key).then(cloneAxiosResponse);
+    }
+
+    const reqPromise = originalGet(url, config)
+      .then((response) => {
+        if (cacheTTL > 0) {
+          cachedGetResponses.set(key, {
+            expiresAt: Date.now() + cacheTTL,
+            response: cloneAxiosResponse(response),
+          });
+        }
+        return response;
+      })
+      .finally(() => {
+        inFlightGetRequests.delete(key);
+      });
 
     inFlightGetRequests.set(key, reqPromise);
-    return reqPromise;
+    return reqPromise.then(cloneAxiosResponse);
   };
+
+  patchMutationMethod('delete', originalDelete);
+  patchMutationMethod('post', originalPost);
+  patchMutationMethod('put', originalPut);
+  patchMutationMethod('patch', originalPatch);
 }
 
 patchAPIInstance(API);

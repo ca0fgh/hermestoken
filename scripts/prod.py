@@ -221,8 +221,8 @@ server {{
 }}
 
 server {{
-    listen 443 ssl default_server;
-    listen [::]:443 ssl default_server;
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
     server_name {www_host} _;
 
     ssl_certificate /etc/letsencrypt/live/{canonical_host}/fullchain.pem;
@@ -234,8 +234,8 @@ server {{
 }}
 
 server {{
-    listen 443 ssl;
-    listen [::]:443 ssl;
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
     server_name {canonical_host};
 
     ssl_certificate /etc/letsencrypt/live/{canonical_host}/fullchain.pem;
@@ -244,6 +244,20 @@ server {{
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     client_max_body_size 100m;
+    gzip on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_vary on;
+    gzip_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/manifest+json
+        application/xml
+        image/svg+xml;
 
 {static_assets_block}\
 }}
