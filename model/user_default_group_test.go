@@ -12,34 +12,35 @@ import (
 )
 
 type userSchemaWithoutGroupDefault struct {
-	Id               int            `gorm:"column:id;primaryKey;autoIncrement"`
-	Username         string         `gorm:"column:username;type:text;uniqueIndex"`
-	Password         string         `gorm:"column:password;type:text;not null"`
-	OriginalPassword string         `gorm:"-:all"`
-	DisplayName      string         `gorm:"column:display_name;type:text"`
-	Role             int            `gorm:"column:role;type:int;default:1"`
-	Status           int            `gorm:"column:status;type:int;default:1"`
-	Email            string         `gorm:"column:email;type:text"`
-	GitHubId         string         `gorm:"column:github_id;type:text"`
-	DiscordId        string         `gorm:"column:discord_id;type:text"`
-	OidcId           string         `gorm:"column:oidc_id;type:text"`
-	WeChatId         string         `gorm:"column:wechat_id;type:text"`
-	TelegramId       string         `gorm:"column:telegram_id;type:text"`
-	AccessToken      *string        `gorm:"column:access_token;type:text"`
-	Quota            int            `gorm:"column:quota;type:int;default:0"`
-	UsedQuota        int            `gorm:"column:used_quota;type:int;default:0"`
-	RequestCount     int            `gorm:"column:request_count;type:int;default:0"`
-	Group            string         `gorm:"column:group;type:varchar(64);not null"`
-	AffCode          string         `gorm:"column:aff_code;type:text"`
-	AffCount         int            `gorm:"column:aff_count;type:int;default:0"`
-	AffQuota         int            `gorm:"column:aff_quota;type:int;default:0"`
-	AffHistoryQuota  int            `gorm:"column:aff_history;type:int;default:0"`
-	InviterId        int            `gorm:"column:inviter_id;type:int"`
-	DeletedAt        gorm.DeletedAt `gorm:"column:deleted_at;index"`
-	LinuxDOId        string         `gorm:"column:linux_do_id;type:text"`
-	Setting          string         `gorm:"column:setting;type:text"`
-	Remark           string         `gorm:"column:remark;type:text"`
-	StripeCustomer   string         `gorm:"column:stripe_customer;type:text"`
+	Id                  int            `gorm:"column:id;primaryKey;autoIncrement"`
+	Username            string         `gorm:"column:username;type:text;uniqueIndex"`
+	Password            string         `gorm:"column:password;type:text;not null"`
+	OriginalPassword    string         `gorm:"-:all"`
+	DisplayName         string         `gorm:"column:display_name;type:text"`
+	Role                int            `gorm:"column:role;type:int;default:1"`
+	Status              int            `gorm:"column:status;type:int;default:1"`
+	Email               string         `gorm:"column:email;type:text"`
+	GitHubId            string         `gorm:"column:github_id;type:text"`
+	DiscordId           string         `gorm:"column:discord_id;type:text"`
+	OidcId              string         `gorm:"column:oidc_id;type:text"`
+	WeChatId            string         `gorm:"column:wechat_id;type:text"`
+	TelegramId          string         `gorm:"column:telegram_id;type:text"`
+	AccessToken         *string        `gorm:"column:access_token;type:text"`
+	Quota               int            `gorm:"column:quota;type:int;default:0"`
+	WithdrawFrozenQuota int            `gorm:"column:withdraw_frozen_quota;type:int;default:0"`
+	UsedQuota           int            `gorm:"column:used_quota;type:int;default:0"`
+	RequestCount        int            `gorm:"column:request_count;type:int;default:0"`
+	Group               string         `gorm:"column:group;type:varchar(64);not null"`
+	AffCode             string         `gorm:"column:aff_code;type:text"`
+	AffCount            int            `gorm:"column:aff_count;type:int;default:0"`
+	AffQuota            int            `gorm:"column:aff_quota;type:int;default:0"`
+	AffHistoryQuota     int            `gorm:"column:aff_history;type:int;default:0"`
+	InviterId           int            `gorm:"column:inviter_id;type:int"`
+	DeletedAt           gorm.DeletedAt `gorm:"column:deleted_at;index"`
+	LinuxDOId           string         `gorm:"column:linux_do_id;type:text"`
+	Setting             string         `gorm:"column:setting;type:text"`
+	Remark              string         `gorm:"column:remark;type:text"`
+	StripeCustomer      string         `gorm:"column:stripe_customer;type:text"`
 }
 
 func (userSchemaWithoutGroupDefault) TableName() string {
@@ -194,12 +195,12 @@ func TestInsertCountsInviteesEvenWhenInviterQuotaRewardIsDisabled(t *testing.T) 
 	common.QuotaForInvitee = 0
 	common.QuotaForNewUser = 0
 
-		inviter := &userSchemaWithoutGroupDefault{
-			Username: "inviter-no-quota",
-			Password: strings.Repeat("h", 16),
-			Group:    "default",
-			AffCode:  "INVQ",
-			Role:     common.RoleCommonUser,
+	inviter := &userSchemaWithoutGroupDefault{
+		Username: "inviter-no-quota",
+		Password: strings.Repeat("h", 16),
+		Group:    "default",
+		AffCode:  "INVQ",
+		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 	}
 	if err := db.Create(inviter).Error; err != nil {
@@ -243,12 +244,12 @@ func TestFinalizeOAuthUserCreationCountsInviteesEvenWhenInviterQuotaRewardIsDisa
 	common.QuotaForInvitee = 0
 	common.QuotaForNewUser = 0
 
-		inviter := &userSchemaWithoutGroupDefault{
-			Username: "oauth-inviter-no-quota",
-			Password: strings.Repeat("h", 16),
-			Group:    "default",
-			AffCode:  "OINV",
-			Role:     common.RoleCommonUser,
+	inviter := &userSchemaWithoutGroupDefault{
+		Username: "oauth-inviter-no-quota",
+		Password: strings.Repeat("h", 16),
+		Group:    "default",
+		AffCode:  "OINV",
+		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 	}
 	if err := db.Create(inviter).Error; err != nil {

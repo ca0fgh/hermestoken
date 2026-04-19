@@ -106,14 +106,15 @@ func TestMarkPaidConsumesFrozenQuotaWithoutTouchingAvailableQuota(t *testing.T) 
 
 	user := seedWithdrawalUser(t, db, "withdraw-paid-user", 99900)
 	withdrawal := seedApprovedWithdrawal(t, db, user.Id, 100)
+	expectedQuota := user.Quota - withdrawal.ApplyQuota
 
 	if err := MarkUserWithdrawalPaid(withdrawal.Id, 88, MarkUserWithdrawalPaidParams{PayReceiptNo: "ALI123"}); err != nil {
 		t.Fatalf("MarkUserWithdrawalPaid returned error: %v", err)
 	}
 
 	refreshed, _ := GetUserById(user.Id, true)
-	if refreshed.Quota != 99900 {
-		t.Fatalf("quota = %d, want unchanged 99900", refreshed.Quota)
+	if refreshed.Quota != expectedQuota {
+		t.Fatalf("quota = %d, want unchanged %d", refreshed.Quota, expectedQuota)
 	}
 	if refreshed.WithdrawFrozenQuota != 0 {
 		t.Fatalf("withdraw_frozen_quota = %d, want 0", refreshed.WithdrawFrozenQuota)
