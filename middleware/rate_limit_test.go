@@ -3,9 +3,12 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -112,5 +115,111 @@ func TestGlobalWebRateLimitBypassesStaticAssetsButStillLimitsPages(t *testing.T)
 	router.ServeHTTP(pageRecorder2, pageRequest2)
 	if pageRecorder2.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected repeated page request to be rate limited, got %d", pageRecorder2.Code)
+	}
+}
+
+func TestGlobalAPIRateLimitUsesAuthenticatedUserIdentityBeforeIP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	oldEnable := common.GlobalApiRateLimitEnable
+	oldNum := common.GlobalApiRateLimitNum
+	oldDuration := common.GlobalApiRateLimitDuration
+	oldRedisEnabled := common.RedisEnabled
+	oldLimiter := inMemoryRateLimiter
+	defer func() {
+		common.GlobalApiRateLimitEnable = oldEnable
+		common.GlobalApiRateLimitNum = oldNum
+		common.GlobalApiRateLimitDuration = oldDuration
+		common.RedisEnabled = oldRedisEnabled
+		inMemoryRateLimiter = oldLimiter
+	}()
+
+	common.GlobalApiRateLimitEnable = true
+	common.GlobalApiRateLimitNum = 1
+	common.GlobalApiRateLimitDuration = 60
+	common.RedisEnabled = false
+	inMemoryRateLimiter = common.InMemoryRateLimiter{}
+
+	router := gin.New()
+	store := cookie.NewStore([]byte("test-session-secret"))
+	router.Use(sessions.Sessions("session", store))
+	router.Use(func(c *gin.Context) {
+		if raw := c.GetHeader("X-Debug-User-ID"); raw != "" {
+			if id, err := strconv.Atoi(raw); err == nil {
+				session := sessions.Default(c)
+				session.Set("id", id)
+				_ = session.Save()
+			}
+		}
+		c.Next()
+	})
+	router.Use(GlobalAPIRateLimit())
+	router.GET("/api/demo", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req1 := httptest.NewRequest(http.MethodGet, "/api/demo", nil)
+	req1.RemoteAddr = "198.51.100.25:5678"
+	req1.Header.Set("X-Debug-User-ID", "101")
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("expected first authenticated request to pass, got %d", rec1.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/demo", nil)
+	req2.RemoteAddr = "198.51.100.25:5678"
+	req2.Header.Set("X-Debug-User-ID", "202")
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected second authenticated user from same IP to use separate bucket, got %d", rec2.Code)
+	}
+}
+
+func TestGlobalAPIRateLimitStillFallsBackToIPForAnonymousRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	oldEnable := common.GlobalApiRateLimitEnable
+	oldNum := common.GlobalApiRateLimitNum
+	oldDuration := common.GlobalApiRateLimitDuration
+	oldRedisEnabled := common.RedisEnabled
+	oldLimiter := inMemoryRateLimiter
+	defer func() {
+		common.GlobalApiRateLimitEnable = oldEnable
+		common.GlobalApiRateLimitNum = oldNum
+		common.GlobalApiRateLimitDuration = oldDuration
+		common.RedisEnabled = oldRedisEnabled
+		inMemoryRateLimiter = oldLimiter
+	}()
+
+	common.GlobalApiRateLimitEnable = true
+	common.GlobalApiRateLimitNum = 1
+	common.GlobalApiRateLimitDuration = 60
+	common.RedisEnabled = false
+	inMemoryRateLimiter = common.InMemoryRateLimiter{}
+
+	router := gin.New()
+	store := cookie.NewStore([]byte("test-session-secret"))
+	router.Use(sessions.Sessions("session", store))
+	router.Use(GlobalAPIRateLimit())
+	router.GET("/api/demo", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req1 := httptest.NewRequest(http.MethodGet, "/api/demo", nil)
+	req1.RemoteAddr = "203.0.113.10:1234"
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("expected first anonymous request to pass, got %d", rec1.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/api/demo", nil)
+	req2.RemoteAddr = "203.0.113.10:1234"
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected anonymous requests from same IP to still share limit bucket, got %d", rec2.Code)
 	}
 }

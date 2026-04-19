@@ -153,6 +153,32 @@ docker run --name new-api -d --restart always \
 
 📖 更多部署方式请参考 [部署指南](https://docs.newapi.pro/zh/docs/installation)
 
+### Cloudflare 反代站点的真实 IP 配置
+
+如果生产域名挂在 Cloudflare 后面，Nginx 需要额外开启真实客户端 IP 回源。
+
+否则会出现两个问题：
+
+- `access.log` 里看到的是 Cloudflare 边缘 IP，而不是真实用户 IP
+- 排查线上 `504 / 403 / 限流 / 风控` 时，无法按真实用户来源定位
+
+仓库里的 [`hermestoken.top.nginx.conf`](./hermestoken.top.nginx.conf) 已经包含这部分配置，核心项是：
+
+```nginx
+real_ip_header CF-Connecting-IP;
+real_ip_recursive on;
+set_real_ip_from 173.245.48.0/20;
+...
+set_real_ip_from 2c0f:f248::/32;
+```
+
+使用 Cloudflare 时请注意：
+
+- Cloudflare IP 段需要定期按官方列表更新
+- 只有 Nginx access log 会立即显示真实 IP
+- 应用层错误日志中的 `ip` 字段仍取决于用户是否开启“记录 IP 日志”
+- 在生产机上使用 `python3 scripts/prod.py deploy --domain https://hermestoken.top` 或 `update --domain ...` 时，脚本现在会自动尝试同步并重载 Nginx 站点配置
+
 ---
 
 ## 📚 文档

@@ -1,5 +1,6 @@
 import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -46,6 +47,93 @@ class ProdLauncherTests(unittest.TestCase):
             prod.build_local_health_url({"APP_PORT": "not-a-number"}),
             "http://127.0.0.1:3000/api/status",
         )
+
+    def test_build_nginx_site_config_uses_domain_port_and_cloudflare_real_ip(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="4567",
+        )
+
+        self.assertIn("real_ip_header CF-Connecting-IP;", config)
+        self.assertIn("set_real_ip_from 173.245.48.0/20;", config)
+        self.assertIn("set_real_ip_from 2c0f:f248::/32;", config)
+        self.assertIn("server_name hermestoken.top www.hermestoken.top _;", config)
+        self.assertIn("server_name www.hermestoken.top _;", config)
+        self.assertIn("server_name hermestoken.top;", config)
+        self.assertIn("proxy_pass http://127.0.0.1:4567;", config)
+
+    @mock.patch("prod.run_command")
+    @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
+    def test_sync_nginx_site_config_writes_file_and_reloads_nginx(
+        self,
+        which,
+        run_command,
+    ):
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            site_path = Path(tmp_dir) / "default"
+            changed = prod.sync_nginx_site_config(
+                public_url="https://hermestoken.top",
+                env_values={"APP_PORT": "3000"},
+                output=stdout,
+                site_path=site_path,
+            )
+
+        self.assertTrue(changed)
+        which.assert_called_once_with("nginx")
+        self.assertEqual(run_command.call_count, 2)
+        self.assertEqual(
+            run_command.call_args_list[0],
+            mock.call(["nginx", "-t"], check=True, stream_output=False),
+        )
+        self.assertEqual(
+            run_command.call_args_list[1],
+            mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
+        )
+        self.assertIn("Nginx site config synced", stdout.getvalue())
+        self.assertIn("Nginx reloaded", stdout.getvalue())
+
+    @mock.patch("prod.run_command")
+    @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
+    def test_sync_nginx_site_config_preserves_file_when_unchanged(
+        self,
+        which,
+        run_command,
+    ):
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            site_path = Path(tmp_dir) / "default"
+            site_path.write_text(
+                prod.build_nginx_site_config(
+                    public_url="https://hermestoken.top",
+                    app_port="3000",
+                ),
+                encoding="utf-8",
+            )
+            changed = prod.sync_nginx_site_config(
+                public_url="https://hermestoken.top",
+                env_values={"APP_PORT": "3000"},
+                output=stdout,
+                site_path=site_path,
+            )
+
+        self.assertTrue(changed)
+        which.assert_called_once_with("nginx")
+        self.assertEqual(run_command.call_count, 2)
+        self.assertIn("already up to date", stdout.getvalue())
+
+    @mock.patch("prod.shutil.which", return_value=None)
+    def test_sync_nginx_site_config_skips_when_nginx_missing(self, which):
+        stdout = io.StringIO()
+        changed = prod.sync_nginx_site_config(
+            public_url="https://hermestoken.top",
+            env_values={"APP_PORT": "3000"},
+            output=stdout,
+        )
+
+        self.assertFalse(changed)
+        which.assert_called_once_with("nginx")
+        self.assertIn("skipped nginx site config sync", stdout.getvalue())
 
     @mock.patch("prod.poll_http_until_healthy")
     @mock.patch("prod.remove_legacy_compose_containers")
@@ -181,12 +269,14 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("Updated ServerAddress to: https://hermestoken.top", stdout.getvalue())
 
     @mock.patch("prod.load_env_file", return_value={"APP_PORT": "3000"})
+    @mock.patch("prod.sync_nginx_site_config")
     @mock.patch("prod.set_public_url")
     @mock.patch("prod.run_stack")
     def test_main_update_dispatches_stack_and_public_url(
         self,
         run_stack,
         set_public_url,
+        sync_nginx_site_config,
         load_env_file,
     ):
         stderr = io.StringIO()
@@ -206,6 +296,11 @@ class ProdLauncherTests(unittest.TestCase):
         load_env_file.assert_called_once()
         run_stack.assert_called_once()
         set_public_url.assert_called_once()
+        sync_nginx_site_config.assert_called_once_with(
+            public_url="https://hermestoken.top",
+            env_values={"APP_PORT": "3000"},
+            output=stdout,
+        )
 
     @mock.patch(
         "prod.run_stack",

@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -75,6 +78,94 @@ func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark s
 	}
 }
 
+func memoryRateLimiterWithKey(c *gin.Context, maxRequestNum int, duration int64, key string) {
+	if !inMemoryRateLimiter.Request(key, maxRequestNum, duration) {
+		c.Status(http.StatusTooManyRequests)
+		c.Abort()
+		return
+	}
+}
+
+func redisRateLimiterWithKey(c *gin.Context, maxRequestNum int, duration int64, key string) {
+	ctx := context.Background()
+	rdb := common.RDB
+	listLength, err := rdb.LLen(ctx, key).Result()
+	if err != nil {
+		fmt.Println(err.Error())
+		c.Status(http.StatusInternalServerError)
+		c.Abort()
+		return
+	}
+	if listLength < int64(maxRequestNum) {
+		rdb.LPush(ctx, key, time.Now().Format(timeFormat))
+		rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+		return
+	}
+
+	oldTimeStr, _ := rdb.LIndex(ctx, key, -1).Result()
+	oldTime, err := time.Parse(timeFormat, oldTimeStr)
+	if err != nil {
+		fmt.Println(err)
+		c.Status(http.StatusInternalServerError)
+		c.Abort()
+		return
+	}
+	nowTimeStr := time.Now().Format(timeFormat)
+	nowTime, err := time.Parse(timeFormat, nowTimeStr)
+	if err != nil {
+		fmt.Println(err)
+		c.Status(http.StatusInternalServerError)
+		c.Abort()
+		return
+	}
+	if int64(nowTime.Sub(oldTime).Seconds()) < duration {
+		rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+		c.Status(http.StatusTooManyRequests)
+		c.Abort()
+		return
+	}
+
+	rdb.LPush(ctx, key, time.Now().Format(timeFormat))
+	rdb.LTrim(ctx, key, 0, int64(maxRequestNum-1))
+	rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
+}
+
+func getRateLimitUserIDFromSession(c *gin.Context) int {
+	session := sessions.Default(c)
+	if session == nil {
+		return 0
+	}
+	switch value := session.Get("id").(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	case string:
+		id, err := strconv.Atoi(strings.TrimSpace(value))
+		if err == nil {
+			return id
+		}
+	}
+	return 0
+}
+
+func getAuthenticatedRateLimitSubject(c *gin.Context) string {
+	if userID := c.GetInt("id"); userID > 0 {
+		return fmt.Sprintf("user:%d", userID)
+	}
+	if userID := getRateLimitUserIDFromSession(c); userID > 0 {
+		return fmt.Sprintf("user:%d", userID)
+	}
+	if accessToken := c.GetHeader("Authorization"); accessToken != "" {
+		if user := model.ValidateAccessToken(accessToken); user != nil && user.Id > 0 {
+			return fmt.Sprintf("user:%d", user.Id)
+		}
+	}
+	return "ip:" + c.ClientIP()
+}
+
 func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
 	if common.RedisEnabled {
 		return func(c *gin.Context) {
@@ -86,6 +177,20 @@ func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gi
 		return func(c *gin.Context) {
 			memoryRateLimiter(c, maxRequestNum, duration, mark)
 		}
+	}
+}
+
+func authenticatedAwareRateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+	if common.RedisEnabled {
+		return func(c *gin.Context) {
+			key := "rateLimit:" + mark + ":" + getAuthenticatedRateLimitSubject(c)
+			redisRateLimiterWithKey(c, maxRequestNum, duration, key)
+		}
+	}
+	inMemoryRateLimiter.Init(common.RateLimitKeyExpirationDuration)
+	return func(c *gin.Context) {
+		key := mark + ":" + getAuthenticatedRateLimitSubject(c)
+		memoryRateLimiterWithKey(c, maxRequestNum, duration, key)
 	}
 }
 
@@ -105,14 +210,14 @@ func GlobalWebRateLimit() func(c *gin.Context) {
 
 func GlobalAPIRateLimit() func(c *gin.Context) {
 	if common.GlobalApiRateLimitEnable {
-		return rateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
+		return authenticatedAwareRateLimitFactory(common.GlobalApiRateLimitNum, common.GlobalApiRateLimitDuration, "GA")
 	}
 	return defNext
 }
 
 func CriticalRateLimit() func(c *gin.Context) {
 	if common.CriticalRateLimitEnable {
-		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
+		return authenticatedAwareRateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")
 	}
 	return defNext
 }

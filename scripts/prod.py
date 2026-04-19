@@ -1,4 +1,6 @@
 import argparse
+import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Mapping, Optional, TextIO
@@ -23,6 +25,32 @@ DEFAULT_PROD_ENV_FILE = ".env.production"
 DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 60
 DEFAULT_HEALTHCHECK_INTERVAL_SECONDS = 1
 PROD_CONTAINER_NAMES = ("hermestoken-prod", "hermestoken-prod-postgres", "hermestoken-prod-redis")
+DEFAULT_NGINX_SITE_PATH = Path("/etc/nginx/sites-available/default")
+
+CLOUDFLARE_REAL_IP_CIDRS = (
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2405:8100::/32",
+    "2a06:98c0::/29",
+    "2c0f:f248::/32",
+)
 
 
 def _resolve_repo_path(path_value: str, *, repo_root: Path) -> Path:
@@ -66,6 +94,125 @@ def _compose_command_prefix(compose_file_path: Path, env_file_path: Path) -> lis
         "-f",
         str(compose_file_path),
     ]
+
+
+def build_nginx_site_config(*, public_url: str, app_port: str = "3000") -> str:
+    parsed = urlparse(public_url)
+    hostname = (parsed.hostname or "").strip()
+    if not hostname:
+        raise LauncherError(
+            "Public URL must include a hostname before generating the nginx config. Next step: rerun with `--domain https://hermestoken.top`."
+        )
+
+    canonical_host = hostname[4:] if hostname.startswith("www.") else hostname
+    www_host = f"www.{canonical_host}"
+
+    real_ip_lines = "\n".join(f"set_real_ip_from {cidr};" for cidr in CLOUDFLARE_REAL_IP_CIDRS)
+
+    return f"""map $http_upgrade $connection_upgrade {{
+    default upgrade;
+    '' close;
+}}
+
+# If the site is proxied by Cloudflare, enable real client IP restoration.
+# Source of CIDRs:
+# https://www.cloudflare.com/ips-v4
+# https://www.cloudflare.com/ips-v6
+real_ip_header CF-Connecting-IP;
+real_ip_recursive on;
+
+{real_ip_lines}
+
+server {{
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name {canonical_host} {www_host} _;
+
+    return 301 https://{canonical_host}$request_uri;
+}}
+
+server {{
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name {www_host} _;
+
+    ssl_certificate /etc/letsencrypt/live/{canonical_host}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{canonical_host}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    return 301 https://{canonical_host}$request_uri;
+}}
+
+server {{
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name {canonical_host};
+
+    ssl_certificate /etc/letsencrypt/live/{canonical_host}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{canonical_host}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    client_max_body_size 100m;
+
+    location / {{
+        proxy_pass http://127.0.0.1:{app_port};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+        proxy_buffering off;
+
+        add_header X-Nginx-Request-Time $request_time always;
+        add_header X-Nginx-Upstream-Response-Time $upstream_response_time always;
+        add_header X-Nginx-Upstream-Connect-Time $upstream_connect_time always;
+    }}
+}}
+"""
+
+
+def sync_nginx_site_config(
+    *,
+    public_url: str,
+    env_values: Mapping[str, str],
+    output: Optional[TextIO] = None,
+    site_path: Optional[Path] = None,
+) -> bool:
+    stream = output or sys.stdout
+
+    if shutil.which("nginx") is None:
+        stream.write("[info] nginx not found; skipped nginx site config sync\n")
+        return False
+
+    target_path = site_path or DEFAULT_NGINX_SITE_PATH
+    app_port = env_values.get("APP_PORT", "3000").strip()
+    if not app_port.isdigit():
+        app_port = "3000"
+
+    rendered = build_nginx_site_config(public_url=public_url, app_port=app_port)
+    current = target_path.read_text(encoding="utf-8") if target_path.exists() else None
+    if current == rendered:
+        stream.write(f"[ok] Nginx site config already up to date: {target_path}\n")
+    else:
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_text(rendered, encoding="utf-8")
+        except PermissionError as exc:
+            raise LauncherError(
+                f"Failed to write nginx site config: {target_path}. Next step: rerun the production script with sudo/root so it can update nginx."
+            ) from exc
+        stream.write(f"[ok] Nginx site config synced: {target_path}\n")
+
+    run_command(["nginx", "-t"], check=True, stream_output=False)
+    run_command(["systemctl", "reload", "nginx"], check=True, stream_output=False)
+    stream.write("[ok] Nginx reloaded with updated site config\n")
+    return True
 
 
 def run_stack(
@@ -231,6 +378,11 @@ def main() -> int:
                 local_health_url=local_health_url,
                 output=sys.stdout,
                 repo_root=REPO_ROOT,
+            )
+            sync_nginx_site_config(
+                public_url=args.domain,
+                env_values=env_values,
+                output=sys.stdout,
             )
 
         return 0

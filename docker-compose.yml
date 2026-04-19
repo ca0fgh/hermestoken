@@ -40,6 +40,9 @@ services:
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - GLOBAL_WEB_RATE_LIMIT_ENABLE=false # 本地调试关闭网页限流，避免 localhost 频繁刷新被 429
+      - GLOBAL_API_RATE_LIMIT_ENABLE=false # 本地/外网联调环境关闭全局 API 限流，避免后台巡检和支付验证被 429 打断
+      - CRITICAL_RATE_LIMIT_ENABLE=false # 本地/外网联调环境关闭关键接口限流，便于完整回归支付与提现流程
+      - SEARCH_RATE_LIMIT_ENABLE=false # 本地/外网联调环境关闭搜索限流，避免列表页高频筛选被 429 打断
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
 #      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
