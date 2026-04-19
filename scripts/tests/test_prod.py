@@ -173,7 +173,10 @@ class ProdLauncherTests(unittest.TestCase):
     ):
         stdout = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp_dir:
-            site_path = Path(tmp_dir) / "default"
+            tmp_path = Path(tmp_dir)
+            site_path = tmp_path / "default"
+            conf_d_path = tmp_path / "conf.d"
+            conf_d_path.mkdir(parents=True, exist_ok=True)
             site_path.write_text(
                 prod.build_nginx_site_config(
                     public_url="https://hermestoken.top",
@@ -186,6 +189,7 @@ class ProdLauncherTests(unittest.TestCase):
                 env_values={"APP_PORT": "3000"},
                 output=stdout,
                 site_path=site_path,
+                conf_d_path=conf_d_path,
             )
 
         self.assertTrue(changed)
