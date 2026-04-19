@@ -37,6 +37,10 @@ type SubscriptionReferralInviteeContributionDetail struct {
 	CreatedAt             int64  `json:"created_at"`
 }
 
+func subscriptionSettlementGroupSelectExpr(tableAlias string) string {
+	return tableAlias + "." + commonGroupCol + " AS settlement_group"
+}
+
 func ListSubscriptionReferralInviteeContributionSummaries(inviterUserId int, keyword string, pageInfo *common.PageInfo) ([]*SubscriptionReferralInviteeContributionSummary, int64, int64, error) {
 	if inviterUserId <= 0 {
 		return nil, 0, 0, errors.New("invalid inviter user id")
@@ -172,7 +176,7 @@ func ListSubscriptionReferralInviteeContributionDetails(inviterUserId int, invit
 	selectColumns := strings.Join([]string{
 		"records.batch_id AS batch_id",
 		"batches.source_trade_no AS trade_no",
-		"batches.`group` AS settlement_group",
+		subscriptionSettlementGroupSelectExpr("batches"),
 		"records.reward_component AS reward_component",
 		"COALESCE(records.source_reward_component, '') AS source_reward_component",
 		roleTypeExpr + " AS role_type",
