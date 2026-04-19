@@ -34,6 +34,10 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
+	if !isCreemTopupSwitchEnabled() {
+		common.ApiErrorMsg(c, "当前管理员未开启 Creem 支付")
+		return
+	}
 
 	quantity, err := req.GetQuantity()
 	if err != nil {

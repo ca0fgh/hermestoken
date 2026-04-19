@@ -44,10 +44,7 @@ const Forbidden = lazyWithRetry(
   () => import('./pages/Forbidden'),
   'forbidden-route',
 );
-const Setting = lazyWithRetry(
-  () => import('./pages/Setting'),
-  'setting-route',
-);
+const Setting = lazyWithRetry(() => import('./pages/Setting'), 'setting-route');
 const PasswordResetForm = lazyWithRetry(
   () => import('./components/auth/PasswordResetForm'),
   'password-reset-route',
@@ -56,10 +53,7 @@ const PasswordResetConfirm = lazyWithRetry(
   () => import('./components/auth/PasswordResetConfirm'),
   'password-reset-confirm-route',
 );
-const Channel = lazyWithRetry(
-  () => import('./pages/Channel'),
-  'channel-route',
-);
+const Channel = lazyWithRetry(() => import('./pages/Channel'), 'channel-route');
 const Token = lazyWithRetry(() => import('./pages/Token'), 'token-route');
 const Redemption = lazyWithRetry(
   () => import('./pages/Redemption'),
@@ -76,15 +70,9 @@ const Midjourney = lazyWithRetry(
   () => import('./pages/Midjourney'),
   'midjourney-route',
 );
-const Pricing = lazyWithRetry(
-  () => import('./pages/Pricing'),
-  'pricing-route',
-);
+const Pricing = lazyWithRetry(() => import('./pages/Pricing'), 'pricing-route');
 const Task = lazyWithRetry(() => import('./pages/Task'), 'task-route');
-const ModelPage = lazyWithRetry(
-  () => import('./pages/Model'),
-  'model-route',
-);
+const ModelPage = lazyWithRetry(() => import('./pages/Model'), 'model-route');
 const ModelDeploymentPage = lazyWithRetry(
   () => import('./pages/ModelDeployment'),
   'model-deployment-route',
@@ -100,6 +88,10 @@ const Subscription = lazyWithRetry(
 const InviteRebate = lazyWithRetry(
   () => import('./pages/InviteRebate'),
   'invite-rebate-route',
+);
+const Withdrawal = lazyWithRetry(
+  () => import('./pages/Withdrawal'),
+  'withdrawal-route',
 );
 const OAuth2Callback = lazyWithRetry(
   () => import('./components/auth/OAuth2Callback'),
@@ -183,6 +175,12 @@ function App() {
         <Route
           path='/console/user'
           element={<AdminRoute>{renderWithSuspense(<User />)}</AdminRoute>}
+        />
+        <Route
+          path='/console/withdrawal'
+          element={
+            <AdminRoute>{renderWithSuspense(<Withdrawal />)}</AdminRoute>
+          }
         />
         <Route
           path='/user/reset'

@@ -234,7 +234,7 @@ type UserWithdrawal struct {
     FeeQuota             int     `json:"fee_quota" gorm:"not null;default:0"`
     NetQuota             int     `json:"net_quota" gorm:"not null;default:0"`
     AlipayAccount        string  `json:"alipay_account" gorm:"type:varchar(128);not null"`
-    AlipayRealName       string  `json:"alipay_real_name" gorm:"type:varchar(64);default:''"`
+    AlipayRealName       string  `json:"alipay_real_name" gorm:"type:varchar(64);not null"`
     Status               string  `json:"status" gorm:"type:varchar(32);index;not null;default:'pending'"`
     FeeRuleSnapshotJSON  string  `json:"fee_rule_snapshot_json" gorm:"type:text"`
     ReviewAdminId        int     `json:"review_admin_id" gorm:"index;not null;default:0"`

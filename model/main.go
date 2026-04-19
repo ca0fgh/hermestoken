@@ -395,6 +395,7 @@ func migrateReferralRuntimeTables() error {
 		{&ReferralInviteeShareOverride{}, "ReferralInviteeShareOverride"},
 		{&ReferralSettlementBatch{}, "ReferralSettlementBatch"},
 		{&ReferralSettlementRecord{}, "ReferralSettlementRecord"},
+		{&UserWithdrawal{}, "UserWithdrawal"},
 	}
 
 	for _, item := range referralRuntimeModels {

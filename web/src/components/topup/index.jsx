@@ -28,6 +28,8 @@ import {
   renderQuotaWithAmount,
   copy,
   getQuotaPerUnit,
+  normalizeWithdrawalConfig,
+  calculateWithdrawalPreview,
 } from '../../helpers';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -36,9 +38,12 @@ import { StatusContext } from '../../context/Status';
 
 import RechargeCard from './RechargeCard';
 import InvitationCard from './InvitationCard';
+import WithdrawalCard from './WithdrawalCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import WithdrawalApplyModal from './modals/WithdrawalApplyModal';
+import WithdrawalHistoryModal from './modals/WithdrawalHistoryModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -93,6 +98,13 @@ const TopUp = () => {
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
+  const [withdrawalConfig, setWithdrawalConfig] = useState(null);
+  const [openWithdrawalApply, setOpenWithdrawalApply] = useState(false);
+  const [openWithdrawalHistory, setOpenWithdrawalHistory] = useState(false);
+  const [withdrawalSubmitting, setWithdrawalSubmitting] = useState(false);
+  const [withdrawalAmount, setWithdrawalAmount] = useState(0);
+  const [withdrawalAlipayAccount, setWithdrawalAlipayAccount] = useState('');
+  const [withdrawalAlipayRealName, setWithdrawalAlipayRealName] = useState('');
 
   // 订阅相关
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -365,6 +377,7 @@ const TopUp = () => {
     if (success) {
       userDispatch({ type: 'login', payload: data });
       setQuotaTopupEnabled(getQuotaTopupEnabledFromUser(data));
+      loadWithdrawalConfig().then();
     } else {
       showError(message);
     }
@@ -400,6 +413,20 @@ const TopUp = () => {
       }
     } catch (e) {
       // ignore
+    }
+  };
+
+  const loadWithdrawalConfig = async () => {
+    try {
+      const res = await API.get('/api/user/withdrawal/config');
+      const { success, message, data } = res.data;
+      if (success) {
+        setWithdrawalConfig(normalizeWithdrawalConfig(data));
+      } else {
+        showError(message || t('获取提现配置失败'));
+      }
+    } catch (error) {
+      showError(t('获取提现配置失败'));
     }
   };
 
@@ -554,6 +581,57 @@ const TopUp = () => {
     }
   };
 
+  const openWithdrawalApplyModal = () => {
+    if (!withdrawalConfig?.enabled) {
+      showError(t('提现未开启'));
+      return;
+    }
+    if (withdrawalConfig?.hasOpenWithdrawal) {
+      showError(t('存在未完结提现单'));
+      return;
+    }
+    setWithdrawalAmount(withdrawalConfig?.minAmount || 0);
+    setWithdrawalAlipayAccount('');
+    setWithdrawalAlipayRealName('');
+    setOpenWithdrawalApply(true);
+  };
+
+  const submitWithdrawal = async () => {
+    if (withdrawalAmount < (withdrawalConfig?.minAmount || 0)) {
+      showError(t('提现金额不能低于最低提现金额'));
+      return;
+    }
+    if (!withdrawalAlipayAccount.trim()) {
+      showError(t('支付宝账号不能为空'));
+      return;
+    }
+    if (!withdrawalAlipayRealName.trim()) {
+      showError(t('支付宝姓名不能为空'));
+      return;
+    }
+    setWithdrawalSubmitting(true);
+    try {
+      const res = await API.post('/api/user/withdrawals', {
+        amount: Number(withdrawalAmount),
+        alipay_account: withdrawalAlipayAccount.trim(),
+        alipay_real_name: withdrawalAlipayRealName.trim(),
+      });
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('提现申请已提交'));
+        setOpenWithdrawalApply(false);
+        await getUserQuota();
+        await loadWithdrawalConfig();
+      } else {
+        showError(message || t('提现申请失败'));
+      }
+    } catch (error) {
+      showError(t('提现申请失败'));
+    } finally {
+      setWithdrawalSubmitting(false);
+    }
+  };
+
   // 划转邀请额度
   const transfer = async () => {
     if (transferAmount < getQuotaPerUnit()) {
@@ -610,6 +688,7 @@ const TopUp = () => {
     // 始终获取最新用户数据，确保余额等统计信息准确
     getUserQuota().then();
     setTransferAmount(getQuotaPerUnit());
+    loadWithdrawalConfig().then();
   }, []);
 
   useEffect(() => {
@@ -782,6 +861,32 @@ const TopUp = () => {
         t={t}
       />
 
+      <WithdrawalApplyModal
+        t={t}
+        visible={openWithdrawalApply}
+        onCancel={() => setOpenWithdrawalApply(false)}
+        onSubmit={submitWithdrawal}
+        submitting={withdrawalSubmitting}
+        config={withdrawalConfig}
+        amount={withdrawalAmount}
+        setAmount={setWithdrawalAmount}
+        alipayAccount={withdrawalAlipayAccount}
+        setAlipayAccount={setWithdrawalAlipayAccount}
+        alipayRealName={withdrawalAlipayRealName}
+        setAlipayRealName={setWithdrawalAlipayRealName}
+        preview={calculateWithdrawalPreview(
+          withdrawalAmount,
+          withdrawalConfig?.feeRules || [],
+        )}
+      />
+
+      <WithdrawalHistoryModal
+        visible={openWithdrawalHistory}
+        onCancel={() => setOpenWithdrawalHistory(false)}
+        t={t}
+        config={withdrawalConfig}
+      />
+
       {/* Creem 充值确认模态框 */}
       <Modal
         title={t('确定要充值 $')}
@@ -812,53 +917,63 @@ const TopUp = () => {
 
       {/* 主布局区域 */}
       <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
-        <RechargeCard
-          t={t}
-          quotaTopupEnabled={quotaTopupEnabled}
-          enableOnlineTopUp={enableOnlineTopUp}
-          enableStripeTopUp={enableStripeTopUp}
-          enableCreemTopUp={enableCreemTopUp}
-          creemProducts={creemProducts}
-          creemPreTopUp={creemPreTopUp}
-          enableWaffoTopUp={enableWaffoTopUp}
-          waffoTopUp={waffoTopUp}
-          waffoPayMethods={waffoPayMethods}
-          presetAmounts={presetAmounts}
-          selectedPreset={selectedPreset}
-          selectPresetAmount={selectPresetAmount}
-          formatLargeNumber={formatLargeNumber}
-          priceRatio={priceRatio}
-          topUpCount={topUpCount}
-          minTopUp={minTopUp}
-          renderQuotaWithAmount={renderQuotaWithAmount}
-          getAmount={getAmount}
-          setTopUpCount={setTopUpCount}
-          setSelectedPreset={setSelectedPreset}
-          renderAmount={renderAmount}
-          amountLoading={amountLoading}
-          payMethods={payMethods}
-          preTopUp={preTopUp}
-          paymentLoading={paymentLoading}
-          payWay={payWay}
-          redemptionCode={redemptionCode}
-          setRedemptionCode={setRedemptionCode}
-          topUp={topUp}
-          isSubmitting={isSubmitting}
-          topUpLink={topUpLink}
-          openTopUpLink={openTopUpLink}
-          userState={userState}
-          renderQuota={renderQuota}
-          statusLoading={statusLoading}
-          topupInfo={topupInfo}
-          onOpenHistory={handleOpenHistory}
-          subscriptionLoading={subscriptionLoading}
-          subscriptionPlans={subscriptionPlans}
-          billingPreference={billingPreference}
-          onChangeBillingPreference={updateBillingPreference}
-          activeSubscriptions={activeSubscriptions}
-          allSubscriptions={allSubscriptions}
-          reloadSubscriptionSelf={getSubscriptionSelf}
-        />
+        <div className='flex flex-col gap-6'>
+          <RechargeCard
+            t={t}
+            quotaTopupEnabled={quotaTopupEnabled}
+            enableOnlineTopUp={enableOnlineTopUp}
+            enableStripeTopUp={enableStripeTopUp}
+            enableCreemTopUp={enableCreemTopUp}
+            creemProducts={creemProducts}
+            creemPreTopUp={creemPreTopUp}
+            enableWaffoTopUp={enableWaffoTopUp}
+            waffoTopUp={waffoTopUp}
+            waffoPayMethods={waffoPayMethods}
+            presetAmounts={presetAmounts}
+            selectedPreset={selectedPreset}
+            selectPresetAmount={selectPresetAmount}
+            formatLargeNumber={formatLargeNumber}
+            priceRatio={priceRatio}
+            topUpCount={topUpCount}
+            minTopUp={minTopUp}
+            renderQuotaWithAmount={renderQuotaWithAmount}
+            getAmount={getAmount}
+            setTopUpCount={setTopUpCount}
+            setSelectedPreset={setSelectedPreset}
+            renderAmount={renderAmount}
+            amountLoading={amountLoading}
+            payMethods={payMethods}
+            preTopUp={preTopUp}
+            paymentLoading={paymentLoading}
+            payWay={payWay}
+            redemptionCode={redemptionCode}
+            setRedemptionCode={setRedemptionCode}
+            topUp={topUp}
+            isSubmitting={isSubmitting}
+            topUpLink={topUpLink}
+            openTopUpLink={openTopUpLink}
+            userState={userState}
+            renderQuota={renderQuota}
+            statusLoading={statusLoading}
+            topupInfo={topupInfo}
+            onOpenHistory={handleOpenHistory}
+            subscriptionLoading={subscriptionLoading}
+            subscriptionPlans={subscriptionPlans}
+            billingPreference={billingPreference}
+            onChangeBillingPreference={updateBillingPreference}
+            activeSubscriptions={activeSubscriptions}
+            allSubscriptions={allSubscriptions}
+            reloadSubscriptionSelf={getSubscriptionSelf}
+            withdrawalSection={
+              <WithdrawalCard
+                t={t}
+                config={withdrawalConfig}
+                onApply={openWithdrawalApplyModal}
+                onOpenHistory={() => setOpenWithdrawalHistory(true)}
+              />
+            }
+          />
+        </div>
         <InvitationCard
           t={t}
           userState={userState}

@@ -36,6 +36,7 @@ export default function SettingsPaymentGateway(props) {
     PayAddress: '',
     EpayId: '',
     EpayKey: '',
+    EpayEnabled: true,
     Price: 7.3,
     MinTopUp: 1,
     TopupGroupRatio: '',
@@ -53,6 +54,10 @@ export default function SettingsPaymentGateway(props) {
         PayAddress: props.options.PayAddress || '',
         EpayId: props.options.EpayId || '',
         EpayKey: props.options.EpayKey || '',
+        EpayEnabled:
+          props.options.EpayEnabled !== undefined
+            ? props.options.EpayEnabled
+            : true,
         Price:
           props.options.Price !== undefined
             ? parseFloat(props.options.Price)
@@ -162,6 +167,12 @@ export default function SettingsPaymentGateway(props) {
           value: inputs.CustomCallbackAddress,
         });
       }
+      if (originInputs['EpayEnabled'] !== inputs.EpayEnabled) {
+        options.push({
+          key: 'EpayEnabled',
+          value: inputs.EpayEnabled ? 'true' : 'false',
+        });
+      }
       if (originInputs['TopupGroupRatio'] !== inputs.TopupGroupRatio) {
         options.push({ key: 'TopupGroupRatio', value: inputs.TopupGroupRatio });
       }
@@ -250,6 +261,15 @@ export default function SettingsPaymentGateway(props) {
             gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
             style={{ marginTop: 16 }}
           >
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='EpayEnabled'
+                label={t('启用易支付')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+              />
+            </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
                 field='CustomCallbackAddress'

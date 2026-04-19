@@ -8,14 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/thanhpk/randstr"
 )
@@ -75,6 +76,10 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		c.JSON(200, gin.H{"message": "error", "data": "请选择产品"})
 		return
 	}
+	if setting.CreemWebhookSecret == "" && !setting.CreemTestMode {
+		c.JSON(200, gin.H{"message": "error", "data": "Creem Webhook 未配置"})
+		return
+	}
 
 	// 解析产品列表
 	var products []CreemProduct
@@ -100,7 +105,11 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	}
 
 	id := c.GetInt("id")
-	user, _ := model.GetUserById(id, false)
+	user, err := model.GetUserById(id, false)
+	if err != nil || user == nil {
+		c.JSON(200, gin.H{"message": "error", "data": "用户不存在"})
+		return
+	}
 
 	// 生成唯一的订单引用ID
 	reference := fmt.Sprintf("creem-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
@@ -108,12 +117,15 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 
 	// 先创建订单记录，使用产品配置的金额和充值额度
 	topUp := &model.TopUp{
-		UserId:     id,
-		Amount:     selectedProduct.Quota, // 充值额度
-		Money:      selectedProduct.Price, // 支付金额
-		TradeNo:    referenceId,
-		CreateTime: time.Now().Unix(),
-		Status:     common.TopUpStatusPending,
+		UserId:            id,
+		Amount:            selectedProduct.Quota, // 充值额度
+		Money:             selectedProduct.Price, // 支付金额
+		TradeNo:           referenceId,
+		PaymentMethod:     PaymentMethodCreem,
+		Currency:          strings.ToUpper(selectedProduct.Currency),
+		ProviderProductID: selectedProduct.ProductId,
+		CreateTime:        time.Now().Unix(),
+		Status:            common.TopUpStatusPending,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -126,6 +138,8 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	checkoutUrl, err := genCreemLink(referenceId, selectedProduct, user.Email, user.Username)
 	if err != nil {
 		log.Printf("获取Creem支付链接失败: %v", err)
+		topUp.Status = common.TopUpStatusFailed
+		_ = topUp.Update()
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
@@ -162,6 +176,10 @@ func RequestCreemPay(c *gin.Context) {
 	err = c.ShouldBindJSON(&req)
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if !isCreemTopupSwitchEnabled() {
+		c.JSON(200, gin.H{"message": "error", "data": "当前管理员未开启 Creem 支付"})
 		return
 	}
 	creemAdaptor.RequestPay(c, &req)
@@ -302,10 +320,20 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 	// Try complete subscription order first
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
-	if err := model.CompleteSubscriptionOrder(referenceId, common.GetJsonString(event)); err == nil {
+	verification := &model.SubscriptionPaymentVerification{
+		PaymentMethod: PaymentMethodCreem,
+		PaidMoney:     moneyStringFromMinorUnits(int64(event.Object.Order.AmountPaid), event.Object.Order.Currency),
+		ProductID:     event.Object.Product.Id,
+	}
+	if err := model.CompleteSubscriptionOrderWithValidation(referenceId, verification, common.GetJsonString(event)); err == nil {
 		c.Status(http.StatusOK)
 		return
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
+		if shouldAcknowledgePaymentValidationError(err) {
+			log.Printf("Creem订阅订单校验拒绝: %s, 订单号: %s", err.Error(), referenceId)
+			c.Status(http.StatusOK)
+			return
+		}
 		log.Printf("Creem订阅订单处理失败: %s, 订单号: %s", err.Error(), referenceId)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -342,18 +370,25 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 
 	// 处理充值，传入客户邮箱和姓名信息
 	customerEmail := event.Object.Customer.Email
-	customerName := event.Object.Customer.Name
 
-	// 防护性检查，确保邮箱和姓名不为空字符串
+	// 防护性检查，确保邮箱不为空字符串
 	if customerEmail == "" {
 		log.Printf("警告：Creem回调中客户邮箱为空 - 订单号: %s", referenceId)
 	}
-	if customerName == "" {
-		log.Printf("警告：Creem回调中客户姓名为空 - 订单号: %s", referenceId)
-	}
 
-	err := model.RechargeCreem(referenceId, customerEmail, customerName)
+	err := model.RechargeCreem(
+		referenceId,
+		customerEmail,
+		moneyStringFromMinorUnits(int64(event.Object.Order.AmountPaid), event.Object.Order.Currency),
+		event.Object.Order.Currency,
+		event.Object.Product.Id,
+	)
 	if err != nil {
+		if shouldAcknowledgePaymentValidationError(err) {
+			log.Printf("Creem充值校验拒绝: %s, 订单号: %s", err.Error(), referenceId)
+			c.Status(http.StatusOK)
+			return
+		}
 		log.Printf("Creem充值处理失败: %s, 订单号: %s", err.Error(), referenceId)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return

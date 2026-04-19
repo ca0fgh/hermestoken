@@ -98,6 +98,7 @@ const RechargeCard = ({
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
+  withdrawalSection = null,
 }) => {
   const onlineFormApiRef = useRef(null);
   const redeemFormApiRef = useRef(null);
@@ -636,6 +637,7 @@ const RechargeCard = ({
     <Space vertical style={{ width: '100%' }}>
       {topupInteractiveContent}
       {redeemCodeContent}
+      {withdrawalSection}
     </Space>
   );
 

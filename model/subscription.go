@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/cachex"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/samber/hot"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -35,14 +36,23 @@ const (
 )
 
 var (
-	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
-	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
-	ErrSubscriptionPlanOutOfStock     = errors.New("库存不足")
-	ErrSubscriptionPlanStockBlocked   = errors.New("存在待支付订单，暂不允许切换库存周期")
-	ErrSubscriptionPlanStockTooSmall  = errors.New("库存不能小于已锁定和已售数量")
-	ErrSubscriptionPlanStockInvariant = errors.New("订阅库存状态不一致")
-	ErrSubscriptionPlanStockNegative  = errors.New("库存不能为负数")
+	ErrSubscriptionOrderNotFound              = errors.New("subscription order not found")
+	ErrSubscriptionOrderStatusInvalid         = errors.New("subscription order status invalid")
+	ErrSubscriptionOrderPaymentMethodMismatch = errors.New("subscription order payment method mismatch")
+	ErrSubscriptionOrderAmountMismatch        = errors.New("subscription order amount mismatch")
+	ErrSubscriptionOrderProductMismatch       = errors.New("subscription order product mismatch")
+	ErrSubscriptionPlanOutOfStock             = errors.New("库存不足")
+	ErrSubscriptionPlanStockBlocked           = errors.New("存在待支付订单，暂不允许切换库存周期")
+	ErrSubscriptionPlanStockTooSmall          = errors.New("库存不能小于已锁定和已售数量")
+	ErrSubscriptionPlanStockInvariant         = errors.New("订阅库存状态不一致")
+	ErrSubscriptionPlanStockNegative          = errors.New("库存不能为负数")
 )
+
+type SubscriptionPaymentVerification struct {
+	PaymentMethod string
+	PaidMoney     string
+	ProductID     string
+}
 
 const (
 	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
@@ -718,6 +728,38 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 
 // Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
+	return CompleteSubscriptionOrderWithValidation(tradeNo, nil, providerPayload)
+}
+
+func validateSubscriptionOrderPayment(order *SubscriptionOrder, plan *SubscriptionPlan, verification *SubscriptionPaymentVerification) error {
+	if verification == nil {
+		return nil
+	}
+	if verification.PaymentMethod != "" && order.PaymentMethod != verification.PaymentMethod {
+		return ErrSubscriptionOrderPaymentMethodMismatch
+	}
+	if verification.PaidMoney != "" {
+		expectedMoney := decimal.NewFromFloat(order.Money).Round(2)
+		actualMoney, err := decimal.NewFromString(verification.PaidMoney)
+		if err != nil {
+			return err
+		}
+		if !expectedMoney.Equal(actualMoney.Round(2)) {
+			return ErrSubscriptionOrderAmountMismatch
+		}
+	}
+	if verification.ProductID != "" {
+		expectedProductID := strings.TrimSpace(plan.CreemProductId)
+		if expectedProductID == "" || expectedProductID != verification.ProductID {
+			return ErrSubscriptionOrderProductMismatch
+		}
+	}
+	return nil
+}
+
+// CompleteSubscriptionOrderWithValidation completes a pending subscription order and verifies
+// the payment channel and amount when provider-specific evidence is available.
+func CompleteSubscriptionOrderWithValidation(tradeNo string, verification *SubscriptionPaymentVerification, providerPayload string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -743,6 +785,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
 		}
 		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId, true)
 		if err != nil {
+			return err
+		}
+		if err := validateSubscriptionOrderPayment(&order, plan, verification); err != nil {
 			return err
 		}
 		if !plan.Enabled {

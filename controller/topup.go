@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,10 +28,13 @@ import (
 
 func GetTopUpInfo(c *gin.Context) {
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
+	enableStripe := isStripeTopupAvailable()
+	enableCreem := isCreemTopupAvailable()
+	enableWaffo := isWaffoTopupAvailable()
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
-	if setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "" {
+	if enableStripe {
 		// 检查是否已经包含 Stripe
 		hasStripe := false
 		for _, method := range payMethods {
@@ -52,15 +56,6 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	// 如果启用了 Waffo 支付，添加到支付方法列表
-	enableWaffo := setting.WaffoEnabled &&
-		((!setting.WaffoSandbox &&
-			setting.WaffoApiKey != "" &&
-			setting.WaffoPrivateKey != "" &&
-			setting.WaffoPublicCert != "") ||
-			(setting.WaffoSandbox &&
-				setting.WaffoSandboxApiKey != "" &&
-				setting.WaffoSandboxPrivateKey != "" &&
-				setting.WaffoSandboxPublicCert != ""))
 	if enableWaffo {
 		hasWaffo := false
 		for _, method := range payMethods {
@@ -82,9 +77,9 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup": operation_setting.PayAddress != "" && operation_setting.EpayId != "" && operation_setting.EpayKey != "",
-		"enable_stripe_topup": setting.StripeApiSecret != "" && setting.StripeWebhookSecret != "" && setting.StripePriceId != "",
-		"enable_creem_topup":  setting.CreemApiKey != "" && setting.CreemProducts != "[]",
+		"enable_online_topup": isEpayTopupAvailable(),
+		"enable_stripe_topup": enableStripe,
+		"enable_creem_topup":  enableCreem,
 		"enable_waffo_topup":  enableWaffo,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
@@ -171,6 +166,10 @@ func RequestEpay(c *gin.Context) {
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if !isEpayTopupSwitchEnabled() {
+		c.JSON(200, gin.H{"message": "error", "data": "当前管理员未开启易支付"})
 		return
 	}
 	if req.Amount < getMinTopup() {
@@ -324,7 +323,7 @@ func EpayNotify(c *gin.Context) {
 		log.Println(verifyInfo)
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := completeEpayTopUp(verifyInfo.ServiceTradeNo); err != nil {
+		if err := completeEpayTopUp(verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.Money); err != nil {
 			log.Printf("易支付回调处理订单失败: %v", err)
 			return
 		}
@@ -357,7 +356,7 @@ func EpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := completeEpayTopUp(verifyInfo.ServiceTradeNo); err != nil {
+		if err := completeEpayTopUp(verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.Money); err != nil {
 			renderBrowserRedirect(c, target)
 			return
 		}
@@ -385,7 +384,7 @@ func parseEpayParams(c *gin.Context) (map[string]string, error) {
 	}, map[string]string{}), nil
 }
 
-func completeEpayTopUp(tradeNo string) error {
+func completeEpayTopUp(tradeNo string, paidType string, paidMoney string) error {
 	topUp := model.GetTopUpByTradeNo(tradeNo)
 	if topUp == nil {
 		return fmt.Errorf("未找到订单: %s", tradeNo)
@@ -395,6 +394,28 @@ func completeEpayTopUp(tradeNo string) error {
 	}
 	if topUp.Status != common.TopUpStatusPending && topUp.Status != "pending" {
 		return fmt.Errorf("订单状态异常: %s", topUp.Status)
+	}
+	if topUp.PaymentMethod == PaymentMethodStripe || topUp.PaymentMethod == PaymentMethodCreem || topUp.PaymentMethod == "waffo" {
+		return fmt.Errorf("订单支付方式异常: %s", topUp.PaymentMethod)
+	}
+	if paidType == "" {
+		return fmt.Errorf("未提供支付方式")
+	}
+	if !strings.EqualFold(topUp.PaymentMethod, paidType) {
+		return fmt.Errorf("订单支付方式不匹配: expected=%s actual=%s", topUp.PaymentMethod, paidType)
+	}
+	if paidMoney == "" {
+		return fmt.Errorf("未提供支付金额")
+	}
+
+	expectedPayMoney := decimal.NewFromFloat(topUp.Money).Round(2)
+	actualPayMoney, err := decimal.NewFromString(paidMoney)
+	if err != nil {
+		return fmt.Errorf("支付金额格式错误: %s", paidMoney)
+	}
+	actualPayMoney = actualPayMoney.Round(2)
+	if !expectedPayMoney.Equal(actualPayMoney) {
+		return fmt.Errorf("订单金额不匹配: expected=%s actual=%s", expectedPayMoney.StringFixed(2), actualPayMoney.StringFixed(2))
 	}
 
 	topUp.CompleteTime = common.GetTimestamp()
@@ -457,6 +478,10 @@ func RequestAmount(c *gin.Context) {
 	err := c.ShouldBindJSON(&req)
 	if err != nil {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
+		return
+	}
+	if !isEpayTopupSwitchEnabled() {
+		c.JSON(200, gin.H{"message": "error", "data": "当前管理员未开启易支付"})
 		return
 	}
 

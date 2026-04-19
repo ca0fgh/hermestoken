@@ -15,15 +15,21 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
+	"github.com/stripe/stripe-go/v81/price"
 	"github.com/thanhpk/randstr"
 )
 
 var subscriptionStripeCheckoutLinkGenerator = genStripeSubscriptionLink
+var subscriptionStripeUnitAmountResolver = fetchStripeUnitAmount
 
 func SubscriptionRequestStripePay(c *gin.Context) {
 	var req dto.SubscriptionPaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if !isStripeTopupSwitchEnabled() {
+		common.ApiErrorMsg(c, "当前管理员未开启 Stripe 支付")
 		return
 	}
 
@@ -50,6 +56,30 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	}
 	if user == nil {
 		common.ApiErrorMsg(c, "用户不存在")
+		return
+	}
+	planPreview, err := model.GetSubscriptionPlanById(req.PlanId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if planPreview == nil {
+		common.ApiErrorMsg(c, "套餐不存在")
+		return
+	}
+	if planPreview.StripePriceId == "" {
+		common.ApiErrorMsg(c, "该套餐未配置 StripePriceId")
+		return
+	}
+	unitAmount, err := subscriptionStripeUnitAmountResolver(planPreview.StripePriceId)
+	if err != nil {
+		common.ApiErrorMsg(c, "Stripe PriceId 配置错误")
+		return
+	}
+	actualUnitMoney := moneyStringFromMinorUnits(unitAmount, "USD")
+	expectedUnitMoney := fmt.Sprintf("%.2f", planPreview.PriceAmount)
+	if actualUnitMoney != expectedUnitMoney {
+		common.ApiErrorMsg(c, "Stripe PriceId 金额与套餐价格不一致")
 		return
 	}
 
@@ -91,6 +121,21 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 			"pay_link": payLink,
 		},
 	})
+}
+
+func fetchStripeUnitAmount(priceID string) (int64, error) {
+	if priceID == "" {
+		return 0, fmt.Errorf("stripe price id is empty")
+	}
+	stripe.Key = setting.StripeApiSecret
+	result, err := price.Get(priceID, nil)
+	if err != nil {
+		return 0, err
+	}
+	if result == nil || result.UnitAmount <= 0 {
+		return 0, fmt.Errorf("invalid stripe unit amount")
+	}
+	return result.UnitAmount, nil
 }
 
 func genStripeSubscriptionLink(referenceId string, customerId string, email string, priceId string, quantity int64) (string, error) {

@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -149,6 +150,14 @@ func TestSubscriptionRequestStripePayPassesQuantityAndStoresAggregateTotal(t *te
 		priceId     string
 		quantity    int64
 	}
+
+	originalResolver := subscriptionStripeUnitAmountResolver
+	subscriptionStripeUnitAmountResolver = func(priceID string) (int64, error) {
+		return 3000, nil
+	}
+	t.Cleanup(func() {
+		subscriptionStripeUnitAmountResolver = originalResolver
+	})
 
 	originalGenerator := subscriptionStripeCheckoutLinkGenerator
 	subscriptionStripeCheckoutLinkGenerator = func(referenceId string, customerId string, email string, priceId string, quantity int64) (string, error) {
@@ -433,7 +442,7 @@ func TestSubscriptionEpayReturnWithoutParamsRendersBrowserRedirectPage(t *testin
 	}
 }
 
-func TestSubscriptionEpayReturnSuccessRestoresSessionCookie(t *testing.T) {
+func TestSubscriptionEpayReturnSuccessDoesNotRestoreSessionCookie(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionPaymentUser(t, db, 1, "return@example.com", "return_user", "")
 	plan := seedSubscriptionPlan(t, db, "return-plan")
@@ -497,14 +506,69 @@ func TestSubscriptionEpayReturnSuccessRestoresSessionCookie(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, recorder.Code)
 	}
 
-	setCookieHeaders := recorder.Result().Header.Values("Set-Cookie")
-	if len(setCookieHeaders) == 0 {
-		t.Fatalf("expected Set-Cookie header, got none; headers=%v body=%s", recorder.Result().Header, recorder.Body.String())
-	}
-	if !strings.Contains(setCookieHeaders[0], "session=") {
-		t.Fatalf("expected session cookie to be set, got headers: %v", setCookieHeaders)
+	if setCookieHeaders := recorder.Result().Header.Values("Set-Cookie"); len(setCookieHeaders) != 0 {
+		t.Fatalf("expected no Set-Cookie header, got headers: %v", setCookieHeaders)
 	}
 	if !strings.Contains(recorder.Body.String(), "window.location.replace(\"https://pay-local.hermestoken.top/console/topup?pay=success\\u0026show_history=true\")") {
 		t.Fatalf("expected success redirect body, got body: %s", recorder.Body.String())
+	}
+}
+
+func TestSubscriptionEpayNotifyRejectsAmountMismatch(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "subscription-epay-mismatch@example.com", "subscription_epay_mismatch", "")
+	plan := seedSubscriptionPlan(t, db, "subscription-epay-mismatch-plan")
+	order := &model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         99,
+		TradeNo:       "trade-epay-amount-mismatch",
+		PaymentMethod: "alipay",
+		Status:        common.TopUpStatusPending,
+		CreateTime:    1,
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatalf("failed to create subscription order: %v", err)
+	}
+
+	originalClientProvider := subscriptionEpayClientProvider
+	subscriptionEpayClientProvider = func() *epay.Client { return &epay.Client{} }
+	t.Cleanup(func() {
+		subscriptionEpayClientProvider = originalClientProvider
+	})
+
+	body := url.Values{}
+	body.Set("trade_no", "x")
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/epay/notify", strings.NewReader(body.Encode()))
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	originalVerify := subscriptionEpayVerify
+	subscriptionEpayVerify = func(_ *epay.Client, _ map[string]string) (*epay.VerifyRes, error) {
+		return &epay.VerifyRes{
+			ServiceTradeNo: order.TradeNo,
+			TradeStatus:    epay.StatusTradeSuccess,
+			VerifyStatus:   true,
+			Type:           "alipay",
+			Money:          "0.01",
+		}, nil
+	}
+	t.Cleanup(func() {
+		subscriptionEpayVerify = originalVerify
+	})
+
+	SubscriptionEpayNotify(ctx)
+
+	if recorder.Body.String() != "fail" {
+		t.Fatalf("expected fail body, got %q", recorder.Body.String())
+	}
+
+	var reloaded model.SubscriptionOrder
+	if err := db.Where("trade_no = ?", order.TradeNo).First(&reloaded).Error; err != nil {
+		t.Fatalf("failed to reload subscription order: %v", err)
+	}
+	if reloaded.Status != common.TopUpStatusPending {
+		t.Fatalf("expected subscription order to remain pending, got %s", reloaded.Status)
 	}
 }

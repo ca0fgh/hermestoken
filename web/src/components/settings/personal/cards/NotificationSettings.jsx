@@ -315,6 +315,11 @@ const NotificationSettings = ({
         { key: 'channel', title: t('渠道管理'), description: t('API渠道配置') },
         { key: 'models', title: t('模型管理'), description: t('AI模型配置') },
         {
+          key: 'withdrawal',
+          title: t('提现管理'),
+          description: t('用户提现审核与打款管理'),
+        },
+        {
           key: 'deployment',
           title: t('模型部署'),
           description: t('模型部署管理'),

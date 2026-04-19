@@ -43,6 +43,7 @@ export default function SettingsPaymentGatewayCreem(props) {
     CreemApiKey: '',
     CreemWebhookSecret: '',
     CreemProducts: '[]',
+    CreemEnabled: true,
     CreemTestMode: false,
   });
   const [originInputs, setOriginInputs] = useState({});
@@ -64,6 +65,10 @@ export default function SettingsPaymentGatewayCreem(props) {
         CreemApiKey: props.options.CreemApiKey || '',
         CreemWebhookSecret: props.options.CreemWebhookSecret || '',
         CreemProducts: props.options.CreemProducts || '[]',
+        CreemEnabled:
+          props.options.CreemEnabled !== undefined
+            ? props.options.CreemEnabled
+            : true,
         CreemTestMode: props.options.CreemTestMode === 'true',
       };
       setInputs(currentInputs);
@@ -97,6 +102,12 @@ export default function SettingsPaymentGatewayCreem(props) {
         options.push({
           key: 'CreemWebhookSecret',
           value: inputs.CreemWebhookSecret,
+        });
+      }
+      if (originInputs['CreemEnabled'] !== inputs.CreemEnabled) {
+        options.push({
+          key: 'CreemEnabled',
+          value: inputs.CreemEnabled ? 'true' : 'false',
         });
       }
 
@@ -270,6 +281,15 @@ export default function SettingsPaymentGatewayCreem(props) {
           <Banner type='info' description={t('Creem Setting Tips')} />
 
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='CreemEnabled'
+                label={t('启用 Creem')}
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+              />
+            </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
                 field='CreemApiKey'

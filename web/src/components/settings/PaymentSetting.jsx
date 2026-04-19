@@ -24,6 +24,7 @@ import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentG
 import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPaymentGatewayStripe';
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
+import SettingsWithdrawal from '../../pages/Setting/Payment/SettingsWithdrawal';
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -34,6 +35,7 @@ const PaymentSetting = () => {
     PayAddress: '',
     EpayId: '',
     EpayKey: '',
+    EpayEnabled: true,
     Price: 7.3,
     MinTopUp: 1,
     TopupGroupRatio: '',
@@ -45,9 +47,11 @@ const PaymentSetting = () => {
     StripeApiSecret: '',
     StripeWebhookSecret: '',
     StripePriceId: '',
+    StripeEnabled: true,
     StripeUnitPrice: 8.0,
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
+    CreemEnabled: true,
   });
 
   let [loading, setLoading] = useState(false);
@@ -107,8 +111,7 @@ const PaymentSetting = () => {
             break;
         }
       });
-
-      setInputs(newInputs);
+      setInputs((prev) => ({ ...prev, ...newInputs }));
     } else {
       showError(t(message));
     }
@@ -146,6 +149,9 @@ const PaymentSetting = () => {
         </Card>
         <Card style={{ marginTop: '10px' }}>
           <SettingsPaymentGatewayWaffo options={inputs} refresh={onRefresh} />
+        </Card>
+        <Card style={{ marginTop: '10px' }}>
+          <SettingsWithdrawal options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

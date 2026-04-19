@@ -38,6 +38,7 @@ const routerMap = {
   topup: '/console/topup',
   user: '/console/user',
   subscription: '/console/subscription',
+  withdrawal: '/console/withdrawal',
   log: '/console/log',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
@@ -185,6 +186,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('模型部署'),
         itemKey: 'deployment',
         to: '/deployment',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('提现管理'),
+        itemKey: 'withdrawal',
+        to: '/withdrawal',
         className: isAdmin() ? '' : 'tableHiddle',
       },
       {

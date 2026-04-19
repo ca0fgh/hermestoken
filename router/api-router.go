@@ -95,6 +95,10 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.RequestCreemPay)
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
 				selfRoute.POST("/aff_transfer", controller.TransferAffQuota)
+				selfRoute.GET("/withdrawal/config", controller.GetUserWithdrawalConfig)
+				selfRoute.GET("/withdrawals", controller.ListUserWithdrawals)
+				selfRoute.GET("/withdrawals/:id", controller.GetUserWithdrawal)
+				selfRoute.POST("/withdrawals", middleware.CriticalRateLimit(), controller.CreateUserWithdrawal)
 				selfRoute.PUT("/setting", controller.UpdateUserSetting)
 
 				// 2FA routes
@@ -123,7 +127,7 @@ func SetApiRouter(router *gin.Engine) {
 			{
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
-				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
+				adminRoute.POST("/topup/complete", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.SecureVerificationRequired(), controller.AdminCompleteTopUp)
 				adminRoute.GET("/search", controller.SearchUsers)
 				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
@@ -139,6 +143,16 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
+		}
+
+		withdrawalAdminRoute := apiRouter.Group("/admin/withdrawals")
+		withdrawalAdminRoute.Use(middleware.AdminAuth())
+		{
+			withdrawalAdminRoute.GET("", controller.AdminListWithdrawals)
+			withdrawalAdminRoute.GET("/:id", controller.AdminGetWithdrawal)
+			withdrawalAdminRoute.POST("/:id/approve", controller.AdminApproveWithdrawal)
+			withdrawalAdminRoute.POST("/:id/reject", controller.AdminRejectWithdrawal)
+			withdrawalAdminRoute.POST("/:id/mark-paid", controller.AdminMarkWithdrawalPaid)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

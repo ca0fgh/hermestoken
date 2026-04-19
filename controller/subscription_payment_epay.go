@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
 )
@@ -30,6 +29,10 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	var req dto.SubscriptionEpayPaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	if !isEpayTopupSwitchEnabled() {
+		common.ApiErrorMsg(c, "当前管理员未开启易支付")
 		return
 	}
 
@@ -149,7 +152,11 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo)); err != nil {
+	verification := &model.SubscriptionPaymentVerification{
+		PaymentMethod: verifyInfo.Type,
+		PaidMoney:     verifyInfo.Money,
+	}
+	if err := model.CompleteSubscriptionOrderWithValidation(verifyInfo.ServiceTradeNo, verification, common.GetJsonString(verifyInfo)); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -181,11 +188,14 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo)); err != nil {
+		verification := &model.SubscriptionPaymentVerification{
+			PaymentMethod: verifyInfo.Type,
+			PaidMoney:     verifyInfo.Money,
+		}
+		if err := model.CompleteSubscriptionOrderWithValidation(verifyInfo.ServiceTradeNo, verification, common.GetJsonString(verifyInfo)); err != nil {
 			renderBrowserRedirect(c, target)
 			return
 		}
-		restoreSubscriptionOrderSession(c, verifyInfo.ServiceTradeNo)
 		renderBrowserRedirect(c, subscriptionResultURL("success"))
 		return
 	}
@@ -194,22 +204,4 @@ func SubscriptionEpayReturn(c *gin.Context) {
 
 func subscriptionResultURL(status string) string {
 	return topUpResultURL(status)
-}
-
-func restoreSubscriptionOrderSession(c *gin.Context, tradeNo string) {
-	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
-	if order == nil || order.UserId <= 0 {
-		return
-	}
-	user, err := model.GetUserById(order.UserId, false)
-	if err != nil || user == nil {
-		return
-	}
-	session := sessions.Default(c)
-	session.Set("id", user.Id)
-	session.Set("username", user.Username)
-	session.Set("role", user.Role)
-	session.Set("status", user.Status)
-	session.Set("group", user.Group)
-	_ = session.Save()
 }

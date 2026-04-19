@@ -43,6 +43,7 @@ export default function SettingsPaymentGateway(props) {
     StripeApiSecret: '',
     StripeWebhookSecret: '',
     StripePriceId: '',
+    StripeEnabled: true,
     StripeUnitPrice: 8.0,
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
@@ -56,6 +57,10 @@ export default function SettingsPaymentGateway(props) {
         StripeApiSecret: props.options.StripeApiSecret || '',
         StripeWebhookSecret: props.options.StripeWebhookSecret || '',
         StripePriceId: props.options.StripePriceId || '',
+        StripeEnabled:
+          props.options.StripeEnabled !== undefined
+            ? props.options.StripeEnabled
+            : true,
         StripeUnitPrice:
           props.options.StripeUnitPrice !== undefined
             ? parseFloat(props.options.StripeUnitPrice)
@@ -96,6 +101,12 @@ export default function SettingsPaymentGateway(props) {
         options.push({
           key: 'StripeWebhookSecret',
           value: inputs.StripeWebhookSecret,
+        });
+      }
+      if (originInputs['StripeEnabled'] !== inputs.StripeEnabled) {
+        options.push({
+          key: 'StripeEnabled',
+          value: inputs.StripeEnabled ? 'true' : 'false',
         });
       }
       if (inputs.StripePriceId !== '') {
@@ -195,6 +206,15 @@ export default function SettingsPaymentGateway(props) {
             description={`需要包含事件：checkout.session.completed 和 checkout.session.expired`}
           />
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='StripeEnabled'
+                size='default'
+                checkedText='｜'
+                uncheckedText='〇'
+                label={t('启用 Stripe')}
+              />
+            </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.Input
                 field='StripeApiSecret'

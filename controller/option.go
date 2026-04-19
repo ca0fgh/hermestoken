@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -228,6 +229,23 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "音频补全倍率设置失败: " + err.Error(),
+			})
+			return
+		}
+	case model.WithdrawalMinAmountOptionKey:
+		minAmount, parseErr := strconv.ParseFloat(option.Value.(string), 64)
+		if parseErr != nil || minAmount < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "最低提现金额无效",
+			})
+			return
+		}
+	case model.WithdrawalFeeRulesOptionKey:
+		if _, parseErr := model.ParseWithdrawalFeeRules(option.Value.(string)); parseErr != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "提现手续费规则无效: " + parseErr.Error(),
 			})
 			return
 		}

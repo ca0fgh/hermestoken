@@ -166,6 +166,7 @@ func RequestWaffoPay(c *gin.Context) {
 	// 生成唯一订单号，paymentRequestId 与 merchantOrderId 保持一致，简化追踪
 	merchantOrderId := fmt.Sprintf("WAFFO-%d-%d-%s", id, time.Now().UnixMilli(), randstr.String(6))
 	paymentRequestId := merchantOrderId
+	currency := getWaffoCurrency()
 
 	// Token 模式下归一化 Amount（存等价美元/CNY 数量，避免 RechargeWaffo 双重放大）
 	amount := req.Amount
@@ -183,6 +184,7 @@ func RequestWaffoPay(c *gin.Context) {
 		Money:         payMoney,
 		TradeNo:       merchantOrderId,
 		PaymentMethod: "waffo",
+		Currency:      currency,
 		CreateTime:    time.Now().Unix(),
 		Status:        common.TopUpStatusPending,
 	}
@@ -211,7 +213,6 @@ func RequestWaffoPay(c *gin.Context) {
 		returnUrl = setting.WaffoReturnUrl
 	}
 
-	currency := getWaffoCurrency()
 	createParams := &order.CreateOrderParams{
 		PaymentRequestID: paymentRequestId,
 		MerchantOrderID:  merchantOrderId,
@@ -357,7 +358,12 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 	LockOrder(merchantOrderId)
 	defer UnlockOrder(merchantOrderId)
 
-	if err := model.RechargeWaffo(merchantOrderId); err != nil {
+	if err := model.RechargeWaffo(merchantOrderId, result.OrderAmount, result.OrderCurrency); err != nil {
+		if shouldAcknowledgePaymentValidationError(err) {
+			log.Printf("Waffo 充值校验拒绝: %v, 订单: %s", err, merchantOrderId)
+			sendWaffoWebhookResponse(c, wh, true, "")
+			return
+		}
 		log.Printf("Waffo 充值处理失败: %v, 订单: %s", err, merchantOrderId)
 		sendWaffoWebhookResponse(c, wh, false, err.Error())
 		return

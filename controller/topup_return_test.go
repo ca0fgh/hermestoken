@@ -6,7 +6,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
@@ -78,5 +81,58 @@ func TestParseEpayParamsSupportsGetAndPost(t *testing.T) {
 	}
 	if postParams["trade_no"] != "xyz789" || postParams["status"] != "ok" {
 		t.Fatalf("unexpected POST params: %+v", postParams)
+	}
+}
+
+func TestCompleteEpayTopUpRejectsAmountMismatch(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "epay-mismatch@example.com", "epay_mismatch", "")
+	topUp := &model.TopUp{
+		UserId:        user.Id,
+		Amount:        100,
+		Money:         100,
+		TradeNo:       "USR1NOEPAYMISMATCH",
+		PaymentMethod: "alipay",
+		CreateTime:    time.Now().Unix(),
+		Status:        common.TopUpStatusPending,
+	}
+	mustCreateTopUp(t, topUp)
+
+	if err := completeEpayTopUp(topUp.TradeNo, "alipay", "0.01"); err == nil {
+		t.Fatal("expected amount mismatch to be rejected")
+	}
+
+	reloadedTopUp := loadTopUpByTradeNo(t, topUp.TradeNo)
+	if reloadedTopUp.Status != common.TopUpStatusPending {
+		t.Fatalf("expected topup to remain pending, got %s", reloadedTopUp.Status)
+	}
+
+	reloadedUser := loadUserByID(t, user.Id)
+	if reloadedUser.Quota != 0 {
+		t.Fatalf("expected user quota to stay 0, got %d", reloadedUser.Quota)
+	}
+}
+
+func TestCompleteEpayTopUpRejectsPaymentMethodMismatch(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "epay-type@example.com", "epay_type", "")
+	topUp := &model.TopUp{
+		UserId:        user.Id,
+		Amount:        100,
+		Money:         100,
+		TradeNo:       "USR1NOEPAYTYPE",
+		PaymentMethod: "alipay",
+		CreateTime:    time.Now().Unix(),
+		Status:        common.TopUpStatusPending,
+	}
+	mustCreateTopUp(t, topUp)
+
+	if err := completeEpayTopUp(topUp.TradeNo, "wxpay", "100.00"); err == nil {
+		t.Fatal("expected payment method mismatch to be rejected")
+	}
+
+	reloadedTopUp := loadTopUpByTradeNo(t, topUp.TradeNo)
+	if reloadedTopUp.Status != common.TopUpStatusPending {
+		t.Fatalf("expected topup to remain pending, got %s", reloadedTopUp.Status)
 	}
 }

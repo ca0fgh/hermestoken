@@ -404,7 +404,7 @@
 - 提现金额
 - 支付宝账号
 - 支付宝姓名
-  - 可选，但建议填写
+  - 必填，用于管理员核对
 
 动态展示：
 
@@ -558,7 +558,7 @@
 - 实际到账金额必须大于 `0`
 - `alipay_account` 必填
 - `alipay_account` 需要去首尾空格
-- `alipay_real_name` 可选，但长度要受控
+- `alipay_real_name` 必填，且长度要受控
 
 ### Fee Rules
 
