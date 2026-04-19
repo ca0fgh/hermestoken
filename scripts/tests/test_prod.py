@@ -85,6 +85,29 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn('add_header Cache-Control "public, max-age=31536000, immutable" always;', config)
         self.assertIn("try_files $uri =404;", config)
 
+    def test_build_nginx_site_config_can_serve_spa_routes_from_host_dist_and_proxy_backend_prefixes(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            frontend_dist_path=Path("/opt/hermestoken/web/dist"),
+        )
+
+        self.assertIn("location = /index.html {", config)
+        self.assertIn('add_header Cache-Control "no-cache" always;', config)
+        self.assertIn("location / {", config)
+        self.assertIn("try_files $uri $uri/ /index.html;", config)
+        self.assertIn("location ^~ /api/ {", config)
+        self.assertIn("location ^~ /v1/ {", config)
+        self.assertIn("location ^~ /v1beta/ {", config)
+        self.assertIn("location ^~ /pg/ {", config)
+        self.assertIn("location ^~ /mj/ {", config)
+        self.assertIn("location ^~ /suno/ {", config)
+        self.assertIn("location ^~ /kling/ {", config)
+        self.assertIn("location ^~ /jimeng", config)
+        self.assertIn("location ^~ /dashboard/ {", config)
+        self.assertIn("location ~ ^/[^/]+/mj/ {", config)
+        self.assertNotIn("location / {\n        proxy_pass", config)
+
     def test_detect_real_ip_conf_returns_true_when_conf_d_already_manages_directives(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             conf_d_path = Path(tmp_dir) / "conf.d"

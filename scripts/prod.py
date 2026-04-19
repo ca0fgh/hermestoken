@@ -27,6 +27,19 @@ DEFAULT_HEALTHCHECK_INTERVAL_SECONDS = 1
 PROD_CONTAINER_NAMES = ("hermestoken-prod", "hermestoken-prod-postgres", "hermestoken-prod-redis")
 DEFAULT_NGINX_SITE_PATH = Path("/etc/nginx/sites-available/default")
 DEFAULT_NGINX_CONF_D_PATH = Path("/etc/nginx/conf.d")
+NGINX_BACKEND_PROXY_PREFIXES = (
+    "/api/",
+    "/dashboard/",
+    "/v1/",
+    "/v1beta/",
+    "/pg/",
+    "/mj/",
+    "/suno/",
+    "/kling/",
+)
+NGINX_BACKEND_PROXY_REGEXES = (
+    r"^/[^/]+/mj/",
+)
 
 CLOUDFLARE_REAL_IP_CIDRS = (
     "173.245.48.0/20",
@@ -129,17 +142,68 @@ real_ip_recursive on;
 
 """
 
+    backend_proxy_directives = f"""        proxy_pass http://127.0.0.1:{app_port};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+        proxy_buffering off;
+
+        add_header X-Nginx-Request-Time $request_time always;
+        add_header X-Nginx-Upstream-Response-Time $upstream_response_time always;
+        add_header X-Nginx-Upstream-Connect-Time $upstream_connect_time always;
+"""
+
     static_assets_block = ""
     if frontend_dist_path is not None:
-        dist_root = Path(frontend_dist_path).expanduser()
+        dist_root = Path(frontend_dist_path).expanduser().as_posix()
+        proxy_location_blocks = "\n\n".join(
+            f"""    location ^~ {prefix} {{
+{backend_proxy_directives}    }}"""
+            for prefix in NGINX_BACKEND_PROXY_PREFIXES
+        )
+        proxy_regex_blocks = "\n\n".join(
+            f"""    location ~ {pattern} {{
+{backend_proxy_directives}    }}"""
+            for pattern in NGINX_BACKEND_PROXY_REGEXES
+        )
         static_assets_block = f"""    location ^~ /assets/ {{
-        root {dist_root.as_posix()};
+        root {dist_root};
         access_log off;
         etag on;
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }}
 
+    location ^~ /jimeng {{
+{backend_proxy_directives}    }}
+
+{proxy_location_blocks}
+
+{proxy_regex_blocks}
+
+    location = /index.html {{
+        root {dist_root};
+        etag on;
+        try_files $uri =404;
+        add_header Cache-Control "no-cache" always;
+    }}
+
+    location / {{
+        root {dist_root};
+        index index.html;
+        etag on;
+        try_files $uri $uri/ /index.html;
+    }}
+"""
+    else:
+        static_assets_block = f"""    location / {{
+{backend_proxy_directives}    }}
 """
 
     return f"""map $http_upgrade $connection_upgrade {{
@@ -182,26 +246,8 @@ server {{
     client_max_body_size 100m;
 
 {static_assets_block}\
-    location / {{
-        proxy_pass http://127.0.0.1:{app_port};
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600;
-        proxy_send_timeout 3600;
-        proxy_buffering off;
-
-        add_header X-Nginx-Request-Time $request_time always;
-        add_header X-Nginx-Upstream-Response-Time $upstream_response_time always;
-        add_header X-Nginx-Upstream-Connect-Time $upstream_connect_time always;
-    }}
 }}
 """
-
 
 def detect_real_ip_conf_in_conf_d(*, conf_d_path: Path = DEFAULT_NGINX_CONF_D_PATH) -> bool:
     if not conf_d_path.is_dir():
