@@ -17,7 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { Suspense, lazy, useContext, useEffect } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { BarChart3 } from 'lucide-react';
 import { getRelativeTime } from '../../helpers/time';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
@@ -37,26 +47,31 @@ import {
   UPTIME_STATUS_MAP,
 } from '../../constants/dashboard.constants';
 import {
-  getTrendSpec,
   handleCopyUrl,
   handleSpeedTest,
   getUptimeStatusColor,
   getUptimeStatusText,
   renderMonitorList,
 } from '../../helpers/dashboard';
+import { lazyWithRetry } from '../../helpers/lazyWithRetry';
 import StatsCards from './StatsCards';
-import ChartsPanel from './ChartsPanel';
 import ApiInfoPanel from './ApiInfoPanel';
 import AnnouncementsPanel from './AnnouncementsPanel';
 import FaqPanel from './FaqPanel';
 import UptimePanel from './UptimePanel';
 
 const SearchModal = lazy(() => import('./modals/SearchModal'));
+const ChartsPanel = lazyWithRetry(
+  () => import('./ChartsPanel'),
+  'dashboard-charts-panel',
+);
 
 const Dashboard = () => {
   // ========== Context ==========
   const [userState, userDispatch] = useContext(UserContext);
-  const [statusState, statusDispatch] = useContext(StatusContext);
+  const [statusState] = useContext(StatusContext);
+  const [chartsPanelEnabled, setChartsPanelEnabled] = useState(false);
+  const adminUserChartCacheKeyRef = useRef('');
 
   // ========== 主要数据管理 ==========
   const dashboardData = useDashboardData(userState, userDispatch, statusState);
@@ -86,15 +101,45 @@ const Dashboard = () => {
     dashboardData.t,
   );
 
+  const userChartCacheKey = useMemo(() => {
+    return [
+      dashboardData.inputs.start_timestamp,
+      dashboardData.inputs.end_timestamp,
+      dashboardData.dataExportDefaultTime,
+    ].join('|');
+  }, [
+    dashboardData.inputs.start_timestamp,
+    dashboardData.inputs.end_timestamp,
+    dashboardData.dataExportDefaultTime,
+  ]);
+
+  const shouldLoadAdminUserCharts =
+    chartsPanelEnabled &&
+    dashboardData.isAdminUser &&
+    ['5', '6'].includes(dashboardData.activeChartTab);
+
   // ========== 数据处理 ==========
-  const loadUserData = async () => {
-    if (dashboardData.isAdminUser) {
-      const userData = await dashboardData.loadUserQuotaData();
-      if (userData && userData.length > 0) {
-        dashboardCharts.updateUserChartData(userData);
+  const loadUserData = useCallback(
+    async ({ force = false } = {}) => {
+      if (!dashboardData.isAdminUser) {
+        return;
       }
-    }
-  };
+
+      if (!force && adminUserChartCacheKeyRef.current === userChartCacheKey) {
+        return;
+      }
+
+      const userData = await dashboardData.loadUserQuotaData();
+      dashboardCharts.updateUserChartData(userData || []);
+      adminUserChartCacheKeyRef.current = userChartCacheKey;
+    },
+    [
+      dashboardCharts,
+      dashboardData.isAdminUser,
+      dashboardData.loadUserQuotaData,
+      userChartCacheKey,
+    ],
+  );
 
   const initChart = async () => {
     await dashboardData.loadQuotaData().then((data) => {
@@ -102,8 +147,10 @@ const Dashboard = () => {
         dashboardCharts.updateChartData(data);
       }
     });
-    await loadUserData();
-    await dashboardData.loadUptimeData();
+
+    if (dashboardData.uptimeEnabled) {
+      await dashboardData.loadUptimeData();
+    }
   };
 
   const handleRefresh = async () => {
@@ -111,12 +158,16 @@ const Dashboard = () => {
     if (data && data.length > 0) {
       dashboardCharts.updateChartData(data);
     }
-    await loadUserData();
+    if (shouldLoadAdminUserCharts) {
+      await loadUserData({ force: true });
+    }
   };
 
   const handleSearchConfirm = async () => {
     await dashboardData.handleSearchConfirm(dashboardCharts.updateChartData);
-    await loadUserData();
+    if (shouldLoadAdminUserCharts) {
+      await loadUserData({ force: true });
+    }
   };
 
   // ========== 数据准备 ==========
@@ -148,8 +199,16 @@ const Dashboard = () => {
 
   // ========== Effects ==========
   useEffect(() => {
-    initChart();
+    void initChart();
   }, []);
+
+  useEffect(() => {
+    if (!shouldLoadAdminUserCharts) {
+      return;
+    }
+
+    void loadUserData();
+  }, [loadUserData, shouldLoadAdminUserCharts]);
 
   return (
     <div className='h-full'>
@@ -182,9 +241,7 @@ const Dashboard = () => {
       <StatsCards
         groupedStatsData={groupedStatsData}
         loading={dashboardData.loading}
-        getTrendSpec={getTrendSpec}
         CARD_PROPS={CARD_PROPS}
-        CHART_CONFIG={CHART_CONFIG}
       />
 
       {/* API信息和图表面板 */}
@@ -192,22 +249,59 @@ const Dashboard = () => {
         <div
           className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
         >
-          <ChartsPanel
-            activeChartTab={dashboardData.activeChartTab}
-            setActiveChartTab={dashboardData.setActiveChartTab}
-            spec_line={dashboardCharts.spec_line}
-            spec_model_line={dashboardCharts.spec_model_line}
-            spec_pie={dashboardCharts.spec_pie}
-            spec_rank_bar={dashboardCharts.spec_rank_bar}
-            spec_user_rank={dashboardCharts.spec_user_rank}
-            spec_user_trend={dashboardCharts.spec_user_trend}
-            isAdminUser={dashboardData.isAdminUser}
-            CARD_PROPS={CARD_PROPS}
-            CHART_CONFIG={CHART_CONFIG}
-            FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-            hasApiInfoPanel={dashboardData.hasApiInfoPanel}
-            t={dashboardData.t}
-          />
+          {chartsPanelEnabled ? (
+            <Suspense
+              fallback={
+                <div
+                  className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${dashboardData.hasApiInfoPanel ? 'lg:col-span-3' : ''}`}
+                >
+                  <div className='h-96 animate-pulse rounded-2xl bg-slate-100' />
+                </div>
+              }
+            >
+              <ChartsPanel
+                activeChartTab={dashboardData.activeChartTab}
+                setActiveChartTab={dashboardData.setActiveChartTab}
+                spec_line={dashboardCharts.spec_line}
+                spec_model_line={dashboardCharts.spec_model_line}
+                spec_pie={dashboardCharts.spec_pie}
+                spec_rank_bar={dashboardCharts.spec_rank_bar}
+                spec_user_rank={dashboardCharts.spec_user_rank}
+                spec_user_trend={dashboardCharts.spec_user_trend}
+                isAdminUser={dashboardData.isAdminUser}
+                CARD_PROPS={CARD_PROPS}
+                CHART_CONFIG={CHART_CONFIG}
+                FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+                hasApiInfoPanel={dashboardData.hasApiInfoPanel}
+                t={dashboardData.t}
+              />
+            </Suspense>
+          ) : (
+            <section
+              className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${dashboardData.hasApiInfoPanel ? 'lg:col-span-3' : ''}`}
+            >
+              <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+                <div className='space-y-2'>
+                  <div className='flex items-center gap-2 text-sm font-semibold text-slate-900'>
+                    <BarChart3 size={16} />
+                    <span>{dashboardData.t('模型数据分析')}</span>
+                  </div>
+                  <p className='max-w-2xl text-sm text-slate-500'>
+                    {dashboardData.t(
+                      '图表分析改为按需加载，先保证控制台首页首屏更快，再在你需要时拉取大体积图表运行时。',
+                    )}
+                  </p>
+                </div>
+                <button
+                  type='button'
+                  className='inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700'
+                  onClick={() => setChartsPanelEnabled(true)}
+                >
+                  {dashboardData.t('加载图表分析')}
+                </button>
+              </div>
+            </section>
+          )}
 
           {dashboardData.hasApiInfoPanel && (
             <ApiInfoPanel

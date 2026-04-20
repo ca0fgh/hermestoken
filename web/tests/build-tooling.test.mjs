@@ -36,6 +36,10 @@ const statsCardsPath = new URL(
   '../src/components/dashboard/StatsCards.jsx',
   import.meta.url,
 );
+const miniTrendSparklinePath = new URL(
+  '../src/components/dashboard/MiniTrendSparkline.jsx',
+  import.meta.url,
+);
 const chartsPanelPath = new URL(
   '../src/components/dashboard/ChartsPanel.jsx',
   import.meta.url,
@@ -267,7 +271,7 @@ test('dashboard chart runtime deep imports the lightweight VChartSimple entry an
   );
 });
 
-test('dashboard route keeps its modal lazy but renders the visible panels from the main dashboard chunk', async () => {
+test('dashboard route keeps its modal lazy and moves the heavyweight chart analysis surface behind an explicit lazy gate', async () => {
   const source = await readFile(dashboardPath, 'utf8');
 
   assert.match(
@@ -276,7 +280,7 @@ test('dashboard route keeps its modal lazy but renders the visible panels from t
   );
   assert.match(
     source,
-    /import ChartsPanel from '\.\/ChartsPanel';/,
+    /const ChartsPanel = lazyWithRetry\([\s\S]*import\('\.\/ChartsPanel'\),[\s\S]*'dashboard-charts-panel',/,
   );
   assert.match(
     source,
@@ -295,14 +299,23 @@ test('dashboard route keeps its modal lazy but renders the visible panels from t
     /import UptimePanel from '\.\/UptimePanel';/,
   );
   assert.doesNotMatch(source, /const StatsCards = lazy/);
-  assert.doesNotMatch(source, /const ChartsPanel = lazy/);
+  assert.doesNotMatch(source, /import ChartsPanel from '\.\/ChartsPanel';/);
+  assert.match(source, /const \[chartsPanelEnabled, setChartsPanelEnabled\] = useState\(false\);/);
+  assert.match(source, /onClick=\{\(\) => setChartsPanelEnabled\(true\)\}/);
   assert.match(source, /import \{ getRelativeTime \} from '\.\.\/\.\.\/helpers\/time';/);
 });
 
-test('dashboard chart panels use the lazy VChart wrapper instead of importing visactor directly', async () => {
-  const [statsSource, chartsSource, lazyVChartSource, dashboardRuntimeSource] =
+test('dashboard chart panels use the lazy VChart wrapper while stats cards render with an inline sparkline instead of visactor', async () => {
+  const [
+    statsSource,
+    miniTrendSource,
+    chartsSource,
+    lazyVChartSource,
+    dashboardRuntimeSource,
+  ] =
     await Promise.all([
       readFile(statsCardsPath, 'utf8'),
+      readFile(miniTrendSparklinePath, 'utf8'),
       readFile(chartsPanelPath, 'utf8'),
       readFile(lazyVChartPath, 'utf8'),
       readFile(dashboardRuntimePath, 'utf8'),
@@ -310,8 +323,11 @@ test('dashboard chart panels use the lazy VChart wrapper instead of importing vi
 
   assert.doesNotMatch(statsSource, /from '@visactor\/react-vchart';/);
   assert.doesNotMatch(chartsSource, /from '@visactor\/react-vchart';/);
-  assert.match(statsSource, /from '\.\/LazyVChart';/);
+  assert.doesNotMatch(statsSource, /from '\.\/LazyVChart';/);
+  assert.match(statsSource, /from '\.\/MiniTrendSparkline';/);
   assert.match(chartsSource, /from '\.\/LazyVChart';/);
+  assert.match(miniTrendSource, /function buildSparklinePoints\(/);
+  assert.match(miniTrendSource, /<polyline/);
   assert.match(
     lazyVChartSource,
     /import\('@visactor\/react-vchart\/esm\/VChartSimple\.js'\)/,
@@ -324,6 +340,15 @@ test('dashboard chart panels use the lazy VChart wrapper instead of importing vi
   assert.match(dashboardRuntimeSource, /registerLineChart/);
   assert.match(dashboardRuntimeSource, /registerPieChart/);
   assert.doesNotMatch(dashboardRuntimeSource, /registerLabel/);
+});
+
+test('dashboard only loads admin user chart data after the heavy chart surface is enabled on user-specific tabs', async () => {
+  const source = await readFile(dashboardPath, 'utf8');
+
+  assert.match(source, /const shouldLoadAdminUserCharts =[\s\S]*\['5', '6'\]\.includes\(dashboardData\.activeChartTab\);/);
+  assert.match(source, /if \(!force && adminUserChartCacheKeyRef\.current === userChartCacheKey\) \{/);
+  assert.match(source, /if \(shouldLoadAdminUserCharts\) \{\s*await loadUserData\(\{ force: true \}\);/);
+  assert.match(source, /useEffect\(\(\) => \{\s*if \(!shouldLoadAdminUserCharts\) \{\s*return;\s*\}\s*void loadUserData\(\);\s*\}, \[loadUserData, shouldLoadAdminUserCharts\]\);/);
 });
 
 test('dashboard chart hook no longer preloads the visactor theme before the chart runtime is requested', async () => {
