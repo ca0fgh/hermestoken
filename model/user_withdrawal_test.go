@@ -98,6 +98,31 @@ func TestCreateUserWithdrawalRejectsSecondOpenOrder(t *testing.T) {
 	}
 }
 
+func TestCreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-gap-user", 100000)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":0,"max_amount":100,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	_, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
+		UserID:         user.Id,
+		Amount:         150,
+		AlipayAccount:  "alice@example.com",
+		AlipayRealName: "Alice",
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "fee rule") {
+		t.Fatalf("CreateUserWithdrawal error = %v, want missing fee rule validation", err)
+	}
+}
+
 func TestMarkPaidConsumesFrozenQuotaWithoutTouchingAvailableQuota(t *testing.T) {
 	db := setupWithdrawalModelDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit

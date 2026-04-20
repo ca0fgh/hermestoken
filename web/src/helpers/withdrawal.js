@@ -253,31 +253,37 @@ export const validateWithdrawalFeeEditorRules = (feeRules = []) => {
     }
   });
 
-  rules.forEach((rule, index) => {
-    const nextRule = rules[index + 1];
+  const enabledRules = rules
+    .map((rule, index) => ({
+      rule,
+      rowNumber: index + 1,
+    }))
+    .filter(({ rule }) => rule.enabled);
+
+  enabledRules.forEach(({ rule, rowNumber }, index) => {
+    const nextEnabledRule = enabledRules[index + 1];
+    const nextRule = nextEnabledRule?.rule;
     if (!nextRule) {
       return;
     }
 
-    const currentRow = index + 1;
-    const nextRow = index + 2;
     const upperBound = getRuleUpperBound(rule);
 
     if (!Number.isFinite(upperBound)) {
-      errors.push(`第 ${currentRow} 条规则已设置为无上限，后面不能再添加规则`);
+      errors.push(`第 ${rowNumber} 条规则已设置为无上限，后面不能再添加规则`);
       return;
     }
 
     if (nextRule.minAmount < upperBound) {
       errors.push(
-        `第 ${currentRow} 条规则和第 ${nextRow} 条规则的金额区间发生重叠`,
+        `第 ${rowNumber} 条规则和第 ${nextEnabledRule.rowNumber} 条规则的金额区间发生重叠`,
       );
       return;
     }
 
     if (nextRule.minAmount > upperBound) {
       warnings.push(
-        `第 ${currentRow} 条规则和第 ${nextRow} 条规则之间存在金额区间断层`,
+        `第 ${rowNumber} 条规则和第 ${nextEnabledRule.rowNumber} 条规则之间存在金额区间断层`,
       );
     }
   });

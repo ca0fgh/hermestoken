@@ -236,6 +236,9 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 	if err != nil {
 		return nil, err
 	}
+	if matchedRule == nil {
+		return nil, errors.New("withdrawal amount does not match any fee rule")
+	}
 	netAmount := amount.Sub(feeAmount).Round(2)
 	if !netAmount.GreaterThan(decimal.Zero) {
 		return nil, errors.New("net withdrawal amount must be greater than zero")
