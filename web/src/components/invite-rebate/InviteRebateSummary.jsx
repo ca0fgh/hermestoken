@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Card, Typography } from '@douyinfe/semi-ui';
-import { renderQuota } from '../../helpers';
+import { renderQuota } from '../../helpers/quota';
 
 const numberFormatter = new Intl.NumberFormat();
 

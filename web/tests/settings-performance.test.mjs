@@ -30,40 +30,42 @@ test('settings page lazy loads heavyweight tab surfaces instead of importing eve
   assert.match(settingPageSource, /<Suspense fallback=\{<Spin spinning \/>?\}>/);
 });
 
-test('operation settings lazy load their heavyweight cards so switching tabs does not pull every section at once', () => {
+test('operation settings keep the tab lazy but ship one section bundle once the tab is opened', () => {
   assert.match(
     operationSettingSource,
-    /const SettingsGeneral = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Operation\/SettingsGeneral'\),/,
+    /import SettingsGeneral from '\.\.\/\.\.\/pages\/Setting\/Operation\/SettingsGeneral';/,
   );
   assert.match(
     operationSettingSource,
-    /const SettingsHeaderNavModules = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Operation\/SettingsHeaderNavModules'\),/,
+    /import SettingsHeaderNavModules from '\.\.\/\.\.\/pages\/Setting\/Operation\/SettingsHeaderNavModules';/,
   );
   assert.match(
     operationSettingSource,
-    /const SettingsMonitoring = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Operation\/SettingsMonitoring'\),/,
+    /import SettingsMonitoring from '\.\.\/\.\.\/pages\/Setting\/Operation\/SettingsMonitoring';/,
   );
-  assert.match(operationSettingSource, /<Suspense fallback=\{null\}>/);
+  assert.doesNotMatch(operationSettingSource, /lazyWithRetry/);
+  assert.doesNotMatch(operationSettingSource, /<Suspense fallback=\{null\}>/);
 });
 
-test('payment settings lazy load provider panels so the settings route stops inheriting every gateway form', () => {
+test('payment settings keep the tab lazy but bundle gateway sections together after the tab opens', () => {
   assert.match(
     paymentSettingSource,
-    /const SettingsGeneralPayment = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsGeneralPayment'\),/,
+    /import SettingsGeneralPayment from '\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsGeneralPayment';/,
   );
   assert.match(
     paymentSettingSource,
-    /const SettingsPaymentGatewayStripe = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsPaymentGatewayStripe'\),/,
+    /import SettingsPaymentGatewayStripe from '\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsPaymentGatewayStripe';/,
   );
   assert.match(
     paymentSettingSource,
-    /const SettingsPaymentGatewayCreem = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsPaymentGatewayCreem'\),/,
+    /import SettingsPaymentGatewayCreem from '\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsPaymentGatewayCreem';/,
   );
   assert.match(
     paymentSettingSource,
-    /const SettingsWithdrawal = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsWithdrawal'\),/,
+    /import SettingsWithdrawal from '\.\.\/\.\.\/pages\/Setting\/Payment\/SettingsWithdrawal';/,
   );
-  assert.match(paymentSettingSource, /<Suspense fallback=\{null\}>/);
+  assert.doesNotMatch(paymentSettingSource, /lazyWithRetry/);
+  assert.doesNotMatch(paymentSettingSource, /<Suspense fallback=\{null\}>/);
 });
 
 test('api helper reuses recent admin option responses and invalidates them after option writes', () => {

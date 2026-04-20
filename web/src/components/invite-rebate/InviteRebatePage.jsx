@@ -20,7 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useRef, useState } from 'react';
 import { Spin, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
-import { API, showError } from '../../helpers';
+import { API } from '../../helpers/api';
+import { showError } from '../../helpers/notifications';
 import {
   createInviteeDetailRequestGuard,
   resolveInviteeSelectionAfterPageRefresh,

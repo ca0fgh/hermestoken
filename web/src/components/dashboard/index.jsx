@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { Suspense, lazy, useContext, useEffect } from 'react';
-import { getRelativeTime } from '../../helpers';
+import { getRelativeTime } from '../../helpers/time';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
 
@@ -44,14 +44,14 @@ import {
   getUptimeStatusText,
   renderMonitorList,
 } from '../../helpers/dashboard';
+import StatsCards from './StatsCards';
+import ChartsPanel from './ChartsPanel';
+import ApiInfoPanel from './ApiInfoPanel';
+import AnnouncementsPanel from './AnnouncementsPanel';
+import FaqPanel from './FaqPanel';
+import UptimePanel from './UptimePanel';
 
 const SearchModal = lazy(() => import('./modals/SearchModal'));
-const StatsCards = lazy(() => import('./StatsCards'));
-const ChartsPanel = lazy(() => import('./ChartsPanel'));
-const ApiInfoPanel = lazy(() => import('./ApiInfoPanel'));
-const AnnouncementsPanel = lazy(() => import('./AnnouncementsPanel'));
-const FaqPanel = lazy(() => import('./FaqPanel'));
-const UptimePanel = lazy(() => import('./UptimePanel'));
 
 const Dashboard = () => {
   // ========== Context ==========
@@ -179,52 +179,46 @@ const Dashboard = () => {
         </Suspense>
       ) : null}
 
-      <Suspense fallback={null}>
-        <StatsCards
-          groupedStatsData={groupedStatsData}
-          loading={dashboardData.loading}
-          getTrendSpec={getTrendSpec}
-          CARD_PROPS={CARD_PROPS}
-          CHART_CONFIG={CHART_CONFIG}
-        />
-      </Suspense>
+      <StatsCards
+        groupedStatsData={groupedStatsData}
+        loading={dashboardData.loading}
+        getTrendSpec={getTrendSpec}
+        CARD_PROPS={CARD_PROPS}
+        CHART_CONFIG={CHART_CONFIG}
+      />
 
       {/* API信息和图表面板 */}
       <div className='mb-4'>
         <div
           className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
         >
-          <Suspense fallback={null}>
-            <ChartsPanel
-              activeChartTab={dashboardData.activeChartTab}
-              setActiveChartTab={dashboardData.setActiveChartTab}
-              spec_line={dashboardCharts.spec_line}
-              spec_model_line={dashboardCharts.spec_model_line}
-              spec_pie={dashboardCharts.spec_pie}
-              spec_rank_bar={dashboardCharts.spec_rank_bar}
-              spec_user_rank={dashboardCharts.spec_user_rank}
-              spec_user_trend={dashboardCharts.spec_user_trend}
-              isAdminUser={dashboardData.isAdminUser}
-              CARD_PROPS={CARD_PROPS}
-              CHART_CONFIG={CHART_CONFIG}
-              FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-              hasApiInfoPanel={dashboardData.hasApiInfoPanel}
-              t={dashboardData.t}
-            />
-          </Suspense>
+          <ChartsPanel
+            activeChartTab={dashboardData.activeChartTab}
+            setActiveChartTab={dashboardData.setActiveChartTab}
+            spec_line={dashboardCharts.spec_line}
+            spec_model_line={dashboardCharts.spec_model_line}
+            spec_pie={dashboardCharts.spec_pie}
+            spec_rank_bar={dashboardCharts.spec_rank_bar}
+            spec_user_rank={dashboardCharts.spec_user_rank}
+            spec_user_trend={dashboardCharts.spec_user_trend}
+            isAdminUser={dashboardData.isAdminUser}
+            CARD_PROPS={CARD_PROPS}
+            CHART_CONFIG={CHART_CONFIG}
+            FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+            hasApiInfoPanel={dashboardData.hasApiInfoPanel}
+            t={dashboardData.t}
+          />
 
           {dashboardData.hasApiInfoPanel && (
-            <Suspense fallback={null}>
-              <ApiInfoPanel
-                apiInfoData={apiInfoData}
-                handleCopyUrl={(url) => handleCopyUrl(url, dashboardData.t)}
-                handleSpeedTest={handleSpeedTest}
-                CARD_PROPS={CARD_PROPS}
-                FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                t={dashboardData.t}
-              />
-            </Suspense>
+            <ApiInfoPanel
+              apiInfoData={apiInfoData}
+              handleCopyUrl={(url) => handleCopyUrl(url, dashboardData.t)}
+              handleSpeedTest={handleSpeedTest}
+              CARD_PROPS={CARD_PROPS}
+              FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+              ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+              t={dashboardData.t}
+            />
           )}
         </div>
       </div>
@@ -235,64 +229,55 @@ const Dashboard = () => {
           <div className='grid grid-cols-1 lg:grid-cols-4 gap-4'>
             {/* 公告卡片 */}
             {dashboardData.announcementsEnabled && (
-              <Suspense fallback={null}>
-                <AnnouncementsPanel
-                  announcementData={announcementData}
-                  announcementLegendData={ANNOUNCEMENT_LEGEND_DATA.map(
-                    (item) => ({
-                      ...item,
-                      label: dashboardData.t(item.label),
-                    }),
-                  )}
-                  CARD_PROPS={CARD_PROPS}
-                  ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                  t={dashboardData.t}
-                />
-              </Suspense>
+              <AnnouncementsPanel
+                announcementData={announcementData}
+                announcementLegendData={ANNOUNCEMENT_LEGEND_DATA.map((item) => ({
+                  ...item,
+                  label: dashboardData.t(item.label),
+                }))}
+                CARD_PROPS={CARD_PROPS}
+                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                t={dashboardData.t}
+              />
             )}
 
             {/* 常见问答卡片 */}
             {dashboardData.faqEnabled && (
-              <Suspense fallback={null}>
-                <FaqPanel
-                  faqData={faqData}
-                  CARD_PROPS={CARD_PROPS}
-                  FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-                  ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                  t={dashboardData.t}
-                />
-              </Suspense>
+              <FaqPanel
+                faqData={faqData}
+                CARD_PROPS={CARD_PROPS}
+                FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
+                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                t={dashboardData.t}
+              />
             )}
 
             {/* 服务可用性卡片 */}
             {dashboardData.uptimeEnabled && (
-              <Suspense fallback={null}>
-                <UptimePanel
-                  uptimeData={dashboardData.uptimeData}
-                  uptimeLoading={dashboardData.uptimeLoading}
-                  activeUptimeTab={dashboardData.activeUptimeTab}
-                  setActiveUptimeTab={dashboardData.setActiveUptimeTab}
-                  loadUptimeData={dashboardData.loadUptimeData}
-                  uptimeLegendData={uptimeLegendData}
-                  renderMonitorList={(monitors) =>
-                    renderMonitorList(
-                      monitors,
-                      (status) =>
-                        getUptimeStatusColor(status, UPTIME_STATUS_MAP),
-                      (status) =>
-                        getUptimeStatusText(
-                          status,
-                          UPTIME_STATUS_MAP,
-                          dashboardData.t,
-                        ),
-                      dashboardData.t,
-                    )
-                  }
-                  CARD_PROPS={CARD_PROPS}
-                  ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
-                  t={dashboardData.t}
-                />
-              </Suspense>
+              <UptimePanel
+                uptimeData={dashboardData.uptimeData}
+                uptimeLoading={dashboardData.uptimeLoading}
+                activeUptimeTab={dashboardData.activeUptimeTab}
+                setActiveUptimeTab={dashboardData.setActiveUptimeTab}
+                loadUptimeData={dashboardData.loadUptimeData}
+                uptimeLegendData={uptimeLegendData}
+                renderMonitorList={(monitors) =>
+                  renderMonitorList(
+                    monitors,
+                    (status) => getUptimeStatusColor(status, UPTIME_STATUS_MAP),
+                    (status) =>
+                      getUptimeStatusText(
+                        status,
+                        UPTIME_STATUS_MAP,
+                        dashboardData.t,
+                      ),
+                    dashboardData.t,
+                  )
+                }
+                CARD_PROPS={CARD_PROPS}
+                ILLUSTRATION_SIZE={ILLUSTRATION_SIZE}
+                t={dashboardData.t}
+              />
             )}
           </div>
         </div>

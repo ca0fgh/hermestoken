@@ -29,13 +29,10 @@ import {
   Tabs,
   Typography,
 } from '@douyinfe/semi-ui';
-import {
-  API,
-  renderQuota,
-  showError,
-  showSuccess,
-  timestamp2string,
-} from '../../helpers';
+import { API } from '../../helpers/api';
+import { showError, showSuccess } from '../../helpers/notifications';
+import { renderQuota } from '../../helpers/quota';
+import { timestamp2string } from '../../helpers/utils';
 import {
   clampInviteeRateBps,
   formatRateBpsPercent,

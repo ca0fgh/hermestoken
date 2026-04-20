@@ -114,21 +114,22 @@ test('vite build keeps only safe heavy dependencies in dedicated chunks', async 
 
   assert.match(source, /manualChunks:\s*(buildManualChunkName|\()/);
   assert.match(source, /return 'seasonal-effects';/);
+  assert.match(source, /return 'semi-vendor';/);
+  assert.match(source, /return 'data-viz';/);
   assert.match(source, /onwarn:\s*(handleBuildWarning|\()/);
   assert.match(source, /lottie-web\/build\/player\/lottie\.js/);
   assert.match(source, /chunkSizeWarningLimit:\s*3500/);
   assert.match(packageJson.scripts.build, /BROWSERSLIST_IGNORE_OLD_DATA=true/);
 });
 
-test('vite build keeps only the safe dedicated chunks and avoids startup cycle chunks', async () => {
+test('vite build groups the noisy semi and visactor vendor graphs while keeping startup routing stable', async () => {
   const source = await readFile(viteConfigPath, 'utf8');
   const reactCoreIndex = source.indexOf("return 'react-core';");
 
   assert.match(source, /id\.includes\('i18next'\)[\s\S]*return 'react-core';/);
+  assert.match(source, /id\.includes\('@douyinfe\/semi'\)[\s\S]*return 'semi-vendor';/);
+  assert.match(source, /id\.includes\('\/@visactor\/'\)[\s\S]*return 'data-viz';/);
   assert.doesNotMatch(source, /id\.includes\('i18next'\)[\s\S]*return 'i18n';/);
-  assert.doesNotMatch(source, /id\.includes\('@douyinfe\/semi-ui'\)/);
-  assert.doesNotMatch(source, /id\.includes\('@visactor\/'\)/);
-  assert.doesNotMatch(source, /return 'brand-icons';/);
   assert.doesNotMatch(source, /return 'rich-content';/);
   assert.notEqual(reactCoreIndex, -1);
 });
@@ -242,35 +243,36 @@ test('dashboard route lazy loads the search modal instead of bundling it into th
   assert.match(source, /<Suspense fallback=\{null\}>[\s\S]*<SearchModal/);
 });
 
-test('dashboard route lazy loads its heavy visual panels instead of statically importing them', async () => {
+test('dashboard route keeps its modal lazy but renders the visible panels from the main dashboard chunk', async () => {
   const source = await readFile(dashboardPath, 'utf8');
 
   assert.match(
     source,
-    /const StatsCards = lazy\(\(\) => import\('\.\/StatsCards'\)\);/,
+    /import StatsCards from '\.\/StatsCards';/,
   );
   assert.match(
     source,
-    /const ChartsPanel = lazy\(\(\) => import\('\.\/ChartsPanel'\)\);/,
+    /import ChartsPanel from '\.\/ChartsPanel';/,
   );
   assert.match(
     source,
-    /const ApiInfoPanel = lazy\(\(\) => import\('\.\/ApiInfoPanel'\)\);/,
+    /import ApiInfoPanel from '\.\/ApiInfoPanel';/,
   );
   assert.match(
     source,
-    /const AnnouncementsPanel = lazy\(\(\) => import\('\.\/AnnouncementsPanel'\)\);/,
+    /import AnnouncementsPanel from '\.\/AnnouncementsPanel';/,
   );
   assert.match(
     source,
-    /const FaqPanel = lazy\(\(\) => import\('\.\/FaqPanel'\)\);/,
+    /import FaqPanel from '\.\/FaqPanel';/,
   );
   assert.match(
     source,
-    /const UptimePanel = lazy\(\(\) => import\('\.\/UptimePanel'\)\);/,
+    /import UptimePanel from '\.\/UptimePanel';/,
   );
-  assert.doesNotMatch(source, /import StatsCards from '\.\/StatsCards';/);
-  assert.doesNotMatch(source, /import ChartsPanel from '\.\/ChartsPanel';/);
+  assert.doesNotMatch(source, /const StatsCards = lazy/);
+  assert.doesNotMatch(source, /const ChartsPanel = lazy/);
+  assert.match(source, /import \{ getRelativeTime \} from '\.\.\/\.\.\/helpers\/time';/);
 });
 
 test('dashboard chart panels use the lazy VChart wrapper instead of importing visactor directly', async () => {

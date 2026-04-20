@@ -17,40 +17,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Spin } from '@douyinfe/semi-ui';
-import { lazyWithRetry } from '../../helpers/lazyWithRetry';
-import { API, showError, toBoolean } from '../../helpers';
+import { API } from '../../helpers/api';
+import { toBoolean } from '../../helpers/boolean';
+import { showError } from '../../helpers/notifications';
 import { useTranslation } from 'react-i18next';
-
-const SettingsGeneralPayment = lazyWithRetry(
-  () => import('../../pages/Setting/Payment/SettingsGeneralPayment'),
-  'settings-general-payment-card',
-);
-const SettingsPaymentGateway = lazyWithRetry(
-  () => import('../../pages/Setting/Payment/SettingsPaymentGateway'),
-  'settings-payment-gateway-card',
-);
-const SettingsPaymentGatewayStripe = lazyWithRetry(
-  () => import('../../pages/Setting/Payment/SettingsPaymentGatewayStripe'),
-  'settings-payment-stripe-card',
-);
-const SettingsPaymentGatewayCreem = lazyWithRetry(
-  () => import('../../pages/Setting/Payment/SettingsPaymentGatewayCreem'),
-  'settings-payment-creem-card',
-);
-const SettingsPaymentGatewayWaffo = lazyWithRetry(
-  () => import('../../pages/Setting/Payment/SettingsPaymentGatewayWaffo'),
-  'settings-payment-waffo-card',
-);
-const SettingsWithdrawal = lazyWithRetry(
-  () => import('../../pages/Setting/Payment/SettingsWithdrawal'),
-  'settings-withdrawal-card',
-);
-
-function renderSection(content) {
-  return <Suspense fallback={null}>{content}</Suspense>;
-}
+import SettingsGeneralPayment from '../../pages/Setting/Payment/SettingsGeneralPayment';
+import SettingsPaymentGateway from '../../pages/Setting/Payment/SettingsPaymentGateway';
+import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPaymentGatewayStripe';
+import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
+import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
+import SettingsWithdrawal from '../../pages/Setting/Payment/SettingsWithdrawal';
 
 const PaymentSetting = () => {
   const { t } = useTranslation();
@@ -160,34 +138,22 @@ const PaymentSetting = () => {
     <>
       <Spin spinning={loading} size='large'>
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsGeneralPayment options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsGeneralPayment options={inputs} refresh={onRefresh} />
         </Card>
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsPaymentGateway options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsPaymentGateway options={inputs} refresh={onRefresh} />
         </Card>
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsPaymentGatewayStripe options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsPaymentGatewayStripe options={inputs} refresh={onRefresh} />
         </Card>
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsPaymentGatewayCreem options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsPaymentGatewayCreem options={inputs} refresh={onRefresh} />
         </Card>
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsPaymentGatewayWaffo options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsPaymentGatewayWaffo options={inputs} refresh={onRefresh} />
         </Card>
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsWithdrawal options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsWithdrawal options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

@@ -28,7 +28,7 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
-import { renderQuota } from '../../helpers';
+import { renderQuota } from '../../helpers/quota';
 import ListPagination from '../common/ui/ListPagination';
 
 const InviteeListPanel = ({

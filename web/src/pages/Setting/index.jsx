@@ -35,7 +35,7 @@ import {
   Server,
   Activity,
 } from 'lucide-react';
-import { isRoot } from '../../helpers';
+import { isRoot } from '../../helpers/session';
 import { lazyWithRetry } from '../../helpers/lazyWithRetry';
 
 const SystemSetting = lazyWithRetry(

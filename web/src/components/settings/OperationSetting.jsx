@@ -17,47 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Spin } from '@douyinfe/semi-ui';
-import { lazyWithRetry } from '../../helpers/lazyWithRetry';
-import { API, showError, toBoolean } from '../../helpers';
-
-const SettingsGeneral = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsGeneral'),
-  'settings-general-card',
-);
-const SettingsHeaderNavModules = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsHeaderNavModules'),
-  'settings-header-nav-card',
-);
-const SettingsSidebarModulesAdmin = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsSidebarModulesAdmin'),
-  'settings-sidebar-admin-card',
-);
-const SettingsSensitiveWords = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsSensitiveWords'),
-  'settings-sensitive-words-card',
-);
-const SettingsLog = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsLog'),
-  'settings-log-card',
-);
-const SettingsMonitoring = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsMonitoring'),
-  'settings-monitoring-card',
-);
-const SettingsCreditLimit = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsCreditLimit'),
-  'settings-credit-limit-card',
-);
-const SettingsCheckin = lazyWithRetry(
-  () => import('../../pages/Setting/Operation/SettingsCheckin'),
-  'settings-checkin-card',
-);
-
-function renderSection(content) {
-  return <Suspense fallback={null}>{content}</Suspense>;
-}
+import { API } from '../../helpers/api';
+import { toBoolean } from '../../helpers/boolean';
+import { showError } from '../../helpers/notifications';
+import SettingsGeneral from '../../pages/Setting/Operation/SettingsGeneral';
+import SettingsHeaderNavModules from '../../pages/Setting/Operation/SettingsHeaderNavModules';
+import SettingsSidebarModulesAdmin from '../../pages/Setting/Operation/SettingsSidebarModulesAdmin';
+import SettingsSensitiveWords from '../../pages/Setting/Operation/SettingsSensitiveWords';
+import SettingsLog from '../../pages/Setting/Operation/SettingsLog';
+import SettingsMonitoring from '../../pages/Setting/Operation/SettingsMonitoring';
+import SettingsCreditLimit from '../../pages/Setting/Operation/SettingsCreditLimit';
+import SettingsCheckin from '../../pages/Setting/Operation/SettingsCheckin';
 
 const OperationSetting = () => {
   let [inputs, setInputs] = useState({
@@ -154,45 +126,35 @@ const OperationSetting = () => {
       <Spin spinning={loading} size='large'>
         {/* 通用设置 */}
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(<SettingsGeneral options={inputs} refresh={onRefresh} />)}
+          <SettingsGeneral options={inputs} refresh={onRefresh} />
         </Card>
         {/* 顶栏模块管理 */}
         <div style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsHeaderNavModules options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsHeaderNavModules options={inputs} refresh={onRefresh} />
         </div>
         {/* 左侧边栏模块管理（管理员） */}
         <div style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsSidebarModulesAdmin options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsSidebarModulesAdmin options={inputs} refresh={onRefresh} />
         </div>
         {/* 屏蔽词过滤设置 */}
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsSensitiveWords options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsSensitiveWords options={inputs} refresh={onRefresh} />
         </Card>
         {/* 日志设置 */}
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(<SettingsLog options={inputs} refresh={onRefresh} />)}
+          <SettingsLog options={inputs} refresh={onRefresh} />
         </Card>
         {/* 监控设置 */}
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsMonitoring options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsMonitoring options={inputs} refresh={onRefresh} />
         </Card>
         {/* 额度设置 */}
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(
-            <SettingsCreditLimit options={inputs} refresh={onRefresh} />,
-          )}
+          <SettingsCreditLimit options={inputs} refresh={onRefresh} />
         </Card>
         {/* 签到设置 */}
         <Card style={{ marginTop: '10px' }}>
-          {renderSection(<SettingsCheckin options={inputs} refresh={onRefresh} />)}
+          <SettingsCheckin options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

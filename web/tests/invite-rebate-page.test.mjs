@@ -29,6 +29,9 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
   assert.match(pageSource, /buildInviteDefaultRuleRows/);
   assert.match(pageSource, /buildInviteeContributionDetailCards/);
   assert.match(pageSource, /buildInviteeOverrideRows/);
+  assert.match(pageSource, /from ['"]\.\.\/\.\.\/helpers\/api['"]/);
+  assert.match(pageSource, /from ['"]\.\.\/\.\.\/helpers\/notifications['"]/);
+  assert.doesNotMatch(pageSource, /from ['"]\.\.\/\.\.\/helpers['"]/);
   assert.match(pageSource, /API\.get\('\/api\/user\/referral\/subscription'\)/);
   assert.match(
     pageSource,

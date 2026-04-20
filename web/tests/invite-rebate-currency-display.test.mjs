@@ -14,13 +14,13 @@ test('invite rebate earnings displays reuse quota currency rendering helpers', (
 
   assert.match(
     summarySource,
-    /import\s+\{\s*renderQuota\s*\}\s+from\s+['"]\.\.\/\.\.\/helpers['"]/,
+    /import\s+\{\s*renderQuota\s*\}\s+from\s+['"]\.\.\/\.\.\/helpers\/quota['"]/,
   );
   assert.match(summarySource, /renderQuota\(totalContributionQuota\)/);
 
   assert.match(
     listSource,
-    /import\s+\{\s*renderQuota\s*\}\s+from\s+['"]\.\.\/\.\.\/helpers['"]/,
+    /import\s+\{\s*renderQuota\s*\}\s+from\s+['"]\.\.\/\.\.\/helpers\/quota['"]/,
   );
   assert.match(listSource, /renderQuota\(invitee\.contribution_quota \|\| 0\)/);
 });
