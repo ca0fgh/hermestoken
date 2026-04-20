@@ -6,6 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(testDir, '../src/i18n/locales');
+const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'ru', 'vi'];
+const localizedTask4Keys = [
+  '规则说明',
+  '命中规则',
+  '未命中任何手续费规则',
+  '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
+];
+const getLocaleValue = (payload, key) => payload?.translation?.[key] ?? payload?.[key];
 
 test('withdrawal locales define wallet and admin copy', () => {
   const keys = [
@@ -27,10 +35,33 @@ test('withdrawal locales define wallet and admin copy', () => {
     '最低手续费 {{amountWithSymbol}}',
     '最高手续费 {{amountWithSymbol}}',
   ];
-  for (const locale of ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'ru', 'vi']) {
+  for (const locale of locales) {
     const raw = fs.readFileSync(path.join(root, `${locale}.json`), 'utf8');
     for (const key of keys) {
       assert.match(raw, new RegExp(`"${key}"`));
+    }
+  }
+});
+
+test('task 4 user-facing labels are localized outside english locale', () => {
+  const englishPayload = JSON.parse(
+    fs.readFileSync(path.join(root, 'en.json'), 'utf8'),
+  );
+
+  for (const locale of ['ja', 'fr', 'ru', 'vi']) {
+    const payload = JSON.parse(
+      fs.readFileSync(path.join(root, `${locale}.json`), 'utf8'),
+    );
+
+    for (const key of localizedTask4Keys) {
+      const localizedValue = getLocaleValue(payload, key);
+      const englishValue = getLocaleValue(englishPayload, key);
+      assert.ok(localizedValue, `${locale} missing translation for ${key}`);
+      assert.notEqual(
+        localizedValue,
+        englishValue,
+        `${locale} still uses English copy for ${key}`,
+      );
     }
   }
 });
