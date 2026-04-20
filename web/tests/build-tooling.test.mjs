@@ -28,6 +28,7 @@ const renderHelperPath = new URL('../src/helpers/render.jsx', import.meta.url);
 const viteConfigPath = new URL('../vite.config.js', import.meta.url);
 const packageJsonPath = new URL('../package.json', import.meta.url);
 const i18nPath = new URL('../src/i18n/i18n.js', import.meta.url);
+const headersFilePath = new URL('../public/_headers', import.meta.url);
 const dashboardPath = new URL(
   '../src/components/dashboard/index.jsx',
   import.meta.url,
@@ -160,6 +161,14 @@ test('vite build inlines the startup stylesheet into index.html to avoid an extr
   assert.match(source, /asset\.fileName\.endsWith\('\.css'\)/);
   assert.match(source, /<style data-inline-startup-css>/);
   assert.doesNotMatch(source, /<link rel="stylesheet" crossorigin href="\\\/\$\{startupStyle\.fileName\}">/);
+});
+
+test('static asset deployments define Cloudflare custom headers for cross-origin module loading', async () => {
+  const source = await readFile(headersFilePath, 'utf8');
+
+  assert.match(source, /\/assets\/\*/);
+  assert.match(source, /Access-Control-Allow-Origin:\s*\*/);
+  assert.match(source, /Cache-Control:\s*public,\s*max-age=31536000,\s*immutable/);
 });
 
 test('sidebar startup shell imports lightweight icons helper instead of the heavy render module', async () => {
