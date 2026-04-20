@@ -24,6 +24,7 @@ import WithdrawalFeeRuleInlineForm from './WithdrawalFeeRuleInlineForm';
 import {
   buildWithdrawalFeeSamples,
   describeWithdrawalFeeRule,
+  getWithdrawalFeeTypeLabel,
   normalizeWithdrawalFeeEditorRules,
   validateWithdrawalFeeEditorRules,
 } from '../../../helpers/withdrawal';
@@ -101,8 +102,8 @@ export default function WithdrawalFeeRulesEditor({ value, onChange }) {
   const [draftBaseline, setDraftBaseline] = useState(null);
 
   const rules = useMemo(() => normalizeWithdrawalFeeEditorRules(value), [value]);
-  const feedback = useMemo(() => validateWithdrawalFeeEditorRules(rules), [rules]);
-  const samplePreviews = useMemo(() => buildWithdrawalFeeSamples(rules), [rules]);
+  const feedback = useMemo(() => validateWithdrawalFeeEditorRules(rules, t), [rules, t]);
+  const samplePreviews = useMemo(() => buildWithdrawalFeeSamples(rules, t), [rules, t]);
   const hasDraftChanges = useMemo(() => {
     if (!editingRuleId || !draftRule || !draftBaseline) {
       return false;
@@ -323,15 +324,15 @@ export default function WithdrawalFeeRulesEditor({ value, onChange }) {
                   <Tag color='white'>{`#${index + 1}`}</Tag>
                 </div>
                 <div>
-                  <Text strong>{describeWithdrawalFeeRule(rule)}</Text>
-                  <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Tag color={rule.enabled ? 'green' : 'grey'}>
-                      {rule.enabled ? t('已启用') : t('已停用')}
-                    </Tag>
-                    <Tag color={rule.feeType === 'ratio' ? 'light-blue' : 'orange'}>
-                      {rule.feeType}
-                    </Tag>
-                  </div>
+                      <Text strong>{describeWithdrawalFeeRule(rule, t)}</Text>
+                      <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <Tag color={rule.enabled ? 'green' : 'grey'}>
+                          {rule.enabled ? t('已启用') : t('已停用')}
+                        </Tag>
+                        <Tag color={rule.feeType === 'ratio' ? 'light-blue' : 'orange'}>
+                          {getWithdrawalFeeTypeLabel(rule.feeType, t)}
+                        </Tag>
+                      </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   <Button size='small' disabled={index === 0} onClick={() => handleMoveRule(index, -1)}>

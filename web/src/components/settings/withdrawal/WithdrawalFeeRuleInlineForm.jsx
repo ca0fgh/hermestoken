@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Input, InputNumber, Select, Switch, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
+import { getWithdrawalFeeTypeLabel } from '../../../helpers/withdrawal';
 
 const { Text } = Typography;
 
@@ -196,8 +197,12 @@ export default function WithdrawalFeeRuleInlineForm({
               }))
             }
           >
-            <Select.Option value='fixed'>fixed</Select.Option>
-            <Select.Option value='ratio'>ratio</Select.Option>
+            <Select.Option value='fixed'>
+              {getWithdrawalFeeTypeLabel('fixed', t)}
+            </Select.Option>
+            <Select.Option value='ratio'>
+              {getWithdrawalFeeTypeLabel('ratio', t)}
+            </Select.Option>
           </Select>
         </div>
         <div>

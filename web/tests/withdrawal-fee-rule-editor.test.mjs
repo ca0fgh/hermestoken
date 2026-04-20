@@ -155,6 +155,28 @@ test('fee rule editor helpers normalize validate serialize and describe rules', 
   );
 });
 
+test('persisted fee rule payload that is valid JSON but semantically invalid is treated as corrupt', async () => {
+  const { parsePersistedWithdrawalFeeRules } = await loadHelpers();
+
+  const invalidPayload = JSON.stringify([
+    {
+      min_amount: 0,
+      max_amount: 100,
+      fee_type: 'bogus',
+      fee_value: 5,
+      enabled: true,
+      sort_order: 1,
+    },
+  ]);
+
+  const result = parsePersistedWithdrawalFeeRules(invalidPayload);
+
+  assert.deepEqual(result.rules, []);
+  assert.equal(result.rawValue, invalidPayload);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /收费方式必须是 fixed 或 ratio/);
+});
+
 test('validation reports overlap errors and gap warnings', async () => {
   const { validateWithdrawalFeeEditorRules } = await loadHelpers();
 

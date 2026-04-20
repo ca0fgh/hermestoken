@@ -39,16 +39,18 @@ test('settings withdrawal tracks persisted fee rule parse errors instead of sile
   const settingsWithdrawalSource = readSource(
     'src/pages/Setting/Payment/SettingsWithdrawal.jsx',
   );
+  const helperSource = readSource('src/helpers/withdrawal.js');
 
-  assert.match(settingsWithdrawalSource, /withdrawalFeeRulesParseError/i);
-  assert.match(settingsWithdrawalSource, /showError\(t\('提现手续费规则配置已损坏/);
+  assert.match(helperSource, /export const parsePersistedWithdrawalFeeRules\s*=/);
+  assert.match(settingsWithdrawalSource, /withdrawalFeeRulesInvalidState/i);
+  assert.match(settingsWithdrawalSource, /showError\(t\('提现手续费规则配置已损坏，请先修复或替换后再保存。'\)\)/);
   assert.match(
     settingsWithdrawalSource,
-    /value:\s*withdrawalFeeRulesParseError\s*\?\?\s*serializeWithdrawalFeeEditorRules/,
+    /invalid persisted WithdrawalFeeRules before normalizing into editor state/i,
   );
   assert.match(
     settingsWithdrawalSource,
-    /parse persisted WithdrawalFeeRules JSON before replacing editor state/i,
+    /description=\{t\('检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存，或恢复默认示例并重新配置。'\)\}/,
   );
 });
 
@@ -72,4 +74,5 @@ test('withdrawal fee rule editor guards unsaved draft changes before replacing t
   assert.match(editorSource, /window\.confirm/);
   assert.match(editorSource, /handleDraftReplacement/);
   assert.match(editorSource, /当前有未保存的规则修改/);
+  assert.match(editorSource, /describeWithdrawalFeeRule\(rule,\s*t\)/);
 });
