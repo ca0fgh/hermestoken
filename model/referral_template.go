@@ -364,8 +364,15 @@ func ensureReferralTemplateSchema() error {
 		return errors.New("database is not initialized")
 	}
 
+	const bundleKeyIndexName = "idx_referral_templates_bundle_key"
+
 	if !DB.Migrator().HasColumn(&ReferralTemplate{}, "BundleKey") {
 		if err := DB.Migrator().AddColumn(&ReferralTemplate{}, "BundleKey"); err != nil {
+			return err
+		}
+	}
+	if !DB.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndexName) {
+		if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "BundleKey"); err != nil {
 			return err
 		}
 	}

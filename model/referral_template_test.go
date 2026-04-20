@@ -403,6 +403,28 @@ func TestBackfillReferralTemplateBundleKeysPopulatesLegacyRows(t *testing.T) {
 	}
 }
 
+func TestEnsureReferralTemplateSchemaCreatesBundleKeyIndex(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	const bundleKeyIndex = "idx_referral_templates_bundle_key"
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndex) {
+		t.Fatalf("expected %s to exist after automigrate", bundleKeyIndex)
+	}
+	if err := db.Migrator().DropIndex(&ReferralTemplate{}, bundleKeyIndex); err != nil {
+		t.Fatalf("DropIndex(%s) error = %v", bundleKeyIndex, err)
+	}
+	if db.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndex) {
+		t.Fatalf("expected %s to be dropped before ensureReferralTemplateSchema", bundleKeyIndex)
+	}
+
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("ensureReferralTemplateSchema() error = %v", err)
+	}
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndex) {
+		t.Fatalf("expected %s to be recreated", bundleKeyIndex)
+	}
+}
+
 func TestReferralTemplateRejectsRenameToDuplicateName(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
