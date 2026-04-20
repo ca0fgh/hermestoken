@@ -200,6 +200,11 @@ func referralTemplateBundleKeyForRow(template ReferralTemplate) string {
 	return fmt.Sprintf("template:%d", template.Id)
 }
 
+func isSyntheticReferralTemplateBundleKey(bundleKey string) bool {
+	trimmed := strings.TrimSpace(bundleKey)
+	return trimmed == "" || strings.HasPrefix(trimmed, "template:")
+}
+
 func GetReferralTemplateByID(id int) (*ReferralTemplate, error) {
 	if id <= 0 {
 		return nil, gorm.ErrRecordNotFound
@@ -353,6 +358,9 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 	groups := normalizeReferralTemplateGroups(input.Groups)
 	if len(groups) == 0 {
 		return nil, fmt.Errorf("at least one group is required")
+	}
+	if len(groups) > 1 && isSyntheticReferralTemplateBundleKey(existing.BundleKey) {
+		bundleKey = newReferralTemplateBundleKey()
 	}
 
 	rows := make([]ReferralTemplate, 0, len(groups))

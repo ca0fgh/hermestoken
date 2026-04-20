@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -440,6 +441,102 @@ func TestAdminDeleteReferralTemplateBundleByTemplateIDRemovesAllRows(t *testing.
 	}
 	if count != 0 {
 		t.Fatalf("bundle row count = %d, want 0", count)
+	}
+}
+
+func TestAdminDeleteReferralTemplateBundlePromotedFromLegacyRowRemovesAllRows(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		bundleKey string
+	}{
+		{name: "empty bundle key", bundleKey: ""},
+		{name: "synthetic bundle key", bundleKey: "template:%d"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupSubscriptionControllerTestDB(t)
+
+			legacyRow := &model.ReferralTemplate{
+				ReferralType:           model.ReferralTypeSubscription,
+				Group:                  "legacy",
+				Name:                   "legacy-promoted-bundle",
+				LevelType:              model.ReferralLevelTypeDirect,
+				Enabled:                true,
+				DirectCapBps:           950,
+				InviteeShareDefaultBps: 200,
+				CreatedBy:              1,
+				UpdatedBy:              1,
+			}
+			if err := model.CreateReferralTemplate(legacyRow); err != nil {
+				t.Fatalf("failed to create legacy row: %v", err)
+			}
+
+			bundleKey := tc.bundleKey
+			if strings.Contains(bundleKey, "%d") {
+				bundleKey = fmt.Sprintf(bundleKey, legacyRow.Id)
+			}
+			if err := db.Model(&model.ReferralTemplate{}).
+				Where("id = ?", legacyRow.Id).
+				UpdateColumn("bundle_key", bundleKey).Error; err != nil {
+				t.Fatalf("failed to rewrite bundle key: %v", err)
+			}
+
+			updateBody := map[string]interface{}{
+				"referral_type":             model.ReferralTypeSubscription,
+				"groups":                    []string{"default", "vip"},
+				"name":                      "legacy-promoted-bundle",
+				"level_type":                model.ReferralLevelTypeDirect,
+				"enabled":                   false,
+				"direct_cap_bps":            1500,
+				"invitee_share_default_bps": 650,
+			}
+
+			updateCtx, updateRecorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/templates/"+strconv.Itoa(legacyRow.Id), updateBody, 7)
+			updateCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(legacyRow.Id)}}
+			AdminUpdateReferralTemplate(updateCtx)
+
+			updateResponse := decodeAPIResponse(t, updateRecorder)
+			if !updateResponse.Success {
+				t.Fatalf("expected update success, got message: %s", updateResponse.Message)
+			}
+
+			var promotedRows []model.ReferralTemplate
+			if err := db.Where("name = ?", "legacy-promoted-bundle").Order("`group` ASC, id ASC").Find(&promotedRows).Error; err != nil {
+				t.Fatalf("failed to load promoted rows: %v", err)
+			}
+			if len(promotedRows) != 2 {
+				t.Fatalf("promoted row count = %d, want 2", len(promotedRows))
+			}
+
+			promotedBundleKey := promotedRows[0].BundleKey
+			if promotedBundleKey == "" {
+				t.Fatal("expected durable promoted bundle key")
+			}
+			if strings.HasPrefix(promotedBundleKey, "template:") {
+				t.Fatalf("promoted bundle key = %q, want durable non-fallback key", promotedBundleKey)
+			}
+			if promotedRows[1].BundleKey != promotedBundleKey {
+				t.Fatalf("bundle keys = %q and %q, want shared key", promotedRows[0].BundleKey, promotedRows[1].BundleKey)
+			}
+
+			deleteCtx, deleteRecorder := newAuthenticatedContext(t, http.MethodDelete, "/api/referral/templates/"+strconv.Itoa(promotedRows[0].Id), nil, 7)
+			deleteCtx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(promotedRows[0].Id)}}
+			AdminDeleteReferralTemplate(deleteCtx)
+
+			deleteResponse := decodeAPIResponse(t, deleteRecorder)
+			if !deleteResponse.Success {
+				t.Fatalf("expected delete success, got message: %s", deleteResponse.Message)
+			}
+
+			var remaining int64
+			if err := db.Model(&model.ReferralTemplate{}).
+				Where("bundle_key = ?", promotedBundleKey).
+				Count(&remaining).Error; err != nil {
+				t.Fatalf("failed to count remaining promoted rows: %v", err)
+			}
+			if remaining != 0 {
+				t.Fatalf("remaining promoted row count = %d, want 0", remaining)
+			}
+		})
 	}
 }
 
