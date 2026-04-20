@@ -177,6 +177,36 @@ test('persisted fee rule payload that is valid JSON but semantically invalid is 
   assert.match(result.errors[0], /收费方式必须是 fixed 或 ratio/);
 });
 
+test('persisted fee rule payload with backend-incompatible JSON value types is treated as corrupt', async () => {
+  const { parsePersistedWithdrawalFeeRules } = await loadHelpers();
+
+  const invalidPayload = JSON.stringify([
+    {
+      min_amount: '10',
+      max_amount: '100',
+      fee_type: 'ratio',
+      fee_value: '2',
+      min_fee: '1',
+      max_fee: '5',
+      enabled: 'false',
+      sort_order: '1',
+    },
+  ]);
+
+  const result = parsePersistedWithdrawalFeeRules(invalidPayload);
+
+  assert.deepEqual(result.rules, []);
+  assert.equal(result.rawValue, invalidPayload);
+  assert.equal(result.errors.length, 7);
+  assert.match(result.errors.join('\n'), /起始金额必须是有效数字/);
+  assert.match(result.errors.join('\n'), /结束金额必须是有效数字/);
+  assert.match(result.errors.join('\n'), /手续费必须是有效数字/);
+  assert.match(result.errors.join('\n'), /最低手续费必须是有效数字/);
+  assert.match(result.errors.join('\n'), /最高手续费必须是有效数字/);
+  assert.match(result.errors.join('\n'), /启用状态必须是 true 或 false/);
+  assert.match(result.errors.join('\n'), /排序值必须是有效数字/);
+});
+
 test('validation reports overlap errors and gap warnings', async () => {
   const { validateWithdrawalFeeEditorRules } = await loadHelpers();
 

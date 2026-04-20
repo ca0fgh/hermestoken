@@ -42,6 +42,8 @@ test('settings withdrawal tracks persisted fee rule parse errors instead of sile
   const helperSource = readSource('src/helpers/withdrawal.js');
 
   assert.match(helperSource, /export const parsePersistedWithdrawalFeeRules\s*=/);
+  assert.match(helperSource, /typeof value === 'number'/);
+  assert.match(helperSource, /typeof enabledValue !== 'boolean'/);
   assert.match(settingsWithdrawalSource, /withdrawalFeeRulesInvalidState/i);
   assert.match(settingsWithdrawalSource, /showError\(t\('提现手续费规则配置已损坏，请先修复或替换后再保存。'\)\)/);
   assert.match(

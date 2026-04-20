@@ -276,8 +276,7 @@ const getRawWithdrawalRuleField = (rule, editorKey, storedKey) =>
   rule?.[editorKey] ?? rule?.[storedKey];
 
 const parseStrictRequiredNumber = (value) => {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 };
 
 const parseStrictOptionalNumber = (value) => {
@@ -285,8 +284,7 @@ const parseStrictOptionalNumber = (value) => {
     return '';
   }
 
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 };
 
 const validatePersistedRuleShape = (rule, index) => {
@@ -374,6 +372,14 @@ const validatePersistedRuleShape = (rule, index) => {
   if (sortOrder === null) {
     errors.push(
       resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的排序值必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (enabledValue !== undefined && typeof enabledValue !== 'boolean') {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的启用状态必须是 true 或 false', {
         rowNumber,
       }),
     );
