@@ -124,14 +124,14 @@ test('vite build keeps only safe heavy dependencies in dedicated chunks', async 
   assert.match(source, /manualChunks:\s*(buildManualChunkName|\()/);
   assert.match(source, /HOME_DEFERRED_PRELOAD_PATTERN = \/\(\?:semi-core\|visactor\|data-viz\)-\//);
   assert.match(source, /return 'seasonal-effects';/);
-  assert.match(source, /return 'semi-vendor';/);
+  assert.doesNotMatch(source, /return 'semi-vendor';/);
   assert.match(source, /onwarn:\s*(handleBuildWarning|\()/);
   assert.match(source, /lottie-web\/build\/player\/lottie\.js/);
   assert.match(source, /chunkSizeWarningLimit:\s*3500/);
   assert.match(packageJson.scripts.build, /BROWSERSLIST_IGNORE_OLD_DATA=true/);
 });
 
-test('vite build groups the noisy semi and visactor vendor graphs while keeping startup routing stable', async () => {
+test('vite build keeps startup routing stable without forcing the entire Semi UI graph into one chunk', async () => {
   const source = await readFile(viteConfigPath, 'utf8');
   const reactCoreIndex = source.indexOf("return 'react-core';");
 
@@ -139,7 +139,9 @@ test('vite build groups the noisy semi and visactor vendor graphs while keeping 
     source,
     /id\.includes\('react-router-dom'\)[\s\S]*id\.includes\('\/react\/'\)[\s\S]*id\.includes\('scheduler'\)[\s\S]*id\.includes\('i18next'\)[\s\S]*return 'react-core';/,
   );
-  assert.match(source, /id\.includes\('@douyinfe\/semi'\)[\s\S]*return 'semi-vendor';/);
+  assert.doesNotMatch(source, /id\.includes\('@douyinfe\/semi'\)[\s\S]*return 'semi-vendor';/);
+  assert.doesNotMatch(source, /id\.includes\('@douyinfe\/semi-ui'\)[\s\S]*return 'semi-vendor';/);
+  assert.doesNotMatch(source, /id\.includes\('@douyinfe\/semi-icons'\)[\s\S]*return 'semi-vendor';/);
   assert.doesNotMatch(source, /id\.includes\('lucide-react'\)[\s\S]*return 'react-core';/);
   assert.doesNotMatch(source, /id\.includes\('i18next'\)[\s\S]*return 'i18n';/);
   assert.doesNotMatch(source, /return 'rich-content';/);

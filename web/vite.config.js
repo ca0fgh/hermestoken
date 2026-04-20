@@ -127,14 +127,6 @@ function buildManualChunkName(id) {
     return 'react-core';
   }
 
-  if (
-    id.includes('@douyinfe/semi') ||
-    id.includes('@douyinfe/semi-ui') ||
-    id.includes('@douyinfe/semi-icons')
-  ) {
-    return 'semi-vendor';
-  }
-
   if (id.includes('axios')) {
     return 'api-client';
   }
