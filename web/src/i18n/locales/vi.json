@@ -4286,5 +4286,11 @@
     "加载提现列表失败": "Failed to load withdrawals",
     "无效的提现参数": "Invalid withdrawal payload",
     "请输入支付宝姓名": "Enter the Alipay name",
-    "支付宝姓名不能为空": "Alipay name is required"
+    "支付宝姓名不能为空": "Alipay name is required",
+  "新增模板组": "Them goi mau",
+  "管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。": "Quan ly cac goi mau hoa hong gioi thieu. Mot goi mau co the ap dung cho nhieu nhom he thong, nhung luc chay van anh xa moi nhom toi dong mau don nhom rieng.",
+  "比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。": "Nhap cac truong ti le theo phan tram va he thong se tu doi sang bps khi luu: 10 la 10%, 25 la 25%. Mot goi mau co the ap dung cho nhieu nhom he thong va khi luu se cap nhat tat ca nhom lien ket trong bundle do cung luc. Ten mau chi can duy nhat trong cung loai gioi thieu + nhom. direct chi cau hinh ti le cua nguoi gioi thieu truc tiep gan nhat; sau khi khop team hop le, pool team duoc tao boi \"ti le team khop dau tien - ti le direct\", roi phan bo cho tat ca team da khop theo trong so toan cuc. team co nghia la nguoi gioi thieu gan nhat duoc tinh truc tiep bang mau team. He so suy giam team va do sau team toi da duoc cau hinh toan cuc trong cai dat subscription referral, khong di cung tung mau nua.",
+  "必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。": "Ban phai chon it nhat mot nhom he thong da ton tai. Sau khi luu, moi nhom duoc chon se co mot dong mau runtime rieng.",
+  "只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。": "Chi dung de nhan dien trong trang quan tri va khong tham gia tinh hoa hong. Ten mau chi can duy nhat trong cung loai gioi thieu + nhom; hay dat ten theo y nghia nghiep vu va vai tro cua mau.",
+  "确认删除该模板组及其覆盖的所有分组模板吗？": "Ban co chac muon xoa goi mau nay va tat ca mau nhom ma no bao phu khong?"
 }
