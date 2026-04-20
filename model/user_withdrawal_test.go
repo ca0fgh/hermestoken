@@ -85,16 +85,17 @@ func TestCreateUserWithdrawalRejectsSecondOpenOrder(t *testing.T) {
 		WithdrawalEnabledOptionKey:     "true",
 		WithdrawalMinAmountOptionKey:   "10",
 		WithdrawalInstructionOptionKey: "manual payout",
-		WithdrawalFeeRulesOptionKey:    `[]`,
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":0,"max_amount":100,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
 	}
 
 	_, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
-		UserID:        user.Id,
-		Amount:        50,
-		AlipayAccount: "alice@example.com",
+		UserID:         user.Id,
+		Amount:         50,
+		AlipayAccount:  "alice@example.com",
+		AlipayRealName: "Alice",
 	})
-	if err == nil {
-		t.Fatal("expected second open withdrawal to fail")
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "still pending") {
+		t.Fatalf("CreateUserWithdrawal error = %v, want open-order validation", err)
 	}
 }
 

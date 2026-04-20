@@ -309,6 +309,8 @@ export const calculateWithdrawalPreview = (amount, feeRules = []) => {
       feeAmount: 0,
       netAmount: 0,
       matchedRule: null,
+      isValid: false,
+      blockReason: '提现金额必须大于 0',
     };
   }
 
@@ -319,9 +321,11 @@ export const calculateWithdrawalPreview = (amount, feeRules = []) => {
 
   if (!matchedRule) {
     return {
-      feeAmount: 0,
-      netAmount: numericAmount,
+      feeAmount: null,
+      netAmount: null,
       matchedRule: null,
+      isValid: false,
+      blockReason: '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
     };
   }
 
@@ -345,6 +349,8 @@ export const calculateWithdrawalPreview = (amount, feeRules = []) => {
     feeAmount,
     netAmount: Number(Math.max(numericAmount - feeAmount, 0).toFixed(2)),
     matchedRule,
+    isValid: true,
+    blockReason: '',
   };
 };
 

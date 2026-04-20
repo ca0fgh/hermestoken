@@ -262,11 +262,34 @@ test('sample previews and withdrawal preview use left-open right-closed matching
     },
   ];
 
-  assert.equal(calculateWithdrawalPreview(0, rules).matchedRule, null);
+  assert.deepEqual(calculateWithdrawalPreview(0, rules), {
+    feeAmount: 0,
+    netAmount: 0,
+    matchedRule: null,
+    isValid: false,
+    blockReason: '提现金额必须大于 0',
+  });
   assert.equal(calculateWithdrawalPreview(100, rules).matchedRule?.sort_order, 1);
   assert.equal(calculateWithdrawalPreview(100.01, rules).matchedRule?.sort_order, 2);
   assert.equal(calculateWithdrawalPreview(500, rules).matchedRule?.sort_order, 2);
   assert.equal(calculateWithdrawalPreview(500.01, rules).matchedRule?.sort_order, 3);
+
+  assert.deepEqual(calculateWithdrawalPreview(99, [
+    {
+      min_amount: 100,
+      max_amount: 500,
+      fee_type: 'fixed',
+      fee_value: 5,
+      enabled: true,
+      sort_order: 1,
+    },
+  ]), {
+    feeAmount: null,
+    netAmount: null,
+    matchedRule: null,
+    isValid: false,
+    blockReason: '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
+  });
 
   const samples = buildWithdrawalFeeSamples(rules);
   assert.deepEqual(

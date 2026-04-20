@@ -95,12 +95,18 @@ const WithdrawalApplyModal = ({
         <div className='rounded-xl border border-[var(--semi-color-border)] p-4 bg-[var(--semi-color-fill-0)] space-y-2'>
           <div className='flex justify-between items-center'>
             <Text type='tertiary'>{t('手续费')}</Text>
-            <Text>{formatWithdrawalAmount(preview?.feeAmount, symbol)}</Text>
+            <Text>
+              {preview?.isValid
+                ? formatWithdrawalAmount(preview?.feeAmount, symbol)
+                : '--'}
+            </Text>
           </div>
           <div className='flex justify-between items-center'>
             <Text type='tertiary'>{t('实际到账')}</Text>
             <Text strong>
-              {formatWithdrawalAmount(preview?.netAmount, symbol)}
+              {preview?.isValid
+                ? formatWithdrawalAmount(preview?.netAmount, symbol)
+                : '--'}
             </Text>
           </div>
           {preview?.matchedRule ? (
@@ -108,7 +114,12 @@ const WithdrawalApplyModal = ({
               {t('已命中手续费规则')} {preview.matchedRule.fee_type}
             </Tag>
           ) : (
-            <Tag color='grey'>{t('未命中手续费规则，按 0 手续费计算')}</Tag>
+            <Tag color='red'>
+              {t(
+                preview?.blockReason ||
+                  '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
+              )}
+            </Tag>
           )}
         </div>
 
