@@ -8,6 +8,20 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+func TestGetUserWithdrawalSettingNormalizesMinAmountToMatchRule(t *testing.T) {
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	setting := GetUserWithdrawalSetting()
+	if setting.MinAmount != 10.01 {
+		t.Fatalf("GetUserWithdrawalSetting min amount = %.2f, want 10.01", setting.MinAmount)
+	}
+}
+
 func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
 	db := setupWithdrawalModelDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit
