@@ -28,13 +28,21 @@ const parseRequiredNumber = (value, fallback = 0) => {
   return Number.isFinite(numericValue) ? numericValue : fallback;
 };
 
+const isOptionalNumberBlank = (value) =>
+  value === '' || value === null || value === undefined;
+
 const parseOptionalNumber = (value) => {
-  if (value === '' || value === null || value === undefined) {
+  if (isOptionalNumberBlank(value)) {
     return '';
   }
 
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : '';
+  const textValue = String(value).trim();
+  if (textValue === '') {
+    return '';
+  }
+
+  const numericValue = Number(textValue);
+  return Number.isFinite(numericValue) ? numericValue : null;
 };
 
 const buildDraftFromRule = (rule) => ({
@@ -58,6 +66,7 @@ const buildDraftFromRule = (rule) => ({
 export default function WithdrawalFeeRuleInlineForm({
   rule,
   onCancel,
+  onDraftChange,
   onSave,
   saveText,
 }) {
@@ -68,6 +77,15 @@ export default function WithdrawalFeeRuleInlineForm({
     setDraft(buildDraftFromRule(rule));
   }, [rule]);
 
+  const updateDraft = (updater) => {
+    setDraft((current) => {
+      const nextDraft =
+        typeof updater === 'function' ? updater(current) : updater;
+      onDraftChange?.(nextDraft);
+      return nextDraft;
+    });
+  };
+
   const helperText = useMemo(() => {
     if (draft.feeType === 'ratio') {
       return t('费率按百分比填写，例如 2 表示按提现金额的 2% 收费。');
@@ -76,7 +94,30 @@ export default function WithdrawalFeeRuleInlineForm({
     return t('固定金额表示每笔提现直接收取的手续费。');
   }, [draft.feeType, t]);
 
+  const optionalFieldErrors = useMemo(() => {
+    const errors = {};
+
+    if (parseOptionalNumber(draft.maxAmount) === null) {
+      errors.maxAmount = t('结束金额必须是有效数字');
+    }
+
+    if (
+      draft.feeType === 'ratio' &&
+      parseOptionalNumber(draft.maxFee) === null
+    ) {
+      errors.maxFee = t('最高手续费必须是有效数字');
+    }
+
+    return errors;
+  }, [draft.feeType, draft.maxAmount, draft.maxFee, t]);
+
+  const hasOptionalFieldErrors = Object.keys(optionalFieldErrors).length > 0;
+
   const handleSave = () => {
+    if (hasOptionalFieldErrors) {
+      return;
+    }
+
     onSave({
       id: draft.id,
       minAmount: parseRequiredNumber(draft.minAmount, 0),
@@ -113,7 +154,7 @@ export default function WithdrawalFeeRuleInlineForm({
             style={{ width: '100%', marginTop: 6 }}
             value={draft.minAmount}
             onChange={(value) =>
-              setDraft((current) => ({
+              updateDraft((current) => ({
                 ...current,
                 minAmount: parseRequiredNumber(value, 0),
               }))
@@ -126,13 +167,22 @@ export default function WithdrawalFeeRuleInlineForm({
             style={{ width: '100%', marginTop: 6 }}
             value={draft.maxAmount}
             onChange={(value) =>
-              setDraft((current) => ({
+              updateDraft((current) => ({
                 ...current,
                 maxAmount: value,
               }))
             }
             placeholder={t('留空表示无上限')}
           />
+          {optionalFieldErrors.maxAmount && (
+            <Text
+              type='danger'
+              size='small'
+              style={{ display: 'block', marginTop: 6 }}
+            >
+              {optionalFieldErrors.maxAmount}
+            </Text>
+          )}
         </div>
         <div>
           <Text strong>{t('收费方式')}</Text>
@@ -140,7 +190,7 @@ export default function WithdrawalFeeRuleInlineForm({
             style={{ width: '100%', marginTop: 6 }}
             value={draft.feeType}
             onChange={(value) =>
-              setDraft((current) => ({
+              updateDraft((current) => ({
                 ...current,
                 feeType: value,
               }))
@@ -158,7 +208,7 @@ export default function WithdrawalFeeRuleInlineForm({
             style={{ width: '100%', marginTop: 6 }}
             value={draft.feeValue}
             onChange={(value) =>
-              setDraft((current) => ({
+              updateDraft((current) => ({
                 ...current,
                 feeValue: parseRequiredNumber(value, 0),
               }))
@@ -177,7 +227,7 @@ export default function WithdrawalFeeRuleInlineForm({
                 style={{ width: '100%', marginTop: 6 }}
                 value={draft.minFee}
                 onChange={(value) =>
-                  setDraft((current) => ({
+                  updateDraft((current) => ({
                     ...current,
                     minFee: parseRequiredNumber(value, 0),
                   }))
@@ -190,13 +240,22 @@ export default function WithdrawalFeeRuleInlineForm({
                 style={{ width: '100%', marginTop: 6 }}
                 value={draft.maxFee}
                 onChange={(value) =>
-                  setDraft((current) => ({
+                  updateDraft((current) => ({
                     ...current,
                     maxFee: value,
                   }))
                 }
                 placeholder={t('留空表示不设上限')}
               />
+              {optionalFieldErrors.maxFee && (
+                <Text
+                  type='danger'
+                  size='small'
+                  style={{ display: 'block', marginTop: 6 }}
+                >
+                  {optionalFieldErrors.maxFee}
+                </Text>
+              )}
             </div>
           </>
         )}
@@ -206,7 +265,7 @@ export default function WithdrawalFeeRuleInlineForm({
             <Switch
               checked={draft.enabled}
               onChange={(checked) =>
-                setDraft((current) => ({
+                updateDraft((current) => ({
                   ...current,
                   enabled: checked,
                 }))
@@ -221,7 +280,11 @@ export default function WithdrawalFeeRuleInlineForm({
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
         <Button onClick={onCancel}>{t('取消')}</Button>
-        <Button theme='solid' onClick={handleSave}>
+        <Button
+          theme='solid'
+          onClick={handleSave}
+          disabled={hasOptionalFieldErrors}
+        >
           {saveText || t('保存')}
         </Button>
       </div>

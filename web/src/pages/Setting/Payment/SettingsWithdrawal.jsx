@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Form, Spin, Typography } from '@douyinfe/semi-ui';
+import { Banner, Button, Form, Spin, Typography } from '@douyinfe/semi-ui';
 import {
   API,
   showError,
@@ -35,9 +35,44 @@ import {
 
 const { Text } = Typography;
 
+const parsePersistedWithdrawalFeeRules = (rawValue) => {
+  const rawText = typeof rawValue === 'string' ? rawValue : '';
+
+  if (rawText.trim() === '') {
+    return {
+      rules: [],
+      parseError: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(rawText);
+    if (!Array.isArray(parsed)) {
+      throw new Error('WithdrawalFeeRules must be a JSON array');
+    }
+
+    return {
+      rules: normalizeWithdrawalFeeEditorRules(parsed),
+      parseError: null,
+    };
+  } catch {
+    // parse persisted WithdrawalFeeRules JSON before replacing editor state
+    return {
+      rules: [],
+      parseError: rawText,
+    };
+  }
+};
+
 export default function SettingsWithdrawal({ options, refresh }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [withdrawalFeeRulesParseError, setWithdrawalFeeRulesParseError] =
+    useState(null);
+  const [
+    hasReplacedInvalidWithdrawalFeeRules,
+    setHasReplacedInvalidWithdrawalFeeRules,
+  ] = useState(false);
   const [inputs, setInputs] = useState({
     WithdrawalEnabled: false,
     WithdrawalMinAmount: 10,
@@ -48,6 +83,9 @@ export default function SettingsWithdrawal({ options, refresh }) {
 
   useEffect(() => {
     if (options && formApiRef.current) {
+      const parsedFeeRules = parsePersistedWithdrawalFeeRules(
+        options.WithdrawalFeeRules || '[]',
+      );
       const currentInputs = {
         WithdrawalEnabled: toBoolean(options.WithdrawalEnabled),
         WithdrawalMinAmount:
@@ -55,10 +93,10 @@ export default function SettingsWithdrawal({ options, refresh }) {
             ? parseFloat(options.WithdrawalMinAmount || 10)
             : 10,
         WithdrawalInstruction: options.WithdrawalInstruction || '',
-        WithdrawalFeeRules: normalizeWithdrawalFeeEditorRules(
-          options.WithdrawalFeeRules || '[]',
-        ),
+        WithdrawalFeeRules: parsedFeeRules.rules,
       };
+      setWithdrawalFeeRulesParseError(parsedFeeRules.parseError);
+      setHasReplacedInvalidWithdrawalFeeRules(false);
       setInputs(currentInputs);
       formApiRef.current.setValues(currentInputs);
     }
@@ -72,6 +110,11 @@ export default function SettingsWithdrawal({ options, refresh }) {
   };
 
   const handleFeeRulesChange = (rules) => {
+    if (withdrawalFeeRulesParseError) {
+      setHasReplacedInvalidWithdrawalFeeRules(true);
+      setWithdrawalFeeRulesParseError(null);
+    }
+
     setInputs((current) => ({
       ...current,
       WithdrawalFeeRules: normalizeWithdrawalFeeEditorRules(rules),
@@ -79,6 +122,11 @@ export default function SettingsWithdrawal({ options, refresh }) {
   };
 
   const submit = async () => {
+    if (withdrawalFeeRulesParseError && !hasReplacedInvalidWithdrawalFeeRules) {
+      showError(t('提现手续费规则配置已损坏，请先在编辑器中重新保存或恢复默认示例。'));
+      return;
+    }
+
     const validation = validateWithdrawalFeeEditorRules(inputs.WithdrawalFeeRules);
     if (validation.errors.length > 0) {
       showError(validation.errors[0]);
@@ -102,7 +150,9 @@ export default function SettingsWithdrawal({ options, refresh }) {
         }),
         API.put('/api/option/', {
           key: 'WithdrawalFeeRules',
-          value: serializeWithdrawalFeeEditorRules(inputs.WithdrawalFeeRules),
+          value:
+            withdrawalFeeRulesParseError ??
+            serializeWithdrawalFeeEditorRules(inputs.WithdrawalFeeRules),
         }),
       ];
 
@@ -154,6 +204,16 @@ export default function SettingsWithdrawal({ options, refresh }) {
             <Text type='tertiary' style={{ display: 'block', marginTop: 4 }}>
               {t('使用可视化编辑器维护区间、收费方式和预览结果，保存时会自动转换为系统配置格式。')}
             </Text>
+            {withdrawalFeeRulesParseError && (
+              <Banner
+                type='danger'
+                closeIcon={null}
+                style={{ marginTop: 12 }}
+                description={t(
+                  '检测到已保存的提现手续费规则 JSON 无法解析。当前不会自动覆盖原始配置；请通过编辑器重新保存规则或恢复默认示例后再提交。',
+                )}
+              />
+            )}
             <WithdrawalFeeRulesEditor
               value={inputs.WithdrawalFeeRules}
               onChange={handleFeeRulesChange}

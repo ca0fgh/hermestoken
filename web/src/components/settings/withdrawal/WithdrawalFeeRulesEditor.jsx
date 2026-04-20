@@ -87,27 +87,74 @@ const createBlankRule = (sortOrder) => ({
   sortOrder,
 });
 
+const normalizeRuleForCompare = (rule) =>
+  JSON.stringify(
+    normalizeWithdrawalFeeEditorRules(rule ? [rule] : []).map(
+      ({ id, ...normalizedRule }) => normalizedRule,
+    ),
+  );
+
 export default function WithdrawalFeeRulesEditor({ value, onChange }) {
   const { t } = useTranslation();
   const [editingRuleId, setEditingRuleId] = useState('');
   const [draftRule, setDraftRule] = useState(null);
+  const [draftBaseline, setDraftBaseline] = useState(null);
 
   const rules = useMemo(() => normalizeWithdrawalFeeEditorRules(value), [value]);
   const feedback = useMemo(() => validateWithdrawalFeeEditorRules(rules), [rules]);
   const samplePreviews = useMemo(() => buildWithdrawalFeeSamples(rules), [rules]);
+  const hasDraftChanges = useMemo(() => {
+    if (!editingRuleId || !draftRule || !draftBaseline) {
+      return false;
+    }
+
+    return (
+      normalizeRuleForCompare(draftRule) !==
+      normalizeRuleForCompare(draftBaseline)
+    );
+  }, [draftBaseline, draftRule, editingRuleId]);
 
   const commitRules = (nextRules) => {
     onChange?.(reindexRules(nextRules));
   };
 
+  const startDraft = (nextEditingRuleId, nextDraftRule) => {
+    setEditingRuleId(nextEditingRuleId);
+    setDraftRule(nextDraftRule);
+    setDraftBaseline(nextDraftRule);
+  };
+
+  const clearDraft = () => {
+    setEditingRuleId('');
+    setDraftRule(null);
+    setDraftBaseline(null);
+  };
+
+  const handleDraftReplacement = (replaceDraft) => {
+    if (
+      hasDraftChanges &&
+      !window.confirm(t('当前有未保存的规则修改，确定要放弃并继续吗？'))
+    ) {
+      return;
+    }
+
+    replaceDraft();
+  };
+
   const handleAddRule = () => {
-    setEditingRuleId('new');
-    setDraftRule(createBlankRule(rules.length + 1));
+    handleDraftReplacement(() => {
+      startDraft('new', createBlankRule(rules.length + 1));
+    });
   };
 
   const handleEditRule = (rule) => {
-    setEditingRuleId(rule.id);
-    setDraftRule(rule);
+    if (editingRuleId === rule.id) {
+      return;
+    }
+
+    handleDraftReplacement(() => {
+      startDraft(rule.id, rule);
+    });
   };
 
   const handleSaveRule = (nextRule) => {
@@ -117,13 +164,11 @@ export default function WithdrawalFeeRulesEditor({ value, onChange }) {
         : rules.map((rule) => (rule.id === editingRuleId ? nextRule : rule));
 
     commitRules(nextRules);
-    setEditingRuleId('');
-    setDraftRule(null);
+    clearDraft();
   };
 
   const handleCancelEdit = () => {
-    setEditingRuleId('');
-    setDraftRule(null);
+    clearDraft();
   };
 
   const handleDeleteRule = (ruleId) => {
@@ -146,8 +191,10 @@ export default function WithdrawalFeeRulesEditor({ value, onChange }) {
   };
 
   const handleRestoreDefaults = () => {
-    commitRules(DEFAULT_SAMPLE_RULES);
-    handleCancelEdit();
+    handleDraftReplacement(() => {
+      commitRules(DEFAULT_SAMPLE_RULES);
+      clearDraft();
+    });
   };
 
   return (
@@ -244,6 +291,7 @@ export default function WithdrawalFeeRulesEditor({ value, onChange }) {
             </Text>
             <WithdrawalFeeRuleInlineForm
               rule={draftRule}
+              onDraftChange={setDraftRule}
               onCancel={handleCancelEdit}
               onSave={handleSaveRule}
               saveText={t('保存')}
@@ -309,6 +357,7 @@ export default function WithdrawalFeeRulesEditor({ value, onChange }) {
                 <div style={{ marginTop: 16 }}>
                   <WithdrawalFeeRuleInlineForm
                     rule={draftRule}
+                    onDraftChange={setDraftRule}
                     onCancel={handleCancelEdit}
                     onSave={handleSaveRule}
                     saveText={t('保存')}
