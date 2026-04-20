@@ -134,11 +134,27 @@ test('vite build groups the noisy semi and visactor vendor graphs while keeping 
   const source = await readFile(viteConfigPath, 'utf8');
   const reactCoreIndex = source.indexOf("return 'react-core';");
 
-  assert.match(source, /id\.includes\('i18next'\)[\s\S]*return 'react-core';/);
+  assert.match(
+    source,
+    /id\.includes\('react-router-dom'\)[\s\S]*id\.includes\('\/react\/'\)[\s\S]*id\.includes\('scheduler'\)[\s\S]*id\.includes\('i18next'\)[\s\S]*return 'react-core';/,
+  );
   assert.match(source, /id\.includes\('@douyinfe\/semi'\)[\s\S]*return 'semi-vendor';/);
+  assert.doesNotMatch(source, /id\.includes\('lucide-react'\)[\s\S]*return 'react-core';/);
   assert.doesNotMatch(source, /id\.includes\('i18next'\)[\s\S]*return 'i18n';/);
   assert.doesNotMatch(source, /return 'rich-content';/);
   assert.notEqual(reactCoreIndex, -1);
+});
+
+test('vite build inlines the startup stylesheet into index.html to avoid an extra round trip on first paint', async () => {
+  const source = await readFile(viteConfigPath, 'utf8');
+
+  assert.match(source, /name:\s*'inline-startup-styles'/);
+  assert.match(source, /transformIndexHtml:\s*\{/);
+  assert.match(source, /const STARTUP_STYLE_FILE_PREFIX = 'assets\/index-';/);
+  assert.match(source, /asset\.fileName\.startsWith\(STARTUP_STYLE_FILE_PREFIX\)/);
+  assert.match(source, /asset\.fileName\.endsWith\('\.css'\)/);
+  assert.match(source, /<style data-inline-startup-css>/);
+  assert.doesNotMatch(source, /<link rel="stylesheet" crossorigin href="\\\/\$\{startupStyle\.fileName\}">/);
 });
 
 test('sidebar startup shell imports lightweight icons helper instead of the heavy render module', async () => {
@@ -211,6 +227,8 @@ test('vite build keeps axios isolated without forcing history into its own start
 test('i18n preloads zh-CN while keeping the non-default locales lazy', async () => {
   const source = await readFile(i18nPath, 'utf8');
 
+  assert.doesNotMatch(source, /from 'i18next-browser-languagedetector';/);
+  assert.doesNotMatch(source, /\.use\(LanguageDetector\)/);
   assert.match(source, /import zhCNTranslation from '\.\/locales\/zh-CN\.json';/);
   assert.match(source, /const localeLoaders = \{/);
   assert.doesNotMatch(source, /import\.meta\.glob\('\.\/locales\/\*\.json'\)/);

@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
 import zhCNTranslation from './locales/zh-CN.json';
 
 import { normalizeLanguage, supportedLanguages } from './language';
@@ -102,7 +101,6 @@ function getPreferredLanguage() {
 }
 
 i18n
-  .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     load: 'currentOnly',

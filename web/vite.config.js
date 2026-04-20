@@ -26,6 +26,64 @@ const { vitePluginSemi } = pkg;
 const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
 const HOME_DEFERRED_PRELOAD_PATTERN = /(?:semi-core|visactor|data-viz)-/;
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3000';
+const STARTUP_STYLE_FILE_PREFIX = 'assets/index-';
+
+function escapeHtmlTagSource(source) {
+  return source.replace(/<\/style/gi, '<\\/style');
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getStartupStyleAsset(bundle) {
+  return Object.values(bundle).find((asset) => {
+    return (
+      asset?.type === 'asset' &&
+      typeof asset.fileName === 'string' &&
+      asset.fileName.startsWith(STARTUP_STYLE_FILE_PREFIX) &&
+      asset.fileName.endsWith('.css')
+    );
+  });
+}
+
+function inlineStartupStyles() {
+  return {
+    name: 'inline-startup-styles',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, context) {
+        if (!context.bundle) {
+          return html;
+        }
+
+        const startupStyle = getStartupStyleAsset(context.bundle);
+        if (!startupStyle) {
+          return html;
+        }
+
+        const styleSource = String(startupStyle.source || '');
+        if (!styleSource) {
+          return html;
+        }
+
+        const stylesheetTagPattern = new RegExp(
+          `<link rel="stylesheet" crossorigin href="/${escapeRegExp(startupStyle.fileName)}">`,
+        );
+
+        if (!stylesheetTagPattern.test(html)) {
+          return html;
+        }
+
+        return html.replace(
+          stylesheetTagPattern,
+          `<style data-inline-startup-css>${escapeHtmlTagSource(styleSource)}</style>`,
+        );
+      },
+    },
+  };
+}
 
 function buildManualChunkName(id) {
   if (!id.includes('node_modules')) {
@@ -42,8 +100,7 @@ function buildManualChunkName(id) {
     id.includes('react-router-dom') ||
     id.includes('/react/') ||
     id.includes('scheduler') ||
-    id.includes('i18next') ||
-    id.includes('lucide-react')
+    id.includes('i18next')
   ) {
     return 'react-core';
   }
@@ -111,6 +168,7 @@ export default defineConfig({
     vitePluginSemi({
       cssLayer: true,
     }),
+    inlineStartupStyles(),
   ],
   optimizeDeps: {
     force: true,
