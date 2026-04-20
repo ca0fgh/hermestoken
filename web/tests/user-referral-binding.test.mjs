@@ -24,3 +24,22 @@ test('referral template binding section uses explicit state updates instead of m
   assert.doesNotMatch(source, /默认分账比例/);
   assert.doesNotMatch(source, /{t\('分组'\)}/);
 });
+
+test('referral template binding section requests row view templates for user bindings', () => {
+  const source = fs.readFileSync(
+    'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
+    'utf8',
+  );
+  assert.match(
+    source,
+    /API\.get\('\/api\/referral\/templates',\s*\{\s*params:\s*\{\s*referral_type:\s*'subscription_referral',\s*view:\s*'row'/s,
+  );
+});
+
+test('referral template binding section includes group suffixes in option labels for same-name templates', () => {
+  const source = fs.readFileSync(
+    'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
+    'utf8',
+  );
+  assert.match(source, /includeGroupSuffixWhenNamed:\s*true/);
+});

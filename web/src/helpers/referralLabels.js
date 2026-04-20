@@ -37,10 +37,15 @@ export function formatReferralGroupLabel(group, t) {
   return trimmedGroup;
 }
 
-export function formatReferralTemplateOptionLabel(template, t) {
+export function formatReferralTemplateOptionLabel(template, t, options = {}) {
   const name = String(template?.name || '').trim();
+  const includeGroupSuffixWhenNamed = options?.includeGroupSuffixWhenNamed === true;
   if (name !== '') {
-    return name;
+    if (!includeGroupSuffixWhenNamed) {
+      return name;
+    }
+
+    return [name, formatReferralGroupLabel(template?.group, t)].filter(Boolean).join(' · ');
   }
 
   return [

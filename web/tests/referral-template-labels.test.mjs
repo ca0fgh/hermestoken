@@ -63,3 +63,30 @@ test('referral template option label prefers template name and avoids redundant 
     'vip · 团队模板（team）',
   );
 });
+
+test('referral template option label can append the group suffix for same-name templates when requested', () => {
+  assert.equal(
+    formatReferralTemplateOptionLabel(
+      {
+        name: 'default-直推模板',
+        group: 'vip',
+        level_type: 'direct',
+      },
+      fakeT,
+      { includeGroupSuffixWhenNamed: true },
+    ),
+    'default-直推模板 · vip',
+  );
+
+  assert.equal(
+    formatReferralTemplateOptionLabel(
+      {
+        name: 'default-直推模板',
+        group: 'vip',
+        level_type: 'direct',
+      },
+      fakeT,
+    ),
+    'default-直推模板',
+  );
+});
