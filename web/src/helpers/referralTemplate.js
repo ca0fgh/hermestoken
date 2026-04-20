@@ -18,7 +18,19 @@ const buildFallbackBundleKey = (item) => {
 
 const normalizeGroups = (item) => {
   const sourceGroups = Array.isArray(item?.groups) ? item.groups : [item?.group];
-  return [...new Set(sourceGroups.map((group) => String(group || '').trim()).filter(Boolean))];
+  return [...new Set(sourceGroups.map((group) => String(group || '').trim()).filter(Boolean))].sort();
+};
+
+const normalizeTemplateIds = (item) => {
+  const sourceTemplateIds = Array.isArray(item?.template_ids)
+    ? item.template_ids
+    : Number(item?.id || 0) > 0
+      ? [item.id]
+      : [];
+
+  return [...new Set(sourceTemplateIds.map((templateId) => Number(templateId || 0)).filter((templateId) => templateId > 0))].sort(
+    (left, right) => left - right,
+  );
 };
 
 export function normalizeReferralTemplateItems(items = []) {
@@ -29,11 +41,7 @@ export function normalizeReferralTemplateItems(items = []) {
   return items.map((item) => ({
     id: Number(item?.id || item?.template_ids?.[0] || 0),
     bundleKey: buildFallbackBundleKey(item),
-    templateIds: Array.isArray(item?.template_ids)
-      ? item.template_ids.map((templateId) => Number(templateId || 0)).filter((templateId) => templateId > 0)
-      : Number(item?.id || 0) > 0
-        ? [Number(item.id)]
-        : [],
+    templateIds: normalizeTemplateIds(item),
     referralType: String(item?.referral_type || '').trim(),
     group: String(item?.group || '').trim(),
     groups: normalizeGroups(item),

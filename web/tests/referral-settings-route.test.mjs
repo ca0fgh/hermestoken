@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { normalizeReferralTemplateItems } from '../src/helpers/referralTemplate.js';
 
 test('settings page exposes a referral tab and settings surface', () => {
   const source = fs.readFileSync('web/src/pages/Setting/index.jsx', 'utf8');
@@ -105,4 +106,30 @@ test('referral settings page copy describes multi-group bundles and scoped uniqu
   assert.match(templateSource, /模板名只需要在同一返佣类型 \+ 分组内保持唯一/);
   assert.match(templateSource, /确认删除该模板组及其覆盖的所有分组模板吗/);
   assert.doesNotMatch(templateSource, /模板名全局唯一/);
+});
+
+test('normalizeReferralTemplateItems normalizes bundle-shaped items', () => {
+  const [item] = normalizeReferralTemplateItems([
+    {
+      bundle_key: ' bundle-1 ',
+      template_ids: ['9', '3', '9', 0, null],
+      referral_type: ' subscription_referral ',
+      groups: [' vip ', 'default', 'vip', ''],
+      name: ' starter bundle ',
+      level_type: ' direct ',
+      enabled: 1,
+      direct_cap_bps: '1200',
+      team_cap_bps: '0',
+      invitee_share_default_bps: '300',
+    },
+  ]);
+
+  assert.equal(item.bundleKey, 'bundle-1');
+  assert.deepEqual(item.templateIds, [3, 9]);
+  assert.deepEqual(item.groups, ['default', 'vip']);
+  assert.equal(item.referralType, 'subscription_referral');
+  assert.equal(item.name, 'starter bundle');
+  assert.equal(item.levelType, 'direct');
+  assert.equal(item.directCapBps, 1200);
+  assert.equal(item.inviteeShareDefaultBps, 300);
 });
