@@ -339,6 +339,115 @@ func CreateReferralTemplateBundle(input ReferralTemplateBundleUpsertInput, opera
 	return rows, nil
 }
 
+func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemplateBundleUpsertInput, operatorID int) ([]ReferralTemplate, error) {
+	if DB == nil {
+		return nil, errors.New("database is not initialized")
+	}
+
+	existing, err := GetReferralTemplateByID(templateID)
+	if err != nil {
+		return nil, err
+	}
+
+	bundleKey := referralTemplateBundleKeyForRow(*existing)
+	groups := normalizeReferralTemplateGroups(input.Groups)
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("at least one group is required")
+	}
+
+	rows := make([]ReferralTemplate, 0, len(groups))
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		var currentRows []ReferralTemplate
+		if strings.TrimSpace(existing.BundleKey) != "" {
+			if err := tx.Where("bundle_key = ?", existing.BundleKey).Order("id ASC").Find(&currentRows).Error; err != nil {
+				return err
+			}
+		}
+		if len(currentRows) == 0 {
+			currentRows = []ReferralTemplate{*existing}
+		}
+
+		currentByGroup := make(map[string]ReferralTemplate, len(currentRows))
+		for _, row := range currentRows {
+			row.BundleKey = bundleKey
+			currentByGroup[row.Group] = row
+		}
+
+		trimmedReferralType := strings.TrimSpace(input.ReferralType)
+		trimmedName := strings.TrimSpace(input.Name)
+		trimmedLevelType := strings.TrimSpace(input.LevelType)
+		for _, group := range groups {
+			row, exists := currentByGroup[group]
+			if !exists {
+				row = ReferralTemplate{
+					BundleKey: bundleKey,
+					CreatedBy: operatorID,
+				}
+			}
+			row.BundleKey = bundleKey
+			row.ReferralType = trimmedReferralType
+			row.Group = group
+			row.Name = trimmedName
+			row.LevelType = trimmedLevelType
+			row.Enabled = input.Enabled
+			row.DirectCapBps = input.DirectCapBps
+			row.TeamCapBps = input.TeamCapBps
+			row.InviteeShareDefaultBps = input.InviteeShareDefaultBps
+			row.UpdatedBy = operatorID
+
+			var saveErr error
+			if row.Id > 0 {
+				saveErr = tx.Save(&row).Error
+			} else {
+				saveErr = tx.Create(&row).Error
+			}
+			if err := normalizeReferralTemplatePersistenceError(saveErr); err != nil {
+				return err
+			}
+			rows = append(rows, row)
+			delete(currentByGroup, group)
+		}
+
+		staleIDs := make([]int, 0, len(currentByGroup))
+		for _, row := range currentByGroup {
+			if row.Id > 0 {
+				staleIDs = append(staleIDs, row.Id)
+			}
+		}
+		if len(staleIDs) > 0 {
+			if err := tx.Delete(&ReferralTemplate{}, staleIDs).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].Group < rows[j].Group
+	})
+	return rows, nil
+}
+
+func DeleteReferralTemplateBundleByTemplateID(templateID int) error {
+	if DB == nil {
+		return errors.New("database is not initialized")
+	}
+
+	template, err := GetReferralTemplateByID(templateID)
+	if err != nil {
+		return err
+	}
+
+	bundleKey := strings.TrimSpace(template.BundleKey)
+	if bundleKey == "" || strings.HasPrefix(bundleKey, "template:") {
+		return DB.Delete(&ReferralTemplate{}, template.Id).Error
+	}
+	return DB.Where("bundle_key = ?", bundleKey).Delete(&ReferralTemplate{}).Error
+}
+
 func BackfillReferralTemplateBundleKeys() error {
 	if DB == nil {
 		return errors.New("database is not initialized")

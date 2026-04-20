@@ -2,6 +2,7 @@ package controller
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -9,7 +10,27 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func referralTemplateRequestGroups(req dto.ReferralTemplateUpsertRequest) []string {
+	if len(req.Groups) > 0 {
+		return req.Groups
+	}
+	if trimmed := strings.TrimSpace(req.Group); trimmed != "" {
+		return []string{trimmed}
+	}
+	return nil
+}
+
 func AdminListReferralTemplates(c *gin.Context) {
+	if strings.EqualFold(strings.TrimSpace(c.Query("view")), "bundle") {
+		bundles, err := model.ListReferralTemplateBundles(c.Query("referral_type"))
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, gin.H{"items": bundles})
+		return
+	}
+
 	templates, err := model.ListReferralTemplates(c.Query("referral_type"), c.Query("group"))
 	if err != nil {
 		common.ApiError(c, err)
@@ -47,24 +68,21 @@ func AdminCreateReferralTemplate(c *gin.Context) {
 		return
 	}
 
-	template := &model.ReferralTemplate{
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
 		ReferralType:           req.ReferralType,
-		Group:                  req.Group,
+		Groups:                 referralTemplateRequestGroups(req),
 		Name:                   req.Name,
 		LevelType:              req.LevelType,
 		Enabled:                req.Enabled,
 		DirectCapBps:           req.DirectCapBps,
 		TeamCapBps:             req.TeamCapBps,
 		InviteeShareDefaultBps: req.InviteeShareDefaultBps,
-		CreatedBy:              c.GetInt("id"),
-		UpdatedBy:              c.GetInt("id"),
-	}
-
-	if err := model.CreateReferralTemplate(template); err != nil {
+	}, c.GetInt("id"))
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, template)
+	common.ApiSuccess(c, gin.H{"items": rows})
 }
 
 func AdminUpdateReferralTemplate(c *gin.Context) {
@@ -74,33 +92,27 @@ func AdminUpdateReferralTemplate(c *gin.Context) {
 		return
 	}
 
-	existing, err := model.GetReferralTemplateByID(id)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
 	var req dto.ReferralTemplateUpsertRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
 
-	existing.ReferralType = req.ReferralType
-	existing.Group = req.Group
-	existing.Name = req.Name
-	existing.LevelType = req.LevelType
-	existing.Enabled = req.Enabled
-	existing.DirectCapBps = req.DirectCapBps
-	existing.TeamCapBps = req.TeamCapBps
-	existing.InviteeShareDefaultBps = req.InviteeShareDefaultBps
-	existing.UpdatedBy = c.GetInt("id")
-
-	if err := model.UpdateReferralTemplate(existing); err != nil {
+	rows, err := model.UpdateReferralTemplateBundleByTemplateID(id, model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           req.ReferralType,
+		Groups:                 referralTemplateRequestGroups(req),
+		Name:                   req.Name,
+		LevelType:              req.LevelType,
+		Enabled:                req.Enabled,
+		DirectCapBps:           req.DirectCapBps,
+		TeamCapBps:             req.TeamCapBps,
+		InviteeShareDefaultBps: req.InviteeShareDefaultBps,
+	}, c.GetInt("id"))
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, existing)
+	common.ApiSuccess(c, gin.H{"items": rows})
 }
 
 func AdminDeleteReferralTemplate(c *gin.Context) {
@@ -110,7 +122,7 @@ func AdminDeleteReferralTemplate(c *gin.Context) {
 		return
 	}
 
-	if err := model.DeleteReferralTemplate(id); err != nil {
+	if err := model.DeleteReferralTemplateBundleByTemplateID(id); err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -3,8 +3,10 @@ package controller
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
@@ -142,7 +144,7 @@ func TestAdminCreateReferralTemplateAllowsMultipleTemplatesPerScope(t *testing.T
 }
 
 func TestAdminCreateReferralTemplateRejectsDuplicateName(t *testing.T) {
-	setupSubscriptionControllerTestDB(t)
+	db := setupSubscriptionControllerTestDB(t)
 
 	firstBody := map[string]interface{}{
 		"referral_type":             model.ReferralTypeSubscription,
@@ -175,11 +177,269 @@ func TestAdminCreateReferralTemplateRejectsDuplicateName(t *testing.T) {
 	secondCtx, secondRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/referral/templates", secondBody, 1)
 	AdminCreateReferralTemplate(secondCtx)
 	secondResponse := decodeAPIResponse(t, secondRecorder)
-	if secondResponse.Success {
-		t.Fatal("expected duplicate name create to fail")
+	if !secondResponse.Success {
+		t.Fatalf("expected same name in different groups to succeed, got %q", secondResponse.Message)
 	}
-	if secondResponse.Message != "template name already exists" {
-		t.Fatalf("duplicate name message = %q, want %q", secondResponse.Message, "template name already exists")
+
+	thirdBody := map[string]interface{}{
+		"referral_type":             model.ReferralTypeSubscription,
+		"group":                     "vip",
+		"name":                      "duplicate-template-name",
+		"level_type":                model.ReferralLevelTypeTeam,
+		"enabled":                   true,
+		"direct_cap_bps":            1000,
+		"team_cap_bps":              2500,
+		"invitee_share_default_bps": 0,
+	}
+	thirdCtx, thirdRecorder := newAuthenticatedContext(t, http.MethodPost, "/api/referral/templates", thirdBody, 1)
+	AdminCreateReferralTemplate(thirdCtx)
+	thirdResponse := decodeAPIResponse(t, thirdRecorder)
+	if thirdResponse.Success {
+		t.Fatal("expected duplicate referral_type + group + name create to fail")
+	}
+	if thirdResponse.Message != "template name already exists" {
+		t.Fatalf("duplicate name message = %q, want %q", thirdResponse.Message, "template name already exists")
+	}
+
+	var count int64
+	if err := db.Model(&model.ReferralTemplate{}).
+		Where("name = ?", "duplicate-template-name").
+		Count(&count).Error; err != nil {
+		t.Fatalf("failed to count templates: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("template count = %d, want 2", count)
+	}
+}
+
+func TestAdminCreateReferralTemplateWithGroupsCreatesBundleRows(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+
+	body := map[string]interface{}{
+		"referral_type":             model.ReferralTypeSubscription,
+		"groups":                    []string{"default", "vip"},
+		"name":                      "bundle-direct",
+		"level_type":                model.ReferralLevelTypeDirect,
+		"enabled":                   true,
+		"direct_cap_bps":            1100,
+		"invitee_share_default_bps": 400,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/referral/templates", body, 1)
+	AdminCreateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var rows []model.ReferralTemplate
+	if err := db.Where("name = ?", "bundle-direct").Order("`group` ASC").Find(&rows).Error; err != nil {
+		t.Fatalf("failed to list templates: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("row count = %d, want 2", len(rows))
+	}
+	if rows[0].Group != "default" || rows[1].Group != "vip" {
+		t.Fatalf("groups = [%s %s], want [default vip]", rows[0].Group, rows[1].Group)
+	}
+	if rows[0].BundleKey == "" || rows[0].BundleKey != rows[1].BundleKey {
+		t.Fatalf("expected shared non-empty bundle key, got %q and %q", rows[0].BundleKey, rows[1].BundleKey)
+	}
+}
+
+func TestAdminListReferralTemplatesBundleViewAggregatesGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	created, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"default", "vip"},
+		Name:                   "bundle-team",
+		LevelType:              model.ReferralLevelTypeTeam,
+		Enabled:                true,
+		TeamCapBps:             2500,
+		InviteeShareDefaultBps: 700,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to seed bundle: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/referral/templates?view=bundle&referral_type="+model.ReferralTypeSubscription, nil, 1)
+	AdminListReferralTemplates(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var payload struct {
+		Items []model.ReferralTemplateBundle `json:"items"`
+	}
+	if err := common.Unmarshal(response.Data, &payload); err != nil {
+		t.Fatalf("failed to decode response payload: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("bundle count = %d, want 1", len(payload.Items))
+	}
+	item := payload.Items[0]
+	if item.BundleKey != created[0].BundleKey {
+		t.Fatalf("bundle key = %q, want %q", item.BundleKey, created[0].BundleKey)
+	}
+	if strings.Join(item.Groups, ",") != "default,vip" {
+		t.Fatalf("groups = %v, want [default vip]", item.Groups)
+	}
+	if len(item.TemplateIDs) != 2 {
+		t.Fatalf("template ids = %v, want 2 ids", item.TemplateIDs)
+	}
+}
+
+func TestAdminUpdateReferralTemplateBundleReplacesGroupSet(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"default", "vip"},
+		Name:                   "mutable-bundle",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           900,
+		InviteeShareDefaultBps: 300,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to seed bundle: %v", err)
+	}
+
+	body := map[string]interface{}{
+		"referral_type":             model.ReferralTypeSubscription,
+		"groups":                    []string{"premium", "vip"},
+		"name":                      "mutable-bundle-renamed",
+		"level_type":                model.ReferralLevelTypeDirect,
+		"enabled":                   false,
+		"direct_cap_bps":            1400,
+		"invitee_share_default_bps": 600,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/templates/"+strconv.Itoa(rows[0].Id), body, 9)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(rows[0].Id)}}
+	AdminUpdateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var updatedRows []model.ReferralTemplate
+	if err := db.Where("bundle_key = ?", rows[0].BundleKey).Order("`group` ASC").Find(&updatedRows).Error; err != nil {
+		t.Fatalf("failed to list updated rows: %v", err)
+	}
+	if len(updatedRows) != 2 {
+		t.Fatalf("updated row count = %d, want 2", len(updatedRows))
+	}
+	if strings.Join([]string{updatedRows[0].Group, updatedRows[1].Group}, ",") != "premium,vip" {
+		t.Fatalf("updated groups = [%s %s], want [premium vip]", updatedRows[0].Group, updatedRows[1].Group)
+	}
+	for _, row := range updatedRows {
+		if row.Name != "mutable-bundle-renamed" {
+			t.Fatalf("row name = %q, want mutable-bundle-renamed", row.Name)
+		}
+		if row.Enabled {
+			t.Fatal("expected updated rows to be disabled")
+		}
+		if row.DirectCapBps != 1400 {
+			t.Fatalf("direct cap = %d, want 1400", row.DirectCapBps)
+		}
+		if row.InviteeShareDefaultBps != 600 {
+			t.Fatalf("invitee share = %d, want 600", row.InviteeShareDefaultBps)
+		}
+		if row.UpdatedBy != 9 {
+			t.Fatalf("updated by = %d, want 9", row.UpdatedBy)
+		}
+	}
+
+	var staleCount int64
+	if err := db.Model(&model.ReferralTemplate{}).
+		Where("bundle_key = ? AND `group` = ?", rows[0].BundleKey, "default").
+		Count(&staleCount).Error; err != nil {
+		t.Fatalf("failed to count stale rows: %v", err)
+	}
+	if staleCount != 0 {
+		t.Fatalf("stale default row count = %d, want 0", staleCount)
+	}
+}
+
+func TestAdminCreateReferralTemplateWithGroupsRollsBackOnConflict(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	if _, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType: model.ReferralTypeSubscription,
+		Groups:       []string{"vip"},
+		Name:         "conflict-name",
+		LevelType:    model.ReferralLevelTypeDirect,
+		Enabled:      true,
+		DirectCapBps: 1000,
+	}, 1); err != nil {
+		t.Fatalf("failed to seed conflicting bundle: %v", err)
+	}
+
+	body := map[string]interface{}{
+		"referral_type":  model.ReferralTypeSubscription,
+		"groups":         []string{"default", "vip"},
+		"name":           "conflict-name",
+		"level_type":     model.ReferralLevelTypeDirect,
+		"enabled":        true,
+		"direct_cap_bps": 1000,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/referral/templates", body, 1)
+	AdminCreateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatal("expected conflict create to fail")
+	}
+	if response.Message != "template name already exists" {
+		t.Fatalf("message = %q, want %q", response.Message, "template name already exists")
+	}
+
+	var defaultCount int64
+	if err := db.Model(&model.ReferralTemplate{}).
+		Where("name = ? AND `group` = ?", "conflict-name", "default").
+		Count(&defaultCount).Error; err != nil {
+		t.Fatalf("failed to count partially inserted rows: %v", err)
+	}
+	if defaultCount != 0 {
+		t.Fatalf("default group count = %d, want 0", defaultCount)
+	}
+}
+
+func TestAdminDeleteReferralTemplateBundleByTemplateIDRemovesAllRows(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType: model.ReferralTypeSubscription,
+		Groups:       []string{"default", "vip"},
+		Name:         "delete-me",
+		LevelType:    model.ReferralLevelTypeTeam,
+		Enabled:      true,
+		TeamCapBps:   2300,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to seed bundle: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/referral/templates/"+strconv.Itoa(rows[0].Id), nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(rows[0].Id)}}
+	AdminDeleteReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var count int64
+	if err := db.Model(&model.ReferralTemplate{}).
+		Where("bundle_key = ?", rows[0].BundleKey).
+		Count(&count).Error; err != nil {
+		t.Fatalf("failed to count deleted rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("bundle row count = %d, want 0", count)
 	}
 }
 
