@@ -83,7 +83,7 @@ func normalizeWithdrawalFeeRules(rules []WithdrawalFeeRule) ([]WithdrawalFeeRule
 		if rule.MaxAmount < 0 {
 			return nil, fmt.Errorf("invalid withdrawal fee rule max amount")
 		}
-		if rule.MaxAmount > 0 && rule.MaxAmount < rule.MinAmount {
+		if rule.MaxAmount > 0 && rule.MaxAmount <= rule.MinAmount {
 			return nil, fmt.Errorf("invalid withdrawal fee rule range")
 		}
 		switch strings.TrimSpace(rule.FeeType) {

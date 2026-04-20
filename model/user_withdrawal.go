@@ -562,13 +562,24 @@ func generateUserWithdrawalTradeNo(tx *gorm.DB) (string, error) {
 	return "", errors.New("failed to generate withdrawal trade no")
 }
 
+func withdrawalAmountMatchesRule(amount decimal.Decimal, rule WithdrawalFeeRule) bool {
+	minAmount := decimal.NewFromFloat(rule.MinAmount)
+	if !amount.GreaterThan(minAmount) {
+		return false
+	}
+	if rule.MaxAmount > 0 {
+		maxAmount := decimal.NewFromFloat(rule.MaxAmount)
+		if amount.GreaterThan(maxAmount) {
+			return false
+		}
+	}
+	return true
+}
+
 func calculateWithdrawalFeeAmount(amount decimal.Decimal, rules []WithdrawalFeeRule) (*WithdrawalFeeRule, decimal.Decimal, error) {
 	for i := range rules {
 		rule := rules[i]
-		if amount.LessThan(decimal.NewFromFloat(rule.MinAmount)) {
-			continue
-		}
-		if rule.MaxAmount > 0 && !amount.LessThan(decimal.NewFromFloat(rule.MaxAmount)) {
+		if !withdrawalAmountMatchesRule(amount, rule) {
 			continue
 		}
 

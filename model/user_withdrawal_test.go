@@ -127,3 +127,31 @@ func TestParseWithdrawalFeeRulesRejectsOverlappingRanges(t *testing.T) {
 		t.Fatalf("ParseWithdrawalFeeRules error = %v, want overlap validation", err)
 	}
 }
+
+func TestCalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges(t *testing.T) {
+	rules, err := ParseWithdrawalFeeRules(`[{"min_amount":0,"max_amount":100,"fee_type":"fixed","fee_value":5,"enabled":true,"sort_order":1},{"min_amount":100,"max_amount":500,"fee_type":"ratio","fee_value":3,"enabled":true,"sort_order":2}]`)
+	if err != nil {
+		t.Fatalf("ParseWithdrawalFeeRules returned error: %v", err)
+	}
+
+	matchedRule, feeAmount, err := calculateWithdrawalFeeAmount(decimal.NewFromInt(100), rules)
+	if err != nil {
+		t.Fatalf("calculateWithdrawalFeeAmount returned error: %v", err)
+	}
+	if matchedRule == nil {
+		t.Fatal("expected first rule to match amount 100")
+	}
+	if matchedRule.SortOrder != 1 {
+		t.Fatalf("matched rule sort order = %d, want 1", matchedRule.SortOrder)
+	}
+	if !feeAmount.Equal(decimal.NewFromInt(5)) {
+		t.Fatalf("fee amount = %s, want 5", feeAmount.String())
+	}
+}
+
+func TestParseWithdrawalFeeRulesRejectsEmptyRanges(t *testing.T) {
+	_, err := ParseWithdrawalFeeRules(`[{"min_amount":100,"max_amount":100,"fee_type":"fixed","fee_value":1,"enabled":true,"sort_order":1}]`)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "range") {
+		t.Fatalf("ParseWithdrawalFeeRules error = %v, want range validation", err)
+	}
+}
