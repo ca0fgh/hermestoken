@@ -113,9 +113,9 @@ test('vite build keeps only safe heavy dependencies in dedicated chunks', async 
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
 
   assert.match(source, /manualChunks:\s*(buildManualChunkName|\()/);
+  assert.match(source, /HOME_DEFERRED_PRELOAD_PATTERN = \/\(\?:semi-core\|visactor\|data-viz\)-\//);
   assert.match(source, /return 'seasonal-effects';/);
   assert.match(source, /return 'semi-vendor';/);
-  assert.match(source, /return 'data-viz';/);
   assert.match(source, /onwarn:\s*(handleBuildWarning|\()/);
   assert.match(source, /lottie-web\/build\/player\/lottie\.js/);
   assert.match(source, /chunkSizeWarningLimit:\s*3500/);
@@ -128,7 +128,6 @@ test('vite build groups the noisy semi and visactor vendor graphs while keeping 
 
   assert.match(source, /id\.includes\('i18next'\)[\s\S]*return 'react-core';/);
   assert.match(source, /id\.includes\('@douyinfe\/semi'\)[\s\S]*return 'semi-vendor';/);
-  assert.match(source, /id\.includes\('\/@visactor\/'\)[\s\S]*return 'data-viz';/);
   assert.doesNotMatch(source, /id\.includes\('i18next'\)[\s\S]*return 'i18n';/);
   assert.doesNotMatch(source, /return 'rich-content';/);
   assert.notEqual(reactCoreIndex, -1);
