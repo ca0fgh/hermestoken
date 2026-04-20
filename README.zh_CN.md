@@ -179,6 +179,30 @@ set_real_ip_from 2c0f:f248::/32;
 - 应用层错误日志中的 `ip` 字段仍取决于用户是否开启“记录 IP 日志”
 - 在生产机上使用 `python3 scripts/prod.py deploy --domain https://hermestoken.top` 或 `update --domain ...` 时，脚本现在会自动尝试同步并重载 Nginx 站点配置
 
+### 外部静态 CDN（Cloudflare Pages）
+
+如果希望把前端静态资源从应用源站拆出去，可以保留主站 `https://hermestoken.top` 负责 HTML 与 API，并把 `/assets/*` 独立到 `https://static.hermestoken.top`。
+
+推荐流程：
+
+1. 构建前端时带上静态资源域名：
+
+```bash
+python3 scripts/prod.py update \
+  --domain https://hermestoken.top \
+  --asset-base-url https://static.hermestoken.top
+```
+
+2. 将生成的 `web/dist` 上传到 Cloudflare Pages 的静态项目。
+3. 在 Cloudflare Workers & Pages 中给该项目绑定自定义域名 `static.hermestoken.top`。
+4. 删除旧的 `A static -> 源站 IP` 记录，避免和 Cloudflare 的自定义域名接管冲突。
+
+这样做之后：
+
+- `hermestoken.top` 继续提供页面入口、`/api/*`、`/v1/*` 等动态请求
+- `static.hermestoken.top` 由 Cloudflare 边缘网络提供 `index-*.js`、`react-core-*.js`、`/assets/*`
+- 源站 Nginx 不需要再为 `static.hermestoken.top` 额外保留兜底站点块
+
 ---
 
 ## 📚 文档
