@@ -18,15 +18,22 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Form, Spin } from '@douyinfe/semi-ui';
+import { Button, Form, Spin, Typography } from '@douyinfe/semi-ui';
 import {
   API,
   showError,
   showSuccess,
   toBoolean,
-  verifyJSON,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import WithdrawalFeeRulesEditor from '../../../components/settings/withdrawal/WithdrawalFeeRulesEditor';
+import {
+  normalizeWithdrawalFeeEditorRules,
+  serializeWithdrawalFeeEditorRules,
+  validateWithdrawalFeeEditorRules,
+} from '../../../helpers/withdrawal';
+
+const { Text } = Typography;
 
 export default function SettingsWithdrawal({ options, refresh }) {
   const { t } = useTranslation();
@@ -35,7 +42,7 @@ export default function SettingsWithdrawal({ options, refresh }) {
     WithdrawalEnabled: false,
     WithdrawalMinAmount: 10,
     WithdrawalInstruction: '',
-    WithdrawalFeeRules: '[]',
+    WithdrawalFeeRules: [],
   });
   const formApiRef = useRef(null);
 
@@ -48,14 +55,9 @@ export default function SettingsWithdrawal({ options, refresh }) {
             ? parseFloat(options.WithdrawalMinAmount || 10)
             : 10,
         WithdrawalInstruction: options.WithdrawalInstruction || '',
-        WithdrawalFeeRules: (() => {
-          const raw = options.WithdrawalFeeRules || '[]';
-          try {
-            return JSON.stringify(JSON.parse(raw), null, 2);
-          } catch {
-            return raw;
-          }
-        })(),
+        WithdrawalFeeRules: normalizeWithdrawalFeeEditorRules(
+          options.WithdrawalFeeRules || '[]',
+        ),
       };
       setInputs(currentInputs);
       formApiRef.current.setValues(currentInputs);
@@ -63,12 +65,23 @@ export default function SettingsWithdrawal({ options, refresh }) {
   }, [options]);
 
   const handleFormChange = (values) => {
-    setInputs(values);
+    setInputs((current) => ({
+      ...current,
+      ...values,
+    }));
+  };
+
+  const handleFeeRulesChange = (rules) => {
+    setInputs((current) => ({
+      ...current,
+      WithdrawalFeeRules: normalizeWithdrawalFeeEditorRules(rules),
+    }));
   };
 
   const submit = async () => {
-    if (!verifyJSON(inputs.WithdrawalFeeRules || '[]')) {
-      showError(t('提现手续费规则不是合法的 JSON'));
+    const validation = validateWithdrawalFeeEditorRules(inputs.WithdrawalFeeRules);
+    if (validation.errors.length > 0) {
+      showError(validation.errors[0]);
       return;
     }
 
@@ -89,7 +102,7 @@ export default function SettingsWithdrawal({ options, refresh }) {
         }),
         API.put('/api/option/', {
           key: 'WithdrawalFeeRules',
-          value: JSON.stringify(JSON.parse(inputs.WithdrawalFeeRules || '[]')),
+          value: serializeWithdrawalFeeEditorRules(inputs.WithdrawalFeeRules),
         }),
       ];
 
@@ -135,60 +148,18 @@ export default function SettingsWithdrawal({ options, refresh }) {
             autosize={{ minRows: 3 }}
             extraText={t('展示在用户提现弹窗中，例如到账时效与线下处理说明')}
           />
-          <Form.TextArea
-            field='WithdrawalFeeRules'
-            label={t('提现手续费规则')}
-            autosize={{ minRows: 8 }}
-            extraText={
-              <div className='space-y-1 text-xs leading-6 text-[var(--semi-color-text-2)]'>
-                <div>
-                  {t(
-                    '规则为 JSON 数组；系统会按 sort_order 从小到大，匹配第一条 enabled=true 且金额区间命中的规则。',
-                  )}
-                </div>
-                <div>
-                  {t('min_amount')}: {t('本条规则的最小提现金额，包含当前值。')}
-                </div>
-                <div>
-                  {t('max_amount')}:{' '}
-                  {t('本条规则的最大提现金额；填 0 表示无上限；大于 0 时不包含当前值。')}
-                </div>
-                <div>
-                  {t('fee_type')}:{' '}
-                  {t(
-                    'fixed 表示固定手续费；ratio 表示按提现金额百分比计算手续费。',
-                  )}
-                </div>
-                <div>
-                  {t('fee_value')}:{' '}
-                  {t(
-                    'fixed 时表示直接收多少钱；ratio 时表示百分比，例如 2 表示 2%。',
-                  )}
-                </div>
-                <div>
-                  {t('min_fee')}:{' '}
-                  {t('仅在 ratio 下生效；按比例算出的手续费低于它时，按这个最小值收。')}
-                </div>
-                <div>
-                  {t('max_fee')}:{' '}
-                  {t(
-                    '仅在 ratio 下生效；按比例算出的手续费高于它时，按这个最大值收；填 0 表示不设上限。',
-                  )}
-                </div>
-                <div>
-                  {t('enabled')}: {t('true 表示启用，false 表示停用。')}
-                </div>
-                <div>
-                  {t('sort_order')}: {t('匹配顺序，值越小越先匹配。')}
-                </div>
-                <div>
-                  {t(
-                    '示例：{\"min_amount\":50,\"max_amount\":0,\"fee_type\":\"ratio\",\"fee_value\":2,\"min_fee\":1,\"max_fee\":10,\"enabled\":true,\"sort_order\":2} 表示 50 及以上按 2% 收费，最低 1，最高 10。',
-                  )}
-                </div>
-              </div>
-            }
-          />
+
+          <div style={{ marginBottom: 24 }}>
+            <Text strong>{t('提现手续费规则')}</Text>
+            <Text type='tertiary' style={{ display: 'block', marginTop: 4 }}>
+              {t('使用可视化编辑器维护区间、收费方式和预览结果，保存时会自动转换为系统配置格式。')}
+            </Text>
+            <WithdrawalFeeRulesEditor
+              value={inputs.WithdrawalFeeRules}
+              onChange={handleFeeRulesChange}
+            />
+          </div>
+
           <Button onClick={submit}>{t('保存提现设置')}</Button>
         </Form.Section>
       </Form>
