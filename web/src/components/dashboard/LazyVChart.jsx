@@ -17,21 +17,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 
-const VChartRuntime = lazy(() =>
-  Promise.all([
-    import('@visactor/react-vchart'),
-    import('./vchartDashboardRuntime'),
-  ]).then(([module, vchartRuntimeModule]) => ({
-    default: (props) => (
-      <module.VChartSimple
-        {...props}
-        vchartConstrouctor={vchartRuntimeModule.default}
-      />
-    ),
-  })),
-);
+let vchartRuntimeImportPromise = null;
+
+function loadVChartRuntime() {
+  if (!vchartRuntimeImportPromise) {
+    vchartRuntimeImportPromise = Promise.all([
+      import('@visactor/react-vchart/esm/VChartSimple.js'),
+      import('./vchartDashboardRuntime'),
+      import('@visactor/vchart-semi-theme'),
+    ]).then(([module, vchartRuntimeModule, themeModule]) => {
+      themeModule.initVChartSemiTheme({
+        isWatchingThemeSwitch: true,
+      });
+
+      return {
+        default: (props) => (
+          <module.VChartSimple
+            {...props}
+            vchartConstrouctor={vchartRuntimeModule.default}
+          />
+        ),
+      };
+    });
+  }
+
+  return vchartRuntimeImportPromise;
+}
+
+const VChartRuntime = lazy(loadVChartRuntime);
 
 const chartPlaceholderStyle = {
   width: '100%',
@@ -39,9 +54,46 @@ const chartPlaceholderStyle = {
 };
 
 const LazyVChart = (props) => {
+  const placeholderRef = useRef(null);
+  const [isVisible, setIsVisible] = useState(false);
   const [shouldRender, setShouldRender] = useState(false);
 
   useEffect(() => {
+    if (shouldRender) {
+      return undefined;
+    }
+
+    const placeholder = placeholderRef.current;
+
+    if (!placeholder || typeof IntersectionObserver === 'undefined') {
+      setIsVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      {
+        rootMargin: '200px',
+      },
+    );
+
+    observer.observe(placeholder);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [shouldRender]);
+
+  useEffect(() => {
+    if (!isVisible || shouldRender) {
+      return undefined;
+    }
+
     let frameId;
     let idleId;
 
@@ -61,10 +113,10 @@ const LazyVChart = (props) => {
         window.cancelAnimationFrame(frameId);
       }
     };
-  }, []);
+  }, [isVisible, shouldRender]);
 
   if (!shouldRender) {
-    return <div style={chartPlaceholderStyle} />;
+    return <div ref={placeholderRef} style={chartPlaceholderStyle} />;
   }
 
   return (

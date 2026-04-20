@@ -242,6 +242,28 @@ test('dashboard route lazy loads the search modal instead of bundling it into th
   assert.match(source, /<Suspense fallback=\{null\}>[\s\S]*<SearchModal/);
 });
 
+test('dashboard chart runtime deep imports the lightweight VChartSimple entry and only boots visactor after the chart placeholder becomes visible', async () => {
+  const lazyVChartSource = await readFile(lazyVChartPath, 'utf8');
+  const dashboardChartsHookSource = await readFile(
+    dashboardChartsHookPath,
+    'utf8',
+  );
+
+  assert.match(
+    lazyVChartSource,
+    /import\('@visactor\/react-vchart\/esm\/VChartSimple\.js'\)/,
+  );
+  assert.match(lazyVChartSource, /import\('@visactor\/vchart-semi-theme'\)/);
+  assert.match(lazyVChartSource, /IntersectionObserver/);
+  assert.match(lazyVChartSource, /rootMargin: '200px'/);
+  assert.doesNotMatch(lazyVChartSource, /import\('@visactor\/react-vchart'\)/);
+  assert.doesNotMatch(dashboardChartsHookSource, /ensureVChartSemiTheme/);
+  assert.doesNotMatch(
+    dashboardChartsHookSource,
+    /import\('@visactor\/vchart-semi-theme'\)/,
+  );
+});
+
 test('dashboard route keeps its modal lazy but renders the visible panels from the main dashboard chunk', async () => {
   const source = await readFile(dashboardPath, 'utf8');
 
@@ -287,16 +309,21 @@ test('dashboard chart panels use the lazy VChart wrapper instead of importing vi
   assert.doesNotMatch(chartsSource, /from '@visactor\/react-vchart';/);
   assert.match(statsSource, /from '\.\/LazyVChart';/);
   assert.match(chartsSource, /from '\.\/LazyVChart';/);
-  assert.match(lazyVChartSource, /import\('@visactor\/react-vchart'\)/);
+  assert.match(
+    lazyVChartSource,
+    /import\('@visactor\/react-vchart\/esm\/VChartSimple\.js'\)/,
+  );
   assert.match(lazyVChartSource, /import\('\.\/vchartDashboardRuntime'\)/);
+  assert.match(lazyVChartSource, /import\('@visactor\/vchart-semi-theme'\)/);
   assert.match(lazyVChartSource, /<module\.VChartSimple/);
   assert.match(lazyVChartSource, /vchartConstrouctor=\{/);
+  assert.match(lazyVChartSource, /IntersectionObserver/);
   assert.match(dashboardRuntimeSource, /registerLineChart/);
   assert.match(dashboardRuntimeSource, /registerPieChart/);
   assert.doesNotMatch(dashboardRuntimeSource, /registerLabel/);
 });
 
-test('dashboard chart hook lazy loads the visactor semi theme instead of statically importing it', async () => {
+test('dashboard chart hook no longer preloads the visactor theme before the chart runtime is requested', async () => {
   const source = await readFile(dashboardChartsHookPath, 'utf8');
   const pieSpecSection = source.slice(
     source.indexOf('const [spec_pie'),
@@ -304,8 +331,8 @@ test('dashboard chart hook lazy loads the visactor semi theme instead of statica
   );
 
   assert.doesNotMatch(source, /from '@visactor\/vchart-semi-theme';/);
-  assert.match(source, /import\('@visactor\/vchart-semi-theme'\)/);
-  assert.match(source, /function ensureVChartSemiTheme\(/);
+  assert.doesNotMatch(source, /import\('@visactor\/vchart-semi-theme'\)/);
+  assert.doesNotMatch(source, /function ensureVChartSemiTheme\(/);
   assert.doesNotMatch(source, /position:\s*'outside'/);
   assert.doesNotMatch(pieSpecSection, /label:\s*\{\s*visible:\s*true/);
 });

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   modelColorMap,
   renderNumber,
@@ -48,24 +48,6 @@ const USER_COLORS = [
   '#6366f1',
   '#14b8a6',
 ];
-
-let vchartSemiThemePromise = null;
-
-function ensureVChartSemiTheme() {
-  if (vchartSemiThemePromise) {
-    return vchartSemiThemePromise;
-  }
-
-  vchartSemiThemePromise = import('@visactor/vchart-semi-theme').then(
-    ({ initVChartSemiTheme }) => {
-      initVChartSemiTheme({
-        isWatchingThemeSwitch: true,
-      });
-    },
-  );
-
-  return vchartSemiThemePromise;
-}
 
 export const useDashboardCharts = (
   dataExportDefaultTime,
@@ -578,11 +560,6 @@ export const useDashboardCharts = (
     },
     [dataExportDefaultTime, t],
   );
-
-  // ========== 初始化图表主题 ==========
-  useEffect(() => {
-    void ensureVChartSemiTheme();
-  }, []);
 
   return {
     spec_pie,
