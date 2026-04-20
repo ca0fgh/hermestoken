@@ -597,8 +597,21 @@ const TopUp = () => {
   };
 
   const submitWithdrawal = async () => {
+    const withdrawalPreview = calculateWithdrawalPreview(
+      withdrawalAmount,
+      withdrawalConfig?.feeRules || [],
+    );
     if (withdrawalAmount < (withdrawalConfig?.minAmount || 0)) {
       showError(t('提现金额不能低于最低提现金额'));
+      return;
+    }
+    if (!withdrawalPreview?.isValid) {
+      showError(
+        t(
+          withdrawalPreview?.blockReason ||
+            '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
+        ),
+      );
       return;
     }
     if (!withdrawalAlipayAccount.trim()) {

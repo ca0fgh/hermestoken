@@ -17,6 +17,397 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+const DEFAULT_EDITOR_RULE = {
+  id: '',
+  minAmount: 0,
+  maxAmount: '',
+  feeType: 'fixed',
+  feeValue: 0,
+  minFee: 0,
+  maxFee: '',
+  enabled: true,
+  sortOrder: 1,
+};
+
+const isPlainObject = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const parseWithdrawalRulesInput = (feeRules) => {
+  if (Array.isArray(feeRules)) {
+    return feeRules;
+  }
+
+  if (typeof feeRules !== 'string' || feeRules.trim() === '') {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(feeRules);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const toFiniteNumber = (value, fallback = 0) => {
+  if (value === '' || value === null || value === undefined) {
+    return fallback;
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : fallback;
+};
+
+const toOptionalNumber = (value) => {
+  if (value === '' || value === null || value === undefined) {
+    return '';
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : '';
+};
+
+const createEditorRuleId = (rule, index) =>
+  String(rule?.id || rule?.key || `withdrawal-fee-rule-${index + 1}`);
+
+const sortEditorRules = (rules) =>
+  [...rules].sort((left, right) => {
+    if (left.sortOrder !== right.sortOrder) {
+      return left.sortOrder - right.sortOrder;
+    }
+
+    return left.minAmount - right.minAmount;
+  });
+
+const normalizeEditorRule = (rule, index) => {
+  const hasEditorMaxAmount = Object.prototype.hasOwnProperty.call(rule || {}, 'maxAmount');
+  const hasEditorMaxFee = Object.prototype.hasOwnProperty.call(rule || {}, 'maxFee');
+  const minAmount = toFiniteNumber(rule?.minAmount ?? rule?.min_amount, 0);
+  const rawMaxAmount = hasEditorMaxAmount ? rule?.maxAmount : rule?.max_amount;
+  const rawMaxFee = hasEditorMaxFee ? rule?.maxFee : rule?.max_fee;
+  const feeType =
+    rule?.feeType === 'ratio' || rule?.fee_type === 'ratio' ? 'ratio' : 'fixed';
+
+  return {
+    ...DEFAULT_EDITOR_RULE,
+    id: createEditorRuleId(rule, index),
+    minAmount,
+    maxAmount:
+      hasEditorMaxAmount || Number(rawMaxAmount) !== 0
+        ? toOptionalNumber(rawMaxAmount)
+        : '',
+    feeType,
+    feeValue: toFiniteNumber(rule?.feeValue ?? rule?.fee_value, 0),
+    minFee: toFiniteNumber(rule?.minFee ?? rule?.min_fee, 0),
+    maxFee:
+      feeType === 'ratio'
+        ? hasEditorMaxFee || Number(rawMaxFee) !== 0
+          ? toOptionalNumber(rawMaxFee)
+          : ''
+        : '',
+    enabled: rule?.enabled !== false,
+    sortOrder: toFiniteNumber(rule?.sortOrder ?? rule?.sort_order, index + 1),
+  };
+};
+
+const normalizeStoredWithdrawalFeeRules = (feeRules = []) =>
+  sortEditorRules(normalizeWithdrawalFeeEditorRules(feeRules)).map((rule, index) => ({
+    min_amount: rule.minAmount,
+    max_amount: rule.maxAmount === '' ? 0 : rule.maxAmount,
+    fee_type: rule.feeType,
+    fee_value: rule.feeValue,
+    min_fee: rule.feeType === 'ratio' ? rule.minFee : 0,
+    max_fee: rule.feeType === 'ratio' && rule.maxFee !== '' ? rule.maxFee : 0,
+    enabled: rule.enabled,
+    sort_order: index + 1,
+  }));
+
+const getRuleUpperBound = (rule) =>
+  rule.maxAmount === '' ? Infinity : Number(rule.maxAmount);
+
+const formatRuleNumber = (value) => {
+  const numericValue = Number(value || 0);
+  if (Number.isInteger(numericValue)) {
+    return String(numericValue);
+  }
+
+  return String(Number(numericValue.toFixed(2)));
+};
+
+const formatAdminRuleAmount = (value) => formatRuleNumber(value);
+
+const formatRuleFeeSummary = (rule, t) => {
+  if (rule.feeType === 'fixed') {
+    return resolveWithdrawalCopy(t, '固定手续费 {{amount}}', {
+      amount: formatAdminRuleAmount(rule.feeValue),
+    });
+  }
+
+  const segments = [
+    resolveWithdrawalCopy(t, '按 {{rate}}% 收费', {
+      rate: formatRuleNumber(rule.feeValue),
+    }),
+  ];
+  if (rule.minFee > 0) {
+    segments.push(
+      resolveWithdrawalCopy(t, '最低 {{amount}}', {
+        amount: formatAdminRuleAmount(rule.minFee),
+      }),
+    );
+  }
+  if (rule.maxFee !== '' && Number(rule.maxFee) > 0) {
+    segments.push(
+      resolveWithdrawalCopy(t, '最高 {{amount}}', {
+        amount: formatAdminRuleAmount(rule.maxFee),
+      }),
+    );
+  }
+  return segments.join('，');
+};
+
+const interpolateTemplate = (template, params = {}) =>
+  String(template).replace(/\{\{(\w+)\}\}/g, (_, key) =>
+    Object.prototype.hasOwnProperty.call(params, key) ? params[key] : '',
+  );
+
+const resolveWithdrawalCopy = (t, key, params = {}) => {
+  const translated = typeof t === 'function' ? t(key, params) : key;
+  return interpolateTemplate(translated, params);
+};
+
+const formatUserFacingRuleAmount = (value, options = {}) => {
+  const amount = formatRuleNumber(value);
+  const currencySymbol = String(options?.currencySymbol || '');
+  if (!currencySymbol) {
+    return amount;
+  }
+
+  return `${currencySymbol}${amount}`;
+};
+
+const getRuleLabel = (rule, t) => {
+  if (rule.maxAmount === '') {
+    return resolveWithdrawalCopy(t, '金额 > {{amount}}', {
+      amount: formatRuleNumber(rule.minAmount),
+    });
+  }
+
+  if (Number(rule.minAmount) <= 0) {
+    return resolveWithdrawalCopy(t, '0 < 金额 <= {{amount}}', {
+      amount: formatRuleNumber(rule.maxAmount),
+    });
+  }
+
+  return resolveWithdrawalCopy(t, '{{min}} < 金额 <= {{max}}', {
+    min: formatRuleNumber(rule.minAmount),
+    max: formatRuleNumber(rule.maxAmount),
+  });
+};
+
+const getUserFacingRuleRangeLabel = (rule, t, options = {}) => {
+  if (rule.maxAmount === '') {
+    return resolveWithdrawalCopy(t, '高于 {{amountWithSymbol}}', {
+      amountWithSymbol: formatUserFacingRuleAmount(rule.minAmount, options),
+    });
+  }
+
+  if (Number(rule.minAmount) <= 0) {
+    return resolveWithdrawalCopy(t, '大于 0 且不超过 {{amountWithSymbol}}', {
+      amountWithSymbol: formatUserFacingRuleAmount(rule.maxAmount, options),
+    });
+  }
+
+  return resolveWithdrawalCopy(t, '高于 {{minWithSymbol}} 至 {{maxWithSymbol}}', {
+    minWithSymbol: formatUserFacingRuleAmount(rule.minAmount, options),
+    maxWithSymbol: formatUserFacingRuleAmount(rule.maxAmount, options),
+  });
+};
+
+const getUserFacingRuleFeeSummary = (rule, t, options = {}) => {
+  if (rule.feeType === 'fixed') {
+    return resolveWithdrawalCopy(t, '固定手续费 {{amountWithSymbol}}', {
+      amountWithSymbol: formatUserFacingRuleAmount(rule.feeValue, options),
+    });
+  }
+
+  const segments = [
+    resolveWithdrawalCopy(t, '按 {{rate}}% 收费', {
+      rate: formatRuleNumber(rule.feeValue),
+    }),
+  ];
+
+  if (rule.minFee > 0) {
+    segments.push(
+      resolveWithdrawalCopy(t, '最低手续费 {{amountWithSymbol}}', {
+        amountWithSymbol: formatUserFacingRuleAmount(rule.minFee, options),
+      }),
+    );
+  }
+
+  if (rule.maxFee !== '' && Number(rule.maxFee) > 0) {
+    segments.push(
+      resolveWithdrawalCopy(t, '最高手续费 {{amountWithSymbol}}', {
+        amountWithSymbol: formatUserFacingRuleAmount(rule.maxFee, options),
+      }),
+    );
+  }
+
+  return segments.join('，');
+};
+
+const matchesWithdrawalFeeRuleAmount = (amount, rule) => {
+  const numericAmount = Number(amount || 0);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0 || rule?.enabled === false) {
+    return false;
+  }
+
+  const minAmount = toFiniteNumber(rule?.min_amount, 0);
+  const maxAmount = toFiniteNumber(rule?.max_amount, 0);
+  if (numericAmount <= minAmount) {
+    return false;
+  }
+  if (maxAmount > 0 && numericAmount > maxAmount) {
+    return false;
+  }
+  return true;
+};
+
+const getRawWithdrawalRuleField = (rule, editorKey, storedKey) =>
+  rule?.[editorKey] ?? rule?.[storedKey];
+
+const parseStrictRequiredNumber = (value) => {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+};
+
+const parseStrictOptionalNumber = (value) => {
+  if (value === '' || value === null || value === undefined) {
+    return '';
+  }
+
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+};
+
+const validatePersistedRuleShape = (rule, index) => {
+  const rowNumber = index + 1;
+  const errors = [];
+
+  if (!isPlainObject(rule)) {
+    return {
+      normalizedRule: null,
+      errors: [
+        resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则必须是对象', {
+          rowNumber,
+        }),
+      ],
+    };
+  }
+
+  const minAmount = parseStrictRequiredNumber(
+    getRawWithdrawalRuleField(rule, 'minAmount', 'min_amount'),
+  );
+  const rawMaxAmount = getRawWithdrawalRuleField(rule, 'maxAmount', 'max_amount');
+  const parsedMaxAmount = parseStrictOptionalNumber(rawMaxAmount);
+  const feeType = getRawWithdrawalRuleField(rule, 'feeType', 'fee_type');
+  const feeValue = parseStrictRequiredNumber(
+    getRawWithdrawalRuleField(rule, 'feeValue', 'fee_value'),
+  );
+  const minFee = parseStrictRequiredNumber(
+    getRawWithdrawalRuleField(rule, 'minFee', 'min_fee') ?? 0,
+  );
+  const rawMaxFee = getRawWithdrawalRuleField(rule, 'maxFee', 'max_fee');
+  const parsedMaxFee = parseStrictOptionalNumber(rawMaxFee);
+  const enabledValue = getRawWithdrawalRuleField(rule, 'enabled', 'enabled');
+  const sortOrder = parseStrictRequiredNumber(
+    getRawWithdrawalRuleField(rule, 'sortOrder', 'sort_order') ?? index + 1,
+  );
+
+  if (minAmount === null) {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的起始金额必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (rawMaxAmount !== 0 && parsedMaxAmount === null) {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的结束金额必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (feeType !== 'fixed' && feeType !== 'ratio') {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的收费方式必须是 fixed 或 ratio', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (feeValue === null) {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的手续费必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (minFee === null) {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的最低手续费必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (rawMaxFee !== 0 && rawMaxFee !== undefined && parsedMaxFee === null) {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的最高手续费必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (sortOrder === null) {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的排序值必须是有效数字', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (enabledValue !== undefined && typeof enabledValue !== 'boolean') {
+    errors.push(
+      resolveWithdrawalCopy(undefined, '第 {{rowNumber}} 条规则的启用状态必须是 true 或 false', {
+        rowNumber,
+      }),
+    );
+  }
+
+  if (errors.length > 0) {
+    return {
+      normalizedRule: null,
+      errors,
+    };
+  }
+
+  return {
+    normalizedRule: {
+      id: createEditorRuleId(rule, index),
+      minAmount,
+      maxAmount: rawMaxAmount === 0 ? '' : parsedMaxAmount,
+      feeType,
+      feeValue,
+      minFee: feeType === 'ratio' ? minFee : 0,
+      maxFee: feeType === 'ratio' ? (rawMaxFee === 0 ? '' : parsedMaxFee) : '',
+      enabled: enabledValue !== false,
+      sortOrder,
+    },
+    errors: [],
+  };
+};
+
 export const formatWithdrawalAmount = (amount, symbol = '¥') => {
   const numericAmount = Number(amount || 0);
   return `${symbol}${numericAmount.toFixed(2)}`;
@@ -56,6 +447,223 @@ export const getWithdrawalStatusMeta = (status, t) => {
   }
 };
 
+export const normalizeWithdrawalFeeEditorRules = (feeRules = []) =>
+  sortEditorRules(parseWithdrawalRulesInput(feeRules).map(normalizeEditorRule));
+
+export const validateWithdrawalFeeEditorRules = (feeRules = [], t) => {
+  const rules = normalizeWithdrawalFeeEditorRules(feeRules);
+  const errors = [];
+  const warnings = [];
+
+  rules.forEach((rule, index) => {
+    const rowNumber = index + 1;
+    const upperBound = getRuleUpperBound(rule);
+    const maxFee = rule.maxFee === '' ? 0 : Number(rule.maxFee);
+
+    if (rule.minAmount < 0) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的起始金额必须大于等于 0', {
+          rowNumber,
+        }),
+      );
+    }
+    if (Number.isFinite(upperBound) && upperBound <= rule.minAmount) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的结束金额必须大于起始金额', {
+          rowNumber,
+        }),
+      );
+    }
+    if (rule.feeValue < 0) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的手续费必须大于等于 0', {
+          rowNumber,
+        }),
+      );
+    }
+    if (rule.feeType === 'ratio' && (rule.feeValue < 0 || rule.feeValue > 100)) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的费率必须在 0 到 100 之间', {
+          rowNumber,
+        }),
+      );
+    }
+    if (rule.feeType === 'ratio' && rule.minFee < 0) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的最低手续费必须大于等于 0', {
+          rowNumber,
+        }),
+      );
+    }
+    if (rule.feeType === 'ratio' && maxFee < 0) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的最高手续费必须大于等于 0', {
+          rowNumber,
+        }),
+      );
+    }
+    if (rule.feeType === 'ratio' && rule.maxFee !== '' && maxFee < rule.minFee) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则的最高手续费不能小于最低手续费', {
+          rowNumber,
+        }),
+      );
+    }
+    if (!rule.enabled) {
+      warnings.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则已停用，用户侧不会命中它', {
+          rowNumber,
+        }),
+      );
+    }
+  });
+
+  const enabledRules = rules
+    .map((rule, index) => ({
+      rule,
+      rowNumber: index + 1,
+    }))
+    .filter(({ rule }) => rule.enabled);
+
+  enabledRules.forEach(({ rule, rowNumber }, index) => {
+    const nextEnabledRule = enabledRules[index + 1];
+    const nextRule = nextEnabledRule?.rule;
+    if (!nextRule) {
+      return;
+    }
+
+    const upperBound = getRuleUpperBound(rule);
+
+    if (!Number.isFinite(upperBound)) {
+      errors.push(
+        resolveWithdrawalCopy(t, '第 {{rowNumber}} 条规则已设置为无上限，后面不能再添加规则', {
+          rowNumber,
+        }),
+      );
+      return;
+    }
+
+    if (nextRule.minAmount < upperBound) {
+      errors.push(
+        resolveWithdrawalCopy(
+          t,
+          '第 {{leftRowNumber}} 条规则和第 {{rightRowNumber}} 条规则的金额区间发生重叠',
+          {
+            leftRowNumber: rowNumber,
+            rightRowNumber: nextEnabledRule.rowNumber,
+          },
+        ),
+      );
+      return;
+    }
+
+    if (nextRule.minAmount > upperBound) {
+      warnings.push(
+        resolveWithdrawalCopy(
+          t,
+          '第 {{leftRowNumber}} 条规则和第 {{rightRowNumber}} 条规则之间存在金额区间断层',
+          {
+            leftRowNumber: rowNumber,
+            rightRowNumber: nextEnabledRule.rowNumber,
+          },
+        ),
+      );
+    }
+  });
+
+  return {
+    errors,
+    warnings,
+  };
+};
+
+export const parsePersistedWithdrawalFeeRules = (rawValue = '') => {
+  const rawText = typeof rawValue === 'string' ? rawValue : '';
+
+  if (rawText.trim() === '') {
+    return {
+      rules: [],
+      rawValue: null,
+      errors: [],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(rawText);
+    if (!Array.isArray(parsed)) {
+      return {
+        rules: [],
+        rawValue: rawText,
+        errors: [resolveWithdrawalCopy(undefined, '提现手续费规则必须是 JSON 数组')],
+      };
+    }
+
+    const normalizedRules = [];
+    const shapeErrors = [];
+
+    parsed.forEach((rule, index) => {
+      const result = validatePersistedRuleShape(rule, index);
+      if (result.normalizedRule) {
+        normalizedRules.push(result.normalizedRule);
+      }
+      if (result.errors.length > 0) {
+        shapeErrors.push(...result.errors);
+      }
+    });
+
+    if (shapeErrors.length > 0) {
+      return {
+        rules: [],
+        rawValue: rawText,
+        errors: shapeErrors,
+      };
+    }
+
+    const validation = validateWithdrawalFeeEditorRules(normalizedRules);
+    if (validation.errors.length > 0) {
+      return {
+        rules: [],
+        rawValue: rawText,
+        errors: validation.errors,
+      };
+    }
+
+    return {
+      rules: normalizeWithdrawalFeeEditorRules(normalizedRules),
+      rawValue: null,
+      errors: [],
+    };
+  } catch {
+    return {
+      rules: [],
+      rawValue: rawText,
+      errors: [resolveWithdrawalCopy(undefined, '提现手续费规则不是合法的 JSON')],
+    };
+  }
+};
+
+export const serializeWithdrawalFeeEditorRules = (feeRules = []) =>
+  JSON.stringify(normalizeStoredWithdrawalFeeRules(feeRules));
+
+export const describeWithdrawalFeeRule = (rule, t) => {
+  const normalizedRule = normalizeEditorRule(rule, 0);
+  return `${getRuleLabel(normalizedRule, t)}：${formatRuleFeeSummary(normalizedRule, t)}`;
+};
+
+export const describeWithdrawalFeeRuleForUser = (rule, t, options = {}) => {
+  const normalizedRule = normalizeEditorRule(rule, 0);
+  return `${getUserFacingRuleRangeLabel(normalizedRule, t, options)}：${getUserFacingRuleFeeSummary(
+    normalizedRule,
+    t,
+    options,
+  )}`;
+};
+
+export const buildWithdrawalFeeRuleDescriptions = (feeRules = [], t, options = {}) =>
+  normalizeWithdrawalFeeEditorRules(feeRules)
+    .filter((rule) => rule.enabled)
+    .map((rule) => describeWithdrawalFeeRuleForUser(rule, t, options));
+
 export const calculateWithdrawalPreview = (amount, feeRules = []) => {
   const numericAmount = Number(amount || 0);
   if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
@@ -63,23 +671,23 @@ export const calculateWithdrawalPreview = (amount, feeRules = []) => {
       feeAmount: 0,
       netAmount: 0,
       matchedRule: null,
+      isValid: false,
+      blockReason: '提现金额必须大于 0',
     };
   }
 
   const matchedRule =
-    feeRules.find((rule) => {
-      const min = Number(rule?.min_amount || 0);
-      const max = Number(rule?.max_amount || 0);
-      if (numericAmount < min) return false;
-      if (max > 0 && numericAmount >= max) return false;
-      return true;
-    }) || null;
+    normalizeStoredWithdrawalFeeRules(feeRules).find((rule) =>
+      matchesWithdrawalFeeRuleAmount(numericAmount, rule),
+    ) || null;
 
   if (!matchedRule) {
     return {
-      feeAmount: 0,
-      netAmount: numericAmount,
+      feeAmount: null,
+      netAmount: null,
       matchedRule: null,
+      isValid: false,
+      blockReason: '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
     };
   }
 
@@ -103,8 +711,54 @@ export const calculateWithdrawalPreview = (amount, feeRules = []) => {
     feeAmount,
     netAmount: Number(Math.max(numericAmount - feeAmount, 0).toFixed(2)),
     matchedRule,
+    isValid: true,
+    blockReason: '',
   };
 };
+
+export const buildWithdrawalFeeSamples = (feeRules = [], t) => {
+  const rules = normalizeWithdrawalFeeEditorRules(feeRules).filter(
+    (rule) => rule.enabled,
+  );
+  const sampleAmounts = [];
+
+  rules.forEach((rule) => {
+    const upperBound = getRuleUpperBound(rule);
+    if (Number.isFinite(upperBound)) {
+      const midpoint = Number(((rule.minAmount + upperBound) / 2).toFixed(2));
+      if (midpoint > 0) {
+        sampleAmounts.push(midpoint);
+      }
+      if (upperBound > 0) {
+        sampleAmounts.push(upperBound);
+      }
+      return;
+    }
+
+    const openEndedSample = Math.max(rule.minAmount * 2, rule.minAmount + 1);
+    if (openEndedSample > 0) {
+      sampleAmounts.push(Number(openEndedSample.toFixed(2)));
+    }
+  });
+
+  return [...new Set(sampleAmounts)]
+    .sort((left, right) => left - right)
+    .map((amount) => {
+      const preview = calculateWithdrawalPreview(amount, rules);
+      return {
+        amount,
+        feeAmount: preview.feeAmount,
+        netAmount: preview.netAmount,
+        matchedRule: preview.matchedRule,
+        ruleText: preview.matchedRule
+          ? describeWithdrawalFeeRule(preview.matchedRule, t)
+          : resolveWithdrawalCopy(t, '未命中手续费规则'),
+      };
+    });
+};
+
+export const getWithdrawalFeeTypeLabel = (feeType, t) =>
+  feeType === 'ratio' ? resolveWithdrawalCopy(t, '费率') : resolveWithdrawalCopy(t, '固定');
 
 export const normalizeWithdrawalConfig = (config) => ({
   enabled: config?.enabled === true,

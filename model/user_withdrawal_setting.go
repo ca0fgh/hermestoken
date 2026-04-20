@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/shopspring/decimal"
 )
 
 const (
@@ -47,6 +48,7 @@ func GetUserWithdrawalSetting() UserWithdrawalSetting {
 	if rules, err := ParseWithdrawalFeeRules(common.OptionMap[WithdrawalFeeRulesOptionKey]); err == nil {
 		setting.FeeRules = rules
 	}
+	setting.MinAmount = normalizeWithdrawalMinAmount(setting.MinAmount, setting.FeeRules)
 	return setting
 }
 
@@ -83,7 +85,7 @@ func normalizeWithdrawalFeeRules(rules []WithdrawalFeeRule) ([]WithdrawalFeeRule
 		if rule.MaxAmount < 0 {
 			return nil, fmt.Errorf("invalid withdrawal fee rule max amount")
 		}
-		if rule.MaxAmount > 0 && rule.MaxAmount < rule.MinAmount {
+		if rule.MaxAmount > 0 && rule.MaxAmount <= rule.MinAmount {
 			return nil, fmt.Errorf("invalid withdrawal fee rule range")
 		}
 		switch strings.TrimSpace(rule.FeeType) {
@@ -125,6 +127,39 @@ func normalizeWithdrawalFeeRules(rules []WithdrawalFeeRule) ([]WithdrawalFeeRule
 	}
 
 	return normalized, nil
+}
+
+func normalizeWithdrawalMinAmount(minAmount float64, rules []WithdrawalFeeRule) float64 {
+	baseAmount := decimal.NewFromFloat(minAmount).Round(2)
+	if len(rules) == 0 {
+		return baseAmount.InexactFloat64()
+	}
+
+	step := decimal.NewFromFloat(0.01)
+	var (
+		bestCandidate decimal.Decimal
+		hasCandidate  bool
+	)
+
+	for _, rule := range rules {
+		candidate := baseAmount
+		ruleMinAmount := decimal.NewFromFloat(rule.MinAmount).Round(2)
+		if !candidate.GreaterThan(ruleMinAmount) {
+			candidate = ruleMinAmount.Add(step)
+		}
+		if !withdrawalAmountMatchesRule(candidate, rule) {
+			continue
+		}
+		if !hasCandidate || candidate.LessThan(bestCandidate) {
+			bestCandidate = candidate
+			hasCandidate = true
+		}
+	}
+
+	if !hasCandidate {
+		return baseAmount.InexactFloat64()
+	}
+	return bestCandidate.Round(2).InexactFloat64()
 }
 
 func GetUserWithdrawalCurrencyConfig() UserWithdrawalCurrencyConfig {

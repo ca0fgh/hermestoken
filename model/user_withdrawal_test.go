@@ -8,6 +8,20 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+func TestGetUserWithdrawalSettingNormalizesMinAmountToMatchRule(t *testing.T) {
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	setting := GetUserWithdrawalSetting()
+	if setting.MinAmount != 10.01 {
+		t.Fatalf("GetUserWithdrawalSetting min amount = %.2f, want 10.01", setting.MinAmount)
+	}
+}
+
 func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
 	db := setupWithdrawalModelDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit
@@ -85,16 +99,42 @@ func TestCreateUserWithdrawalRejectsSecondOpenOrder(t *testing.T) {
 		WithdrawalEnabledOptionKey:     "true",
 		WithdrawalMinAmountOptionKey:   "10",
 		WithdrawalInstructionOptionKey: "manual payout",
-		WithdrawalFeeRulesOptionKey:    `[]`,
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":0,"max_amount":100,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
 	}
 
 	_, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
-		UserID:        user.Id,
-		Amount:        50,
-		AlipayAccount: "alice@example.com",
+		UserID:         user.Id,
+		Amount:         50,
+		AlipayAccount:  "alice@example.com",
+		AlipayRealName: "Alice",
 	})
-	if err == nil {
-		t.Fatal("expected second open withdrawal to fail")
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "still pending") {
+		t.Fatalf("CreateUserWithdrawal error = %v, want open-order validation", err)
+	}
+}
+
+func TestCreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-gap-user", 100000)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":0,"max_amount":100,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	_, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
+		UserID:         user.Id,
+		Amount:         150,
+		AlipayAccount:  "alice@example.com",
+		AlipayRealName: "Alice",
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "fee rule") {
+		t.Fatalf("CreateUserWithdrawal error = %v, want missing fee rule validation", err)
 	}
 }
 
@@ -125,5 +165,33 @@ func TestParseWithdrawalFeeRulesRejectsOverlappingRanges(t *testing.T) {
 	_, err := ParseWithdrawalFeeRules(`[{"min_amount":10,"max_amount":100,"fee_type":"fixed","fee_value":1,"enabled":true,"sort_order":1},{"min_amount":99,"max_amount":0,"fee_type":"fixed","fee_value":1,"enabled":true,"sort_order":2}]`)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "overlap") {
 		t.Fatalf("ParseWithdrawalFeeRules error = %v, want overlap validation", err)
+	}
+}
+
+func TestCalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges(t *testing.T) {
+	rules, err := ParseWithdrawalFeeRules(`[{"min_amount":0,"max_amount":100,"fee_type":"fixed","fee_value":5,"enabled":true,"sort_order":1},{"min_amount":100,"max_amount":500,"fee_type":"ratio","fee_value":3,"enabled":true,"sort_order":2}]`)
+	if err != nil {
+		t.Fatalf("ParseWithdrawalFeeRules returned error: %v", err)
+	}
+
+	matchedRule, feeAmount, err := calculateWithdrawalFeeAmount(decimal.NewFromInt(100), rules)
+	if err != nil {
+		t.Fatalf("calculateWithdrawalFeeAmount returned error: %v", err)
+	}
+	if matchedRule == nil {
+		t.Fatal("expected first rule to match amount 100")
+	}
+	if matchedRule.SortOrder != 1 {
+		t.Fatalf("matched rule sort order = %d, want 1", matchedRule.SortOrder)
+	}
+	if !feeAmount.Equal(decimal.NewFromInt(5)) {
+		t.Fatalf("fee amount = %s, want 5", feeAmount.String())
+	}
+}
+
+func TestParseWithdrawalFeeRulesRejectsEmptyRanges(t *testing.T) {
+	_, err := ParseWithdrawalFeeRules(`[{"min_amount":100,"max_amount":100,"fee_type":"fixed","fee_value":1,"enabled":true,"sort_order":1}]`)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "range") {
+		t.Fatalf("ParseWithdrawalFeeRules error = %v, want range validation", err)
 	}
 }
