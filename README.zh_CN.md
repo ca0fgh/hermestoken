@@ -179,7 +179,7 @@ set_real_ip_from 2c0f:f248::/32;
 - 应用层错误日志中的 `ip` 字段仍取决于用户是否开启“记录 IP 日志”
 - 在生产机上使用 `python3 scripts/prod.py deploy --domain https://hermestoken.top` 或 `update --domain ...` 时，脚本现在会自动尝试同步并重载 Nginx 站点配置
 
-### 外部静态 CDN（Cloudflare Pages）
+### 外部静态 CDN（Cloudflare Workers Static Assets）
 
 如果希望把前端静态资源从应用源站拆出去，可以保留主站 `https://hermestoken.top` 负责 HTML 与 API，并把 `/assets/*` 独立到 `https://static.hermestoken.top`。
 
@@ -188,20 +188,33 @@ set_real_ip_from 2c0f:f248::/32;
 1. 构建前端时带上静态资源域名：
 
 ```bash
-python3 scripts/prod.py update \
-  --domain https://hermestoken.top \
-  --asset-base-url https://static.hermestoken.top
+CLOUDFLARE_ACCOUNT_ID=your-account-id \
+CLOUDFLARE_API_TOKEN=your-api-token \
+python3 scripts/cloudflare_static.py deploy \
+  --worker-name statichermestokentop \
+  --asset-dir web/dist
 ```
 
-2. 将生成的 `web/dist` 上传到 Cloudflare Pages 的静态项目。
-3. 在 Cloudflare Workers & Pages 中给该项目绑定自定义域名 `static.hermestoken.top`。
+2. 将同一份 `web/dist` 发布到生产源站，确保主站 `index.html` 和静态域名引用的 hash 完全一致。
+3. 在 Cloudflare Workers & Pages 中把静态 Worker 绑定到自定义域名 `static.hermestoken.top`。
 4. 删除旧的 `A static -> 源站 IP` 记录，避免和 Cloudflare 的自定义域名接管冲突。
+
+如果希望把静态 Worker 自动挂进现有构建流程，可以直接使用：
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=your-account-id \
+CLOUDFLARE_API_TOKEN=your-api-token \
+python3 scripts/prod.py update \
+  --domain https://hermestoken.top \
+  --asset-base-url https://static.hermestoken.top \
+  --cloudflare-worker-name statichermestokentop
+```
 
 这样做之后：
 
 - `hermestoken.top` 继续提供页面入口、`/api/*`、`/v1/*` 等动态请求
 - `static.hermestoken.top` 由 Cloudflare 边缘网络提供 `index-*.js`、`react-core-*.js`、`/assets/*`
-- 源站 Nginx 不需要再为 `static.hermestoken.top` 额外保留兜底站点块
+- `scripts/cloudflare_static.py` 会把同一份构建自动发布到 Cloudflare，不再依赖手工上传
 
 ---
 

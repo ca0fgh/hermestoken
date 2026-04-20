@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Mapping, Optional, TextIO
 from urllib.parse import urlparse
 
+from cloudflare_static import (
+    DEFAULT_COMPATIBILITY_DATE,
+    deploy_static_assets as deploy_cloudflare_static_assets,
+)
 from launcher_common import (
     LauncherError,
     normalize_asset_base_url,
@@ -345,6 +349,7 @@ def run_stack(
     output: Optional[TextIO] = None,
     repo_root: Optional[Path] = None,
     asset_base_url: str = "",
+    cloudflare_worker_name: str = "",
 ) -> None:
     stream = output or sys.stdout
     effective_repo_root = repo_root or REPO_ROOT
@@ -369,6 +374,17 @@ def run_stack(
             output=stream,
             repo_root=effective_repo_root,
             env=frontend_build_env,
+        )
+
+    if cloudflare_worker_name:
+        deploy_cloudflare_static_assets(
+            worker_name=cloudflare_worker_name,
+            asset_dir=effective_repo_root / "web" / "dist",
+            env=os.environ,
+            output=stream,
+            repo_root=effective_repo_root,
+            compatibility_date=DEFAULT_COMPATIBILITY_DATE,
+            message=f"{action_label} {app_version}",
         )
 
     remove_legacy_compose_containers(
@@ -486,6 +502,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--env-file", default=DEFAULT_PROD_ENV_FILE)
         command.add_argument("--domain", default="")
         command.add_argument("--asset-base-url", default="")
+        command.add_argument("--cloudflare-worker-name", default="")
 
     return parser
 
@@ -510,6 +527,7 @@ def main() -> int:
             asset_base_url=normalize_asset_base_url(args.asset_base_url)
             if args.asset_base_url
             else "",
+            cloudflare_worker_name=(args.cloudflare_worker_name or "").strip(),
         )
 
         if args.domain:

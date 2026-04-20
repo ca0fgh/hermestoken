@@ -26,6 +26,7 @@ data/
 /result/
 /refs/
 /.codex/
+/.wrangler/
 
 # Secrets and local environment
 .env

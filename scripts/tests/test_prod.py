@@ -10,6 +10,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import launcher_common
+import cloudflare_static
 import prod
 
 
@@ -243,6 +244,7 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("skipped nginx site config sync", stdout.getvalue())
 
     @mock.patch("prod.poll_http_until_healthy")
+    @mock.patch("prod.deploy_cloudflare_static_assets")
     @mock.patch("prod.remove_legacy_compose_containers")
     @mock.patch("prod.run_command")
     @mock.patch("prod.resolve_application_version", return_value="e3f7bef8-dirty")
@@ -255,6 +257,7 @@ class ProdLauncherTests(unittest.TestCase):
         resolve_application_version,
         run_command,
         remove_legacy_compose_containers,
+        deploy_cloudflare_static_assets,
         poll_http_until_healthy,
     ):
         repo_root = Path(__file__).resolve().parents[2]
@@ -307,6 +310,7 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("[ok] Production deploy healthy", stdout.getvalue())
 
     @mock.patch("prod.poll_http_until_healthy")
+    @mock.patch("prod.deploy_cloudflare_static_assets")
     @mock.patch("prod.remove_legacy_compose_containers")
     @mock.patch("prod.run_command")
     @mock.patch("prod.resolve_application_version", return_value="e3f7bef8-dirty")
@@ -319,6 +323,7 @@ class ProdLauncherTests(unittest.TestCase):
         resolve_application_version,
         run_command,
         remove_legacy_compose_containers,
+        deploy_cloudflare_static_assets,
         poll_http_until_healthy,
     ):
         repo_root = Path(__file__).resolve().parents[2]
@@ -341,7 +346,51 @@ class ProdLauncherTests(unittest.TestCase):
             repo_root=repo_root,
             env={"VITE_ASSET_BASE_URL": "https://static.hermestoken.top/"},
         )
+        deploy_cloudflare_static_assets.assert_not_called()
         run_command.assert_called_once()
+
+    @mock.patch("prod.poll_http_until_healthy")
+    @mock.patch("prod.deploy_cloudflare_static_assets")
+    @mock.patch("prod.remove_legacy_compose_containers")
+    @mock.patch("prod.run_command")
+    @mock.patch("prod.resolve_application_version", return_value="e3f7bef8-dirty")
+    @mock.patch("prod.prepare_frontend_dist_for_docker_packaging")
+    @mock.patch("prod.require_docker_and_compose")
+    def test_run_stack_deploys_cloudflare_static_assets_when_worker_name_provided(
+        self,
+        require_docker_and_compose,
+        prepare_frontend_dist_for_docker_packaging,
+        resolve_application_version,
+        run_command,
+        remove_legacy_compose_containers,
+        deploy_cloudflare_static_assets,
+        poll_http_until_healthy,
+    ):
+        repo_root = Path(__file__).resolve().parents[2]
+        compose_file = repo_root / "docker-compose.prod.yml"
+        env_file = repo_root / ".env.production"
+        stdout = io.StringIO()
+
+        prod.run_stack(
+            action_label="deploy",
+            compose_file_path=compose_file,
+            env_file_path=env_file,
+            local_health_url="http://127.0.0.1:3000/api/status",
+            output=stdout,
+            repo_root=repo_root,
+            asset_base_url="https://static.hermestoken.top",
+            cloudflare_worker_name="old-base-c009",
+        )
+
+        deploy_cloudflare_static_assets.assert_called_once_with(
+            worker_name="old-base-c009",
+            asset_dir=repo_root / "web" / "dist",
+            env=mock.ANY,
+            output=stdout,
+            repo_root=repo_root,
+            compatibility_date=cloudflare_static.DEFAULT_COMPATIBILITY_DATE,
+            message="deploy e3f7bef8-dirty",
+        )
 
     @mock.patch("prod.poll_http_until_healthy")
     @mock.patch("prod.run_command")
@@ -434,6 +483,8 @@ class ProdLauncherTests(unittest.TestCase):
                 "https://hermestoken.top",
                 "--asset-base-url",
                 "https://static.hermestoken.top",
+                "--cloudflare-worker-name",
+                "old-base-c009",
             ],
         ), mock.patch("sys.stderr", stderr), mock.patch("sys.stdout", stdout):
             exit_code = prod.main()
@@ -448,6 +499,7 @@ class ProdLauncherTests(unittest.TestCase):
             output=stdout,
             repo_root=prod.REPO_ROOT,
             asset_base_url="https://static.hermestoken.top/",
+            cloudflare_worker_name="old-base-c009",
         )
         set_public_url.assert_called_once()
         sync_nginx_site_config.assert_called_once_with(
