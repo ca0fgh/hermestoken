@@ -406,6 +406,9 @@ func migrateReferralRuntimeTables() error {
 			return fmt.Errorf("failed to migrate %s: %v", item.name, err)
 		}
 	}
+	if err := ensureReferralTemplateSchema(); err != nil {
+		return fmt.Errorf("failed to ensure referral template schema: %v", err)
+	}
 	return nil
 }
 
