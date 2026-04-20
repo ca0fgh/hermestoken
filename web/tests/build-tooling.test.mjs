@@ -63,7 +63,7 @@ const headerBarHookPath = new URL(
   import.meta.url,
 );
 
-test('app entry lazy loads public and console route groups to keep unrelated route graphs off first paint', async () => {
+test('app entry keeps public routes in the startup bundle while lazy loading the console route group', async () => {
   const appSource = await readFile(appPath, 'utf8');
   const consoleSource = await readFile(consoleRoutesPath, 'utf8');
   const publicSource = await readFile(publicRoutesPath, 'utf8');
@@ -73,6 +73,10 @@ test('app entry lazy loads public and console route groups to keep unrelated rou
     /const ConsoleRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/ConsoleRoutes'\),/,
   );
   assert.match(
+    appSource,
+    /import PublicRoutes from '\.\/routes\/PublicRoutes';/,
+  );
+  assert.doesNotMatch(
     appSource,
     /const PublicRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/PublicRoutes'\),/,
   );
@@ -192,27 +196,26 @@ test('vite build does not carve markdown dependencies into a dedicated startup c
   assert.doesNotMatch(source, /return 'rich-content';/);
 });
 
-test('vite build isolates route-guard history imports from axios so startup no longer preloads the full API helper chunk', async () => {
+test('vite build keeps axios isolated without forcing history into its own startup chunk', async () => {
   const source = await readFile(viteConfigPath, 'utf8');
 
   assert.match(source, /id\.includes\('axios'\)[\s\S]*return 'api-client';/);
-  assert.match(source, /id\.includes\('\/history\/'\)[\s\S]*return 'history';/);
+  assert.doesNotMatch(source, /id\.includes\('\/history\/'\)[\s\S]*return 'history';/);
   assert.match(source, /id\.includes\('\/marked\/'\)[\s\S]*return 'markdown-runtime';/);
 });
 
-test('i18n lazy loads every locale so the default language no longer bloats the startup bundle', async () => {
+test('i18n preloads zh-CN while keeping the non-default locales lazy', async () => {
   const source = await readFile(i18nPath, 'utf8');
 
-  assert.doesNotMatch(
-    source,
-    /import zhCNTranslation from '\.\/locales\/zh-CN\.json';/,
-  );
+  assert.match(source, /import zhCNTranslation from '\.\/locales\/zh-CN\.json';/);
   assert.match(source, /const localeLoaders = \{/);
   assert.doesNotMatch(source, /import\.meta\.glob\('\.\/locales\/\*\.json'\)/);
-  assert.match(source, /'zh-CN': \(\) => import\('\.\/locales\/zh-CN\.json'\)/);
+  assert.doesNotMatch(source, /'zh-CN': \(\) => import\('\.\/locales\/zh-CN\.json'\)/);
   assert.match(source, /en: \(\) => import\('\.\/locales\/en\.json'\)/);
   assert.match(source, /'zh-TW': \(\) => import\('\.\/locales\/zh-TW\.json'\)/);
-  assert.doesNotMatch(source, /resources:\s*\{\s*'zh-CN': zhCNTranslation,/);
+  assert.match(source, /const defaultLanguageMessages = getTranslationMessages\(zhCNTranslation\);/);
+  assert.match(source, /resources:\s*defaultLanguageMessages\s*\?\s*\{\s*\[DEFAULT_LANGUAGE\]:\s*\{\s*translation:\s*defaultLanguageMessages,/);
+  assert.match(source, /const loadedLanguages = new Set\(defaultLanguageMessages \? \[DEFAULT_LANGUAGE\] : \[\]\);/);
 });
 
 test('render helper lazy loads lobe icons instead of importing the full icon registry upfront', async () => {

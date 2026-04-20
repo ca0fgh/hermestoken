@@ -24,14 +24,11 @@ import SetupCheck from './components/layout/SetupCheck';
 import { StatusContext } from './context/Status';
 import { getPricingRequireAuth } from './helpers/headerNavModules';
 import { lazyWithRetry } from './helpers/lazyWithRetry';
+import PublicRoutes from './routes/PublicRoutes';
 
 const ConsoleRoutes = lazyWithRetry(
   () => import('./routes/ConsoleRoutes'),
   'console-routes',
-);
-const PublicRoutes = lazyWithRetry(
-  () => import('./routes/PublicRoutes'),
-  'public-routes',
 );
 
 function App() {

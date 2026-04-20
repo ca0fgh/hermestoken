@@ -13,6 +13,10 @@ test('route groups keep auth screens and console pages behind lazy retry recover
 
   assert.match(
     appSource,
+    /import PublicRoutes from '\.\/routes\/PublicRoutes';/,
+  );
+  assert.doesNotMatch(
+    appSource,
     /const PublicRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/PublicRoutes'\),/,
   );
   assert.match(

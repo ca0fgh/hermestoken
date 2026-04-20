@@ -56,10 +56,6 @@ function buildManualChunkName(id) {
     return 'semi-vendor';
   }
 
-  if (id.includes('/history/')) {
-    return 'history';
-  }
-
   if (id.includes('axios')) {
     return 'api-client';
   }
