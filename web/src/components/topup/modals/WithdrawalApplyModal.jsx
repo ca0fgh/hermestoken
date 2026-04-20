@@ -20,7 +20,11 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Modal, Typography, Input, InputNumber, Tag } from '@douyinfe/semi-ui';
 import { HandCoins } from 'lucide-react';
-import { formatWithdrawalAmount } from '../../../helpers';
+import {
+  buildWithdrawalFeeRuleDescriptions,
+  describeWithdrawalFeeRuleForUser,
+  formatWithdrawalAmount,
+} from '../../../helpers';
 
 const { Text } = Typography;
 
@@ -40,6 +44,19 @@ const WithdrawalApplyModal = ({
   preview,
 }) => {
   const symbol = config?.currencySymbol || '¥';
+  const feeRuleDescriptions = buildWithdrawalFeeRuleDescriptions(
+    config?.feeRules || [],
+    t,
+  );
+  const matchedRuleText = preview?.matchedRule
+    ? describeWithdrawalFeeRuleForUser(preview.matchedRule, t)
+    : t('未命中任何手续费规则');
+  const blockMessage = preview?.isValid
+    ? ''
+    : t(
+        preview?.blockReason ||
+          '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
+      );
 
   return (
     <Modal
@@ -92,7 +109,29 @@ const WithdrawalApplyModal = ({
           />
         </div>
 
+        <div className='rounded-xl border border-[var(--semi-color-border)] p-4 bg-[var(--semi-color-fill-0)] space-y-3'>
+          <Text strong>{t('规则说明')}</Text>
+          {feeRuleDescriptions.length > 0 ? (
+            <div className='space-y-2'>
+              {feeRuleDescriptions.map((description) => (
+                <div
+                  key={description}
+                  className='text-sm text-[var(--semi-color-text-1)]'
+                >
+                  {description}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Text type='tertiary'>{t('未命中任何手续费规则')}</Text>
+          )}
+        </div>
+
         <div className='rounded-xl border border-[var(--semi-color-border)] p-4 bg-[var(--semi-color-fill-0)] space-y-2'>
+          <div className='flex justify-between items-center'>
+            <Text type='tertiary'>{t('命中规则')}</Text>
+            <Text className='text-right'>{matchedRuleText}</Text>
+          </div>
           <div className='flex justify-between items-center'>
             <Text type='tertiary'>{t('手续费')}</Text>
             <Text>
@@ -109,17 +148,15 @@ const WithdrawalApplyModal = ({
                 : '--'}
             </Text>
           </div>
-          {preview?.matchedRule ? (
+          {preview?.isValid ? (
             <Tag color='blue'>
-              {t('已命中手续费规则')} {preview.matchedRule.fee_type}
+              {t('已命中手续费规则')}
             </Tag>
           ) : (
-            <Tag color='red'>
-              {t(
-                preview?.blockReason ||
-                  '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
-              )}
-            </Tag>
+            <div className='space-y-2'>
+              <Tag color='red'>{t('未命中任何手续费规则')}</Tag>
+              <Text type='danger'>{blockMessage}</Text>
+            </div>
           )}
         </div>
 

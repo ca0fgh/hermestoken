@@ -32,5 +32,11 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(rechargeCardSource, /withdrawalSection = null/);
   assert.match(rechargeCardSource, /{withdrawalSection}/);
   assert.match(withdrawalModalSource, /preview\?\.isValid/);
+  assert.match(withdrawalModalSource, /规则说明/);
+  assert.match(withdrawalModalSource, /命中规则/);
+  assert.match(
+    withdrawalModalSource,
+    /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/,
+  );
   assert.doesNotMatch(withdrawalModalSource, /未命中手续费规则，按 0 手续费计算/);
 });
