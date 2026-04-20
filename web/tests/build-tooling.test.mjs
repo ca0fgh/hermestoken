@@ -148,9 +148,14 @@ test('vite build groups the noisy semi and visactor vendor graphs while keeping 
 test('vite build inlines the startup stylesheet into index.html to avoid an extra round trip on first paint', async () => {
   const source = await readFile(viteConfigPath, 'utf8');
 
+  assert.match(source, /const DEFAULT_ASSET_BASE_URL = '\/';/);
+  assert.match(source, /function normalizeAssetBaseUrl\(value\)/);
+  assert.match(source, /const assetBaseUrl = normalizeAssetBaseUrl\(process\.env\.VITE_ASSET_BASE_URL\);/);
+  assert.match(source, /base:\s*assetBaseUrl,/);
   assert.match(source, /name:\s*'inline-startup-styles'/);
   assert.match(source, /transformIndexHtml:\s*\{/);
   assert.match(source, /const STARTUP_STYLE_FILE_PREFIX = 'assets\/index-';/);
+  assert.match(source, /const startupStyleHref = `\$\{assetBaseUrl\}\$\{startupStyle\.fileName\}`;/);
   assert.match(source, /asset\.fileName\.startsWith\(STARTUP_STYLE_FILE_PREFIX\)/);
   assert.match(source, /asset\.fileName\.endsWith\('\.css'\)/);
   assert.match(source, /<style data-inline-startup-css>/);

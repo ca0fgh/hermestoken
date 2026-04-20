@@ -40,7 +40,10 @@ DEFAULT_CA_BUNDLE_CANDIDATES = (
 )
 DEFAULT_WEB_DIST_STRATEGY = "prebuilt"
 DEFAULT_WEB_BUILD_NODE_OPTIONS = "--max-old-space-size=4096"
-FRONTEND_DIST_ASSET_REFERENCE_PATTERN = re.compile(r"""(?:src|href)=["'](/assets/[^"']+)["']""")
+DEFAULT_ASSET_BASE_URL = "/"
+FRONTEND_DIST_ASSET_REFERENCE_PATTERN = re.compile(
+    r"""(?:src|href)=["'](?:(?:https?:)?//[^"']+)?(/assets/[^"']+)["']"""
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,20 @@ def _build_actionable_message(problem: str, action: Optional[str] = None) -> str
     if action:
         return f"{problem} Next step: {action}"
     return problem
+
+
+def normalize_asset_base_url(value: str) -> str:
+    trimmed = value.strip()
+    if not trimmed:
+        return DEFAULT_ASSET_BASE_URL
+
+    if re.match(r"^https?://", trimmed, flags=re.IGNORECASE):
+        return trimmed.rstrip("/") + "/"
+
+    normalized_path = trimmed.strip("/")
+    if not normalized_path:
+        return DEFAULT_ASSET_BASE_URL
+    return f"/{normalized_path}/"
 
 
 def print_actionable_error(message: str, action: Optional[str] = None, stream: Optional[TextIO] = None) -> None:
@@ -396,6 +413,11 @@ def prepare_frontend_dist_for_docker_packaging(
         "DISABLE_ESLINT_PLUGIN": "true",
         "VITE_REACT_APP_VERSION": version,
     }
+    asset_base_url = (candidate_env.get("VITE_ASSET_BASE_URL") or "").strip()
+    if asset_base_url:
+        normalized_asset_base_url = normalize_asset_base_url(asset_base_url)
+        build_env["VITE_ASSET_BASE_URL"] = normalized_asset_base_url
+        output.write(f"[info] Asset base URL: {normalized_asset_base_url}\n")
     if "NODE_OPTIONS" not in candidate_env:
         build_env["NODE_OPTIONS"] = DEFAULT_WEB_BUILD_NODE_OPTIONS
 

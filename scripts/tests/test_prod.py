@@ -91,6 +91,7 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("location ^~ /assets/ {", config)
         self.assertIn("root /opt/hermestoken/web/dist;", config)
         self.assertIn('add_header Cache-Control "public, max-age=31536000, immutable" always;', config)
+        self.assertIn('add_header Access-Control-Allow-Origin "*" always;', config)
         self.assertIn("try_files $uri =404;", config)
 
     def test_build_nginx_site_config_can_serve_spa_routes_from_host_dist_and_proxy_backend_prefixes(self):
@@ -306,6 +307,43 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("[ok] Production deploy healthy", stdout.getvalue())
 
     @mock.patch("prod.poll_http_until_healthy")
+    @mock.patch("prod.remove_legacy_compose_containers")
+    @mock.patch("prod.run_command")
+    @mock.patch("prod.resolve_application_version", return_value="e3f7bef8-dirty")
+    @mock.patch("prod.prepare_frontend_dist_for_docker_packaging")
+    @mock.patch("prod.require_docker_and_compose")
+    def test_run_stack_forwards_asset_base_url_to_frontend_build(
+        self,
+        require_docker_and_compose,
+        prepare_frontend_dist_for_docker_packaging,
+        resolve_application_version,
+        run_command,
+        remove_legacy_compose_containers,
+        poll_http_until_healthy,
+    ):
+        repo_root = Path(__file__).resolve().parents[2]
+        compose_file = repo_root / "docker-compose.prod.yml"
+        env_file = repo_root / ".env.production"
+        stdout = io.StringIO()
+
+        prod.run_stack(
+            action_label="deploy",
+            compose_file_path=compose_file,
+            env_file_path=env_file,
+            local_health_url="http://127.0.0.1:3000/api/status",
+            output=stdout,
+            repo_root=repo_root,
+            asset_base_url="https://static.hermestoken.top",
+        )
+
+        prepare_frontend_dist_for_docker_packaging.assert_called_once_with(
+            output=stdout,
+            repo_root=repo_root,
+            env={"VITE_ASSET_BASE_URL": "https://static.hermestoken.top/"},
+        )
+        run_command.assert_called_once()
+
+    @mock.patch("prod.poll_http_until_healthy")
     @mock.patch("prod.run_command")
     def test_set_public_url_updates_server_address_and_restarts_app(
         self,
@@ -394,13 +432,23 @@ class ProdLauncherTests(unittest.TestCase):
                 "update",
                 "--domain",
                 "https://hermestoken.top",
+                "--asset-base-url",
+                "https://static.hermestoken.top",
             ],
         ), mock.patch("sys.stderr", stderr), mock.patch("sys.stdout", stdout):
             exit_code = prod.main()
 
         self.assertEqual(exit_code, 0)
         load_env_file.assert_called_once()
-        run_stack.assert_called_once()
+        run_stack.assert_called_once_with(
+            action_label="update",
+            compose_file_path=mock.ANY,
+            env_file_path=mock.ANY,
+            local_health_url="http://127.0.0.1:3000/api/status",
+            output=stdout,
+            repo_root=prod.REPO_ROOT,
+            asset_base_url="https://static.hermestoken.top/",
+        )
         set_public_url.assert_called_once()
         sync_nginx_site_config.assert_called_once_with(
             public_url="https://hermestoken.top",

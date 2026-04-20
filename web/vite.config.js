@@ -26,7 +26,28 @@ const { vitePluginSemi } = pkg;
 const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
 const HOME_DEFERRED_PRELOAD_PATTERN = /(?:semi-core|visactor|data-viz)-/;
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3000';
+const DEFAULT_ASSET_BASE_URL = '/';
 const STARTUP_STYLE_FILE_PREFIX = 'assets/index-';
+
+function normalizeAssetBaseUrl(value) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) {
+    return DEFAULT_ASSET_BASE_URL;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return `${trimmed.replace(/\/+$/, '')}/`;
+  }
+
+  const normalizedPath = trimmed.replace(/^\/+/, '').replace(/\/+$/, '');
+  if (!normalizedPath) {
+    return DEFAULT_ASSET_BASE_URL;
+  }
+
+  return `/${normalizedPath}/`;
+}
+
+const assetBaseUrl = normalizeAssetBaseUrl(process.env.VITE_ASSET_BASE_URL);
 
 function escapeHtmlTagSource(source) {
   return source.replace(/<\/style/gi, '<\\/style');
@@ -68,8 +89,9 @@ function inlineStartupStyles() {
           return html;
         }
 
+        const startupStyleHref = `${assetBaseUrl}${startupStyle.fileName}`;
         const stylesheetTagPattern = new RegExp(
-          `<link rel="stylesheet" crossorigin href="/${escapeRegExp(startupStyle.fileName)}">`,
+          `<link rel="stylesheet" crossorigin href="${escapeRegExp(startupStyleHref)}">`,
         );
 
         if (!stylesheetTagPattern.test(html)) {
@@ -140,6 +162,7 @@ function handleBuildWarning(warning, warn) {
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  base: assetBaseUrl,
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -340,6 +340,57 @@ class LauncherCommonTests(unittest.TestCase):
     @mock.patch("launcher_common.run_command")
     @mock.patch("launcher_common.require_executable")
     @mock.patch("launcher_common.validate_frontend_dist_integrity")
+    def test_prepare_frontend_dist_for_docker_packaging_forwards_asset_base_url(
+        self,
+        validate_frontend_dist_integrity,
+        require_executable,
+        run_command,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            web_dir = repo_root / "web"
+            web_dir.mkdir()
+            (repo_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
+            stdout = io.StringIO()
+
+            launcher_common.prepare_frontend_dist_for_docker_packaging(
+                output=stdout,
+                repo_root=repo_root,
+                env={"VITE_ASSET_BASE_URL": "https://static.hermestoken.top"},
+            )
+
+        require_executable.assert_called_once_with("bun", install_hint=mock.ANY)
+        run_command.assert_has_calls(
+            [
+                mock.call(
+                    ["bun", "install"],
+                    check=True,
+                    stream_output=True,
+                    cwd=web_dir,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "run", "build"],
+                    check=True,
+                    stream_output=True,
+                    cwd=web_dir,
+                    env={
+                        "DISABLE_ESLINT_PLUGIN": "true",
+                        "NODE_OPTIONS": "--max-old-space-size=4096",
+                        "VITE_ASSET_BASE_URL": "https://static.hermestoken.top/",
+                        "VITE_REACT_APP_VERSION": "1.2.3",
+                    },
+                    stdout_stream=stdout,
+                ),
+            ]
+        )
+        validate_frontend_dist_integrity.assert_called_once_with(web_dir / "dist")
+        self.assertIn("Asset base URL", stdout.getvalue())
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("launcher_common.run_command")
+    @mock.patch("launcher_common.require_executable")
+    @mock.patch("launcher_common.validate_frontend_dist_integrity")
     def test_prepare_frontend_dist_for_docker_packaging_falls_back_to_git_describe_when_version_file_empty(
         self,
         validate_frontend_dist_integrity,
@@ -419,6 +470,30 @@ class LauncherCommonTests(unittest.TestCase):
             )
             (assets_dir / "index-abc123.css").write_text("body{}", encoding="utf-8")
             (assets_dir / "index-xyz789.js").write_text("console.log('ok')", encoding="utf-8")
+
+            launcher_common.validate_frontend_dist_integrity(dist_dir)
+
+    def test_validate_frontend_dist_integrity_accepts_absolute_cdn_asset_references(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dist_dir = Path(tmpdir)
+            assets_dir = dist_dir / "assets"
+            assets_dir.mkdir()
+            (dist_dir / "index.html").write_text(
+                """
+                <!doctype html>
+                <html>
+                  <head>
+                    <script type="module" src="https://static.hermestoken.top/assets/index-xyz789.js"></script>
+                  </head>
+                  <body>
+                    <link rel="modulepreload" href="https://static.hermestoken.top/assets/react-core-abc123.js" />
+                  </body>
+                </html>
+                """,
+                encoding="utf-8",
+            )
+            (assets_dir / "index-xyz789.js").write_text("console.log('ok')", encoding="utf-8")
+            (assets_dir / "react-core-abc123.js").write_text("console.log('core')", encoding="utf-8")
 
             launcher_common.validate_frontend_dist_integrity(dist_dir)
 

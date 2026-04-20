@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from launcher_common import (
     LauncherError,
+    normalize_asset_base_url,
     poll_http_until_healthy,
     prepare_frontend_dist_for_docker_packaging,
     print_actionable_error,
@@ -177,6 +178,7 @@ real_ip_recursive on;
         access_log off;
         etag on;
         try_files $uri =404;
+        add_header Access-Control-Allow-Origin "*" always;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }}
 
@@ -342,6 +344,7 @@ def run_stack(
     local_health_url: str,
     output: Optional[TextIO] = None,
     repo_root: Optional[Path] = None,
+    asset_base_url: str = "",
 ) -> None:
     stream = output or sys.stdout
     effective_repo_root = repo_root or REPO_ROOT
@@ -350,7 +353,23 @@ def run_stack(
 
     require_docker_and_compose()
     stream.write("[ok] Docker available\n")
-    prepare_frontend_dist_for_docker_packaging(output=stream, repo_root=effective_repo_root)
+    frontend_build_env = None
+    if asset_base_url:
+        frontend_build_env = {
+            "VITE_ASSET_BASE_URL": normalize_asset_base_url(asset_base_url),
+        }
+
+    if frontend_build_env is None:
+        prepare_frontend_dist_for_docker_packaging(
+            output=stream,
+            repo_root=effective_repo_root,
+        )
+    else:
+        prepare_frontend_dist_for_docker_packaging(
+            output=stream,
+            repo_root=effective_repo_root,
+            env=frontend_build_env,
+        )
 
     remove_legacy_compose_containers(
         legacy_project_name="hermestoken",
@@ -466,6 +485,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--compose-file", default=DEFAULT_PROD_COMPOSE_FILE)
         command.add_argument("--env-file", default=DEFAULT_PROD_ENV_FILE)
         command.add_argument("--domain", default="")
+        command.add_argument("--asset-base-url", default="")
 
     return parser
 
@@ -487,6 +507,9 @@ def main() -> int:
             local_health_url=local_health_url,
             output=sys.stdout,
             repo_root=REPO_ROOT,
+            asset_base_url=normalize_asset_base_url(args.asset_base_url)
+            if args.asset_base_url
+            else "",
         )
 
         if args.domain:
