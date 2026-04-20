@@ -20,7 +20,7 @@ const (
 type ReferralTemplate struct {
 	Id                     int    `json:"id"`
 	BundleKey              string `json:"bundle_key" gorm:"type:varchar(64);not null;default:'';index"`
-	ReferralType           string `json:"referral_type" gorm:"type:varchar(64);not null;index:idx_referral_template_scope_name,priority:1"`
+	ReferralType           string `json:"referral_type" gorm:"type:varchar(64);not null;index:idx_referral_template_scope_name,priority:1;uniqueIndex:uk_referral_template_scope_name,priority:1"`
 	Group                  string `json:"group" gorm:"type:varchar(64);not null;default:'';index:idx_referral_template_scope_name,priority:2;uniqueIndex:uk_referral_template_scope_name,priority:2"`
 	Name                   string `json:"name" gorm:"type:varchar(128);not null;index:idx_referral_template_scope_name,priority:3;uniqueIndex:uk_referral_template_scope_name,priority:3"`
 	LevelType              string `json:"level_type" gorm:"type:varchar(32);not null;index"`
@@ -374,15 +374,18 @@ func ensureReferralTemplateSchema() error {
 			return err
 		}
 	}
+	if DB.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
+		if err := DB.Migrator().DropIndex(&ReferralTemplate{}, "uk_referral_template_scope_name"); err != nil {
+			return err
+		}
+	}
 	if !DB.Migrator().HasIndex(&ReferralTemplate{}, "idx_referral_template_scope_name") {
 		if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "idx_referral_template_scope_name"); err != nil {
 			return err
 		}
 	}
-	if !DB.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
-		if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "uk_referral_template_scope_name"); err != nil {
-			return err
-		}
+	if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "uk_referral_template_scope_name"); err != nil {
+		return err
 	}
 	return BackfillReferralTemplateBundleKeys()
 }

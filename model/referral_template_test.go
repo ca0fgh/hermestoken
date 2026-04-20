@@ -260,6 +260,59 @@ func TestReferralTemplateAllowsDuplicateNameAcrossDifferentGroups(t *testing.T) 
 	}
 }
 
+func TestReferralTemplateAllowsDuplicateNameAcrossDifferentReferralTypes(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	firstTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Create(firstTemplate).Error; err != nil {
+		t.Fatalf("failed to create first template: %v", err)
+	}
+
+	secondTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: "commission_referral",
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(secondTemplate).Error; err != nil {
+		t.Fatalf("Create(secondTemplate) error = %v, want success across referral types", err)
+	}
+}
+
+func TestReferralTemplateRejectsDuplicateNameWithinSameScope(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	firstTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Create(firstTemplate).Error; err != nil {
+		t.Fatalf("failed to create first template: %v", err)
+	}
+
+	secondTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeTeam,
+		TeamCapBps:   2000,
+	}
+	err := normalizeReferralTemplatePersistenceError(db.Session(&gorm.Session{SkipHooks: true}).Create(secondTemplate).Error)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "template name already exists") {
+		t.Fatalf("Create(secondTemplate) error = %v, want duplicate name error", err)
+	}
+}
+
 func TestCreateReferralTemplateBundleCreatesOneRowPerGroup(t *testing.T) {
 	setupReferralTemplateDB(t)
 
