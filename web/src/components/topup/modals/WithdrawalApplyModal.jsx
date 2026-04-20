@@ -44,12 +44,17 @@ const WithdrawalApplyModal = ({
   preview,
 }) => {
   const symbol = config?.currencySymbol || '¥';
+  const ruleDescriptionOptions = {
+    currency: config?.currency,
+    currencySymbol: symbol,
+  };
   const feeRuleDescriptions = buildWithdrawalFeeRuleDescriptions(
     config?.feeRules || [],
     t,
+    ruleDescriptionOptions,
   );
   const matchedRuleText = preview?.matchedRule
-    ? describeWithdrawalFeeRuleForUser(preview.matchedRule, t)
+    ? describeWithdrawalFeeRuleForUser(preview.matchedRule, t, ruleDescriptionOptions)
     : t('未命中任何手续费规则');
   const blockMessage = preview?.isValid
     ? ''

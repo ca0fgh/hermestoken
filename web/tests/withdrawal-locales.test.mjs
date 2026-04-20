@@ -19,13 +19,13 @@ test('withdrawal locales define wallet and admin copy', () => {
     '命中规则',
     '未命中任何手续费规则',
     '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
-    '{{amount}} 元及以下',
-    '{{min}} 元以上至 {{max}} 元',
-    '{{amount}} 元以上',
-    '固定手续费 {{amount}} 元',
+    '大于 0 且不超过 {{amountWithSymbol}}',
+    '高于 {{minWithSymbol}} 至 {{maxWithSymbol}}',
+    '高于 {{amountWithSymbol}}',
+    '固定手续费 {{amountWithSymbol}}',
     '按 {{rate}}% 收费',
-    '最低手续费 {{amount}} 元',
-    '最高手续费 {{amount}} 元',
+    '最低手续费 {{amountWithSymbol}}',
+    '最高手续费 {{amountWithSymbol}}',
   ];
   for (const locale of ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'ru', 'vi']) {
     const raw = fs.readFileSync(path.join(root, `${locale}.json`), 'utf8');

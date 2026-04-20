@@ -2,16 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(testDir, '..');
+const helperPath = path.join(webRoot, 'src/helpers/withdrawal.js');
+const helperUrl = pathToFileURL(helperPath).href;
 
 const readSource = (relativePath) =>
   fs.readFileSync(
     path.join(webRoot, relativePath),
     'utf8',
   );
+
+const loadHelpers = () => import(`${helperUrl}?t=${Date.now()}`);
 
 test('wallet topup page loads withdrawal config and renders withdrawal entry', () => {
   const source = readSource('src/components/topup/index.jsx');
@@ -39,4 +43,58 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
     /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/,
   );
   assert.doesNotMatch(withdrawalModalSource, /未命中手续费规则，按 0 手续费计算/);
+});
+
+test('user-facing withdrawal rule descriptions stay currency-aware and preserve the strict first-band lower bound', async () => {
+  const {
+    buildWithdrawalFeeRuleDescriptions,
+    describeWithdrawalFeeRuleForUser,
+  } = await loadHelpers();
+
+  const usdDescriptions = buildWithdrawalFeeRuleDescriptions(
+    [
+      {
+        min_amount: 0,
+        max_amount: 100,
+        fee_type: 'fixed',
+        fee_value: 5,
+        enabled: true,
+        sort_order: 1,
+      },
+      {
+        min_amount: 100,
+        max_amount: 500,
+        fee_type: 'ratio',
+        fee_value: 3,
+        enabled: true,
+        sort_order: 2,
+      },
+    ],
+    (key) => key,
+    {
+      currencySymbol: '$',
+      currency: 'USD',
+    },
+  );
+
+  assert.equal(usdDescriptions[0], '大于 0 且不超过 $100：固定手续费 $5');
+  assert.equal(usdDescriptions[1], '高于 $100 至 $500：按 3% 收费');
+  assert.doesNotMatch(usdDescriptions.join('\n'), /元|CNY|及以下|or less/);
+
+  const customDescription = describeWithdrawalFeeRuleForUser(
+    {
+      min_amount: 0,
+      max_amount: 200,
+      fee_type: 'fixed',
+      fee_value: 8,
+      enabled: true,
+    },
+    (key) => key,
+    {
+      currencySymbol: 'PTS ',
+      currency: 'CUSTOM',
+    },
+  );
+
+  assert.equal(customDescription, '大于 0 且不超过 PTS 200：固定手续费 PTS 8');
 });

@@ -156,6 +156,16 @@ const resolveWithdrawalCopy = (t, key, params = {}) => {
   return interpolateTemplate(translated, params);
 };
 
+const formatUserFacingRuleAmount = (value, options = {}) => {
+  const amount = formatRuleNumber(value);
+  const currencySymbol = String(options?.currencySymbol || '');
+  if (!currencySymbol) {
+    return amount;
+  }
+
+  return `${currencySymbol}${amount}`;
+};
+
 const getRuleLabel = (rule) => {
   if (rule.maxAmount === '') {
     return `金额 > ${formatRuleNumber(rule.minAmount)}`;
@@ -168,29 +178,29 @@ const getRuleLabel = (rule) => {
   return `${formatRuleNumber(rule.minAmount)} < 金额 <= ${formatRuleNumber(rule.maxAmount)}`;
 };
 
-const getUserFacingRuleRangeLabel = (rule, t) => {
+const getUserFacingRuleRangeLabel = (rule, t, options = {}) => {
   if (rule.maxAmount === '') {
-    return resolveWithdrawalCopy(t, '{{amount}} 元以上', {
-      amount: formatRuleNumber(rule.minAmount),
+    return resolveWithdrawalCopy(t, '高于 {{amountWithSymbol}}', {
+      amountWithSymbol: formatUserFacingRuleAmount(rule.minAmount, options),
     });
   }
 
   if (Number(rule.minAmount) <= 0) {
-    return resolveWithdrawalCopy(t, '{{amount}} 元及以下', {
-      amount: formatRuleNumber(rule.maxAmount),
+    return resolveWithdrawalCopy(t, '大于 0 且不超过 {{amountWithSymbol}}', {
+      amountWithSymbol: formatUserFacingRuleAmount(rule.maxAmount, options),
     });
   }
 
-  return resolveWithdrawalCopy(t, '{{min}} 元以上至 {{max}} 元', {
-    min: formatRuleNumber(rule.minAmount),
-    max: formatRuleNumber(rule.maxAmount),
+  return resolveWithdrawalCopy(t, '高于 {{minWithSymbol}} 至 {{maxWithSymbol}}', {
+    minWithSymbol: formatUserFacingRuleAmount(rule.minAmount, options),
+    maxWithSymbol: formatUserFacingRuleAmount(rule.maxAmount, options),
   });
 };
 
-const getUserFacingRuleFeeSummary = (rule, t) => {
+const getUserFacingRuleFeeSummary = (rule, t, options = {}) => {
   if (rule.feeType === 'fixed') {
-    return resolveWithdrawalCopy(t, '固定手续费 {{amount}} 元', {
-      amount: formatRuleNumber(rule.feeValue),
+    return resolveWithdrawalCopy(t, '固定手续费 {{amountWithSymbol}}', {
+      amountWithSymbol: formatUserFacingRuleAmount(rule.feeValue, options),
     });
   }
 
@@ -202,16 +212,16 @@ const getUserFacingRuleFeeSummary = (rule, t) => {
 
   if (rule.minFee > 0) {
     segments.push(
-      resolveWithdrawalCopy(t, '最低手续费 {{amount}} 元', {
-        amount: formatRuleNumber(rule.minFee),
+      resolveWithdrawalCopy(t, '最低手续费 {{amountWithSymbol}}', {
+        amountWithSymbol: formatUserFacingRuleAmount(rule.minFee, options),
       }),
     );
   }
 
   if (rule.maxFee !== '' && Number(rule.maxFee) > 0) {
     segments.push(
-      resolveWithdrawalCopy(t, '最高手续费 {{amount}} 元', {
-        amount: formatRuleNumber(rule.maxFee),
+      resolveWithdrawalCopy(t, '最高手续费 {{amountWithSymbol}}', {
+        amountWithSymbol: formatUserFacingRuleAmount(rule.maxFee, options),
       }),
     );
   }
@@ -363,18 +373,19 @@ export const describeWithdrawalFeeRule = (rule) => {
   return `${getRuleLabel(normalizedRule)}：${formatRuleFeeSummary(normalizedRule)}`;
 };
 
-export const describeWithdrawalFeeRuleForUser = (rule, t) => {
+export const describeWithdrawalFeeRuleForUser = (rule, t, options = {}) => {
   const normalizedRule = normalizeEditorRule(rule, 0);
-  return `${getUserFacingRuleRangeLabel(normalizedRule, t)}：${getUserFacingRuleFeeSummary(
+  return `${getUserFacingRuleRangeLabel(normalizedRule, t, options)}：${getUserFacingRuleFeeSummary(
     normalizedRule,
     t,
+    options,
   )}`;
 };
 
-export const buildWithdrawalFeeRuleDescriptions = (feeRules = [], t) =>
+export const buildWithdrawalFeeRuleDescriptions = (feeRules = [], t, options = {}) =>
   normalizeWithdrawalFeeEditorRules(feeRules)
     .filter((rule) => rule.enabled)
-    .map((rule) => describeWithdrawalFeeRuleForUser(rule, t));
+    .map((rule) => describeWithdrawalFeeRuleForUser(rule, t, options));
 
 export const calculateWithdrawalPreview = (amount, feeRules = []) => {
   const numericAmount = Number(amount || 0);
