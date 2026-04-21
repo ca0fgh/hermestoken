@@ -111,16 +111,16 @@ func renderPublicHomeShell(payload PublicBootstrapPayload) string {
 	case PublicHomeModeHTML:
 		return payload.Home.HTML
 	case PublicHomeModeDefault:
-		// Fall back only when the payload explicitly requests the default shell.
-	}
+		systemName := strings.TrimSpace(payload.Status.SystemName)
+		if systemName == "" {
+			systemName = "HermesToken"
+		}
+		systemName = html.EscapeString(systemName)
 
-	systemName := strings.TrimSpace(payload.Status.SystemName)
-	if systemName == "" {
-		systemName = "HermesToken"
+		return `<section class="hermes-public-fallback"><p class="eyebrow">` + systemName + `</p><h1>Fast, reliable AI gateway</h1><p>Configure HomePageContent to publish a custom landing page without waiting for the client app to boot.</p></section>`
+	default:
+		return ""
 	}
-	systemName = html.EscapeString(systemName)
-
-	return `<section class="hermes-public-fallback"><p class="eyebrow">` + systemName + `</p><h1>Fast, reliable AI gateway</h1><p>Configure HomePageContent to publish a custom landing page without waiting for the client app to boot.</p></section>`
 }
 
 func RenderPublicHomeIndex(baseIndex []byte, payload PublicBootstrapPayload) ([]byte, error) {

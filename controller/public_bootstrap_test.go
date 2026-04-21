@@ -111,3 +111,17 @@ func TestRenderPublicHomeShellDoesNotFallbackForEmptyExplicitModes(t *testing.T)
 		})
 	}
 }
+
+func TestRenderPublicHomeShellDoesNotFallbackForUnknownMode(t *testing.T) {
+	payload := PublicBootstrapPayload{
+		Status: PublicStatusSnapshot{SystemName: "HermesToken"},
+		Home: PublicHomeSnapshot{
+			Mode: "mystery-mode",
+		},
+	}
+
+	got := renderPublicHomeShell(payload)
+	if got != "" {
+		t.Fatalf("renderPublicHomeShell() = %q, want empty string for unknown mode", got)
+	}
+}
