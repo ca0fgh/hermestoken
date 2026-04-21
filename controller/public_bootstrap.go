@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"errors"
 	"html"
 	"net/http"
 	"strings"
@@ -130,13 +131,18 @@ func RenderPublicHomeIndex(baseIndex []byte, payload PublicBootstrapPayload) ([]
 	}
 
 	scriptTag := []byte(`<script id="hermes-public-bootstrap" type="application/json">` + string(bootstrapJSON) + `</script>`)
-	rendered := bytes.Replace(baseIndex, []byte("</head>"), append(scriptTag, []byte("</head>")...), 1)
-	if bytes.Equal(rendered, baseIndex) {
-		rendered = append(scriptTag, rendered...)
+	headNeedle := []byte("</head>")
+	if !bytes.Contains(baseIndex, headNeedle) {
+		return nil, errors.New("public bootstrap injection target </head> not found")
 	}
+	rendered := bytes.Replace(baseIndex, headNeedle, append(scriptTag, headNeedle...), 1)
 
 	rootShell := []byte(`<div id="root">` + renderPublicHomeShell(payload) + `</div>`)
-	rendered = bytes.Replace(rendered, []byte(`<div id="root"></div>`), rootShell, 1)
+	rootNeedle := []byte(`<div id="root"></div>`)
+	if !bytes.Contains(rendered, rootNeedle) {
+		return nil, errors.New(`public home root target <div id="root"></div> not found`)
+	}
+	rendered = bytes.Replace(rendered, rootNeedle, rootShell, 1)
 
 	return rendered, nil
 }
