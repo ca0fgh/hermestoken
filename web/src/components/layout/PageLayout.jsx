@@ -60,7 +60,7 @@ async function fetchStatusPayload() {
   return response.json();
 }
 
-const PageLayout = () => {
+const PageLayout = ({ startupMode = 'console' }) => {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
@@ -86,6 +86,8 @@ const PageLayout = () => {
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
+  const shouldFetchFullStatus =
+    startupMode === 'console' || isConsoleRoute || !statusState?.status;
 
   useEffect(() => {
     const rawUser = localStorage.getItem('user');
@@ -101,6 +103,10 @@ const PageLayout = () => {
   }, [userDispatch]);
 
   useEffect(() => {
+    if (!shouldFetchFullStatus) {
+      return;
+    }
+
     const loadStatus = async () => {
       try {
         const { success, data } = await fetchStatusPayload();
@@ -116,7 +122,7 @@ const PageLayout = () => {
     };
 
     loadStatus().catch(console.error);
-  }, [statusDispatch]);
+  }, [shouldFetchFullStatus, statusDispatch]);
 
   useEffect(() => {
     const systemName = getSystemName();

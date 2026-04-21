@@ -17,8 +17,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { renderPublicApp } from './publicApp';
+import React from 'react';
+import { BrowserRouter } from 'react-router-dom';
+import { UserProvider } from '../context/User';
+import { StatusProvider } from '../context/Status';
+import { ThemeProvider } from '../context/Theme';
+import PageLayout from '../components/layout/PageLayout';
 
 export function renderConsoleApp(rootElement) {
-  return renderPublicApp(rootElement);
+  rootElement.render(
+    <React.StrictMode>
+      <StatusProvider>
+        <UserProvider>
+          <BrowserRouter
+            future={{
+              v7_startTransition: true,
+              v7_relativeSplatPath: true,
+            }}
+          >
+            <ThemeProvider>
+              <PageLayout startupMode='console' />
+            </ThemeProvider>
+          </BrowserRouter>
+        </UserProvider>
+      </StatusProvider>
+    </React.StrictMode>,
+  );
 }

@@ -36,7 +36,7 @@ export function renderPublicApp(rootElement, injectedBootstrap) {
             }}
           >
             <ThemeProvider>
-              <PageLayout />
+              <PageLayout startupMode='public' />
             </ThemeProvider>
           </BrowserRouter>
         </UserProvider>
