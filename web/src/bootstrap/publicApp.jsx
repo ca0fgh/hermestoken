@@ -25,11 +25,9 @@ import { ThemeProvider } from '../context/Theme';
 import PageLayout from '../components/layout/PageLayout';
 
 export function renderPublicApp(rootElement, injectedBootstrap) {
-  void injectedBootstrap;
-
   rootElement.render(
     <React.StrictMode>
-      <StatusProvider>
+      <StatusProvider initialStatus={injectedBootstrap?.status}>
         <UserProvider>
           <BrowserRouter
             future={{

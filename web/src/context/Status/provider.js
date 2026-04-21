@@ -17,8 +17,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export {
-  buildInitialStatusState,
-  StatusContext,
-  StatusProvider,
-} from './provider.js';
+import React from 'react';
+import { initialState, reducer } from './reducer.js';
+
+export const StatusContext = React.createContext({
+  state: initialState,
+  dispatch: () => null,
+});
+
+export function buildInitialStatusState(initialStatus) {
+  if (!initialStatus) {
+    return initialState;
+  }
+
+  return {
+    ...initialState,
+    status: initialStatus,
+  };
+}
+
+export function StatusProvider({ children, initialStatus }) {
+  const [state, dispatch] = React.useReducer(
+    reducer,
+    initialStatus,
+    buildInitialStatusState,
+  );
+
+  return React.createElement(
+    StatusContext.Provider,
+    { value: [state, dispatch] },
+    children,
+  );
+}
