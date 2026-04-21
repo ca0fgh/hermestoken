@@ -46,6 +46,8 @@
     "build": "BROWSERSLIST_IGNORE_OLD_DATA=true vite build",
     "test:footer-cache": "node --test tests/footer-cache-reset.test.mjs",
     "test:homepage-narrative": "node --test tests/homepage-narrative.test.mjs",
+    "test:public-startup": "node --test tests/public-startup-entry.test.mjs tests/home-startup-bootstrap.test.mjs tests/home-bootstrap.test.mjs tests/bootstrap-data.test.mjs tests/public-status-provider.test.mjs tests/public-startup-budget.test.mjs",
+    "perf:budget": "node scripts/check-public-startup-budget.mjs",
     "lint": "prettier . --check",
     "lint:fix": "prettier . --write",
     "eslint": "bunx eslint \"**/*.{js,jsx}\" --cache",

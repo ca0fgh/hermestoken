@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import zhCNTranslation from './locales/zh-CN.json';
 
 import { normalizeLanguage, supportedLanguages } from './language';
 
 const DEFAULT_LANGUAGE = 'zh-CN';
-const defaultLanguageMessages = getTranslationMessages(zhCNTranslation);
+const defaultLanguageMessages = null;
 const localeLoaders = {
+  'zh-CN': () => import('./locales/zh-CN.json'),
   en: () => import('./locales/en.json'),
   'zh-TW': () => import('./locales/zh-TW.json'),
   fr: () => import('./locales/fr.json'),

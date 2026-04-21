@@ -25,6 +25,8 @@ import { codeInspectorPlugin } from 'code-inspector-plugin';
 const { vitePluginSemi } = pkg;
 const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
 const HOME_DEFERRED_PRELOAD_PATTERN = /(?:semi-core|semi-icons|visactor|data-viz)-/;
+const PUBLIC_STARTUP_DEFERRED_PRELOAD_PATTERN =
+  /(?:semi-runtime|chart-runtime|diagram-runtime|math-runtime|markdown-runtime|seasonal-effects)-/;
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3000';
 const DEFAULT_ASSET_BASE_URL = '/';
 const STARTUP_STYLE_FILE_PREFIX = 'assets/index-';
@@ -107,7 +109,64 @@ function inlineStartupStyles() {
   };
 }
 
+function detachChartInteropFromReactCore() {
+  return {
+    name: 'detach-chart-interop-from-react-core',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const reactCoreChunk = Object.values(bundle).find((chunk) => {
+        return chunk.type === 'chunk' && chunk.name === 'react-core';
+      });
+      const chartRuntimeChunk = Object.values(bundle).find((chunk) => {
+        return chunk.type === 'chunk' && chunk.name === 'chart-runtime';
+      });
+
+      if (!reactCoreChunk || !chartRuntimeChunk) {
+        return;
+      }
+
+      const chartInteropImportPattern =
+        /import\{g as (\w+)\}from["']\.\/[^"']*chart-runtime[^"']*["'];?/;
+      const match = reactCoreChunk.code.match(chartInteropImportPattern);
+
+      if (!match) {
+        return;
+      }
+
+      const helperName = match[1];
+
+      reactCoreChunk.code = [
+        `function ${helperName}(module) {`,
+        `  return module && module.__esModule && Object.prototype.hasOwnProperty.call(module, 'default')`,
+        `    ? module.default`,
+        `    : module;`,
+        `}`,
+        reactCoreChunk.code.replace(chartInteropImportPattern, ''),
+      ].join('\n');
+      reactCoreChunk.imports = reactCoreChunk.imports.filter((fileName) => {
+        return fileName !== chartRuntimeChunk.fileName;
+      });
+    },
+  };
+}
+
 function buildManualChunkName(id) {
+  if (
+    id.includes('vite/preload-helper') ||
+    id.includes('vite/modulepreload-polyfill')
+  ) {
+    return 'startup-runtime';
+  }
+
+  if (
+    id.endsWith('/src/helpers/bootstrapData.js') ||
+    id.endsWith('/src/helpers/lazyWithRetry.js') ||
+    id.endsWith('/src/helpers/publicStartupCache.js') ||
+    id.endsWith('/src/pages/Home/startupBootstrap.js')
+  ) {
+    return 'startup-runtime';
+  }
+
   if (!id.includes('node_modules')) {
     return undefined;
   }
@@ -133,11 +192,50 @@ function buildManualChunkName(id) {
     return 'semi-icons';
   }
 
+  if (
+    id.includes('@douyinfe/semi-ui') ||
+    id.includes('@douyinfe/semi-foundation') ||
+    id.includes('@douyinfe/semi-theme-default') ||
+    id.includes('@douyinfe/semi-illustrations')
+  ) {
+    return 'semi-runtime';
+  }
+
+  if (
+    id.includes('@visactor/vchart') ||
+    id.includes('@visactor/vchart-semi-theme')
+  ) {
+    return 'chart-runtime';
+  }
+
+  if (id.includes('/mermaid/')) {
+    return 'diagram-runtime';
+  }
+
+  if (
+    id.includes('/katex/') ||
+    id.includes('remark-math') ||
+    id.includes('rehype-katex')
+  ) {
+    return 'math-runtime';
+  }
+
   if (id.includes('axios')) {
     return 'api-client';
   }
 
-  if (id.includes('/marked/')) {
+  if (id.includes('react-toastify')) {
+    return 'startup-runtime';
+  }
+
+  if (
+    id.includes('/marked/') ||
+    id.includes('react-markdown') ||
+    id.includes('remark-breaks') ||
+    id.includes('remark-gfm') ||
+    id.includes('rehype-highlight') ||
+    id.includes('unist-util-visit')
+  ) {
     return 'markdown-runtime';
   }
 
@@ -161,6 +259,9 @@ function handleBuildWarning(warning, warn) {
 // https://vitejs.dev/config/
 export default defineConfig({
   base: assetBaseUrl,
+  json: {
+    stringify: true,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -190,6 +291,7 @@ export default defineConfig({
       cssLayer: true,
     }),
     inlineStartupStyles(),
+    detachChartInteropFromReactCore(),
   ],
   optimizeDeps: {
     force: true,
@@ -202,16 +304,21 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 3500,
+    manifest: true,
     modulePreload: {
       resolveDependencies(_filename, deps) {
         return deps.filter((dependency) => {
-          return !HOME_DEFERRED_PRELOAD_PATTERN.test(dependency);
+          return (
+            !HOME_DEFERRED_PRELOAD_PATTERN.test(dependency) &&
+            !PUBLIC_STARTUP_DEFERRED_PRELOAD_PATTERN.test(dependency)
+          );
         });
       },
     },
     rollupOptions: {
       onwarn: handleBuildWarning,
       output: {
+        hoistTransitiveImports: false,
         manualChunks: buildManualChunkName,
       },
     },
