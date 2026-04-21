@@ -444,6 +444,99 @@ func TestAdminDeleteReferralTemplateBundleByTemplateIDRemovesAllRows(t *testing.
 	}
 }
 
+func TestAdminUpdateReferralTemplateBundleRemovesStaleBindings(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"default", "vip"},
+		Name:                   "binding-cleanup-update",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           900,
+		InviteeShareDefaultBps: 300,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to seed bundle: %v", err)
+	}
+
+	user := seedSubscriptionReferralControllerUser(t, "binding-cleanup-update-user", 0, dto.UserSetting{})
+	var defaultRow model.ReferralTemplate
+	for _, row := range rows {
+		if row.Group == "default" {
+			defaultRow = row
+			break
+		}
+	}
+	if defaultRow.Id == 0 {
+		t.Fatal("expected default row in seeded bundle")
+	}
+
+	if _, err := model.UpsertReferralTemplateBinding(&model.ReferralTemplateBinding{
+		UserId:     user.Id,
+		TemplateId: defaultRow.Id,
+		CreatedBy:  1,
+		UpdatedBy:  1,
+	}); err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+
+	body := map[string]interface{}{
+		"referral_type":             model.ReferralTypeSubscription,
+		"groups":                    []string{"premium", "vip"},
+		"name":                      "binding-cleanup-update",
+		"level_type":                model.ReferralLevelTypeDirect,
+		"enabled":                   true,
+		"direct_cap_bps":            900,
+		"invitee_share_default_bps": 300,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/templates/"+strconv.Itoa(defaultRow.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(defaultRow.Id)}}
+	AdminUpdateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	active, binding, err := model.HasActiveReferralTemplateBinding(user.Id, model.ReferralTypeSubscription, "default")
+	if err != nil {
+		t.Fatalf("HasActiveReferralTemplateBinding() error = %v", err)
+	}
+	if active {
+		t.Fatal("expected removed-group binding to be inactive")
+	}
+	if binding != nil {
+		t.Fatalf("expected stale binding cleanup, got binding %+v", *binding)
+	}
+
+	views, err := model.ListReferralTemplateBindingsByUser(user.Id, model.ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingsByUser() error = %v", err)
+	}
+	if len(views) != 0 {
+		t.Fatalf("binding view count = %d, want 0 after stale binding cleanup", len(views))
+	}
+
+	view, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, "default")
+	if err != nil {
+		t.Fatalf("GetReferralTemplateBindingViewByUserAndScope() error = %v", err)
+	}
+	if view != nil {
+		t.Fatal("expected nil binding view after stale binding cleanup")
+	}
+
+	var bindingCount int64
+	if err := db.Model(&model.ReferralTemplateBinding{}).
+		Where("user_id = ? AND referral_type = ? AND `group` = ?", user.Id, model.ReferralTypeSubscription, "default").
+		Count(&bindingCount).Error; err != nil {
+		t.Fatalf("failed to count bindings: %v", err)
+	}
+	if bindingCount != 0 {
+		t.Fatalf("binding count = %d, want 0 after stale binding cleanup", bindingCount)
+	}
+}
+
 func TestAdminDeleteReferralTemplateBundlePromotedFromLegacyRowRemovesAllRows(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -537,6 +630,78 @@ func TestAdminDeleteReferralTemplateBundlePromotedFromLegacyRowRemovesAllRows(t 
 				t.Fatalf("remaining promoted row count = %d, want 0", remaining)
 			}
 		})
+	}
+}
+
+func TestAdminDeleteReferralTemplateBundleRemovesStaleBindings(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"default", "vip"},
+		Name:                   "binding-cleanup-delete",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1100,
+		InviteeShareDefaultBps: 500,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to seed bundle: %v", err)
+	}
+
+	user := seedSubscriptionReferralControllerUser(t, "binding-cleanup-delete-user", 0, dto.UserSetting{})
+	if _, err := model.UpsertReferralTemplateBinding(&model.ReferralTemplateBinding{
+		UserId:     user.Id,
+		TemplateId: rows[0].Id,
+		CreatedBy:  1,
+		UpdatedBy:  1,
+	}); err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/referral/templates/"+strconv.Itoa(rows[0].Id), nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(rows[0].Id)}}
+	AdminDeleteReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	active, binding, err := model.HasActiveReferralTemplateBinding(user.Id, model.ReferralTypeSubscription, rows[0].Group)
+	if err != nil {
+		t.Fatalf("HasActiveReferralTemplateBinding() error = %v", err)
+	}
+	if active {
+		t.Fatal("expected deleted-bundle binding to be inactive")
+	}
+	if binding != nil {
+		t.Fatalf("expected binding cleanup after bundle delete, got binding %+v", *binding)
+	}
+
+	views, err := model.ListReferralTemplateBindingsByUser(user.Id, model.ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingsByUser() error = %v", err)
+	}
+	if len(views) != 0 {
+		t.Fatalf("binding view count = %d, want 0 after bundle delete cleanup", len(views))
+	}
+
+	view, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, rows[0].Group)
+	if err != nil {
+		t.Fatalf("GetReferralTemplateBindingViewByUserAndScope() error = %v", err)
+	}
+	if view != nil {
+		t.Fatal("expected nil binding view after bundle delete cleanup")
+	}
+
+	var bindingCount int64
+	if err := db.Model(&model.ReferralTemplateBinding{}).
+		Where("user_id = ? AND referral_type = ?", user.Id, model.ReferralTypeSubscription).
+		Count(&bindingCount).Error; err != nil {
+		t.Fatalf("failed to count bindings: %v", err)
+	}
+	if bindingCount != 0 {
+		t.Fatalf("binding count = %d, want 0 after bundle delete cleanup", bindingCount)
 	}
 }
 

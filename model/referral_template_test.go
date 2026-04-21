@@ -425,6 +425,24 @@ func TestEnsureReferralTemplateSchemaCreatesBundleKeyIndex(t *testing.T) {
 	}
 }
 
+func TestEnsureReferralTemplateSchemaIsIdempotent(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("first ensureReferralTemplateSchema() error = %v", err)
+	}
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("second ensureReferralTemplateSchema() error = %v", err)
+	}
+
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
+		t.Fatal("expected unique scope+name index to remain present after repeated schema ensure")
+	}
+	if db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_name") {
+		t.Fatal("expected legacy unique name index to stay absent after repeated schema ensure")
+	}
+}
+
 func TestReferralTemplateRejectsRenameToDuplicateName(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
@@ -493,6 +511,76 @@ func TestReferralTemplateBindingUsesTemplateScopeWhenCreating(t *testing.T) {
 	}
 	if binding.Group != "starter" {
 		t.Fatalf("binding.Group = %q, want starter", binding.Group)
+	}
+}
+
+func TestReferralTemplateBindingIgnoresMissingTemplateRows(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	user := &User{
+		Username: "stale-binding-user",
+		Password: "password",
+		AffCode:  "stale_binding_user",
+		Group:    "default",
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	activeTemplate := &ReferralTemplate{
+		Name:                   "active-stale-binding-template",
+		ReferralType:           ReferralTypeSubscription,
+		Group:                  "vip",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1000,
+		InviteeShareDefaultBps: 500,
+	}
+	if err := db.Create(activeTemplate).Error; err != nil {
+		t.Fatalf("failed to create active template: %v", err)
+	}
+
+	staleBinding := &ReferralTemplateBinding{
+		UserId:       user.Id,
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		TemplateId:   activeTemplate.Id,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}
+	if err := db.Create(staleBinding).Error; err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+
+	if err := db.Delete(&ReferralTemplate{}, activeTemplate.Id).Error; err != nil {
+		t.Fatalf("failed to delete bound template: %v", err)
+	}
+
+	active, binding, err := HasActiveReferralTemplateBinding(user.Id, ReferralTypeSubscription, "vip")
+	if err != nil {
+		t.Fatalf("HasActiveReferralTemplateBinding() error = %v", err)
+	}
+	if active {
+		t.Fatal("expected missing template binding to be inactive")
+	}
+	if binding == nil {
+		t.Fatal("expected binding metadata even when template row is missing")
+	}
+
+	views, err := ListReferralTemplateBindingsByUser(user.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingsByUser() error = %v", err)
+	}
+	if len(views) != 0 {
+		t.Fatalf("binding view count = %d, want 0 when template row is missing", len(views))
+	}
+
+	view, err := GetReferralTemplateBindingViewByUserAndScope(user.Id, ReferralTypeSubscription, "vip")
+	if err != nil {
+		t.Fatalf("GetReferralTemplateBindingViewByUserAndScope() error = %v", err)
+	}
+	if view != nil {
+		t.Fatal("expected nil binding view when template row is missing")
 	}
 }
 

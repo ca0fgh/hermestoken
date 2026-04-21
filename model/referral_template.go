@@ -423,6 +423,9 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 			}
 		}
 		if len(staleIDs) > 0 {
+			if err := deleteReferralTemplateBindingsByTemplateIDs(tx, staleIDs); err != nil {
+				return err
+			}
 			if err := tx.Delete(&ReferralTemplate{}, staleIDs).Error; err != nil {
 				return err
 			}
@@ -451,9 +454,29 @@ func DeleteReferralTemplateBundleByTemplateID(templateID int) error {
 
 	bundleKey := strings.TrimSpace(template.BundleKey)
 	if bundleKey == "" || strings.HasPrefix(bundleKey, "template:") {
-		return DB.Delete(&ReferralTemplate{}, template.Id).Error
+		return DB.Transaction(func(tx *gorm.DB) error {
+			if err := deleteReferralTemplateBindingsByTemplateIDs(tx, []int{template.Id}); err != nil {
+				return err
+			}
+			return tx.Delete(&ReferralTemplate{}, template.Id).Error
+		})
 	}
-	return DB.Where("bundle_key = ?", bundleKey).Delete(&ReferralTemplate{}).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var bundleRows []ReferralTemplate
+		if err := tx.Where("bundle_key = ?", bundleKey).Find(&bundleRows).Error; err != nil {
+			return err
+		}
+		templateIDs := make([]int, 0, len(bundleRows))
+		for _, row := range bundleRows {
+			if row.Id > 0 {
+				templateIDs = append(templateIDs, row.Id)
+			}
+		}
+		if err := deleteReferralTemplateBindingsByTemplateIDs(tx, templateIDs); err != nil {
+			return err
+		}
+		return tx.Where("bundle_key = ?", bundleKey).Delete(&ReferralTemplate{}).Error
+	})
 }
 
 func BackfillReferralTemplateBundleKeys() error {
@@ -508,8 +531,20 @@ func ensureReferralTemplateSchema() error {
 			return err
 		}
 	}
-	if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "uk_referral_template_scope_name"); err != nil {
-		return err
+	if !DB.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
+		if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "uk_referral_template_scope_name"); err != nil {
+			return err
+		}
 	}
 	return BackfillReferralTemplateBundleKeys()
+}
+
+func deleteReferralTemplateBindingsByTemplateIDs(tx *gorm.DB, templateIDs []int) error {
+	if tx == nil {
+		return errors.New("transaction is required")
+	}
+	if len(templateIDs) == 0 {
+		return nil
+	}
+	return tx.Where("template_id IN ?", templateIDs).Delete(&ReferralTemplateBinding{}).Error
 }
