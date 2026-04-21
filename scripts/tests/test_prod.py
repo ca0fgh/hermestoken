@@ -118,6 +118,33 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("location ~ ^/[^/]+/mj/ {", config)
         self.assertNotIn("location / {\n        proxy_pass", config)
 
+    def test_build_nginx_site_config_proxies_root_to_internal_public_home(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            frontend_dist_path=Path("/opt/hermestoken/web/dist"),
+        )
+
+        self.assertIn("location = / {", config)
+        self.assertIn("proxy_pass http://127.0.0.1:3000/__internal/public-home;", config)
+        self.assertIn('add_header Cache-Control "no-cache" always;', config)
+
+    def test_build_nginx_site_config_only_emits_brotli_when_supported(self):
+        without_brotli = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            enable_brotli=False,
+        )
+        self.assertNotIn("brotli on;", without_brotli)
+
+        with_brotli = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            enable_brotli=True,
+        )
+        self.assertIn("brotli on;", with_brotli)
+        self.assertIn("brotli_types", with_brotli)
+
     def test_detect_real_ip_conf_returns_true_when_conf_d_already_manages_directives(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             conf_d_path = Path(tmp_dir) / "conf.d"
@@ -162,6 +189,14 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertTrue(changed)
         which.assert_called_once_with("nginx")
+        self.assertEqual(
+            run_command.call_args_list,
+            [
+                mock.call(["nginx", "-V"], check=False, stream_output=False),
+                mock.call(["nginx", "-t"], check=True, stream_output=False),
+                mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
+            ],
+        )
         self.assertNotIn("real_ip_header CF-Connecting-IP;", rendered)
         self.assertIn("proxy_pass http://127.0.0.1:3000;", rendered)
         self.assertIn("existing real_ip nginx config", stdout.getvalue())
@@ -185,13 +220,17 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertTrue(changed)
         which.assert_called_once_with("nginx")
-        self.assertEqual(run_command.call_count, 2)
+        self.assertEqual(run_command.call_count, 3)
         self.assertEqual(
             run_command.call_args_list[0],
-            mock.call(["nginx", "-t"], check=True, stream_output=False),
+            mock.call(["nginx", "-V"], check=False, stream_output=False),
         )
         self.assertEqual(
             run_command.call_args_list[1],
+            mock.call(["nginx", "-t"], check=True, stream_output=False),
+        )
+        self.assertEqual(
+            run_command.call_args_list[2],
             mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
         )
         self.assertIn("Nginx site config synced", stdout.getvalue())
@@ -227,7 +266,14 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertTrue(changed)
         which.assert_called_once_with("nginx")
-        self.assertEqual(run_command.call_count, 2)
+        self.assertEqual(
+            run_command.call_args_list,
+            [
+                mock.call(["nginx", "-V"], check=False, stream_output=False),
+                mock.call(["nginx", "-t"], check=True, stream_output=False),
+                mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
+            ],
+        )
         self.assertIn("already up to date", stdout.getvalue())
 
     @mock.patch("prod.shutil.which", return_value=None)

@@ -121,6 +121,7 @@ def build_nginx_site_config(
     app_port: str = "3000",
     include_real_ip_directives: bool = True,
     frontend_dist_path: Optional[Path] = None,
+    enable_brotli: bool = False,
 ) -> str:
     parsed = urlparse(public_url)
     hostname = (parsed.hostname or "").strip()
@@ -147,8 +148,7 @@ real_ip_recursive on;
 
 """
 
-    backend_proxy_directives = f"""        proxy_pass http://127.0.0.1:{app_port};
-        proxy_http_version 1.1;
+    proxy_header_directives = """        proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -163,6 +163,15 @@ real_ip_recursive on;
         add_header X-Nginx-Upstream-Response-Time $upstream_response_time always;
         add_header X-Nginx-Upstream-Connect-Time $upstream_connect_time always;
 """
+
+    backend_proxy_directives = (
+        f"        proxy_pass http://127.0.0.1:{app_port};\n{proxy_header_directives}"
+    )
+    public_home_proxy_directives = (
+        f"        proxy_pass http://127.0.0.1:{app_port}/__internal/public-home;\n"
+        f"{proxy_header_directives}"
+        '        add_header Cache-Control "no-cache" always;\n'
+    )
 
     static_assets_block = ""
     if frontend_dist_path is not None:
@@ -185,6 +194,9 @@ real_ip_recursive on;
         add_header Access-Control-Allow-Origin "*" always;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }}
+
+    location = / {{
+{public_home_proxy_directives}    }}
 
     location ^~ /jimeng {{
 {backend_proxy_directives}    }}
@@ -210,6 +222,22 @@ real_ip_recursive on;
     else:
         static_assets_block = f"""    location / {{
 {backend_proxy_directives}    }}
+"""
+
+    brotli_block = ""
+    if enable_brotli:
+        brotli_block = """    brotli on;
+    brotli_comp_level 5;
+    brotli_static on;
+    brotli_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/manifest+json
+        application/xml
+        image/svg+xml;
 """
 
     return f"""map $http_upgrade $connection_upgrade {{
@@ -264,10 +292,25 @@ server {{
         application/manifest+json
         application/xml
         image/svg+xml;
+{brotli_block}
 
 {static_assets_block}\
 }}
 """
+
+
+def detect_nginx_supports_brotli() -> bool:
+    try:
+        completed = run_command(["nginx", "-V"], check=False, stream_output=False)
+    except LauncherError:
+        return False
+
+    combined_output = "\n".join(
+        part for part in (completed.stdout, completed.stderr) if isinstance(part, str) and part
+    )
+    normalized_output = combined_output.lower()
+    return "brotli" in normalized_output
+
 
 def detect_real_ip_conf_in_conf_d(*, conf_d_path: Path = DEFAULT_NGINX_CONF_D_PATH) -> bool:
     if not conf_d_path.is_dir():
@@ -320,6 +363,7 @@ def sync_nginx_site_config(
         app_port=app_port,
         include_real_ip_directives=include_real_ip_directives,
         frontend_dist_path=frontend_dist_path,
+        enable_brotli=detect_nginx_supports_brotli(),
     )
     current = target_path.read_text(encoding="utf-8") if target_path.exists() else None
     if current == rendered:
