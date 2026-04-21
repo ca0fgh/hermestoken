@@ -128,7 +128,7 @@ const EditTokenModal = (props) => {
   };
 
   const loadGroups = async () => {
-    let res = await API.get(`/api/user/self/groups`);
+    let res = await API.get(`/api/token/groups`);
     const { success, message, data } = res.data;
     if (success) {
       const localGroupOptions =

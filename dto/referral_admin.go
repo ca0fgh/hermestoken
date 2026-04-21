@@ -13,8 +13,9 @@ type ReferralTemplateUpsertRequest struct {
 }
 
 type ReferralTemplateBindingUpsertRequest struct {
-	ReferralType string `json:"referral_type"`
-	TemplateId   int    `json:"template_id"`
+	ReferralType      string `json:"referral_type"`
+	TemplateId        int    `json:"template_id"`
+	ReplaceBindingIds []int  `json:"replace_binding_ids"`
 }
 
 type SubscriptionReferralGlobalSettingUpsertRequest struct {

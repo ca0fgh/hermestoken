@@ -25,21 +25,25 @@ test('referral template binding section uses explicit state updates instead of m
   assert.doesNotMatch(source, /{t\('分组'\)}/);
 });
 
-test('referral template binding section requests row view templates for user bindings', () => {
+test('referral template binding section requests bundle views for templates and user bindings', () => {
   const source = fs.readFileSync(
     'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
     'utf8',
   );
   assert.match(
     source,
-    /API\.get\('\/api\/referral\/templates',\s*\{\s*params:\s*\{\s*referral_type:\s*'subscription_referral',\s*view:\s*'row'/s,
+    /API\.get\('\/api\/referral\/templates',\s*\{\s*params:\s*\{\s*referral_type:\s*'subscription_referral',\s*view:\s*'bundle'/s,
+  );
+  assert.match(
+    source,
+    /API\.get\(`\/api\/referral\/bindings\/users\/\$\{userId\}`,\s*\{\s*params:\s*\{\s*referral_type:\s*'subscription_referral',\s*view:\s*'bundle'/s,
   );
 });
 
-test('referral template binding section includes group suffixes in option labels for same-name templates', () => {
+test('referral template binding section saves the selected bundle and replaces the current bundle bindings', () => {
   const source = fs.readFileSync(
     'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
     'utf8',
   );
-  assert.match(source, /includeGroupSuffixWhenNamed:\s*true/);
+  assert.match(source, /replace_binding_ids:\s*row\.bindingIds/);
 });

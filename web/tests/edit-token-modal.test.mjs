@@ -12,6 +12,7 @@ const load = async (path) => readFile(path, 'utf8');
 test('edit token modal shows plain none text when no token groups are available', async () => {
   const source = await load(editTokenModalPath);
 
+  assert.match(source, /API\.get\(`\/api\/token\/groups`\)/);
   assert.match(
     source,
     /\{groups\.length > 0 \? \(\s*<Form\.Select[\s\S]*?\) : \(\s*<Form\.Slot label=\{t\('令牌分组'\)\}>[\s\S]*?<Text type='tertiary'>\{t\('没有'\)\}<\/Text>[\s\S]*?<\/Form\.Slot>/,

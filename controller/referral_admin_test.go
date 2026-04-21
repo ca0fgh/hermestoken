@@ -728,27 +728,102 @@ func TestAdminUpdateSubscriptionReferralGlobalSetting(t *testing.T) {
 	}
 }
 
-func TestAdminUpsertReferralTemplateBindingUsesTemplateScope(t *testing.T) {
+func TestAdminListReferralTemplateBindingsBundleViewAggregatesByTemplateBundle(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 
-	user := seedSubscriptionReferralControllerUser(t, "binding-admin-user", 0, dto.UserSetting{})
-	template := &model.ReferralTemplate{
+	user := seedSubscriptionReferralControllerUser(t, "binding-bundle-list-user", 0, dto.UserSetting{})
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
 		ReferralType:           model.ReferralTypeSubscription,
-		Group:                  "vip",
-		Name:                   "binding-admin-template",
+		Groups:                 []string{"default", "vip"},
+		Name:                   "binding-bundle-list-template",
 		LevelType:              model.ReferralLevelTypeDirect,
 		Enabled:                true,
 		DirectCapBps:           1200,
 		InviteeShareDefaultBps: 600,
-		CreatedBy:              1,
-		UpdatedBy:              1,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to create template bundle: %v", err)
 	}
-	if err := model.CreateReferralTemplate(template); err != nil {
-		t.Fatalf("failed to create template: %v", err)
+
+	if _, err := model.UpsertReferralTemplateBindingBundleForUser(user.Id, model.ReferralTypeSubscription, rows[0].Id, nil, 1); err != nil {
+		t.Fatalf("failed to create bundle binding: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/referral/bindings/users/"+strconv.Itoa(user.Id)+"?referral_type="+model.ReferralTypeSubscription+"&view=bundle", nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	ctx.Request.URL.RawQuery = "referral_type=" + model.ReferralTypeSubscription + "&view=bundle"
+	AdminListReferralTemplateBindingsByUser(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var payload struct {
+		Items []model.ReferralTemplateBindingBundleView `json:"items"`
+	}
+	if err := common.Unmarshal(response.Data, &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("bundle item count = %d, want 1", len(payload.Items))
+	}
+	if payload.Items[0].Name != "binding-bundle-list-template" {
+		t.Fatalf("bundle name = %q, want binding-bundle-list-template", payload.Items[0].Name)
+	}
+	if len(payload.Items[0].BindingIDs) != 2 {
+		t.Fatalf("binding id count = %d, want 2", len(payload.Items[0].BindingIDs))
+	}
+	if len(payload.Items[0].TemplateIDs) != 2 {
+		t.Fatalf("template id count = %d, want 2", len(payload.Items[0].TemplateIDs))
+	}
+	if strings.Join(payload.Items[0].Groups, ",") != "default,vip" {
+		t.Fatalf("groups = %v, want [default vip]", payload.Items[0].Groups)
+	}
+}
+
+func TestAdminUpsertReferralTemplateBindingUsesTemplateBundleScope(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	user := seedSubscriptionReferralControllerUser(t, "binding-admin-user", 0, dto.UserSetting{})
+	oldRows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"default", "vip"},
+		Name:                   "binding-admin-old-template",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1200,
+		InviteeShareDefaultBps: 600,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to create old template bundle: %v", err)
+	}
+	newRows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"premium"},
+		Name:                   "binding-admin-new-template",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1500,
+		InviteeShareDefaultBps: 700,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to create new template bundle: %v", err)
+	}
+
+	oldBindings, err := model.UpsertReferralTemplateBindingBundleForUser(user.Id, model.ReferralTypeSubscription, oldRows[0].Id, nil, 1)
+	if err != nil {
+		t.Fatalf("failed to create old bundle binding: %v", err)
+	}
+
+	replaceBindingIDs := make([]int, 0, len(oldBindings))
+	for _, binding := range oldBindings {
+		replaceBindingIDs = append(replaceBindingIDs, binding.Id)
 	}
 
 	body := map[string]interface{}{
-		"template_id": template.Id,
+		"template_id":         newRows[0].Id,
+		"replace_binding_ids": replaceBindingIDs,
 	}
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/bindings/users/"+strconv.Itoa(user.Id), body, 1)
 	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
@@ -759,14 +834,30 @@ func TestAdminUpsertReferralTemplateBindingUsesTemplateScope(t *testing.T) {
 		t.Fatalf("expected success, got message: %s", response.Message)
 	}
 
-	view, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, "vip")
+	defaultView, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, "default")
 	if err != nil {
-		t.Fatalf("failed to reload binding view: %v", err)
+		t.Fatalf("failed to reload default binding view: %v", err)
 	}
-	if view == nil {
-		t.Fatal("expected binding view")
+	if defaultView != nil {
+		t.Fatalf("expected default binding to be replaced, got %+v", *defaultView)
 	}
-	if view.Binding.TemplateId != template.Id {
-		t.Fatalf("TemplateId = %d, want %d", view.Binding.TemplateId, template.Id)
+
+	vipView, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, "vip")
+	if err != nil {
+		t.Fatalf("failed to reload vip binding view: %v", err)
+	}
+	if vipView != nil {
+		t.Fatalf("expected vip binding to be replaced, got %+v", *vipView)
+	}
+
+	premiumView, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, "premium")
+	if err != nil {
+		t.Fatalf("failed to reload premium binding view: %v", err)
+	}
+	if premiumView == nil {
+		t.Fatal("expected premium binding view")
+	}
+	if premiumView.Binding.TemplateId != newRows[0].Id {
+		t.Fatalf("TemplateId = %d, want %d", premiumView.Binding.TemplateId, newRows[0].Id)
 	}
 }

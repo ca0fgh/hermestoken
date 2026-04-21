@@ -3,22 +3,34 @@ import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../../../helpers';
 import { Button, Card, Empty, Select, Space, Typography } from '@douyinfe/semi-ui';
 import { formatReferralTemplateOptionLabel } from '../../../../helpers/referralLabels';
+import { normalizeReferralTemplateItems } from '../../../../helpers/referralTemplate';
 
-const normalizeBindingRows = (items = []) =>
-  (Array.isArray(items) ? items : []).map((view) => ({
-    id: `binding-${Number(view.binding?.id || view.binding?.template_id || 0)}`,
-    bindingId: Number(view.binding?.id || 0),
-    referralType: String(view.binding?.referral_type || 'subscription_referral').trim(),
-    templateId: Number(view.binding?.template_id || 0),
-    isDraft: false,
-  }));
+const normalizeBindingIds = (bindingIds = []) =>
+  [...new Set((Array.isArray(bindingIds) ? bindingIds : []).map((bindingId) => Number(bindingId || 0)).filter((bindingId) => bindingId > 0))].sort(
+    (left, right) => left - right,
+  );
+
+const normalizeBindingRows = (items = []) => {
+  const sourceItems = Array.isArray(items) ? items : [];
+  const normalizedItems = normalizeReferralTemplateItems(sourceItems);
+  return normalizedItems.map((item, index) => {
+    const bindingIds = normalizeBindingIds(sourceItems[index]?.binding_ids);
+    return {
+      id: `binding-${bindingIds.join('-') || item.bundleKey || item.id || index}`,
+      bindingIds,
+      referralType: String(item.referralType || 'subscription_referral').trim(),
+      templateId: Number(item.id || 0),
+      isDraft: false,
+    };
+  });
+};
 
 const createDraftBinding = (templates = []) => {
   const firstTemplate = Array.isArray(templates) && templates.length > 0 ? templates[0] : null;
   return {
     id: `draft-${Date.now()}-${Math.random()}`,
-    bindingId: 0,
-    referralType: 'subscription_referral',
+    bindingIds: [],
+    referralType: String(firstTemplate?.referralType || 'subscription_referral').trim(),
     templateId: Number(firstTemplate?.id || 0),
     isDraft: true,
   };
@@ -50,10 +62,10 @@ const ReferralTemplateBindingSection = ({ userId }) => {
     try {
       const [templateRes, bindingRes] = await Promise.all([
         API.get('/api/referral/templates', {
-          params: { referral_type: 'subscription_referral', view: 'row' },
+          params: { referral_type: 'subscription_referral', view: 'bundle' },
         }),
         API.get(`/api/referral/bindings/users/${userId}`, {
-          params: { referral_type: 'subscription_referral' },
+          params: { referral_type: 'subscription_referral', view: 'bundle' },
         }),
       ]);
 
@@ -66,7 +78,7 @@ const ReferralTemplateBindingSection = ({ userId }) => {
         return;
       }
 
-      const nextTemplates = templateRes.data?.data?.items || [];
+      const nextTemplates = normalizeReferralTemplateItems(templateRes.data?.data?.items || []);
       setTemplates(nextTemplates);
       setBindingRows(normalizeBindingRows(bindingRes.data?.data?.items));
     } catch (error) {
@@ -100,6 +112,7 @@ const ReferralTemplateBindingSection = ({ userId }) => {
       const res = await API.put(`/api/referral/bindings/users/${userId}`, {
         referral_type: row.referralType,
         template_id: row.templateId,
+        replace_binding_ids: row.bindingIds,
       });
       if (res.data?.success) {
         showSuccess(t('保存成功'));

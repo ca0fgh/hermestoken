@@ -50,3 +50,30 @@ func GetUserGroups(c *gin.Context) {
 		"data":    usableGroups,
 	})
 }
+
+func GetUserTokenGroups(c *gin.Context) {
+	usableGroups := make(map[string]map[string]interface{})
+	userGroup := ""
+	userId := c.GetInt("id")
+	userGroup, _ = model.GetUserGroup(userId, false)
+	tokenGroups := service.GetUserTokenSelectableGroupsForUser(userId, userGroup)
+	for groupName := range ratio_setting.GetGroupRatioCopy() {
+		if desc, ok := tokenGroups[groupName]; ok {
+			usableGroups[groupName] = map[string]interface{}{
+				"ratio": service.GetUserGroupRatio(userGroup, groupName),
+				"desc":  desc,
+			}
+		}
+	}
+	if _, ok := tokenGroups["auto"]; ok {
+		usableGroups["auto"] = map[string]interface{}{
+			"ratio": "自动",
+			"desc":  setting.GetUsableGroupDescription("auto"),
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    usableGroups,
+	})
+}

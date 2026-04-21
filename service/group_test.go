@@ -123,23 +123,43 @@ func TestGetUserSelectableGroupsAppliesPerUserOverridesAndKeepsAssignedGroupVisi
 	}
 }
 
-func TestValidateTokenSelectableGroupAllowsImplicitAssignedUserGroup(t *testing.T) {
+func TestValidateTokenSelectableGroupRejectsImplicitAssignedUserGroupWhenNotSelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
 	err := ValidateTokenSelectableGroup("default", "")
 
-	if err != nil {
-		t.Fatalf("expected blank token group to fall back to assigned user group, got %v", err)
+	if err == nil {
+		t.Fatalf("expected blank token group to be rejected when assigned group is not selectable")
 	}
 }
 
-func TestResolveTokenGroupForRequestUsesAssignedUserGroupAsBlankFallback(t *testing.T) {
+func TestValidateTokenSelectableGroupAllowsImplicitAssignedUserGroupWhenExplicitlySelectable(t *testing.T) {
+	withSelectableGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
+
+	err := ValidateTokenSelectableGroup("default", "")
+
+	if err != nil {
+		t.Fatalf("expected blank token group to fall back to explicitly selectable assigned user group, got %v", err)
+	}
+}
+
+func TestResolveTokenGroupForRequestRejectsAssignedUserGroupAsBlankFallbackWhenNotSelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
 	resolvedGroup, err := ResolveTokenGroupForRequest("default", "")
 
+	if err == nil {
+		t.Fatalf("expected runtime fallback to reject non-selectable assigned user group, got %q", resolvedGroup)
+	}
+}
+
+func TestResolveTokenGroupForRequestUsesAssignedUserGroupAsBlankFallbackWhenExplicitlySelectable(t *testing.T) {
+	withSelectableGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
+
+	resolvedGroup, err := ResolveTokenGroupForRequest("default", "")
+
 	if err != nil {
-		t.Fatalf("expected runtime fallback to use assigned user group, got %v", err)
+		t.Fatalf("expected runtime fallback to use explicitly selectable assigned user group, got %v", err)
 	}
 	if resolvedGroup != "default" {
 		t.Fatalf("expected resolved group default, got %q", resolvedGroup)

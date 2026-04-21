@@ -136,6 +136,16 @@ func AdminListReferralTemplateBindingsByUser(c *gin.Context) {
 		return
 	}
 
+	if strings.EqualFold(strings.TrimSpace(c.Query("view")), "bundle") {
+		items, err := model.ListReferralTemplateBindingBundlesByUser(userID, c.Query("referral_type"))
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		common.ApiSuccess(c, gin.H{"items": items})
+		return
+	}
+
 	items, err := model.ListReferralTemplateBindingsByUser(userID, c.Query("referral_type"))
 	if err != nil {
 		common.ApiError(c, err)
@@ -157,18 +167,16 @@ func AdminUpsertReferralTemplateBindingForUser(c *gin.Context) {
 		return
 	}
 
-	binding := &model.ReferralTemplateBinding{
-		UserId:       userID,
-		ReferralType: req.ReferralType,
-		TemplateId:   req.TemplateId,
-		CreatedBy:    c.GetInt("id"),
-		UpdatedBy:    c.GetInt("id"),
-	}
-
-	saved, err := model.UpsertReferralTemplateBinding(binding)
+	saved, err := model.UpsertReferralTemplateBindingBundleForUser(
+		userID,
+		req.ReferralType,
+		req.TemplateId,
+		req.ReplaceBindingIds,
+		c.GetInt("id"),
+	)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, saved)
+	common.ApiSuccess(c, gin.H{"items": saved})
 }

@@ -430,7 +430,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       .catch((reason) => {
         showError(reason);
       });
-    API.get('/api/user/self/groups')
+    API.get('/api/token/groups')
       .then((res) => {
         if (res.data.success && res.data.data) {
           const ratios = {};

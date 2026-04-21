@@ -90,3 +90,18 @@ test('referral template option label can append the group suffix for same-name t
     'default-直推模板',
   );
 });
+
+test('referral template option label renders bundle groups when a bundle covers multiple groups', () => {
+  assert.equal(
+    formatReferralTemplateOptionLabel(
+      {
+        name: '福利渠道-团队-55',
+        groups: [' vip ', 'default', 'vip'],
+        level_type: 'direct',
+      },
+      fakeT,
+      { includeGroupSuffixWhenNamed: true },
+    ),
+    '福利渠道-团队-55 · default, vip',
+  );
+});

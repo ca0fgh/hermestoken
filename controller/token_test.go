@@ -285,7 +285,7 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 }
 
-func TestAddTokenAllowsBlankGroupWhenUserDefaultGroupIsAssigned(t *testing.T) {
+func TestAddTokenRejectsBlankGroupWhenAssignedDefaultGroupIsNotSelectable(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	seedUser(t, db, 1, "default")
 	withTokenGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
@@ -305,8 +305,33 @@ func TestAddTokenAllowsBlankGroupWhenUserDefaultGroupIsAssigned(t *testing.T) {
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected token creation to fail when assigned default group is not selectable")
+	}
+}
+
+func TestAddTokenAllowsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelectable(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "default")
+	withTokenGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
+
+	body := map[string]any{
+		"name":                 "new-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
-		t.Fatalf("expected token creation to succeed with assigned user group fallback, got %q", response.Message)
+		t.Fatalf("expected token creation to succeed when assigned default group is explicitly selectable, got %q", response.Message)
 	}
 }
 

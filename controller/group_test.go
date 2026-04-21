@@ -178,3 +178,118 @@ func TestGetUserGroupsFallsBackToPlanUpgradeGroupWhenSubscriptionSnapshotIsInval
 		t.Fatalf("expected stale snapshot group to stay hidden, got %#v", groups)
 	}
 }
+
+func TestGetUserTokenGroupsHidesAssignedGroupWhenNotExplicitlySelectable(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	withControllerGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{"default":1,"standard":1}`,
+	)
+
+	user := &model.User{
+		Id:       205,
+		Username: "token-group-hidden-user",
+		Password: "password123",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/groups", nil, user.Id)
+	GetUserTokenGroups(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var groups map[string]map[string]interface{}
+	if err := common.Unmarshal(response.Data, &groups); err != nil {
+		t.Fatalf("failed to decode group response: %v", err)
+	}
+
+	if _, ok := groups["default"]; ok {
+		t.Fatalf("expected assigned default group to stay hidden for token selection, got %#v", groups)
+	}
+	if _, ok := groups["standard"]; !ok {
+		t.Fatalf("expected explicitly selectable group to remain visible, got %#v", groups)
+	}
+}
+
+func TestGetUserTokenGroupsIncludesActiveSubscriptionUpgradeGroup(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	withControllerGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格"}`,
+		`{"default":1,"standard":1,"cc-opus4.6-福利渠道":1}`,
+	)
+
+	user := &model.User{
+		Id:       206,
+		Username: "token-group-subscription-user",
+		Password: "password123",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	plan := &model.SubscriptionPlan{
+		Id:            306,
+		Title:         "token-group-upgrade-plan",
+		PriceAmount:   9.9,
+		Currency:      "USD",
+		DurationUnit:  model.SubscriptionDurationMonth,
+		DurationValue: 1,
+		Enabled:       true,
+		UpgradeGroup:  "cc-opus4.6-福利渠道",
+	}
+	if err := db.Create(plan).Error; err != nil {
+		t.Fatalf("failed to create plan: %v", err)
+	}
+
+	now := time.Now().Unix()
+	subscription := &model.UserSubscription{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		AmountTotal:   100,
+		AmountUsed:    0,
+		StartTime:     now,
+		EndTime:       now + 3600,
+		Status:        "active",
+		Source:        "test",
+		UpgradeGroup:  "cc-opus4.6-福利渠道",
+		PrevUserGroup: "default",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := db.Create(subscription).Error; err != nil {
+		t.Fatalf("failed to create subscription: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/groups", nil, user.Id)
+	GetUserTokenGroups(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var groups map[string]map[string]interface{}
+	if err := common.Unmarshal(response.Data, &groups); err != nil {
+		t.Fatalf("failed to decode group response: %v", err)
+	}
+
+	if _, ok := groups["cc-opus4.6-福利渠道"]; !ok {
+		t.Fatalf("expected active subscription upgrade group to stay visible for token selection, got %#v", groups)
+	}
+	if _, ok := groups["default"]; ok {
+		t.Fatalf("expected assigned default group to stay hidden for token selection, got %#v", groups)
+	}
+}
