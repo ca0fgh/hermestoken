@@ -17,14 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import { UserProvider } from './context/User';
 import 'react-toastify/dist/ReactToastify.css';
-import { StatusProvider } from './context/Status';
-import { ThemeProvider } from './context/Theme';
-import PageLayout from './components/layout/PageLayout';
+import { renderConsoleApp } from './bootstrap/consoleApp';
+import { renderPublicApp } from './bootstrap/publicApp';
+import { readClientStartupSettings, readInjectedBootstrap } from './helpers/bootstrapData';
+import { cachePublicBootstrap } from './helpers/publicStartupCache';
 import { initializeI18n } from './i18n/i18n';
 import './index.css';
 
@@ -40,27 +38,18 @@ if (typeof window !== 'undefined') {
 
 // initialization
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const rootElement = ReactDOM.createRoot(document.getElementById('root'));
+const injectedBootstrap = readInjectedBootstrap();
+const startupSettings = readClientStartupSettings();
 
-const renderApp = () => {
-  root.render(
-    <React.StrictMode>
-      <StatusProvider>
-        <UserProvider>
-          <BrowserRouter
-            future={{
-              v7_startTransition: true,
-              v7_relativeSplatPath: true,
-            }}
-          >
-            <ThemeProvider>
-              <PageLayout />
-            </ThemeProvider>
-          </BrowserRouter>
-        </UserProvider>
-      </StatusProvider>
-    </React.StrictMode>,
-  );
-};
+if (injectedBootstrap) {
+  cachePublicBootstrap(injectedBootstrap);
+}
 
-initializeI18n().catch(console.error).finally(renderApp);
+if (window.location.pathname.startsWith('/console')) {
+  renderConsoleApp(rootElement);
+} else {
+  renderPublicApp(rootElement, injectedBootstrap);
+}
+
+initializeI18n(startupSettings.language).catch(console.error);

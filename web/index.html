@@ -17,6 +17,26 @@
     />
     <meta name="generator" content="new-api" />
     <title>HERMESTOKEN</title>
+    <script>
+      (() => {
+        const fallbackPrefs = { themeMode: 'auto', language: 'zh-CN' };
+
+        try {
+          const themeMode =
+            window.localStorage.getItem('theme-mode') || fallbackPrefs.themeMode;
+          const language =
+            window.localStorage.getItem('i18nextLng') || fallbackPrefs.language;
+
+          window.__HERMES_CLIENT_PREFS__ = { themeMode, language };
+
+          if (themeMode === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch {
+          window.__HERMES_CLIENT_PREFS__ = fallbackPrefs;
+        }
+      })();
+    </script>
     <!--umami-->
     <!--Google Analytics-->
   </head>

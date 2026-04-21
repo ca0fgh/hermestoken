@@ -120,21 +120,25 @@ i18n
     },
   });
 
-export async function initializeI18n() {
+export async function initializeI18n(preferredLanguageOverride) {
   const preferredLanguage =
+    normalizeLanguage(preferredLanguageOverride) ||
     getPreferredLanguage() ||
     normalizeLanguage(i18n.resolvedLanguage || i18n.language) ||
     DEFAULT_LANGUAGE;
 
-  await ensureLanguageResources(preferredLanguage);
+  const resolvedLanguage = await ensureLanguageResources(preferredLanguage);
 
-  if (preferredLanguage !== i18n.language) {
-    await i18n.changeLanguage(preferredLanguage);
+  if (resolvedLanguage !== i18n.language) {
+    await i18n.changeLanguage(resolvedLanguage);
     return i18n;
   }
 
-  if (preferredLanguage !== DEFAULT_LANGUAGE) {
-    await i18n.changeLanguage(preferredLanguage);
+  if (
+    resolvedLanguage !== DEFAULT_LANGUAGE ||
+    i18n.resolvedLanguage !== resolvedLanguage
+  ) {
+    await i18n.changeLanguage(resolvedLanguage);
   }
 
   return i18n;
