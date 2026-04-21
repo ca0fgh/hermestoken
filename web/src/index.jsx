@@ -22,7 +22,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import { renderConsoleApp } from './bootstrap/consoleApp';
 import { renderPublicApp } from './bootstrap/publicApp';
 import { readClientStartupSettings, readInjectedBootstrap } from './helpers/bootstrapData';
-import { cachePublicBootstrap } from './helpers/publicStartupCache';
+import { setPublicStartupStatusData } from './helpers/data';
+import { resolvePublicStartupBootstrap } from './helpers/publicStartupCache';
 import { initializeI18n } from './i18n/i18n';
 import './index.css';
 
@@ -41,15 +42,21 @@ if (typeof window !== 'undefined') {
 const rootElement = ReactDOM.createRoot(document.getElementById('root'));
 const injectedBootstrap = readInjectedBootstrap();
 const startupSettings = readClientStartupSettings();
+const isConsoleRoute = window.location.pathname.startsWith('/console');
+const publicBootstrap = resolvePublicStartupBootstrap(injectedBootstrap);
 
-if (injectedBootstrap) {
-  cachePublicBootstrap(injectedBootstrap);
+if (!isConsoleRoute && publicBootstrap?.status) {
+  try {
+    setPublicStartupStatusData(publicBootstrap.status);
+  } catch {
+    // Ignore storage write failures during non-blocking startup.
+  }
 }
 
-if (window.location.pathname.startsWith('/console')) {
+if (isConsoleRoute) {
   renderConsoleApp(rootElement);
 } else {
-  renderPublicApp(rootElement, injectedBootstrap);
+  renderPublicApp(rootElement, publicBootstrap);
 }
 
 initializeI18n(startupSettings.language).catch(console.error);

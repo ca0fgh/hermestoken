@@ -64,6 +64,34 @@ export function setStatusData(data) {
   }
 }
 
+export function setPublicStartupStatusData(data) {
+  localStorage.setItem('status', JSON.stringify(data));
+
+  if (data.system_name) {
+    localStorage.setItem('system_name', data.system_name);
+  } else {
+    localStorage.removeItem('system_name');
+  }
+
+  if (data.logo) {
+    localStorage.setItem('logo', data.logo);
+  } else {
+    localStorage.removeItem('logo');
+  }
+
+  if (data.footer_html) {
+    localStorage.setItem('footer_html', data.footer_html);
+  } else {
+    localStorage.removeItem('footer_html');
+  }
+
+  if (data.docs_link) {
+    localStorage.setItem('docs_link', data.docs_link);
+  } else {
+    localStorage.removeItem('docs_link');
+  }
+}
+
 export function setUserData(data) {
   localStorage.setItem('user', JSON.stringify(data));
 }

@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { normalizeLanguage, supportedLanguages } from '../i18n/language.js';
 
 export const PUBLIC_BOOTSTRAP_SCRIPT_ID = 'hermes-public-bootstrap';
+export const CLIENT_PREFS_WINDOW_KEY = '__HERMES_CLIENT_PREFS__';
 
 const DEFAULT_THEME_MODE = 'auto';
 const DEFAULT_LANGUAGE = 'zh-CN';
@@ -71,19 +72,33 @@ export function readInjectedBootstrap(doc = globalThis.document) {
   return parsePublicBootstrapJson(bootstrapElement?.textContent?.trim() || '');
 }
 
-export function readClientStartupSettings(storage = globalThis.localStorage) {
-  try {
-    const themeMode = normalizeThemeMode(storage?.getItem?.('theme-mode'));
-    const language = normalizeStartupLanguage(storage?.getItem?.('i18nextLng'));
+function readPrimedClientPreferences(win = globalThis.window) {
+  return win?.[CLIENT_PREFS_WINDOW_KEY] || null;
+}
 
-    return {
-      themeMode,
-      language,
-    };
+export function readClientStartupSettings(
+  storage = globalThis.localStorage,
+  win = globalThis.window,
+) {
+  const primedPreferences = readPrimedClientPreferences(win);
+
+  let storedThemeMode = null;
+  let storedLanguage = null;
+
+  try {
+    storedThemeMode = storage?.getItem?.('theme-mode') ?? null;
+    storedLanguage = storage?.getItem?.('i18nextLng') ?? null;
   } catch {
-    return {
-      themeMode: DEFAULT_THEME_MODE,
-      language: DEFAULT_LANGUAGE,
-    };
+    storedThemeMode = null;
+    storedLanguage = null;
   }
+
+  return {
+    themeMode: normalizeThemeMode(
+      primedPreferences?.themeMode ?? storedThemeMode,
+    ),
+    language: normalizeStartupLanguage(
+      primedPreferences?.language ?? storedLanguage,
+    ),
+  };
 }

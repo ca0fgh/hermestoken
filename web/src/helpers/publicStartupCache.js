@@ -62,3 +62,15 @@ export function readCachedPublicBootstrap(storage = globalThis.localStorage) {
     return null;
   }
 }
+
+export function resolvePublicStartupBootstrap(
+  injectedPayload,
+  storage = globalThis.localStorage,
+) {
+  if (injectedPayload) {
+    cachePublicBootstrap(injectedPayload, storage);
+    return injectedPayload;
+  }
+
+  return readCachedPublicBootstrap(storage);
+}

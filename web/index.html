@@ -20,17 +20,23 @@
     <script>
       (() => {
         const fallbackPrefs = { themeMode: 'auto', language: 'zh-CN' };
+        const rootElement = document.documentElement;
 
         try {
           const themeMode =
             window.localStorage.getItem('theme-mode') || fallbackPrefs.themeMode;
           const language =
             window.localStorage.getItem('i18nextLng') || fallbackPrefs.language;
+          const prefersDark = Boolean(
+            window.matchMedia?.('(prefers-color-scheme: dark)').matches,
+          );
 
           window.__HERMES_CLIENT_PREFS__ = { themeMode, language };
 
-          if (themeMode === 'dark') {
-            document.documentElement.classList.add('dark');
+          if (themeMode === 'dark' || (themeMode === 'auto' && prefersDark)) {
+            rootElement.classList.add('dark');
+          } else {
+            rootElement.classList.remove('dark');
           }
         } catch {
           window.__HERMES_CLIENT_PREFS__ = fallbackPrefs;

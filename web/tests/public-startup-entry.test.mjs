@@ -16,6 +16,8 @@ test('index entry renders immediately instead of waiting for initializeI18n fina
   );
   assert.match(source, /renderPublicApp\(/);
   assert.match(source, /renderConsoleApp\(/);
+  assert.match(source, /resolvePublicStartupBootstrap\(/);
+  assert.match(source, /setPublicStartupStatusData\(/);
 });
 
 test('index template primes startup preferences before module boot', async () => {
@@ -23,4 +25,5 @@ test('index template primes startup preferences before module boot', async () =>
 
   assert.match(source, /window\.__HERMES_CLIENT_PREFS__/);
   assert.match(source, /theme-mode/);
+  assert.match(source, /prefers-color-scheme: dark/);
 });
