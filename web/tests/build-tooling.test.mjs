@@ -304,7 +304,7 @@ test('page layout only mounts the console shell for /console routes so public au
   assert.doesNotMatch(pageLayoutSource, /const isMarketingRoute = location\.pathname === '\/';/);
 });
 
-test('startup shell avoids the heavyweight axios helper and lazy loads markdown parsing for the home page', async () => {
+test('startup shell avoids the heavyweight axios helper and bootstraps the home page from public startup data', async () => {
   const pageLayoutSource = await readFile(pageLayoutPath, 'utf8');
   const homeSource = await readFile(homePath, 'utf8');
   const headerBarHookSource = await readFile(headerBarHookPath, 'utf8');
@@ -313,7 +313,11 @@ test('startup shell avoids the heavyweight axios helper and lazy loads markdown 
   assert.doesNotMatch(homeSource, /from '\.\.\/\.\.\/helpers\/api';/);
   assert.doesNotMatch(headerBarHookSource, /from '\.\.\/\.\.\/helpers\/api';/);
   assert.doesNotMatch(homeSource, /from 'marked';/);
-  assert.match(homeSource, /await import\('marked'\)/);
+  assert.doesNotMatch(homeSource, /await import\('marked'\)/);
+  assert.match(homeSource, /readInjectedBootstrap\(\)/);
+  assert.match(homeSource, /readCachedPublicBootstrap\(\)/);
+  assert.match(homeSource, /scheduleNonCriticalWork\(/);
+  assert.match(homeSource, /\/api\/public\/bootstrap/);
   assert.match(headerBarHookSource, /await import\('\.\.\/\.\.\/helpers\/api'\)/);
 });
 

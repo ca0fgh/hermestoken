@@ -27,8 +27,13 @@ import React, {
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
 import { useTranslation } from 'react-i18next';
-import { showError } from '../../helpers/notifications';
 import { lazyWithRetry } from '../../helpers/lazyWithRetry';
+import { readInjectedBootstrap } from '../../helpers/bootstrapData';
+import {
+  cachePublicBootstrap,
+  readCachedPublicBootstrap,
+} from '../../helpers/publicStartupCache';
+import { scheduleNonCriticalWork } from '../../helpers/idleTask';
 import { readStoredValue } from '../../helpers/storageJson';
 
 const MarketingNoticeModal = lazyWithRetry(
@@ -36,9 +41,11 @@ const MarketingNoticeModal = lazyWithRetry(
   'marketing-notice-modal',
 );
 
+const startupBootstrap =
+  readInjectedBootstrap() || readCachedPublicBootstrap() || null;
 
-async function fetchHomePayload(path) {
-  const response = await fetch(path, {
+async function fetchPublicBootstrap() {
+  const response = await fetch('/api/public/bootstrap', {
     headers: {
       'Cache-Control': 'no-store',
     },
@@ -51,23 +58,30 @@ async function fetchHomePayload(path) {
   return response.json();
 }
 
-async function renderHomePageMarkdown(markdown) {
-  const { marked } = await import('marked');
-  return marked.parse(markdown);
+function isNoticeDismissedToday() {
+  const lastCloseDate = readStoredValue('notice_close_date', '');
+  return lastCloseDate === new Date().toDateString();
 }
 
 const Home = () => {
   const { t, i18n } = useTranslation();
   const actualTheme = useActualTheme();
-  const [homePageContentLoaded, setHomePageContentLoaded] = useState(false);
-  const [homePageContent, setHomePageContent] = useState(() => {
-    try {
-      return localStorage.getItem('home_page_content') || '';
-    } catch {
-      return '';
-    }
-  });
-  const [noticeVisible, setNoticeVisible] = useState(false);
+  const [homePageContentLoaded, setHomePageContentLoaded] = useState(
+    Boolean(startupBootstrap?.home),
+  );
+  const [homePageContent, setHomePageContent] = useState(
+    startupBootstrap?.home?.mode === 'iframe'
+      ? ''
+      : startupBootstrap?.home?.html || '',
+  );
+  const [homePageFrameUrl, setHomePageFrameUrl] = useState(
+    startupBootstrap?.home?.mode === 'iframe'
+      ? startupBootstrap?.home?.url || ''
+      : '',
+  );
+  const [noticeVisible, setNoticeVisible] = useState(
+    Boolean(startupBootstrap?.notice?.markdown) && !isNoticeDismissedToday(),
+  );
   const homepageIframeRef = useRef(null);
   const isMobile = useIsMobile();
   const homeNarrativeTags = [
@@ -101,7 +115,7 @@ const Home = () => {
   ];
 
   const syncIframeThemeAndLanguage = useCallback(() => {
-    if (!homePageContent.startsWith('https://')) {
+    if (!homePageFrameUrl.startsWith('https://')) {
       return;
     }
     const iframe = homepageIframeRef.current;
@@ -110,71 +124,56 @@ const Home = () => {
     }
     iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
     iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
-  }, [actualTheme, homePageContent, i18n.language]);
+  }, [actualTheme, homePageFrameUrl, i18n.language]);
 
-  const displayHomePageContent = async () => {
-    let cachedHomePageContent = '';
-    try {
-      cachedHomePageContent = localStorage.getItem('home_page_content') || '';
-    } catch {
-      cachedHomePageContent = '';
+  const applyBootstrap = useCallback((payload) => {
+    if (!payload) {
+      return;
     }
-    try {
-      const { success, message, data } = await fetchHomePayload(
-        '/api/home_page_content',
-      );
-      if (success) {
-        let content = data;
-        if (!data.startsWith('https://')) {
-          content = await renderHomePageMarkdown(data);
-        }
-        setHomePageContent(content);
-        try {
-          localStorage.setItem('home_page_content', content);
-        } catch {
-          // Ignore storage write failures and keep the in-memory homepage state.
-        }
-      } else {
-        showError(message);
-        setHomePageContent('');
-        try {
-          localStorage.removeItem('home_page_content');
-        } catch {
-          // Ignore storage removal failures and continue with the default homepage.
-        }
-      }
-    } catch (error) {
-      showError(error?.message || '加载首页内容失败');
-      if (!cachedHomePageContent) {
-        setHomePageContent('');
-      }
-    } finally {
-      setHomePageContentLoaded(true);
+
+    cachePublicBootstrap(payload);
+
+    if (payload.home?.mode === 'iframe') {
+      setHomePageFrameUrl(payload.home?.url || '');
+      setHomePageContent('');
+    } else {
+      setHomePageFrameUrl('');
+      setHomePageContent(payload.home?.html || '');
     }
-  };
 
-  useEffect(() => {
-    const checkNoticeAndShow = async () => {
-      const lastCloseDate = readStoredValue('notice_close_date', '');
-      const today = new Date().toDateString();
-      if (lastCloseDate !== today) {
-        try {
-          const { success, data } = await fetchHomePayload('/api/notice');
-          if (success && data && data.trim() !== '') {
-            setNoticeVisible(true);
-          }
-        } catch (error) {
-          console.error('获取公告失败:', error);
-        }
-      }
-    };
-
-    checkNoticeAndShow();
+    setNoticeVisible(
+      Boolean(payload.notice?.markdown) && !isNoticeDismissedToday(),
+    );
+    setHomePageContentLoaded(true);
   }, []);
 
   useEffect(() => {
-    void displayHomePageContent();
-  }, []);
+    if (startupBootstrap) {
+      applyBootstrap(startupBootstrap);
+    }
+  }, [applyBootstrap]);
+
+  useEffect(() => (
+    scheduleNonCriticalWork(async () => {
+      try {
+        const payload = await fetchPublicBootstrap();
+
+        if (payload?.success && payload?.data) {
+          applyBootstrap(payload.data);
+          return;
+        }
+      } catch (error) {
+        console.error('failed to refresh public bootstrap', error);
+      }
+
+      if (!startupBootstrap) {
+        setHomePageContent('');
+        setHomePageFrameUrl('');
+        setNoticeVisible(false);
+        setHomePageContentLoaded(true);
+      }
+    })
+  ), [applyBootstrap]);
 
   useEffect(() => {
     syncIframeThemeAndLanguage();
@@ -191,21 +190,21 @@ const Home = () => {
           />
         </Suspense>
       ) : null}
-      {homePageContent !== '' ? (
+      {homePageFrameUrl !== '' ? (
         <div className='overflow-x-hidden w-full'>
-          {homePageContent.startsWith('https://') ? (
-            <iframe
-              ref={homepageIframeRef}
-              src={homePageContent}
-              onLoad={syncIframeThemeAndLanguage}
-              className='w-full h-screen border-none'
-            />
-          ) : (
-            <div
-              className='mt-[60px]'
-              dangerouslySetInnerHTML={{ __html: homePageContent }}
-            />
-          )}
+          <iframe
+            ref={homepageIframeRef}
+            src={homePageFrameUrl}
+            onLoad={syncIframeThemeAndLanguage}
+            className='w-full h-screen border-none'
+          />
+        </div>
+      ) : homePageContent !== '' ? (
+        <div className='overflow-x-hidden w-full'>
+          <div
+            className='mt-[60px]'
+            dangerouslySetInnerHTML={{ __html: homePageContent }}
+          />
         </div>
       ) : !homePageContentLoaded ? (
         <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
