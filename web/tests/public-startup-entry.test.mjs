@@ -16,7 +16,7 @@ test('index entry renders immediately instead of waiting for initializeI18n fina
   );
   assert.match(source, /renderPublicApp\(/);
   assert.match(source, /renderConsoleApp\(/);
-  assert.match(source, /resolvePublicStartupBootstrap\(/);
+  assert.match(source, /resolveRoutePublicBootstrap\(/);
   assert.match(source, /setPublicStartupStatusData\(/);
 });
 

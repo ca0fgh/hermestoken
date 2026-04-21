@@ -24,6 +24,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { removePublicHomeShell } from '../../bootstrap/publicStartup';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +32,7 @@ import { lazyWithRetry } from '../../helpers/lazyWithRetry';
 import { cachePublicBootstrap } from '../../helpers/publicStartupCache';
 import { scheduleNonCriticalWork } from '../../helpers/idleTask';
 import { readStoredValue } from '../../helpers/storageJson';
+import { fetchPublicBootstrap } from './publicBootstrapRefresh';
 import { resolveHomeStartupBootstrap } from './startupBootstrap';
 
 const MarketingNoticeModal = lazyWithRetry(
@@ -39,20 +41,6 @@ const MarketingNoticeModal = lazyWithRetry(
 );
 
 const startupBootstrap = resolveHomeStartupBootstrap();
-
-async function fetchPublicBootstrap() {
-  const response = await fetch('/api/public/bootstrap', {
-    headers: {
-      'Cache-Control': 'no-store',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
 
 function isNoticeDismissedToday() {
   const lastCloseDate = readStoredValue('notice_close_date', '');
@@ -128,6 +116,10 @@ const Home = () => {
     iframe.contentWindow.postMessage({ themeMode: actualTheme }, '*');
     iframe.contentWindow.postMessage({ lang: i18n.language }, '*');
   }, [actualTheme, homePageFrameUrl, i18n.language]);
+
+  useEffect(() => {
+    removePublicHomeShell();
+  }, []);
 
   const applyBootstrap = useCallback((payload) => {
     if (!payload) {

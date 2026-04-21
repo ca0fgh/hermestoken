@@ -21,9 +21,9 @@ import ReactDOM from 'react-dom/client';
 import 'react-toastify/dist/ReactToastify.css';
 import { renderConsoleApp } from './bootstrap/consoleApp';
 import { renderPublicApp } from './bootstrap/publicApp';
+import { resolveRoutePublicBootstrap } from './bootstrap/publicStartup';
 import { readClientStartupSettings, readInjectedBootstrap } from './helpers/bootstrapData';
 import { setPublicStartupStatusData } from './helpers/data';
-import { resolvePublicStartupBootstrap } from './helpers/publicStartupCache';
 import { initializeI18n } from './i18n/i18n';
 import './index.css';
 
@@ -42,10 +42,13 @@ if (typeof window !== 'undefined') {
 const rootElement = ReactDOM.createRoot(document.getElementById('root'));
 const injectedBootstrap = readInjectedBootstrap();
 const startupSettings = readClientStartupSettings();
-const isConsoleRoute = window.location.pathname.startsWith('/console');
-const publicBootstrap = resolvePublicStartupBootstrap(injectedBootstrap);
+const pathname = window.location.pathname;
+const isConsoleRoute = pathname.startsWith('/console');
+const publicBootstrap = isConsoleRoute
+  ? null
+  : resolveRoutePublicBootstrap({ pathname, injectedBootstrap });
 
-if (!isConsoleRoute && publicBootstrap?.status) {
+if (publicBootstrap?.status) {
   try {
     setPublicStartupStatusData(publicBootstrap.status);
   } catch {

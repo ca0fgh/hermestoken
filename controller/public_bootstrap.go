@@ -19,6 +19,7 @@ const (
 	PublicHomeModeDefault = "default"
 	PublicHomeModeHTML    = "html"
 	PublicHomeModeIframe  = "iframe"
+	publicHomeShellID     = "hermes-public-home-shell"
 )
 
 type PublicStatusSnapshot struct {
@@ -121,18 +122,18 @@ func renderPublicMarkdownHTML(markdown string) string {
 }
 
 func renderPublicHomeShell(payload PublicBootstrapPayload) string {
+	systemName := strings.TrimSpace(payload.Status.SystemName)
+	if systemName == "" {
+		systemName = "HermesToken"
+	}
+	systemName = html.EscapeString(systemName)
+
 	switch payload.Home.Mode {
 	case PublicHomeModeIframe:
-		return `<iframe class="hermes-public-homeframe" src="` + html.EscapeString(payload.Home.URL) + `" title="Public homepage" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>`
+		return `<section class="hermes-public-fallback"><p class="eyebrow">` + systemName + `</p><h1>Fast, reliable AI gateway</h1><p>The public homepage will finish loading once the client app is ready.</p></section>`
 	case PublicHomeModeHTML:
 		return payload.Home.HTML
 	case PublicHomeModeDefault:
-		systemName := strings.TrimSpace(payload.Status.SystemName)
-		if systemName == "" {
-			systemName = "HermesToken"
-		}
-		systemName = html.EscapeString(systemName)
-
 		return `<section class="hermes-public-fallback"><p class="eyebrow">` + systemName + `</p><h1>Fast, reliable AI gateway</h1><p>Configure HomePageContent to publish a custom landing page without waiting for the client app to boot.</p></section>`
 	default:
 		return ""
@@ -152,7 +153,7 @@ func RenderPublicHomeIndex(baseIndex []byte, payload PublicBootstrapPayload) ([]
 	}
 	rendered := bytes.Replace(baseIndex, headNeedle, append(scriptTag, headNeedle...), 1)
 
-	rootShell := []byte(`<div id="root">` + renderPublicHomeShell(payload) + `</div>`)
+	rootShell := []byte(`<div id="` + publicHomeShellID + `">` + renderPublicHomeShell(payload) + `</div><div id="root"></div>`)
 	rootNeedle := []byte(`<div id="root"></div>`)
 	if !bytes.Contains(rendered, rootNeedle) {
 		return nil, errors.New(`public home root target <div id="root"></div> not found`)

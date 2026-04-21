@@ -16,5 +16,5 @@ test('home page no longer parses markdown in the startup path', async () => {
   const source = await readFile(homePath, 'utf8');
 
   assert.doesNotMatch(source, /import\('marked'\)/);
-  assert.match(source, /\/api\/public\/bootstrap/);
+  assert.match(source, /fetchPublicBootstrap\(/);
 });

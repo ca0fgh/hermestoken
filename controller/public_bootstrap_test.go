@@ -80,8 +80,8 @@ func TestRenderPublicHomeIndexEmbedsBootstrapAndShell(t *testing.T) {
 	if !strings.Contains(rendered, `id="hermes-public-bootstrap"`) {
 		t.Fatalf("rendered output missing bootstrap script: %s", rendered)
 	}
-	if !strings.Contains(rendered, `<div id="root"><section class="hero"><h1>Fast path</h1></section></div>`) {
-		t.Fatalf("rendered output missing injected root shell: %s", rendered)
+	if !strings.Contains(rendered, `<div id="hermes-public-home-shell"><section class="hero"><h1>Fast path</h1></section></div><div id="root"></div>`) {
+		t.Fatalf("rendered output missing sibling home shell: %s", rendered)
 	}
 }
 
@@ -121,20 +121,30 @@ func TestRenderPublicHomeIndexReturnsErrorWhenRootReplacementMissing(t *testing.
 	}
 }
 
+func TestRenderPublicHomeShellUsesFallbackForIframeMode(t *testing.T) {
+	payload := PublicBootstrapPayload{
+		Status: PublicStatusSnapshot{SystemName: "HermesToken"},
+		Home: PublicHomeSnapshot{
+			Mode: PublicHomeModeIframe,
+			URL:  "https://example.com/home",
+		},
+	}
+
+	got := renderPublicHomeShell(payload)
+	if strings.Contains(got, "<iframe") {
+		t.Fatalf("renderPublicHomeShell() = %q, want iframe-free server shell", got)
+	}
+	if !strings.Contains(got, "Fast, reliable AI gateway") {
+		t.Fatalf("renderPublicHomeShell() = %q, want fallback copy", got)
+	}
+}
+
 func TestRenderPublicHomeShellDoesNotFallbackForEmptyExplicitModes(t *testing.T) {
 	testCases := []struct {
 		name    string
 		payload PublicBootstrapPayload
 		want    string
 	}{
-		{
-			name: "iframe mode without url still returns iframe shell",
-			payload: PublicBootstrapPayload{
-				Status: PublicStatusSnapshot{SystemName: "HermesToken"},
-				Home:   PublicHomeSnapshot{Mode: PublicHomeModeIframe},
-			},
-			want: `<iframe class="hermes-public-homeframe" src="" title="Public homepage" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>`,
-		},
 		{
 			name: "html mode without html returns empty string",
 			payload: PublicBootstrapPayload{
@@ -262,5 +272,11 @@ func TestPublicHomeIndexHandlerReturnsHTMLWithCaching(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `id="hermes-public-bootstrap"`) {
 		t.Fatalf("body missing bootstrap payload: %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `<div id="hermes-public-home-shell">`) {
+		t.Fatalf("body missing public home shell container: %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `<div id="root"></div>`) {
+		t.Fatalf("body missing empty root container: %s", recorder.Body.String())
 	}
 }
