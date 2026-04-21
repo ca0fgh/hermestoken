@@ -26,8 +26,10 @@ import ReferralFieldBlock from './ReferralFieldBlock';
 
 const createDraftTemplate = () => ({
   id: `draft-${Date.now()}-${Math.random()}`,
+  bundleKey: '',
+  templateIds: [],
   referralType: 'subscription_referral',
-  group: '',
+  groups: [],
   name: '',
   levelType: 'direct',
   enabled: true,
@@ -92,7 +94,7 @@ const SettingsReferralTemplates = () => {
     setLoading(true);
     try {
       const [templateRes, groupRes, settingRes] = await Promise.all([
-        API.get('/api/referral/templates'),
+        API.get('/api/referral/templates', { params: { view: 'bundle' } }),
         API.get('/api/group'),
         API.get('/api/referral/settings/subscription'),
       ]);
@@ -146,7 +148,7 @@ const SettingsReferralTemplates = () => {
     try {
       const payload = {
         referral_type: row.referralType,
-        group: row.group,
+        groups: row.groups,
         name: row.name,
         level_type: row.levelType,
         enabled: row.enabled,
@@ -178,7 +180,7 @@ const SettingsReferralTemplates = () => {
       setItems((currentItems) => currentItems.filter((item) => item.id !== row.id));
       return;
     }
-    if (!window.confirm(t('确认删除该返佣模板？'))) {
+    if (!window.confirm(t('确认删除该模板组及其覆盖的所有分组模板吗？'))) {
       return;
     }
     const key = String(row.id);
@@ -236,11 +238,11 @@ const SettingsReferralTemplates = () => {
             {t('返佣模板')}
           </Typography.Title>
           <Typography.Text type='secondary'>
-            {t('管理返佣类型与分组下的模板配置；同一返佣类型和分组下可以创建多个模板。')}
+            {t('管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。')}
           </Typography.Text>
         </div>
         <Button type='primary' onClick={addDraft}>
-          {t('新增模板')}
+          {t('新增模板组')}
         </Button>
       </div>
       <Banner
@@ -248,7 +250,7 @@ const SettingsReferralTemplates = () => {
         bordered
         title={t('填写说明')}
         description={t(
-          '比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。',
+          '比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。',
         )}
       />
       <div className='rounded-xl border border-gray-200 bg-white p-4 space-y-3'>
@@ -358,18 +360,25 @@ const SettingsReferralTemplates = () => {
                 </ReferralFieldBlock>
                 <ReferralFieldBlock
                   label={t('分组')}
-                  description={t('必须选择一个已存在的系统分组。结算和用户激活都按返佣类型 + 分组定位模板。')}
+                  description={t('必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。')}
                 >
                   <Select
-                    value={row.group}
+                    value={row.groups}
+                    multiple={true}
                     optionList={groupOptions}
                     placeholder={t('分组')}
-                    onChange={(value) => updateRow(row.id, { group: String(value || '').trim() })}
+                    onChange={(value) =>
+                      updateRow(row.id, {
+                        groups: Array.isArray(value)
+                          ? value.map((group) => String(group || '').trim()).filter(Boolean)
+                          : [],
+                      })
+                    }
                   />
                 </ReferralFieldBlock>
                 <ReferralFieldBlock
                   label={t('模板名')}
-                  description={t('只用于后台识别，不参与返佣计算。模板名全局唯一，建议按分组和身份命名。')}
+                  description={t('只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。')}
                 >
                   <Input
                     value={row.name}

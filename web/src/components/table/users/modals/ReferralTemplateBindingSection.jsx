@@ -34,7 +34,9 @@ const ReferralTemplateBindingSection = ({ userId }) => {
   const templateOptions = useMemo(
     () =>
       templates.map((template) => ({
-        label: formatReferralTemplateOptionLabel(template, t),
+        label: formatReferralTemplateOptionLabel(template, t, {
+          includeGroupSuffixWhenNamed: true,
+        }),
         value: template.id,
       })),
     [t, templates],
@@ -48,7 +50,7 @@ const ReferralTemplateBindingSection = ({ userId }) => {
     try {
       const [templateRes, bindingRes] = await Promise.all([
         API.get('/api/referral/templates', {
-          params: { referral_type: 'subscription_referral' },
+          params: { referral_type: 'subscription_referral', view: 'row' },
         }),
         API.get(`/api/referral/bindings/users/${userId}`, {
           params: { referral_type: 'subscription_referral' },

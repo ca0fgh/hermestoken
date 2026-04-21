@@ -3740,5 +3740,11 @@
   "加载提现列表失败": "Failed to load withdrawals",
   "无效的提现参数": "Invalid withdrawal payload",
   "请输入支付宝姓名": "Enter the Alipay name",
-  "支付宝姓名不能为空": "Alipay name is required"
+  "支付宝姓名不能为空": "Alipay name is required",
+  "新增模板组": "Ajouter un lot de modèles",
+  "管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。": "Gérez des lots de modèles de commission. Un même lot peut couvrir plusieurs groupes système, tandis qu'à l'exécution chaque groupe continue d'utiliser sa propre ligne de modèle mono-groupe.",
+  "比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。": "Saisissez les taux en pourcentage ; ils seront automatiquement convertis en bps lors de l'enregistrement : 10 correspond à 10 %, 25 à 25 %. Un lot de modèles peut couvrir plusieurs groupes système et, lors de l'enregistrement, tous les groupes associés au bundle sont mis à jour en une seule fois. Le nom du modèle doit seulement être unique dans un même type de commission + groupe. direct configure uniquement le taux de l'invitant direct le plus proche ; une fois qu'un team valide est trouvé, le pool d'équipe est calculé selon « le taux du premier team trouvé - le taux direct », puis réparti entre tous les teams trouvés selon la pondération globale. team signifie que l'invitant le plus proche est réglé directement avec le modèle d'équipe. Le coefficient de décroissance d'équipe et la profondeur maximale d'équipe sont configurés globalement dans les paramètres de commission d'abonnement, et non plus au niveau de chaque modèle.",
+  "必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。": "Vous devez sélectionner au moins un groupe système existant. Après l'enregistrement, chaque groupe sélectionné conserve sa propre ligne de modèle d'exécution.",
+  "只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。": "Ce nom sert uniquement à l'identification dans l'administration et n'intervient pas dans le calcul des commissions. Il doit seulement être unique dans un même type de commission + groupe ; choisissez un nom qui reflète le contexte métier et le rôle du modèle.",
+  "确认删除该模板组及其覆盖的所有分组模板吗？": "Voulez-vous vraiment supprimer ce lot de modèles ainsi que tous les modèles de groupe qu'il couvre ?"
 }

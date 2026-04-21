@@ -4287,5 +4287,11 @@
   "加载提现列表失败": "Failed to load withdrawals",
   "无效的提现参数": "Invalid withdrawal payload",
   "请输入支付宝姓名": "Enter the Alipay name",
-  "支付宝姓名不能为空": "Alipay name is required"
+  "支付宝姓名不能为空": "Alipay name is required",
+  "新增模板组": "Thêm gói mẫu",
+  "管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。": "Quản lý các gói mẫu hoa hồng giới thiệu. Một gói mẫu có thể áp dụng cho nhiều nhóm hệ thống, nhưng khi chạy thực tế mỗi nhóm vẫn dùng dòng mẫu một nhóm riêng của mình.",
+  "比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。": "Nhập các trường tỷ lệ theo phần trăm; khi lưu hệ thống sẽ tự chuyển sang bps: 10 nghĩa là 10%, 25 nghĩa là 25%. Một gói mẫu có thể áp dụng cho nhiều nhóm hệ thống và khi lưu sẽ cập nhật toàn bộ các nhóm liên kết trong bundle đó cùng lúc. Tên mẫu chỉ cần là duy nhất trong cùng một loại giới thiệu + nhóm. direct chỉ cấu hình tỷ lệ cho người mời trực tiếp gần nhất; sau khi khớp được một team hợp lệ, quỹ team sẽ được hình thành theo công thức \"tỷ lệ của team khớp đầu tiên - tỷ lệ direct\", rồi phân bổ cho tất cả các team đã khớp theo trọng số toàn cục. team nghĩa là người mời gần nhất được tính trực tiếp theo mẫu team. Hệ số suy giảm team và độ sâu team tối đa được cấu hình tập trung trong phần cài đặt subscription referral, thay vì đi theo từng mẫu riêng lẻ.",
+  "必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。": "Bạn phải chọn ít nhất một nhóm hệ thống đã tồn tại. Sau khi lưu, mỗi nhóm được chọn sẽ có một dòng mẫu runtime riêng.",
+  "只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。": "Tên này chỉ dùng để nhận diện trong trang quản trị và không tham gia vào việc tính hoa hồng. Tên mẫu chỉ cần duy nhất trong cùng một loại giới thiệu + nhóm; nên đặt theo ý nghĩa nghiệp vụ và vai trò của mẫu.",
+  "确认删除该模板组及其覆盖的所有分组模板吗？": "Bạn có chắc muốn xóa gói mẫu này cùng toàn bộ các mẫu theo nhóm mà nó đang bao phủ không?"
 }

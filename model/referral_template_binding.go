@@ -11,15 +11,15 @@ import (
 )
 
 type ReferralTemplateBinding struct {
-	Id                      int    `json:"id"`
-	UserId                  int    `json:"user_id" gorm:"type:int;not null;uniqueIndex:idx_referral_template_binding_scope"`
-	ReferralType            string `json:"referral_type" gorm:"type:varchar(64);not null;uniqueIndex:idx_referral_template_binding_scope"`
-	Group                   string `json:"group" gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_referral_template_binding_scope"`
-	TemplateId              int    `json:"template_id" gorm:"type:int;not null;index"`
-	CreatedBy               int    `json:"created_by" gorm:"type:int;not null;default:0"`
-	UpdatedBy               int    `json:"updated_by" gorm:"type:int;not null;default:0"`
-	CreatedAt               int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt               int64  `json:"updated_at" gorm:"bigint"`
+	Id           int    `json:"id"`
+	UserId       int    `json:"user_id" gorm:"type:int;not null;uniqueIndex:idx_referral_template_binding_scope"`
+	ReferralType string `json:"referral_type" gorm:"type:varchar(64);not null;uniqueIndex:idx_referral_template_binding_scope"`
+	Group        string `json:"group" gorm:"type:varchar(64);not null;default:'';uniqueIndex:idx_referral_template_binding_scope"`
+	TemplateId   int    `json:"template_id" gorm:"type:int;not null;index"`
+	CreatedBy    int    `json:"created_by" gorm:"type:int;not null;default:0"`
+	UpdatedBy    int    `json:"updated_by" gorm:"type:int;not null;default:0"`
+	CreatedAt    int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt    int64  `json:"updated_at" gorm:"bigint"`
 }
 
 type ReferralTemplateBindingView struct {
@@ -96,6 +96,9 @@ func HasActiveReferralTemplateBinding(userID int, referralType string, group str
 
 	template, err := GetReferralTemplateByID(binding.TemplateId)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, &binding, nil
+		}
 		return false, nil, err
 	}
 	if !template.Enabled {
@@ -122,6 +125,9 @@ func ListReferralTemplateBindingsByUser(userID int, referralType string) ([]Refe
 	for _, binding := range bindings {
 		template, err := GetReferralTemplateByID(binding.TemplateId)
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
 			return nil, err
 		}
 		views = append(views, ReferralTemplateBindingView{
@@ -157,6 +163,9 @@ func GetReferralTemplateBindingViewByUserAndScope(userID int, referralType strin
 
 	template, err := GetReferralTemplateByID(binding.TemplateId)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 

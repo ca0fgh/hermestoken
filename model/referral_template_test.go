@@ -79,6 +79,28 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func sqliteSchemaVersion(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+
+	var version int64
+	row := db.Raw("PRAGMA schema_version").Row()
+	if err := row.Scan(&version); err != nil {
+		t.Fatalf("lookup sqlite schema version: %v", err)
+	}
+	return version
+}
+
+func sqliteIndexRowID(t *testing.T, db *gorm.DB, indexName string) int64 {
+	t.Helper()
+
+	var rowID int64
+	row := db.Raw("SELECT rowid FROM sqlite_master WHERE type = ? AND name = ?", "index", indexName).Row()
+	if err := row.Scan(&rowID); err != nil {
+		t.Fatalf("lookup sqlite_master rowid for index %s: %v", indexName, err)
+	}
+	return rowID
+}
+
 func TestReferralTemplateRejectsInvalidSubscriptionRules(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
@@ -90,28 +112,28 @@ func TestReferralTemplateRejectsInvalidSubscriptionRules(t *testing.T) {
 		{
 			name: "rejects unsupported level type",
 			template: ReferralTemplate{
-				Name:           "invalid-level-type",
-				ReferralType:   ReferralTypeSubscription,
-				Group:          "starter",
-				LevelType:      "matrix",
-				DirectCapBps:   1000,
-				TeamCapBps:     2000,
+				Name:         "invalid-level-type",
+				ReferralType: ReferralTypeSubscription,
+				Group:        "starter",
+				LevelType:    "matrix",
+				DirectCapBps: 1000,
+				TeamCapBps:   2000,
 			},
 			wantErr: "level type",
 		},
-			{
-				name: "rejects caps outside subscription bounds",
-				template: ReferralTemplate{
-					Name:           "invalid-caps",
-					ReferralType:   ReferralTypeSubscription,
-					Group:          "starter",
-					LevelType:      ReferralLevelTypeDirect,
-					DirectCapBps:   10001,
-					TeamCapBps:     0,
-				},
-				wantErr: "cap bps",
+		{
+			name: "rejects caps outside subscription bounds",
+			template: ReferralTemplate{
+				Name:         "invalid-caps",
+				ReferralType: ReferralTypeSubscription,
+				Group:        "starter",
+				LevelType:    ReferralLevelTypeDirect,
+				DirectCapBps: 10001,
+				TeamCapBps:   0,
 			},
-		}
+			wantErr: "cap bps",
+		},
+	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,32 +254,224 @@ func TestReferralTemplateRejectsEmptyGroupScope(t *testing.T) {
 	}
 }
 
-func TestReferralTemplateRejectsDuplicateNameAcrossScopes(t *testing.T) {
+func TestReferralTemplateAllowsDuplicateNameAcrossDifferentGroups(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
 	firstTemplate := &ReferralTemplate{
-		Name:           "shared-template-name",
-		ReferralType:   ReferralTypeSubscription,
-		Group:          "vip",
-		LevelType:      ReferralLevelTypeDirect,
-		DirectCapBps:   1000,
-		TeamCapBps:     2000,
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+		TeamCapBps:   2000,
 	}
 	if err := db.Create(firstTemplate).Error; err != nil {
 		t.Fatalf("failed to create first template: %v", err)
 	}
 
 	secondTemplate := &ReferralTemplate{
-		Name:           "shared-template-name",
-		ReferralType:   ReferralTypeSubscription,
-		Group:          "default",
-		LevelType:      ReferralLevelTypeTeam,
-		DirectCapBps:   1000,
-		TeamCapBps:     2000,
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "default",
+		LevelType:    ReferralLevelTypeTeam,
+		DirectCapBps: 1000,
+		TeamCapBps:   2000,
 	}
-	err := db.Create(secondTemplate).Error
+	if err := db.Create(secondTemplate).Error; err != nil {
+		t.Fatalf("Create(secondTemplate) error = %v, want success across groups", err)
+	}
+}
+
+func TestReferralTemplateAllowsDuplicateNameAcrossDifferentReferralTypes(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	firstTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Create(firstTemplate).Error; err != nil {
+		t.Fatalf("failed to create first template: %v", err)
+	}
+
+	secondTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: "commission_referral",
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Session(&gorm.Session{SkipHooks: true}).Create(secondTemplate).Error; err != nil {
+		t.Fatalf("Create(secondTemplate) error = %v, want success across referral types", err)
+	}
+}
+
+func TestReferralTemplateRejectsDuplicateNameWithinSameScope(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	firstTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Create(firstTemplate).Error; err != nil {
+		t.Fatalf("failed to create first template: %v", err)
+	}
+
+	secondTemplate := &ReferralTemplate{
+		Name:         "shared-template-name",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeTeam,
+		TeamCapBps:   2000,
+	}
+	err := normalizeReferralTemplatePersistenceError(db.Session(&gorm.Session{SkipHooks: true}).Create(secondTemplate).Error)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "template name already exists") {
 		t.Fatalf("Create(secondTemplate) error = %v, want duplicate name error", err)
+	}
+}
+
+func TestCreateReferralTemplateBundleCreatesOneRowPerGroup(t *testing.T) {
+	setupReferralTemplateDB(t)
+
+	rows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"vip", "default"},
+		Name:                   "starter-direct",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1200,
+		InviteeShareDefaultBps: 300,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("bundle row count = %d, want 2", len(rows))
+	}
+	if rows[0].BundleKey == "" || rows[1].BundleKey == "" || rows[0].BundleKey != rows[1].BundleKey {
+		t.Fatalf("expected a shared bundle key, got %#v", rows)
+	}
+	if rows[0].Group != "default" || rows[1].Group != "vip" {
+		t.Fatalf("unexpected groups = [%q %q], want [default vip]", rows[0].Group, rows[1].Group)
+	}
+}
+
+func TestListReferralTemplateBundlesAggregatesRowsByBundleKey(t *testing.T) {
+	setupReferralTemplateDB(t)
+
+	created, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType: ReferralTypeSubscription,
+		Groups:       []string{"default", "vip"},
+		Name:         "bundle-team",
+		LevelType:    ReferralLevelTypeTeam,
+		Enabled:      true,
+		TeamCapBps:   2600,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBundles(ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBundles() error = %v", err)
+	}
+	if len(bundles) != 1 {
+		t.Fatalf("bundle count = %d, want 1", len(bundles))
+	}
+	if bundles[0].BundleKey != created[0].BundleKey {
+		t.Fatalf("BundleKey = %q, want %q", bundles[0].BundleKey, created[0].BundleKey)
+	}
+	if strings.Join(bundles[0].Groups, ",") != "default,vip" {
+		t.Fatalf("Groups = %#v, want [default vip]", bundles[0].Groups)
+	}
+	if len(bundles[0].TemplateIDs) != 2 {
+		t.Fatalf("TemplateIDs count = %d, want 2", len(bundles[0].TemplateIDs))
+	}
+}
+
+func TestBackfillReferralTemplateBundleKeysPopulatesLegacyRows(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	legacy := &ReferralTemplate{
+		ReferralType: ReferralTypeSubscription,
+		Group:        "legacy",
+		Name:         "legacy-row",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+	}
+	if err := db.Create(legacy).Error; err != nil {
+		t.Fatalf("create legacy template: %v", err)
+	}
+	if err := db.Model(&ReferralTemplate{}).Where("id = ?", legacy.Id).UpdateColumn("bundle_key", "").Error; err != nil {
+		t.Fatalf("clear bundle key: %v", err)
+	}
+
+	if err := BackfillReferralTemplateBundleKeys(); err != nil {
+		t.Fatalf("BackfillReferralTemplateBundleKeys() error = %v", err)
+	}
+
+	reloaded, err := GetReferralTemplateByID(legacy.Id)
+	if err != nil {
+		t.Fatalf("reload legacy template: %v", err)
+	}
+	wantBundleKey := fmt.Sprintf("template:%d", legacy.Id)
+	if reloaded.BundleKey != wantBundleKey {
+		t.Fatalf("BundleKey = %q, want %q", reloaded.BundleKey, wantBundleKey)
+	}
+}
+
+func TestEnsureReferralTemplateSchemaCreatesBundleKeyIndex(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	const bundleKeyIndex = "idx_referral_templates_bundle_key"
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndex) {
+		t.Fatalf("expected %s to exist after automigrate", bundleKeyIndex)
+	}
+	if err := db.Migrator().DropIndex(&ReferralTemplate{}, bundleKeyIndex); err != nil {
+		t.Fatalf("DropIndex(%s) error = %v", bundleKeyIndex, err)
+	}
+	if db.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndex) {
+		t.Fatalf("expected %s to be dropped before ensureReferralTemplateSchema", bundleKeyIndex)
+	}
+
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("ensureReferralTemplateSchema() error = %v", err)
+	}
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, bundleKeyIndex) {
+		t.Fatalf("expected %s to be recreated", bundleKeyIndex)
+	}
+}
+
+func TestEnsureReferralTemplateSchemaIsIdempotent(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("first ensureReferralTemplateSchema() error = %v", err)
+	}
+	firstSchemaVersion := sqliteSchemaVersion(t, db)
+	firstScopedIndexRowID := sqliteIndexRowID(t, db, "uk_referral_template_scope_name")
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("second ensureReferralTemplateSchema() error = %v", err)
+	}
+
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
+		t.Fatal("expected unique scope+name index to remain present after repeated schema ensure")
+	}
+	secondScopedIndexRowID := sqliteIndexRowID(t, db, "uk_referral_template_scope_name")
+	if secondScopedIndexRowID != firstScopedIndexRowID {
+		t.Fatalf("expected repeated schema ensure to keep existing scoped unique index row, got rowid %d then %d", firstScopedIndexRowID, secondScopedIndexRowID)
+	}
+	secondSchemaVersion := sqliteSchemaVersion(t, db)
+	if secondSchemaVersion != firstSchemaVersion {
+		t.Fatalf("expected repeated schema ensure to avoid schema changes, got schema_version %d then %d", firstSchemaVersion, secondSchemaVersion)
+	}
+	if db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_name") {
+		t.Fatal("expected legacy unique name index to stay absent after repeated schema ensure")
 	}
 }
 
@@ -265,20 +479,20 @@ func TestReferralTemplateRejectsRenameToDuplicateName(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
 	firstTemplate := &ReferralTemplate{
-		Name:           "unique-template-a",
-		ReferralType:   ReferralTypeSubscription,
-		Group:          "vip",
-		LevelType:      ReferralLevelTypeDirect,
-		DirectCapBps:   1000,
-		TeamCapBps:     2000,
+		Name:         "unique-template-a",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+		TeamCapBps:   2000,
 	}
 	secondTemplate := &ReferralTemplate{
-		Name:           "unique-template-b",
-		ReferralType:   ReferralTypeSubscription,
-		Group:          "vip",
-		LevelType:      ReferralLevelTypeTeam,
-		DirectCapBps:   1000,
-		TeamCapBps:     2000,
+		Name:         "unique-template-b",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeTeam,
+		DirectCapBps: 1000,
+		TeamCapBps:   2000,
 	}
 	if err := db.Create(firstTemplate).Error; err != nil {
 		t.Fatalf("failed to create first template: %v", err)
@@ -298,12 +512,12 @@ func TestReferralTemplateBindingUsesTemplateScopeWhenCreating(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
 	template := &ReferralTemplate{
-		Name:           "starter-template",
-		ReferralType:   ReferralTypeSubscription,
-		Group:          "starter",
-		LevelType:      ReferralLevelTypeDirect,
-		DirectCapBps:   1000,
-		TeamCapBps:     2000,
+		Name:         "starter-template",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "starter",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+		TeamCapBps:   2000,
 	}
 	if err := db.Create(template).Error; err != nil {
 		t.Fatalf("failed to create template: %v", err)
@@ -332,16 +546,86 @@ func TestReferralTemplateBindingUsesTemplateScopeWhenCreating(t *testing.T) {
 	}
 }
 
+func TestReferralTemplateBindingIgnoresMissingTemplateRows(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	user := &User{
+		Username: "stale-binding-user",
+		Password: "password",
+		AffCode:  "stale_binding_user",
+		Group:    "default",
+	}
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	activeTemplate := &ReferralTemplate{
+		Name:                   "active-stale-binding-template",
+		ReferralType:           ReferralTypeSubscription,
+		Group:                  "vip",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1000,
+		InviteeShareDefaultBps: 500,
+	}
+	if err := db.Create(activeTemplate).Error; err != nil {
+		t.Fatalf("failed to create active template: %v", err)
+	}
+
+	staleBinding := &ReferralTemplateBinding{
+		UserId:       user.Id,
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		TemplateId:   activeTemplate.Id,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}
+	if err := db.Create(staleBinding).Error; err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+
+	if err := db.Delete(&ReferralTemplate{}, activeTemplate.Id).Error; err != nil {
+		t.Fatalf("failed to delete bound template: %v", err)
+	}
+
+	active, binding, err := HasActiveReferralTemplateBinding(user.Id, ReferralTypeSubscription, "vip")
+	if err != nil {
+		t.Fatalf("HasActiveReferralTemplateBinding() error = %v", err)
+	}
+	if active {
+		t.Fatal("expected missing template binding to be inactive")
+	}
+	if binding == nil {
+		t.Fatal("expected binding metadata even when template row is missing")
+	}
+
+	views, err := ListReferralTemplateBindingsByUser(user.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingsByUser() error = %v", err)
+	}
+	if len(views) != 0 {
+		t.Fatalf("binding view count = %d, want 0 when template row is missing", len(views))
+	}
+
+	view, err := GetReferralTemplateBindingViewByUserAndScope(user.Id, ReferralTypeSubscription, "vip")
+	if err != nil {
+		t.Fatalf("GetReferralTemplateBindingViewByUserAndScope() error = %v", err)
+	}
+	if view != nil {
+		t.Fatal("expected nil binding view when template row is missing")
+	}
+}
+
 func TestReferralTemplateBindingNormalizesPersistedScopeFromTemplate(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
 	template := &ReferralTemplate{
-		Name:           "vip-template",
-		ReferralType:   ReferralTypeSubscription,
-		Group:          "vip",
-		LevelType:      ReferralLevelTypeDirect,
-		DirectCapBps:   1000,
-		TeamCapBps:     2000,
+		Name:         "vip-template",
+		ReferralType: ReferralTypeSubscription,
+		Group:        "vip",
+		LevelType:    ReferralLevelTypeDirect,
+		DirectCapBps: 1000,
+		TeamCapBps:   2000,
 	}
 	if err := db.Create(template).Error; err != nil {
 		t.Fatalf("failed to create template: %v", err)

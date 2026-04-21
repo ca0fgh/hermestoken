@@ -3784,5 +3784,11 @@
   "加载提现列表失败": "Failed to load withdrawals",
   "无效的提现参数": "Invalid withdrawal payload",
   "请输入支付宝姓名": "Enter the Alipay name",
-  "支付宝姓名不能为空": "Alipay name is required"
+  "支付宝姓名不能为空": "Alipay name is required",
+  "新增模板组": "Add template bundle",
+  "管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。": "Manage referral template bundles. One bundle can cover multiple system groups, while runtime still matches a single-group template row for each group.",
+  "比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。": "Enter rate fields as percentages; they are converted to bps when saved: 10 means 10%, 25 means 25%. One template bundle can cover multiple system groups, and saving updates every linked group in that bundle together. A template name only needs to be unique within the same referral type + group. direct only configures the nearest direct inviter's rate; after a valid team is matched, the team pool is formed by “the first matched team rate - the direct rate”, then distributed across matched teams with the global weight. team means the nearest inviter settles directly with the team template. Team decay ratio and team max depth are configured globally in subscription referral settings rather than per template.",
+  "必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。": "You must choose at least one existing system group. Saving keeps one runtime template row for each selected group.",
+  "只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。": "Used only for admin identification and not for settlement. The template name only needs to be unique within the same referral type + group; name it by business meaning and template role.",
+  "确认删除该模板组及其覆盖的所有分组模板吗？": "Are you sure you want to delete this template bundle and every group template it covers?"
 }

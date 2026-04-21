@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { normalizeReferralTemplateItems } from '../src/helpers/referralTemplate.js';
 
 test('settings page exposes a referral tab and settings surface', () => {
   const source = fs.readFileSync('web/src/pages/Setting/index.jsx', 'utf8');
@@ -18,9 +19,9 @@ test('referral settings pages expose creation actions instead of read-only table
     'utf8',
   );
 
-  assert.match(templateSource, /新增模板/);
+  assert.match(templateSource, /新增模板组/);
   assert.match(templateSource, /保存/);
-  assert.match(templateSource, /同一返佣类型和分组下可以创建多个模板/);
+  assert.match(templateSource, /一个模板组可以覆盖多个系统分组/);
   assert.doesNotMatch(referralSettingSource, /SettingsReferralEngineRoutes/);
 });
 
@@ -48,7 +49,7 @@ test('referral settings page explains the meaning of template fields without eng
   assert.match(templateSource, /团队池按“首个命中 team 的比例 - direct 直推比例”成立/);
   assert.match(templateSource, /订阅返佣全局设置/);
   assert.match(templateSource, /这些参数对 subscription_referral 的整条团队返佣链统一生效/);
-  assert.match(templateSource, /模板名全局唯一/);
+  assert.match(templateSource, /模板名只需要在同一返佣类型 \+ 分组内保持唯一/);
   assert.match(templateSource, /被邀请人默认返佣比例/);
   assert.match(templateSource, /rateBpsToPercentNumber/);
   assert.match(templateSource, /percentNumberToRateBps/);
@@ -66,8 +67,69 @@ test('referral settings page explains the meaning of template fields without eng
   assert.match(templateSource, /实际生效优先级：单个 invitee 覆盖 > 用户绑定默认值 > 模板默认值/);
   assert.doesNotMatch(templateSource, /团队池说明/);
   assert.doesNotMatch(templateSource, /团队模板说明/);
-  assert.match(templateSource, /必须选择一个已存在的系统分组/);
+  assert.match(templateSource, /必须选择至少一个已存在的系统分组/);
   assert.match(templateSource, /optionList=\{groupOptions\}/);
   assert.doesNotMatch(templateSource, /留空表示通用模板/);
   assert.doesNotMatch(referralSettingSource, /返佣引擎路由/);
+});
+
+test('referral settings page requests bundle view and edits bundle groups', () => {
+  const templateSource = fs.readFileSync(
+    'web/src/pages/Setting/Referral/SettingsReferralTemplates.jsx',
+    'utf8',
+  );
+
+  assert.match(templateSource, /API\.get\('\/api\/referral\/templates',\s*\{\s*params:\s*\{\s*view:\s*'bundle'\s*\}\s*\}\)/);
+  assert.match(templateSource, /multiple=\{true\}/);
+  assert.match(templateSource, /value=\{row\.groups\}/);
+  assert.match(templateSource, /updateRow\(row\.id,\s*\{\s*groups:/);
+  assert.doesNotMatch(templateSource, /group:\s*row\.group/);
+});
+
+test('referral settings page saves bundle group arrays instead of a single group', () => {
+  const templateSource = fs.readFileSync(
+    'web/src/pages/Setting/Referral/SettingsReferralTemplates.jsx',
+    'utf8',
+  );
+
+  assert.match(templateSource, /groups:\s*row\.groups/);
+  assert.doesNotMatch(templateSource, /group:\s*row\.group/);
+});
+
+test('referral settings page copy describes multi-group bundles and scoped uniqueness', () => {
+  const templateSource = fs.readFileSync(
+    'web/src/pages/Setting/Referral/SettingsReferralTemplates.jsx',
+    'utf8',
+  );
+
+  assert.match(templateSource, /一个模板组可以覆盖多个系统分组/);
+  assert.match(templateSource, /模板名只需要在同一返佣类型 \+ 分组内保持唯一/);
+  assert.match(templateSource, /确认删除该模板组及其覆盖的所有分组模板吗/);
+  assert.doesNotMatch(templateSource, /模板名全局唯一/);
+});
+
+test('normalizeReferralTemplateItems normalizes bundle-shaped items', () => {
+  const [item] = normalizeReferralTemplateItems([
+    {
+      bundle_key: ' bundle-1 ',
+      template_ids: ['9', '3', '9', 0, null],
+      referral_type: ' subscription_referral ',
+      groups: [' vip ', 'default', 'vip', ''],
+      name: ' starter bundle ',
+      level_type: ' direct ',
+      enabled: 1,
+      direct_cap_bps: '1200',
+      team_cap_bps: '0',
+      invitee_share_default_bps: '300',
+    },
+  ]);
+
+  assert.equal(item.bundleKey, 'bundle-1');
+  assert.deepEqual(item.templateIds, [3, 9]);
+  assert.deepEqual(item.groups, ['default', 'vip']);
+  assert.equal(item.referralType, 'subscription_referral');
+  assert.equal(item.name, 'starter bundle');
+  assert.equal(item.levelType, 'direct');
+  assert.equal(item.directCapBps, 1200);
+  assert.equal(item.inviteeShareDefaultBps, 300);
 });
