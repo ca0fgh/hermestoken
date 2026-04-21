@@ -521,11 +521,6 @@ func ensureReferralTemplateSchema() error {
 			return err
 		}
 	}
-	if DB.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
-		if err := DB.Migrator().DropIndex(&ReferralTemplate{}, "uk_referral_template_scope_name"); err != nil {
-			return err
-		}
-	}
 	if !DB.Migrator().HasIndex(&ReferralTemplate{}, "idx_referral_template_scope_name") {
 		if err := DB.Migrator().CreateIndex(&ReferralTemplate{}, "idx_referral_template_scope_name"); err != nil {
 			return err

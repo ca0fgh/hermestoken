@@ -79,6 +79,28 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func sqliteSchemaVersion(t *testing.T, db *gorm.DB) int64 {
+	t.Helper()
+
+	var version int64
+	row := db.Raw("PRAGMA schema_version").Row()
+	if err := row.Scan(&version); err != nil {
+		t.Fatalf("lookup sqlite schema version: %v", err)
+	}
+	return version
+}
+
+func sqliteIndexRowID(t *testing.T, db *gorm.DB, indexName string) int64 {
+	t.Helper()
+
+	var rowID int64
+	row := db.Raw("SELECT rowid FROM sqlite_master WHERE type = ? AND name = ?", "index", indexName).Row()
+	if err := row.Scan(&rowID); err != nil {
+		t.Fatalf("lookup sqlite_master rowid for index %s: %v", indexName, err)
+	}
+	return rowID
+}
+
 func TestReferralTemplateRejectsInvalidSubscriptionRules(t *testing.T) {
 	db := setupReferralTemplateDB(t)
 
@@ -431,12 +453,22 @@ func TestEnsureReferralTemplateSchemaIsIdempotent(t *testing.T) {
 	if err := ensureReferralTemplateSchema(); err != nil {
 		t.Fatalf("first ensureReferralTemplateSchema() error = %v", err)
 	}
+	firstSchemaVersion := sqliteSchemaVersion(t, db)
+	firstScopedIndexRowID := sqliteIndexRowID(t, db, "uk_referral_template_scope_name")
 	if err := ensureReferralTemplateSchema(); err != nil {
 		t.Fatalf("second ensureReferralTemplateSchema() error = %v", err)
 	}
 
 	if !db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_scope_name") {
 		t.Fatal("expected unique scope+name index to remain present after repeated schema ensure")
+	}
+	secondScopedIndexRowID := sqliteIndexRowID(t, db, "uk_referral_template_scope_name")
+	if secondScopedIndexRowID != firstScopedIndexRowID {
+		t.Fatalf("expected repeated schema ensure to keep existing scoped unique index row, got rowid %d then %d", firstScopedIndexRowID, secondScopedIndexRowID)
+	}
+	secondSchemaVersion := sqliteSchemaVersion(t, db)
+	if secondSchemaVersion != firstSchemaVersion {
+		t.Fatalf("expected repeated schema ensure to avoid schema changes, got schema_version %d then %d", firstSchemaVersion, secondSchemaVersion)
 	}
 	if db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_name") {
 		t.Fatal("expected legacy unique name index to stay absent after repeated schema ensure")
