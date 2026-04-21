@@ -159,6 +159,90 @@ func TestGetSubscriptionReferralSelfReturnsIncomingInviteeOverrideGroups(t *test
 	}
 }
 
+func TestGetSubscriptionReferralSelfReturnsReceivedContributionDetails(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	common.QuotaPerUnit = 100
+
+	inviter := seedSubscriptionReferralControllerUser(t, "self-incoming-detail-inviter", 0, dto.UserSetting{})
+	user := seedSubscriptionReferralControllerUser(t, "self-incoming-detail-user", inviter.Id, dto.UserSetting{})
+	seedActiveSubscriptionReferralBinding(t, inviter.Id, "vip", model.ReferralLevelTypeDirect, 0)
+	if _, err := model.UpsertReferralInviteeShareOverride(inviter.Id, user.Id, model.ReferralTypeSubscription, "vip", 300, inviter.Id); err != nil {
+		t.Fatalf("failed to seed invitee override: %v", err)
+	}
+
+	plan := seedSubscriptionPlan(t, model.DB, "self-incoming-detail-plan")
+	plan.UpgradeGroup = "vip"
+	if err := model.DB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("upgrade_group", plan.UpgradeGroup).Error; err != nil {
+		t.Fatalf("failed to update plan upgrade group: %v", err)
+	}
+	model.InvalidateSubscriptionPlanCache(plan.Id)
+
+	order := &model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         10,
+		TradeNo:       "self-incoming-detail-order",
+		PaymentMethod: "epay",
+		Status:        common.TopUpStatusPending,
+		CreateTime:    common.GetTimestamp(),
+	}
+	if err := model.DB.Create(order).Error; err != nil {
+		t.Fatalf("failed to create order: %v", err)
+	}
+	if err := model.CompleteSubscriptionOrder(order.TradeNo, `{"ok":true}`); err != nil {
+		t.Fatalf("failed to complete order: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var data struct {
+		ReceivedContributionDetails []struct {
+			TradeNo               string `json:"trade_no"`
+			Group                 string `json:"group"`
+			RewardComponent       string `json:"reward_component"`
+			SourceRewardComponent string `json:"source_reward_component"`
+			RoleType              string `json:"role_type"`
+			EffectiveRewardQuota  int64  `json:"effective_reward_quota"`
+			Status                string `json:"status"`
+		} `json:"received_contribution_details"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(data.ReceivedContributionDetails) != 1 {
+		t.Fatalf("received_contribution_details length = %d, want 1", len(data.ReceivedContributionDetails))
+	}
+	detail := data.ReceivedContributionDetails[0]
+	if detail.TradeNo != order.TradeNo {
+		t.Fatalf("trade_no = %q, want %q", detail.TradeNo, order.TradeNo)
+	}
+	if detail.Group != "vip" {
+		t.Fatalf("group = %q, want vip", detail.Group)
+	}
+	if detail.RewardComponent != "invitee_reward" {
+		t.Fatalf("reward_component = %q, want invitee_reward", detail.RewardComponent)
+	}
+	if detail.SourceRewardComponent != "direct_reward" {
+		t.Fatalf("source_reward_component = %q, want direct_reward", detail.SourceRewardComponent)
+	}
+	if detail.RoleType != model.ReferralLevelTypeDirect {
+		t.Fatalf("role_type = %q, want %q", detail.RoleType, model.ReferralLevelTypeDirect)
+	}
+	if detail.EffectiveRewardQuota <= 0 {
+		t.Fatalf("effective_reward_quota = %d, want > 0", detail.EffectiveRewardQuota)
+	}
+	if detail.Status != "credited" {
+		t.Fatalf("status = %q, want credited", detail.Status)
+	}
+}
+
 func TestAdminReverseSubscriptionReferralIsIdempotent(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	tradeNo := seedSubscriptionReferralControllerTradeNo(t)

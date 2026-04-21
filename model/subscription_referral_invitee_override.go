@@ -212,3 +212,63 @@ func ListSubscriptionReferralInviteeContributionDetails(inviterUserId int, invit
 	}
 	return details, nil
 }
+
+func ListSubscriptionReferralReceivedContributionDetails(inviterUserId int, inviteeUserId int) ([]*SubscriptionReferralInviteeContributionDetail, error) {
+	if inviterUserId <= 0 {
+		return nil, errors.New("invalid inviter user id")
+	}
+	if inviteeUserId <= 0 {
+		return nil, errors.New("invalid invitee user id")
+	}
+	if _, err := GetUserById(inviterUserId, false); err != nil {
+		return nil, err
+	}
+	if _, err := GetUserById(inviteeUserId, false); err != nil {
+		return nil, err
+	}
+
+	roleTypeExpr := strings.Join([]string{
+		"CASE",
+		"WHEN COALESCE(records.source_reward_component, '') = 'team_direct_reward' THEN 'team'",
+		"WHEN COALESCE(records.source_reward_component, '') = 'direct_reward' THEN 'direct'",
+		"ELSE COALESCE(records.beneficiary_level_type, '')",
+		"END",
+	}, " ")
+
+	selectColumns := strings.Join([]string{
+		"records.batch_id AS batch_id",
+		"batches.source_trade_no AS trade_no",
+		subscriptionSettlementGroupSelectExpr("batches"),
+		"records.reward_component AS reward_component",
+		"COALESCE(records.source_reward_component, '') AS source_reward_component",
+		roleTypeExpr + " AS role_type",
+		"records.reward_quota AS reward_quota",
+		"records.reversed_quota AS reversed_quota",
+		"records.debt_quota AS debt_quota",
+		"(records.reward_quota - records.reversed_quota - records.debt_quota) AS effective_reward_quota",
+		"records.status AS status",
+		"batches.settled_at AS settled_at",
+		"records.created_at AS created_at",
+	}, ", ")
+
+	details := make([]*SubscriptionReferralInviteeContributionDetail, 0)
+	err := DB.Table("referral_settlement_records AS records").
+		Select(selectColumns).
+		Joins("JOIN referral_settlement_batches AS batches ON batches.id = records.batch_id").
+		Where(
+			"records.referral_type = ? AND batches.immediate_inviter_user_id = ? AND batches.payer_user_id = ? AND records.beneficiary_user_id = ? AND records.reward_component = ?",
+			ReferralTypeSubscription,
+			inviterUserId,
+			inviteeUserId,
+			inviteeUserId,
+			"invitee_reward",
+		).
+		Order("batches.settled_at DESC").
+		Order("records.batch_id DESC").
+		Order("records.id ASC").
+		Scan(&details).Error
+	if err != nil {
+		return nil, err
+	}
+	return details, nil
+}

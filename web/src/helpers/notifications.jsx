@@ -21,6 +21,7 @@ import React from 'react';
 import { toast } from 'react-toastify';
 import { toastConstants } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { matchesMediaQuery } from './mediaQuery';
 
 const HTMLToastContent = ({ htmlContent }) => {
   return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
@@ -32,9 +33,9 @@ let showInfoOptions = { autoClose: toastConstants.INFO_TIMEOUT };
 let showWarningOptions = { autoClose: toastConstants.WARNING_TIMEOUT };
 let showNoticeOptions = { autoClose: false };
 
-const isMobileScreen = window.matchMedia(
+const isMobileScreen = matchesMediaQuery(
   `(max-width: ${MOBILE_BREAKPOINT - 1}px)`,
-).matches;
+);
 if (isMobileScreen) {
   showErrorOptions.position = 'top-center';
   showSuccessOptions.position = 'top-center';

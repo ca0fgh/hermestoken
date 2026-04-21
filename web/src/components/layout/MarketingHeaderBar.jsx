@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, {
   Suspense,
-  lazy,
   useEffect,
   useMemo,
   useRef,
@@ -39,11 +38,15 @@ import {
   Sun,
 } from 'lucide-react';
 import HeaderLogo from './headerbar/HeaderLogo';
+import { lazyWithRetry } from '../../helpers/lazyWithRetry';
 import { useHeaderBar } from '../../hooks/common/useHeaderBar';
 import { useNavigation } from '../../hooks/common/useNavigation';
 import { useNotifications } from '../../hooks/common/useNotifications';
 
-const MarketingNoticeModal = lazy(() => import('./MarketingNoticeModal'));
+const MarketingNoticeModal = lazyWithRetry(
+  () => import('./MarketingNoticeModal'),
+  'marketing-notice-modal',
+);
 
 const themeIconMap = {
   auto: Monitor,

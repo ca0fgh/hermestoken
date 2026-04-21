@@ -163,6 +163,26 @@ export function renderQuota(quota, digits = 2) {
   return symbol + fixedResult;
 }
 
+export function renderQuotaWithLessThanFloor(quota, digits = 2) {
+  const numericQuota = Number(quota || 0);
+  if (!Number.isFinite(numericQuota) || numericQuota <= 0) {
+    return renderQuota(numericQuota, digits);
+  }
+
+  const { symbol, type } = getCurrencyConfig();
+  if (type === 'TOKENS') {
+    return renderQuota(numericQuota, digits);
+  }
+
+  const displayAmount = quotaToDisplayAmount(numericQuota);
+  const minValue = Math.pow(10, -digits);
+  if (displayAmount > 0 && displayAmount < minValue) {
+    return `<${symbol}${minValue.toFixed(digits)}`;
+  }
+
+  return renderQuota(numericQuota, digits);
+}
+
 export function quotaToDisplayAmount(quota) {
   const numericQuota = Number(quota || 0);
   if (!Number.isFinite(numericQuota) || numericQuota <= 0) {
@@ -193,6 +213,7 @@ export function displayAmountToQuota(amount) {
     return Math.round(numericAmount);
   }
 
-  const usdAmount = type === 'USD' ? numericAmount : numericAmount / (rate || 1);
+  const usdAmount =
+    type === 'USD' ? numericAmount : numericAmount / (rate || 1);
   return Math.round(usdAmount * getQuotaPerUnit());
 }

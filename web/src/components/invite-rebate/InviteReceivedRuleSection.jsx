@@ -79,7 +79,7 @@ const InviteReceivedRuleSection = ({ t, rows = [], loading = false }) => {
                 ) : null}
               </div>
 
-              <div className='mt-4 grid grid-cols-1 gap-4 md:grid-cols-4'>
+              <div className='mt-4 grid grid-cols-1 gap-4 md:grid-cols-3'>
                 <div>
                   <Typography.Text type='tertiary' className='block text-xs'>
                     {t('当前返佣方案')}
@@ -90,7 +90,9 @@ const InviteReceivedRuleSection = ({ t, rows = [], loading = false }) => {
                   <Typography.Text type='tertiary' className='block text-xs'>
                     {t('返佣模式')}
                   </Typography.Text>
-                  <Typography.Text strong>{formatModeLabel(row?.levelType)}</Typography.Text>
+                  <Typography.Text strong>
+                    {formatModeLabel(row?.levelType)}
+                  </Typography.Text>
                 </div>
                 <div>
                   <Typography.Text type='tertiary' className='block text-xs'>
@@ -98,31 +100,15 @@ const InviteReceivedRuleSection = ({ t, rows = [], loading = false }) => {
                   </Typography.Text>
                   <Typography.Text strong>{group}</Typography.Text>
                 </div>
-                <div>
-                  <Typography.Text type='tertiary' className='block text-xs'>
-                    {t('本组总返佣比例')}
-                  </Typography.Text>
-                  <Typography.Text strong>
-                    {formatRateBpsPercent(row?.effectiveTotalRateBps)}
-                  </Typography.Text>
-                </div>
               </div>
 
-              <div className='mt-4 grid grid-cols-1 gap-4 md:grid-cols-2'>
+              <div className='mt-4 grid grid-cols-1 gap-4 md:grid-cols-1'>
                 <div>
                   <Typography.Text type='tertiary' className='block text-xs'>
                     {t('给我的返佣比例')}
                   </Typography.Text>
                   <Typography.Text strong>
                     {formatRateBpsPercent(row?.effectiveInviteeRateBps)}
-                  </Typography.Text>
-                </div>
-                <div>
-                  <Typography.Text type='tertiary' className='block text-xs'>
-                    {t('你本单保留比例')}
-                  </Typography.Text>
-                  <Typography.Text strong>
-                    {formatRateBpsPercent(row?.effectiveInviterRateBps)}
                   </Typography.Text>
                 </div>
               </div>

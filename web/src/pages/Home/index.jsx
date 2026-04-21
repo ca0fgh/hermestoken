@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, {
   Suspense,
-  lazy,
   useCallback,
   useEffect,
   useRef,
@@ -29,9 +28,12 @@ import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
 import { useTranslation } from 'react-i18next';
 import { showError } from '../../helpers/notifications';
+import { lazyWithRetry } from '../../helpers/lazyWithRetry';
+import { readStoredValue } from '../../helpers/storageJson';
 
-const MarketingNoticeModal = lazy(
+const MarketingNoticeModal = lazyWithRetry(
   () => import('../../components/layout/MarketingNoticeModal'),
+  'marketing-notice-modal',
 );
 
 
@@ -153,7 +155,7 @@ const Home = () => {
 
   useEffect(() => {
     const checkNoticeAndShow = async () => {
-      const lastCloseDate = localStorage.getItem('notice_close_date');
+      const lastCloseDate = readStoredValue('notice_close_date', '');
       const today = new Date().toDateString();
       if (lastCloseDate !== today) {
         try {

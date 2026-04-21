@@ -24,10 +24,12 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
   assert.match(pageSource, /InviteRebateSummary/);
   assert.match(pageSource, /InviteDefaultRuleSection/);
   assert.match(pageSource, /InviteReceivedRuleSection/);
+  assert.match(pageSource, /InviteReceivedContributionSection/);
   assert.match(pageSource, /InviteeListPanel/);
   assert.match(pageSource, /InviteeOverridePanel/);
   assert.match(pageSource, /normalizeInviteeContributionPage/);
   assert.match(pageSource, /buildInviteDefaultRuleRows/);
+  assert.match(pageSource, /buildReceivedContributionDetailCards/);
   assert.match(pageSource, /buildReceivedInviteeRuleRows/);
   assert.match(pageSource, /buildInviteeContributionDetailCards/);
   assert.match(pageSource, /buildInviteeOverrideRows/);
@@ -84,6 +86,9 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   const receivedRuleSource = readSource(
     'src/components/invite-rebate/InviteReceivedRuleSection.jsx',
   );
+  const receivedContributionSource = readSource(
+    'src/components/invite-rebate/InviteReceivedContributionSection.jsx',
+  );
   const listSource = readSource(
     'src/components/invite-rebate/InviteeListPanel.jsx',
   );
@@ -107,8 +112,14 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(defaultRuleSource, /ListPagination/);
   assert.doesNotMatch(defaultRuleSource, /Pagination,/);
   assert.match(defaultRuleSource, /slice\(/);
-  assert.doesNotMatch(defaultRuleSource, /API\.put\('\/api\/user\/referral\/subscription'/);
-  assert.doesNotMatch(defaultRuleSource, /API\.delete\('\/api\/user\/referral\/subscription'/);
+  assert.doesNotMatch(
+    defaultRuleSource,
+    /API\.put\('\/api\/user\/referral\/subscription'/,
+  );
+  assert.doesNotMatch(
+    defaultRuleSource,
+    /API\.delete\('\/api\/user\/referral\/subscription'/,
+  );
 
   assert.match(receivedRuleSource, /t\('上级给我的返佣'\)/);
   assert.match(
@@ -118,12 +129,37 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(receivedRuleSource, /t\('邀请人'\)/);
   assert.match(receivedRuleSource, /t\('返佣模式'\)/);
   assert.match(receivedRuleSource, /t\('所在分组'\)/);
-  assert.match(receivedRuleSource, /t\('本组总返佣比例'\)/);
   assert.match(receivedRuleSource, /t\('给我的返佣比例'\)/);
-  assert.match(receivedRuleSource, /t\('你本单保留比例'\)/);
   assert.match(receivedRuleSource, /t\('已单独设置返佣'\)/);
   assert.match(receivedRuleSource, /ListPagination/);
   assert.match(receivedRuleSource, /slice\(/);
+  assert.doesNotMatch(receivedRuleSource, /t\('本组总返佣比例'\)/);
+  assert.doesNotMatch(receivedRuleSource, /t\('你本单保留比例'\)/);
+
+  assert.match(receivedContributionSource, /t\('上级返给我的流水'\)/);
+  assert.match(
+    receivedContributionSource,
+    /t\('这里展示邀请人返给你的返佣到账记录。'\)/,
+  );
+  assert.match(receivedContributionSource, /t\('到账订单数'\)/);
+  assert.match(receivedContributionSource, /t\('累计收到返佣'\)/);
+  assert.match(receivedContributionSource, /t\('来源返佣'\)/);
+  assert.match(receivedContributionSource, /t\('来源身份'\)/);
+  assert.match(receivedContributionSource, /t\('到账返佣'\)/);
+  assert.match(receivedContributionSource, /t\('收到返佣'\)/);
+  assert.match(receivedContributionSource, /buildInviteeContributionSummary/);
+  assert.match(
+    receivedContributionSource,
+    /buildInviteeContributionLedgerRows/,
+  );
+  assert.match(receivedContributionSource, /renderQuotaWithLessThanFloor/);
+  assert.equal(
+    (receivedContributionSource.match(/renderQuotaWithLessThanFloor\(/g) || [])
+      .length,
+    2,
+  );
+  assert.match(receivedContributionSource, /timestamp2string/);
+  assert.match(receivedContributionSource, /ListPagination/);
 
   assert.match(listSource, /t\('我的邀请用户'\)/);
   assert.match(listSource, /t\('搜索用户名 \/ 用户ID \/ 分组'\)/);
@@ -170,7 +206,10 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
     overrideSource,
     /t\('从左侧选择一位邀请用户后，可查看返佣流水并单独设置返佣比例。'\)/,
   );
-  assert.match(overrideSource, /t\('未单独设置时，自动使用当前返佣方案默认值。'\)/);
+  assert.match(
+    overrideSource,
+    /t\('未单独设置时，自动使用当前返佣方案默认值。'\)/,
+  );
   assert.match(overrideSource, /t\('暂无可覆盖的模板作用域'\)/);
   assert.match(overrideSource, /t\('当前返佣方案'\)/);
   assert.match(overrideSource, /t\('返佣模式'\)/);
@@ -183,17 +222,17 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(overrideSource, /buildInviteeContributionSummary/);
   assert.match(overrideSource, /buildInviteeContributionLedgerRows/);
   assert.match(overrideSource, /<Tabs/);
-  assert.match(overrideSource, /useEffect\(\(\) => \{\s*setDraftPercentByGroup\(buildInviteeOverrideDraftPercentMap\(normalizedRows\)\);\s*\}, \[invitee\?\.id, normalizedRows\]\);/s);
+  assert.match(
+    overrideSource,
+    /useEffect\(\(\) => \{\s*setDraftPercentByGroup\(buildInviteeOverrideDraftPercentMap\(normalizedRows\)\);\s*\}, \[invitee\?\.id, normalizedRows\]\);/s,
+  );
   assert.match(overrideSource, /t\(item\.roleLabel\)/);
   assert.match(overrideSource, /t\(item\.componentLabel\)/);
   assert.match(overrideSource, /formatContributionStatusLabel/);
   assert.match(overrideSource, /ListPagination/);
   assert.doesNotMatch(overrideSource, /Pagination,/);
   assert.match(overrideSource, /slice\(/);
-  assert.match(
-    overrideSource,
-    /t\('贡献流水'\)[\s\S]*t\('单独返佣设置'\)/,
-  );
+  assert.match(overrideSource, /t\('贡献流水'\)[\s\S]*t\('单独返佣设置'\)/);
   assert.match(
     overrideSource,
     /API\.put\(\s*`\/api\/user\/referral\/subscription\/invitees\/\$\{invitee\.id\}`,\s*\{/,

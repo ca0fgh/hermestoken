@@ -9,6 +9,12 @@ const tokenHookPath = new URL('../src/hooks/tokens/useTokensData.jsx', import.me
 const tokenColumnsPath = new URL('../src/components/table/tokens/TokensColumnDefs.jsx', import.meta.url);
 const ccSwitchModalPath = new URL('../src/components/table/tokens/modals/CCSwitchModal.jsx', import.meta.url);
 const notificationsHookPath = new URL('../src/hooks/common/useNotifications.js', import.meta.url);
+const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
+const marketingNoticeModalPath = new URL(
+  '../src/components/layout/MarketingNoticeModal.jsx',
+  import.meta.url,
+);
+const noticeModalPath = new URL('../src/components/layout/NoticeModal.jsx', import.meta.url);
 
 function readSource(url) {
   return readFileSync(url, 'utf8');
@@ -22,10 +28,17 @@ test('shared storage helpers guard malformed localStorage JSON for token and not
   const tokenColumnsSource = readSource(tokenColumnsPath);
   const ccSwitchModalSource = readSource(ccSwitchModalPath);
   const notificationsSource = readSource(notificationsHookPath);
+  const homeSource = readSource(homePath);
+  const marketingNoticeModalSource = readSource(marketingNoticeModalPath);
+  const noticeModalSource = readSource(noticeModalPath);
 
+  assert.match(storageSource, /export function readStoredValue\(key, fallback = null\)/);
   assert.match(storageSource, /export function readStoredJson\(key, fallback = null\)/);
+  assert.match(storageSource, /const rawValue = readStoredValue\(key, null\);/);
   assert.match(storageSource, /return JSON\.parse\(rawValue\);/);
   assert.match(storageSource, /catch \{\s*return fallback;\s*\}/s);
+  assert.match(storageSource, /export function writeStoredValue\(key, value\)/);
+  assert.match(storageSource, /export function removeStoredValue\(key\)/);
   assert.match(storageSource, /export function getStoredServerAddress\(\)/);
   assert.match(storageSource, /window\.location\.origin/);
   assert.match(storageSource, /export function getStoredUser\(\)/);
@@ -54,4 +67,22 @@ test('shared storage helpers guard malformed localStorage JSON for token and not
   assert.match(notificationsSource, /from '\.\.\/\.\.\/helpers\/storageJson';/);
   assert.match(notificationsSource, /readStoredArray\('notice_read_keys'\)/);
   assert.doesNotMatch(notificationsSource, /JSON\.parse\(localStorage\.getItem\('notice_read_keys'\)\)/);
+
+  assert.match(homeSource, /from '\.\.\/\.\.\/helpers\/storageJson';/);
+  assert.match(homeSource, /readStoredValue\('notice_close_date', ''\)/);
+  assert.doesNotMatch(homeSource, /localStorage\.getItem\('notice_close_date'\)/);
+
+  assert.match(marketingNoticeModalSource, /from '\.\.\/\.\.\/helpers\/storageJson';/);
+  assert.match(marketingNoticeModalSource, /writeStoredValue\('notice_close_date', today\)/);
+  assert.doesNotMatch(
+    marketingNoticeModalSource,
+    /localStorage\.setItem\('notice_close_date', today\)/,
+  );
+
+  assert.match(noticeModalSource, /from '\.\.\/\.\.\/helpers\/storageJson';/);
+  assert.match(noticeModalSource, /writeStoredValue\('notice_close_date', today\)/);
+  assert.doesNotMatch(
+    noticeModalSource,
+    /localStorage\.setItem\('notice_close_date', today\)/,
+  );
 });

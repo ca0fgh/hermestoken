@@ -27,6 +27,7 @@ import {
 } from '../constants/playground.constants';
 import { TABLE_COMPACT_MODES_KEY } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { matchesMediaQuery } from './mediaQuery';
 import ListPagination from '../components/common/ui/ListPagination';
 
 const HTMLToastContent = ({ htmlContent }) => {
@@ -114,9 +115,9 @@ let showSuccessOptions = { autoClose: toastConstants.SUCCESS_TIMEOUT };
 let showInfoOptions = { autoClose: toastConstants.INFO_TIMEOUT };
 let showNoticeOptions = { autoClose: false };
 
-const isMobileScreen = window.matchMedia(
+const isMobileScreen = matchesMediaQuery(
   `(max-width: ${MOBILE_BREAKPOINT - 1}px)`,
-).matches;
+);
 if (isMobileScreen) {
   showErrorOptions.position = 'top-center';
   // showErrorOptions.transition = 'flip';

@@ -28,12 +28,14 @@ import {
 } from '../../helpers/inviteeDetailRequestGuard';
 import {
   buildInviteDefaultRuleRows,
+  buildReceivedContributionDetailCards,
   buildReceivedInviteeRuleRows,
   buildInviteeContributionDetailCards,
   buildInviteeOverrideRows,
   normalizeInviteeContributionPage,
 } from '../../helpers/inviteRebate';
 import InviteDefaultRuleSection from './InviteDefaultRuleSection';
+import InviteReceivedContributionSection from './InviteReceivedContributionSection';
 import InviteReceivedRuleSection from './InviteReceivedRuleSection';
 import InviteRebateSummary from './InviteRebateSummary';
 import InviteeListPanel from './InviteeListPanel';
@@ -52,6 +54,9 @@ const InviteRebatePage = () => {
   const { t } = useTranslation();
   const [defaultRuleRows, setDefaultRuleRows] = useState([]);
   const [receivedRuleRows, setReceivedRuleRows] = useState([]);
+  const [receivedContributionCards, setReceivedContributionCards] = useState(
+    [],
+  );
   const [inviteePage, setInviteePage] = useState(initialPageState);
   const [keyword, setKeyword] = useState('');
   const [queryKeyword, setQueryKeyword] = useState('');
@@ -80,14 +85,19 @@ const InviteRebatePage = () => {
         const responseData = res.data?.data || {};
         setDefaultRuleRows(buildInviteDefaultRuleRows(responseData?.groups));
         setReceivedRuleRows(buildReceivedInviteeRuleRows(responseData));
+        setReceivedContributionCards(
+          buildReceivedContributionDetailCards(responseData),
+        );
       } else {
         setDefaultRuleRows([]);
         setReceivedRuleRows([]);
+        setReceivedContributionCards([]);
         showError(res.data?.message || t('加载失败'));
       }
     } catch (error) {
       setDefaultRuleRows([]);
       setReceivedRuleRows([]);
+      setReceivedContributionCards([]);
       showError(error?.message || t('加载失败'));
     } finally {
       setLoadingDefaults(false);
@@ -234,7 +244,9 @@ const InviteRebatePage = () => {
             {t('邀请返佣')}
           </Typography.Title>
           <Typography.Text type='secondary' className='max-w-3xl block'>
-            {t('查看邀请用户贡献给你的返佣流水，并为个别用户单独设置返佣比例。')}
+            {t(
+              '查看邀请用户贡献给你的返佣流水，并为个别用户单独设置返佣比例。',
+            )}
           </Typography.Text>
         </div>
 
@@ -242,6 +254,14 @@ const InviteRebatePage = () => {
           <InviteReceivedRuleSection
             t={t}
             rows={receivedRuleRows}
+            loading={loadingDefaults}
+          />
+        ) : null}
+
+        {receivedRuleRows.length > 0 || receivedContributionCards.length > 0 ? (
+          <InviteReceivedContributionSection
+            t={t}
+            cards={receivedContributionCards}
             loading={loadingDefaults}
           />
         ) : null}

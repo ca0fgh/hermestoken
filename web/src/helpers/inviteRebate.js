@@ -132,12 +132,10 @@ export function buildReceivedInviteeRuleRows(payload = {}) {
           normalizeRateBps(
             groupItem?.effective_inviter_rate_bps ??
               groupItem?.effectiveInviterRateBps ??
-              (effectiveTotalRateBps - effectiveInviteeRateBps),
+              effectiveTotalRateBps - effectiveInviteeRateBps,
           ),
         ),
-        hasOverride: Boolean(
-          groupItem?.has_override ?? groupItem?.hasOverride,
-        ),
+        hasOverride: Boolean(groupItem?.has_override ?? groupItem?.hasOverride),
       },
     ];
   }, []);
@@ -225,7 +223,8 @@ export function buildInviteeContributionSummary(cards = []) {
       const nextSummary = {
         ...summary,
         orderCount: summary.orderCount + 1,
-        ownRewardQuota: summary.ownRewardQuota + normalizeCount(card?.ownRewardQuota),
+        ownRewardQuota:
+          summary.ownRewardQuota + normalizeCount(card?.ownRewardQuota),
         inviteeRewardQuota:
           summary.inviteeRewardQuota + normalizeCount(card?.inviteeRewardQuota),
       };
@@ -280,20 +279,29 @@ export function buildInviteeContributionLedgerRows(cards = []) {
       roleType: String(item?.roleType || '').trim(),
       roleLabel: String(item?.roleLabel || '').trim(),
       componentLabel: String(item?.componentLabel || '').trim(),
+      sourceComponentLabel: String(item?.sourceComponentLabel || '').trim(),
       effectiveRewardQuota: normalizeCount(item?.effectiveRewardQuota),
       isInviteeShare:
         Boolean(item?.isInviteeShare) ||
-        String(item?.componentLabel || '').trim() === '返给对方',
+        ['返给对方', '收到返佣'].includes(
+          String(item?.componentLabel || '').trim(),
+        ),
     }));
 
     return [...rows, ...cardRows];
   }, []);
 }
 
-function normalizeContributionDetailRoleType(rewardComponent, roleType, sourceRewardComponent) {
+function normalizeContributionDetailRoleType(
+  rewardComponent,
+  roleType,
+  sourceRewardComponent,
+) {
   const normalizedRewardComponent = String(rewardComponent || '').trim();
   const normalizedRoleType = String(roleType || '').trim();
-  const normalizedSourceRewardComponent = String(sourceRewardComponent || '').trim();
+  const normalizedSourceRewardComponent = String(
+    sourceRewardComponent || '',
+  ).trim();
 
   if (normalizedRoleType) {
     return normalizedRoleType;
@@ -322,7 +330,10 @@ function normalizeContributionDetailRoleType(rewardComponent, roleType, sourceRe
   return '';
 }
 
-function resolveContributionComponentLabel(rewardComponent) {
+function resolveContributionComponentLabel(
+  rewardComponent,
+  perspective = 'inviter',
+) {
   const normalizedRewardComponent = String(rewardComponent || '').trim();
   if (normalizedRewardComponent === 'team_direct_reward') {
     return '团队直返';
@@ -331,6 +342,9 @@ function resolveContributionComponentLabel(rewardComponent) {
     return '团队级差';
   }
   if (normalizedRewardComponent === 'invitee_reward') {
+    if (perspective === 'invitee') {
+      return '收到返佣';
+    }
     return '返给对方';
   }
   return '直推返佣';
@@ -346,11 +360,7 @@ function resolveContributionRoleLabel(roleType) {
   return '-';
 }
 
-export function buildInviteeContributionDetailCards(payload = {}) {
-  const details = Array.isArray(payload?.contribution_details)
-    ? payload.contribution_details
-    : [];
-
+function buildContributionDetailCards(details = [], perspective = 'inviter') {
   return details.reduce((cards, detailItem) => {
     const batchId = normalizeCount(detailItem?.batch_id);
     const tradeNo = String(detailItem?.trade_no || '').trim();
@@ -374,15 +384,21 @@ export function buildInviteeContributionDetailCards(payload = {}) {
     const isInviteeShare = rewardComponent === 'invitee_reward';
     const cardId = `${batchId}:${tradeNo}`;
     const nextItem = {
-      id: `${cardId}:${cards
-        .find((card) => card.id === cardId)
-        ?.items.length || 0}`,
+      id: `${cardId}:${
+        cards.find((card) => card.id === cardId)?.items.length || 0
+      }`,
       rewardComponent,
       sourceRewardComponent,
+      sourceComponentLabel: sourceRewardComponent
+        ? resolveContributionComponentLabel(sourceRewardComponent)
+        : '',
       roleType,
       effectiveRewardQuota,
       status,
-      componentLabel: resolveContributionComponentLabel(rewardComponent),
+      componentLabel: resolveContributionComponentLabel(
+        rewardComponent,
+        perspective,
+      ),
       roleLabel: resolveContributionRoleLabel(roleType),
       isInviteeShare,
     };
@@ -411,11 +427,28 @@ export function buildInviteeContributionDetailCards(payload = {}) {
       }
       return {
         ...card,
-        ownRewardQuota: card.ownRewardQuota + (isInviteeShare ? 0 : effectiveRewardQuota),
+        ownRewardQuota:
+          card.ownRewardQuota + (isInviteeShare ? 0 : effectiveRewardQuota),
         inviteeRewardQuota:
           card.inviteeRewardQuota + (isInviteeShare ? effectiveRewardQuota : 0),
         items: [...card.items, nextItem],
       };
     });
   }, []);
+}
+
+export function buildInviteeContributionDetailCards(payload = {}) {
+  const details = Array.isArray(payload?.contribution_details)
+    ? payload.contribution_details
+    : [];
+
+  return buildContributionDetailCards(details, 'inviter');
+}
+
+export function buildReceivedContributionDetailCards(payload = {}) {
+  const details = Array.isArray(payload?.received_contribution_details)
+    ? payload.received_contribution_details
+    : [];
+
+  return buildContributionDetailCards(details, 'invitee');
 }

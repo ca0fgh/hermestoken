@@ -17,8 +17,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+export function readStoredValue(key, fallback = null) {
+  try {
+    const rawValue = localStorage.getItem(key);
+    return rawValue ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function writeStoredValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeStoredValue(key) {
+  try {
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function readStoredJson(key, fallback = null) {
-  const rawValue = localStorage.getItem(key);
+  const rawValue = readStoredValue(key, null);
   if (!rawValue) {
     return fallback;
   }

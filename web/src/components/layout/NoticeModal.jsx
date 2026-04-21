@@ -30,6 +30,7 @@ import { useTranslation } from 'react-i18next';
 import { API } from '../../helpers/api';
 import { marked } from 'marked';
 import { showError } from '../../helpers/notifications';
+import { writeStoredValue } from '../../helpers/storageJson';
 import { sanitizeNoticeHtml } from '../../helpers/noticeHtml';
 import { getRelativeTime } from '../../helpers/time';
 import {
@@ -81,7 +82,7 @@ const NoticeModal = ({
 
   const handleCloseTodayNotice = () => {
     const today = new Date().toDateString();
-    localStorage.setItem('notice_close_date', today);
+    writeStoredValue('notice_close_date', today);
     onClose();
   };
 

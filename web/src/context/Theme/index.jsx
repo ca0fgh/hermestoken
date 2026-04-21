@@ -24,6 +24,11 @@ import {
   useState,
   useEffect,
 } from 'react';
+import {
+  getMediaQueryList,
+  matchesMediaQuery,
+  subscribeToMediaQueryList,
+} from '../../helpers/mediaQuery';
 
 const ThemeContext = createContext(null);
 export const useTheme = () => useContext(ThemeContext);
@@ -34,14 +39,11 @@ export const useActualTheme = () => useContext(ActualThemeContext);
 const SetThemeContext = createContext(null);
 export const useSetTheme = () => useContext(SetThemeContext);
 
+const SYSTEM_THEME_QUERY = '(prefers-color-scheme: dark)';
+
 // 检测系统主题偏好
 const getSystemTheme = () => {
-  if (typeof window !== 'undefined' && window.matchMedia) {
-    return window.matchMedia('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light';
-  }
-  return 'light';
+  return matchesMediaQuery(SYSTEM_THEME_QUERY) ? 'dark' : 'light';
 };
 
 export const ThemeProvider = ({ children }) => {
@@ -60,19 +62,16 @@ export const ThemeProvider = ({ children }) => {
 
   // 监听系统主题变化
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
-      const handleSystemThemeChange = (e) => {
-        setSystemTheme(e.matches ? 'dark' : 'light');
-      };
-
-      mediaQuery.addEventListener('change', handleSystemThemeChange);
-
-      return () => {
-        mediaQuery.removeEventListener('change', handleSystemThemeChange);
-      };
+    const mediaQuery = getMediaQueryList(SYSTEM_THEME_QUERY);
+    if (!mediaQuery) {
+      return undefined;
     }
+
+    const handleSystemThemeChange = (e) => {
+      setSystemTheme(e.matches ? 'dark' : 'light');
+    };
+
+    return subscribeToMediaQueryList(mediaQuery, handleSystemThemeChange);
   }, []);
 
   // 应用主题到DOM

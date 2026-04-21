@@ -20,7 +20,7 @@ test('marketing shells use the lightweight marketing notice modal instead of the
 
   assert.match(
     marketingHeaderSource,
-    /const MarketingNoticeModal = lazy\(\(\) => import\('\.\/MarketingNoticeModal'\)\);/,
+    /const MarketingNoticeModal = lazyWithRetry\([\s\S]*import\('\.\/MarketingNoticeModal'\),[\s\S]*'marketing-notice-modal',[\s\S]*\);/,
   );
   assert.doesNotMatch(
     marketingHeaderSource,
@@ -28,7 +28,7 @@ test('marketing shells use the lightweight marketing notice modal instead of the
   );
   assert.match(
     homeSource,
-    /const MarketingNoticeModal = lazy\([\s\S]*import\('\.\.\/\.\.\/components\/layout\/MarketingNoticeModal'\)[\s\S]*\);/,
+    /const MarketingNoticeModal = lazyWithRetry\([\s\S]*import\('\.\.\/\.\.\/components\/layout\/MarketingNoticeModal'\),[\s\S]*'marketing-notice-modal',[\s\S]*\);/,
   );
   assert.doesNotMatch(
     homeSource,

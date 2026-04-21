@@ -118,3 +118,4 @@ appendonlydir/
 .deer-flow/
 .langgraph_api/
 .data/
+.gstack/

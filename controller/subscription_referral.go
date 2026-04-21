@@ -45,14 +45,20 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	receivedContributionDetails, err := buildSubscriptionReferralReceivedContributionDetails(user)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, gin.H{
-		"enabled":              len(groupViews) > 0,
-		"groups":               groupViews,
-		"pending_reward_quota": user.AffQuota,
-		"history_reward_quota": user.AffHistoryQuota,
-		"inviter_count":        inviterCount,
-		"received_inviter":     receivedInviter,
-		"received_groups":      receivedGroupViews,
+		"enabled":                       len(groupViews) > 0,
+		"groups":                        groupViews,
+		"pending_reward_quota":          user.AffQuota,
+		"history_reward_quota":          user.AffHistoryQuota,
+		"inviter_count":                 inviterCount,
+		"received_inviter":              receivedInviter,
+		"received_groups":               receivedGroupViews,
+		"received_contribution_details": receivedContributionDetails,
 	})
 }
 
@@ -309,6 +315,26 @@ func buildSubscriptionReferralReceivedGroupViews(user *model.User) (gin.H, []gin
 	}, groupViews, nil
 }
 
+func buildSubscriptionReferralReceivedContributionDetails(user *model.User) ([]gin.H, error) {
+	if user == nil || user.InviterId <= 0 {
+		return nil, nil
+	}
+
+	details, err := model.ListSubscriptionReferralReceivedContributionDetails(user.InviterId, user.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]gin.H, 0, len(details))
+	for _, detail := range details {
+		if detail == nil {
+			continue
+		}
+		rows = append(rows, buildSubscriptionReferralContributionDetailPayload(detail))
+	}
+	return rows, nil
+}
+
 func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries []*model.SubscriptionReferralInviteeContributionSummary) (map[int]int64, error) {
 	inviteeUserIDs := make([]int, 0, len(summaries))
 	for _, summary := range summaries {
@@ -401,21 +427,7 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		if detail == nil {
 			continue
 		}
-		detailRows = append(detailRows, gin.H{
-			"batch_id":                detail.BatchId,
-			"trade_no":                detail.TradeNo,
-			"group":                   detail.Group,
-			"reward_component":        detail.RewardComponent,
-			"source_reward_component": detail.SourceRewardComponent,
-			"role_type":               detail.RoleType,
-			"reward_quota":            detail.RewardQuota,
-			"reversed_quota":          detail.ReversedQuota,
-			"debt_quota":              detail.DebtQuota,
-			"effective_reward_quota":  detail.EffectiveRewardQuota,
-			"status":                  detail.Status,
-			"settled_at":              detail.SettledAt,
-			"created_at":              detail.CreatedAt,
-		})
+		detailRows = append(detailRows, buildSubscriptionReferralContributionDetailPayload(detail))
 	}
 
 	return gin.H{
@@ -427,6 +439,24 @@ func buildSubscriptionReferralInviteeDetailResponse(inviterUserID int, invitee *
 		"scopes":               scopeRows,
 		"contribution_details": detailRows,
 	}, nil
+}
+
+func buildSubscriptionReferralContributionDetailPayload(detail *model.SubscriptionReferralInviteeContributionDetail) gin.H {
+	return gin.H{
+		"batch_id":                detail.BatchId,
+		"trade_no":                detail.TradeNo,
+		"group":                   detail.Group,
+		"reward_component":        detail.RewardComponent,
+		"source_reward_component": detail.SourceRewardComponent,
+		"role_type":               detail.RoleType,
+		"reward_quota":            detail.RewardQuota,
+		"reversed_quota":          detail.ReversedQuota,
+		"debt_quota":              detail.DebtQuota,
+		"effective_reward_quota":  detail.EffectiveRewardQuota,
+		"status":                  detail.Status,
+		"settled_at":              detail.SettledAt,
+		"created_at":              detail.CreatedAt,
+	}
 }
 
 func getOwnedSubscriptionReferralInvitee(c *gin.Context, inviterUserID int) (*model.User, bool) {

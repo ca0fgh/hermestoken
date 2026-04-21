@@ -23,6 +23,7 @@ import { Modal, Tag, Typography, Avatar } from '@douyinfe/semi-ui';
 import { copy, showSuccess } from './utils';
 import { stringToColor } from './color';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import { matchesMediaQuery } from './mediaQuery';
 import Ai360 from '@lobehub/icons/es/Ai360';
 import Claude from '@lobehub/icons/es/Claude';
 import Cloudflare from '@lobehub/icons/es/Cloudflare';
@@ -925,9 +926,9 @@ const measureTextWidth = (
 };
 
 export function truncateText(text, maxWidth = 200) {
-  const isMobileScreen = window.matchMedia(
+  const isMobileScreen = matchesMediaQuery(
     `(max-width: ${MOBILE_BREAKPOINT - 1}px)`,
-  ).matches;
+  );
   if (!isMobileScreen) {
     return text;
   }
