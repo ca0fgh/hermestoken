@@ -28,11 +28,13 @@ import {
 } from '../../helpers/inviteeDetailRequestGuard';
 import {
   buildInviteDefaultRuleRows,
+  buildReceivedInviteeRuleRows,
   buildInviteeContributionDetailCards,
   buildInviteeOverrideRows,
   normalizeInviteeContributionPage,
 } from '../../helpers/inviteRebate';
 import InviteDefaultRuleSection from './InviteDefaultRuleSection';
+import InviteReceivedRuleSection from './InviteReceivedRuleSection';
 import InviteRebateSummary from './InviteRebateSummary';
 import InviteeListPanel from './InviteeListPanel';
 import InviteeOverridePanel from './InviteeOverridePanel';
@@ -49,6 +51,7 @@ const initialPageState = {
 const InviteRebatePage = () => {
   const { t } = useTranslation();
   const [defaultRuleRows, setDefaultRuleRows] = useState([]);
+  const [receivedRuleRows, setReceivedRuleRows] = useState([]);
   const [inviteePage, setInviteePage] = useState(initialPageState);
   const [keyword, setKeyword] = useState('');
   const [queryKeyword, setQueryKeyword] = useState('');
@@ -74,13 +77,17 @@ const InviteRebatePage = () => {
     try {
       const res = await API.get('/api/user/referral/subscription');
       if (res.data?.success) {
-        setDefaultRuleRows(buildInviteDefaultRuleRows(res.data?.data?.groups));
+        const responseData = res.data?.data || {};
+        setDefaultRuleRows(buildInviteDefaultRuleRows(responseData?.groups));
+        setReceivedRuleRows(buildReceivedInviteeRuleRows(responseData));
       } else {
         setDefaultRuleRows([]);
+        setReceivedRuleRows([]);
         showError(res.data?.message || t('加载失败'));
       }
     } catch (error) {
       setDefaultRuleRows([]);
+      setReceivedRuleRows([]);
       showError(error?.message || t('加载失败'));
     } finally {
       setLoadingDefaults(false);
@@ -230,6 +237,14 @@ const InviteRebatePage = () => {
             {t('查看邀请用户贡献给你的返佣流水，并为个别用户单独设置返佣比例。')}
           </Typography.Text>
         </div>
+
+        {receivedRuleRows.length > 0 ? (
+          <InviteReceivedRuleSection
+            t={t}
+            rows={receivedRuleRows}
+            loading={loadingDefaults}
+          />
+        ) : null}
 
         <InviteRebateSummary
           t={t}

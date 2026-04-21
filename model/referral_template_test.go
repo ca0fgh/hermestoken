@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -472,6 +473,34 @@ func TestEnsureReferralTemplateSchemaIsIdempotent(t *testing.T) {
 	}
 	if db.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_name") {
 		t.Fatal("expected legacy unique name index to stay absent after repeated schema ensure")
+	}
+}
+
+func TestEnsureReferralTemplateSchemaDropsLegacyGlobalNameIndex(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	if err := db.Exec("CREATE UNIQUE INDEX idx_referral_templates_name ON referral_templates(name)").Error; err != nil {
+		t.Fatalf("create legacy global name index: %v", err)
+	}
+	if !db.Migrator().HasIndex(&ReferralTemplate{}, "idx_referral_templates_name") {
+		t.Fatal("expected legacy global name index to exist before ensureReferralTemplateSchema")
+	}
+
+	if err := ensureReferralTemplateSchema(); err != nil {
+		t.Fatalf("ensureReferralTemplateSchema() error = %v", err)
+	}
+	if db.Migrator().HasIndex(&ReferralTemplate{}, "idx_referral_templates_name") {
+		t.Fatal("expected ensureReferralTemplateSchema to drop legacy global name index")
+	}
+}
+
+func TestNormalizeReferralTemplatePersistenceErrorHandlesLegacyGlobalNameIndex(t *testing.T) {
+	err := normalizeReferralTemplatePersistenceError(errors.New(`ERROR: duplicate key value violates unique constraint "idx_referral_templates_name" (SQLSTATE 23505)`))
+	if err == nil {
+		t.Fatal("expected normalized error, got nil")
+	}
+	if err.Error() != "template name already exists" {
+		t.Fatalf("normalized error = %q, want %q", err.Error(), "template name already exists")
 	}
 }
 

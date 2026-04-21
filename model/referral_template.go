@@ -162,6 +162,7 @@ func normalizeReferralTemplatePersistenceError(err error) error {
 	lowerError := strings.ToLower(err.Error())
 	if strings.Contains(lowerError, "uk_referral_template_scope_name") ||
 		strings.Contains(lowerError, "uk_referral_template_name") ||
+		strings.Contains(lowerError, "idx_referral_templates_name") ||
 		(strings.Contains(lowerError, "referral_templates.referral_type") &&
 			strings.Contains(lowerError, "referral_templates.group") &&
 			strings.Contains(lowerError, "referral_templates.name")) ||
@@ -505,6 +506,10 @@ func ensureReferralTemplateSchema() error {
 	}
 
 	const bundleKeyIndexName = "idx_referral_templates_bundle_key"
+	legacyGlobalNameArtifacts := []string{
+		"uk_referral_template_name",
+		"idx_referral_templates_name",
+	}
 
 	if !DB.Migrator().HasColumn(&ReferralTemplate{}, "BundleKey") {
 		if err := DB.Migrator().AddColumn(&ReferralTemplate{}, "BundleKey"); err != nil {
@@ -516,9 +521,20 @@ func ensureReferralTemplateSchema() error {
 			return err
 		}
 	}
-	if DB.Migrator().HasIndex(&ReferralTemplate{}, "uk_referral_template_name") {
-		if err := DB.Migrator().DropIndex(&ReferralTemplate{}, "uk_referral_template_name"); err != nil {
-			return err
+	if common.UsingPostgreSQL {
+		for _, legacyConstraintName := range legacyGlobalNameArtifacts {
+			if DB.Migrator().HasConstraint(&ReferralTemplate{}, legacyConstraintName) {
+				if err := DB.Migrator().DropConstraint(&ReferralTemplate{}, legacyConstraintName); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	for _, legacyIndexName := range legacyGlobalNameArtifacts {
+		if DB.Migrator().HasIndex(&ReferralTemplate{}, legacyIndexName) {
+			if err := DB.Migrator().DropIndex(&ReferralTemplate{}, legacyIndexName); err != nil {
+				return err
+			}
 		}
 	}
 	if !DB.Migrator().HasIndex(&ReferralTemplate{}, "idx_referral_template_scope_name") {

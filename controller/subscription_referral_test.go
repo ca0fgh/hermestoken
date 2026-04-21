@@ -92,6 +92,73 @@ func TestGetSubscriptionReferralSelfIgnoresBindingDefaultOverride(t *testing.T) 
 	}
 }
 
+func TestGetSubscriptionReferralSelfReturnsIncomingInviteeOverrideGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	inviter := seedSubscriptionReferralControllerUser(t, "self-incoming-inviter", 0, dto.UserSetting{})
+	user := seedSubscriptionReferralControllerUser(t, "self-incoming-user", inviter.Id, dto.UserSetting{})
+	seedActiveSubscriptionReferralBinding(t, inviter.Id, "vip", model.ReferralLevelTypeDirect, 700)
+	if _, err := model.UpsertReferralInviteeShareOverride(inviter.Id, user.Id, model.ReferralTypeSubscription, "vip", 500, inviter.Id); err != nil {
+		t.Fatalf("failed to seed invitee override: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/referral/subscription", nil, user.Id)
+	GetSubscriptionReferralSelf(ctx)
+
+	resp := decodeAPIResponse(t, recorder)
+	if !resp.Success {
+		t.Fatalf("expected success, got message: %s", resp.Message)
+	}
+
+	var data struct {
+		ReceivedInviter *struct {
+			Id       int    `json:"id"`
+			Username string `json:"username"`
+		} `json:"received_inviter"`
+		ReceivedGroups []struct {
+			Group                   string `json:"group"`
+			TemplateName            string `json:"template_name"`
+			LevelType               string `json:"level_type"`
+			TotalRateBps            int    `json:"total_rate_bps"`
+			OverrideInviteeRateBps  int    `json:"override_invitee_rate_bps"`
+			EffectiveInviteeRateBps int    `json:"effective_invitee_rate_bps"`
+			EffectiveInviterRateBps int    `json:"effective_inviter_rate_bps"`
+			HasOverride             bool   `json:"has_override"`
+		} `json:"received_groups"`
+	}
+	if err := common.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if data.ReceivedInviter == nil {
+		t.Fatal("expected received_inviter to be present")
+	}
+	if data.ReceivedInviter.Id != inviter.Id || data.ReceivedInviter.Username != inviter.Username {
+		t.Fatalf("unexpected received_inviter payload: %+v", data.ReceivedInviter)
+	}
+	if len(data.ReceivedGroups) != 1 {
+		t.Fatalf("received_groups length = %d, want 1", len(data.ReceivedGroups))
+	}
+	group := data.ReceivedGroups[0]
+	if group.Group != "vip" {
+		t.Fatalf("group = %q, want vip", group.Group)
+	}
+	if group.TemplateName != "vip-direct" {
+		t.Fatalf("template_name = %q, want vip-direct", group.TemplateName)
+	}
+	if group.LevelType != model.ReferralLevelTypeDirect {
+		t.Fatalf("level_type = %q, want %q", group.LevelType, model.ReferralLevelTypeDirect)
+	}
+	if group.TotalRateBps != 1200 {
+		t.Fatalf("total_rate_bps = %d, want 1200", group.TotalRateBps)
+	}
+	if !group.HasOverride {
+		t.Fatal("expected received group to be marked as override")
+	}
+	if group.OverrideInviteeRateBps != 500 || group.EffectiveInviteeRateBps != 500 || group.EffectiveInviterRateBps != 700 {
+		t.Fatalf("unexpected received group payload: %+v", group)
+	}
+}
+
 func TestAdminReverseSubscriptionReferralIsIdempotent(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	tradeNo := seedSubscriptionReferralControllerTradeNo(t)

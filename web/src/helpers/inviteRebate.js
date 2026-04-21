@@ -83,6 +83,66 @@ export function buildInviteDefaultRuleRows(groups = []) {
   }, []);
 }
 
+export function buildReceivedInviteeRuleRows(payload = {}) {
+  const inviterId = normalizeCount(payload?.received_inviter?.id);
+  const inviterUsername = String(
+    payload?.received_inviter?.username ?? '',
+  ).trim();
+  const groups = Array.isArray(payload?.received_groups)
+    ? payload.received_groups
+    : [];
+
+  return groups.reduce((rows, groupItem) => {
+    const group = String(groupItem?.group || '').trim();
+    if (!group) {
+      return rows;
+    }
+
+    const effectiveInviteeRateBps = normalizeRateBps(
+      groupItem?.effective_invitee_rate_bps ??
+        groupItem?.effectiveInviteeRateBps ??
+        groupItem?.invitee_rate_bps ??
+        groupItem?.inviteeRateBps,
+    );
+    if (effectiveInviteeRateBps <= 0) {
+      return rows;
+    }
+
+    const effectiveTotalRateBps = normalizeRateBps(
+      groupItem?.total_rate_bps ?? groupItem?.totalRateBps,
+    );
+
+    return [
+      ...rows,
+      {
+        id: `received:${group}`,
+        inviterId,
+        inviterUsername,
+        group,
+        templateName: String(
+          groupItem?.template_name ?? groupItem?.templateName ?? '',
+        ).trim(),
+        levelType: String(
+          groupItem?.level_type ?? groupItem?.levelType ?? '',
+        ).trim(),
+        effectiveTotalRateBps,
+        effectiveInviteeRateBps,
+        effectiveInviterRateBps: Math.max(
+          0,
+          normalizeRateBps(
+            groupItem?.effective_inviter_rate_bps ??
+              groupItem?.effectiveInviterRateBps ??
+              (effectiveTotalRateBps - effectiveInviteeRateBps),
+          ),
+        ),
+        hasOverride: Boolean(
+          groupItem?.has_override ?? groupItem?.hasOverride,
+        ),
+      },
+    ];
+  }, []);
+}
+
 export function buildInviteeOverrideRows(payload = {}) {
   const scopes = Array.isArray(payload?.scopes) ? payload.scopes : [];
 

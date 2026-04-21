@@ -23,10 +23,12 @@ test('InviteRebatePage composes summary, default rules, invitee list, and overri
 
   assert.match(pageSource, /InviteRebateSummary/);
   assert.match(pageSource, /InviteDefaultRuleSection/);
+  assert.match(pageSource, /InviteReceivedRuleSection/);
   assert.match(pageSource, /InviteeListPanel/);
   assert.match(pageSource, /InviteeOverridePanel/);
   assert.match(pageSource, /normalizeInviteeContributionPage/);
   assert.match(pageSource, /buildInviteDefaultRuleRows/);
+  assert.match(pageSource, /buildReceivedInviteeRuleRows/);
   assert.match(pageSource, /buildInviteeContributionDetailCards/);
   assert.match(pageSource, /buildInviteeOverrideRows/);
   assert.match(pageSource, /from ['"]\.\.\/\.\.\/helpers\/api['"]/);
@@ -79,6 +81,9 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   const defaultRuleSource = readSource(
     'src/components/invite-rebate/InviteDefaultRuleSection.jsx',
   );
+  const receivedRuleSource = readSource(
+    'src/components/invite-rebate/InviteReceivedRuleSection.jsx',
+  );
   const listSource = readSource(
     'src/components/invite-rebate/InviteeListPanel.jsx',
   );
@@ -104,6 +109,21 @@ test('invite rebate panels implement grouped editing, search, pagination, and de
   assert.match(defaultRuleSource, /slice\(/);
   assert.doesNotMatch(defaultRuleSource, /API\.put\('\/api\/user\/referral\/subscription'/);
   assert.doesNotMatch(defaultRuleSource, /API\.delete\('\/api\/user\/referral\/subscription'/);
+
+  assert.match(receivedRuleSource, /t\('上级给我的返佣'\)/);
+  assert.match(
+    receivedRuleSource,
+    /t\('如果邀请人给你单独设置了返佣，这里会展示当前生效规则。'\)/,
+  );
+  assert.match(receivedRuleSource, /t\('邀请人'\)/);
+  assert.match(receivedRuleSource, /t\('返佣模式'\)/);
+  assert.match(receivedRuleSource, /t\('所在分组'\)/);
+  assert.match(receivedRuleSource, /t\('本组总返佣比例'\)/);
+  assert.match(receivedRuleSource, /t\('给我的返佣比例'\)/);
+  assert.match(receivedRuleSource, /t\('你本单保留比例'\)/);
+  assert.match(receivedRuleSource, /t\('已单独设置返佣'\)/);
+  assert.match(receivedRuleSource, /ListPagination/);
+  assert.match(receivedRuleSource, /slice\(/);
 
   assert.match(listSource, /t\('我的邀请用户'\)/);
   assert.match(listSource, /t\('搜索用户名 \/ 用户ID \/ 分组'\)/);

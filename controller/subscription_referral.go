@@ -39,12 +39,20 @@ func GetSubscriptionReferralSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	receivedInviter, receivedGroupViews, err := buildSubscriptionReferralReceivedGroupViews(user)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, gin.H{
 		"enabled":              len(groupViews) > 0,
 		"groups":               groupViews,
 		"pending_reward_quota": user.AffQuota,
 		"history_reward_quota": user.AffHistoryQuota,
 		"inviter_count":        inviterCount,
+		"received_inviter":     receivedInviter,
+		"received_groups":      receivedGroupViews,
 	})
 }
 
@@ -230,6 +238,75 @@ func buildSubscriptionReferralSelfGroupViews(userID int) ([]gin.H, error) {
 		return strings.TrimSpace(common.Interface2String(groupViews[i]["group"])) < strings.TrimSpace(common.Interface2String(groupViews[j]["group"]))
 	})
 	return groupViews, nil
+}
+
+func buildSubscriptionReferralReceivedGroupViews(user *model.User) (gin.H, []gin.H, error) {
+	if user == nil || user.InviterId <= 0 {
+		return nil, nil, nil
+	}
+
+	inviter, err := model.GetUserById(user.InviterId, false)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(strings.ToLower(err.Error()), "record not found") {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+
+	overrides, err := model.ListReferralInviteeShareOverrides(inviter.Id, user.Id, model.ReferralTypeSubscription)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(overrides) == 0 {
+		return nil, nil, nil
+	}
+
+	bindingViews, err := model.ListReferralTemplateBindingsByUser(inviter.Id, model.ReferralTypeSubscription)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	activeBindingByGroup := make(map[string]model.ReferralTemplateBindingView, len(bindingViews))
+	for _, view := range bindingViews {
+		if !view.Template.Enabled {
+			continue
+		}
+		group := strings.TrimSpace(view.Binding.Group)
+		if group == "" {
+			continue
+		}
+		activeBindingByGroup[group] = view
+	}
+
+	groupViews := make([]gin.H, 0, len(overrides))
+	for _, override := range overrides {
+		group := strings.TrimSpace(override.Group)
+		if group == "" {
+			continue
+		}
+		view, ok := activeBindingByGroup[group]
+		if !ok {
+			continue
+		}
+		scopePayload := buildSubscriptionReferralScopePayload(view, &override)
+		effectiveInviteeRateBps, _ := scopePayload["effective_invitee_rate_bps"].(int)
+		if effectiveInviteeRateBps <= 0 {
+			continue
+		}
+		groupViews = append(groupViews, scopePayload)
+	}
+	if len(groupViews) == 0 {
+		return nil, nil, nil
+	}
+
+	sort.Slice(groupViews, func(i, j int) bool {
+		return strings.TrimSpace(common.Interface2String(groupViews[i]["group"])) < strings.TrimSpace(common.Interface2String(groupViews[j]["group"]))
+	})
+
+	return gin.H{
+		"id":       inviter.Id,
+		"username": inviter.Username,
+	}, groupViews, nil
 }
 
 func listSubscriptionReferralInviteeOverrideCounts(inviterUserID int, summaries []*model.SubscriptionReferralInviteeContributionSummary) (map[int]int64, error) {

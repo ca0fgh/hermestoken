@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildInviteDefaultRuleRows,
+  buildReceivedInviteeRuleRows,
   buildInviteeContributionLedgerRows,
   buildInviteeContributionSummary,
   buildInviteeOverrideDraftPercentMap,
@@ -97,6 +98,42 @@ test('buildInviteDefaultRuleRows maps grouped template defaults into read-only h
         effectiveTotalRateBps: 3000,
         effectiveInviteeRateBps: 0,
         effectiveInviterRateBps: 3000,
+      },
+    ],
+  );
+});
+
+test('buildReceivedInviteeRuleRows maps inviter-assigned invitee rebate scopes into read-only rows', () => {
+  assert.deepEqual(
+    buildReceivedInviteeRuleRows({
+      received_inviter: {
+        id: 9,
+        username: 'parent-user',
+      },
+      received_groups: [
+        {
+          group: 'vip',
+          template_name: 'vip-direct-template',
+          level_type: 'direct',
+          total_rate_bps: 1200,
+          effective_invitee_rate_bps: 500,
+          effective_inviter_rate_bps: 700,
+          has_override: true,
+        },
+      ],
+    }),
+    [
+      {
+        id: 'received:vip',
+        inviterId: 9,
+        inviterUsername: 'parent-user',
+        group: 'vip',
+        templateName: 'vip-direct-template',
+        levelType: 'direct',
+        effectiveTotalRateBps: 1200,
+        effectiveInviteeRateBps: 500,
+        effectiveInviterRateBps: 700,
+        hasOverride: true,
       },
     ],
   );
