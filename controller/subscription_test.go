@@ -516,6 +516,62 @@ func TestAdminUpdateSubscriptionPlanRejectsDisablingStockWhenReservedOrderExists
 	}
 }
 
+func TestAdminUpdateSubscriptionPlanAllowsIncreasingStockWithReservedOrders(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	plan := seedSubscriptionPlan(t, db, "stock-grow-plan")
+	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  30,
+		"stock_locked": 8,
+		"stock_sold":   7,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed stock counters: %v", err)
+	}
+	order := &model.SubscriptionOrder{
+		UserId:        1,
+		PlanId:        plan.Id,
+		Money:         79.2,
+		Quantity:      8,
+		TradeNo:       "trade-stock-grow",
+		PaymentMethod: "epay",
+		Status:        common.TopUpStatusPending,
+		CreateTime:    1,
+		StockReserved: 8,
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatalf("failed to seed reserved order: %v", err)
+	}
+
+	body := AdminUpsertSubscriptionPlanRequest{
+		Plan: model.SubscriptionPlan{
+			Title:         "stock-grow-plan",
+			PriceAmount:   9.9,
+			Currency:      "USD",
+			DurationUnit:  model.SubscriptionDurationMonth,
+			DurationValue: 1,
+			Enabled:       true,
+			StockTotal:    40,
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/subscription/admin/plans/"+strconv.Itoa(plan.Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(plan.Id)}}
+
+	AdminUpdateSubscriptionPlan(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var after model.SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&after).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if after.StockTotal != 40 || after.StockLocked != 8 || after.StockSold != 7 {
+		t.Fatalf("expected total=40 locked=8 sold=7, got total=%d locked=%d sold=%d", after.StockTotal, after.StockLocked, after.StockSold)
+	}
+}
+
 func TestGetSubscriptionPlansIncludesStockAvailable(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	plan := seedSubscriptionPlan(t, db, "stock-api-plan")

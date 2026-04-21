@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	subscriptionResetTickInterval = 1 * time.Minute
-	subscriptionResetBatchSize    = 300
-	subscriptionCleanupInterval   = 30 * time.Minute
+	subscriptionResetTickInterval       = 1 * time.Minute
+	subscriptionResetBatchSize          = 300
+	subscriptionPendingOrderBatchSize   = 300
+	subscriptionPendingOrderExpireAfter = 30 * time.Minute
+	subscriptionCleanupInterval         = 30 * time.Minute
 )
 
 var (
@@ -51,8 +53,24 @@ func runSubscriptionQuotaResetOnce() {
 	defer subscriptionResetRunning.Store(false)
 
 	ctx := context.Background()
+	totalPendingExpired := 0
 	totalReset := 0
 	totalExpired := 0
+	pendingOrderCutoff := time.Now().Add(-subscriptionPendingOrderExpireAfter).Unix()
+	for {
+		n, err := model.ExpirePendingSubscriptionOrdersCreatedBefore(pendingOrderCutoff, subscriptionPendingOrderBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("subscription pending order expire task failed: %v", err))
+			return
+		}
+		if n == 0 {
+			break
+		}
+		totalPendingExpired += n
+		if n < subscriptionPendingOrderBatchSize {
+			break
+		}
+	}
 	for {
 		n, err := model.ExpireDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
@@ -87,7 +105,13 @@ func runSubscriptionQuotaResetOnce() {
 			subscriptionCleanupLast.Store(time.Now().Unix())
 		}
 	}
-	if common.DebugEnabled && (totalReset > 0 || totalExpired > 0) {
-		logger.LogDebug(ctx, "subscription maintenance: reset_count=%d, expired_count=%d", totalReset, totalExpired)
+	if common.DebugEnabled && (totalPendingExpired > 0 || totalReset > 0 || totalExpired > 0) {
+		logger.LogDebug(
+			ctx,
+			"subscription maintenance: pending_expired_count=%d, reset_count=%d, expired_count=%d",
+			totalPendingExpired,
+			totalReset,
+			totalExpired,
+		)
 	}
 }

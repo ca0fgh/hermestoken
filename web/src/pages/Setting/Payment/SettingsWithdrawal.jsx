@@ -19,12 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Banner, Button, Form, Spin, Typography } from '@douyinfe/semi-ui';
-import {
-  API,
-  showError,
-  showSuccess,
-  toBoolean,
-} from '../../../helpers';
+import { API, showError, showSuccess, toBoolean } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import WithdrawalFeeRulesEditor from '../../../components/settings/withdrawal/WithdrawalFeeRulesEditor';
 import {
@@ -39,6 +34,7 @@ const { Text } = Typography;
 export default function SettingsWithdrawal({ options, refresh }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [hasPendingFeeRuleDraft, setHasPendingFeeRuleDraft] = useState(false);
   const [withdrawalFeeRulesInvalidState, setWithdrawalFeeRulesInvalidState] =
     useState(null);
   const [
@@ -52,55 +48,89 @@ export default function SettingsWithdrawal({ options, refresh }) {
     WithdrawalFeeRules: [],
   });
   const formApiRef = useRef(null);
+  const [isFormApiReady, setIsFormApiReady] = useState(false);
+  const withdrawalFeeRulesRef = useRef([]);
 
-  useEffect(() => {
-    if (options && formApiRef.current) {
-      const parsedFeeRules = parsePersistedWithdrawalFeeRules(
-        options.WithdrawalFeeRules || '[]',
-      );
-      const currentInputs = {
-        WithdrawalEnabled: toBoolean(options.WithdrawalEnabled),
-        WithdrawalMinAmount:
-          options.WithdrawalMinAmount !== undefined
-            ? parseFloat(options.WithdrawalMinAmount || 10)
-            : 10,
-        WithdrawalInstruction: options.WithdrawalInstruction || '',
-        WithdrawalFeeRules: parsedFeeRules.rules,
-      };
-      setWithdrawalFeeRulesInvalidState(
-        parsedFeeRules.errors.length > 0
-          ? {
-              rawValue: parsedFeeRules.rawValue,
-              errors: parsedFeeRules.errors,
-            }
-          : null,
-      );
-      setHasReplacedInvalidWithdrawalFeeRules(false);
-      setInputs(currentInputs);
-      formApiRef.current.setValues(currentInputs);
-    }
-  }, [options]);
-
-  const handleFormChange = (values) => {
+  const applyFormValuesToState = (values = {}) => {
+    const { WithdrawalFeeRules: _ignoredFeeRules, ...formValues } = values;
     setInputs((current) => ({
       ...current,
-      ...values,
+      ...formValues,
     }));
   };
 
+  useEffect(() => {
+    if (!options) {
+      return;
+    }
+
+    const parsedFeeRules = parsePersistedWithdrawalFeeRules(
+      options.WithdrawalFeeRules || '[]',
+    );
+    const currentInputs = {
+      WithdrawalEnabled: toBoolean(options.WithdrawalEnabled),
+      WithdrawalMinAmount:
+        options.WithdrawalMinAmount !== undefined
+          ? parseFloat(options.WithdrawalMinAmount || 10)
+          : 10,
+      WithdrawalInstruction: options.WithdrawalInstruction || '',
+      WithdrawalFeeRules: parsedFeeRules.rules,
+    };
+    setWithdrawalFeeRulesInvalidState(
+      parsedFeeRules.errors.length > 0
+        ? {
+            rawValue: parsedFeeRules.rawValue,
+            errors: parsedFeeRules.errors,
+          }
+        : null,
+    );
+    setHasReplacedInvalidWithdrawalFeeRules(false);
+    setHasPendingFeeRuleDraft(false);
+    withdrawalFeeRulesRef.current = currentInputs.WithdrawalFeeRules;
+    setInputs(currentInputs);
+
+    if (formApiRef.current) {
+      formApiRef.current.setValues({
+        WithdrawalEnabled: currentInputs.WithdrawalEnabled,
+        WithdrawalMinAmount: currentInputs.WithdrawalMinAmount,
+        WithdrawalInstruction: currentInputs.WithdrawalInstruction,
+      });
+    }
+  }, [
+    options?.WithdrawalEnabled,
+    options?.WithdrawalMinAmount,
+    options?.WithdrawalInstruction,
+    options?.WithdrawalFeeRules,
+    isFormApiReady,
+  ]);
+
+  const handleFormChange = (values) => {
+    applyFormValuesToState(values);
+  };
+
   const handleFeeRulesChange = (rules) => {
+    const normalizedRules = normalizeWithdrawalFeeEditorRules(rules);
+
     if (withdrawalFeeRulesInvalidState) {
       setHasReplacedInvalidWithdrawalFeeRules(true);
       setWithdrawalFeeRulesInvalidState(null);
     }
 
+    withdrawalFeeRulesRef.current = normalizedRules;
     setInputs((current) => ({
       ...current,
-      WithdrawalFeeRules: normalizeWithdrawalFeeEditorRules(rules),
+      WithdrawalFeeRules: normalizedRules,
     }));
   };
 
   const submit = async () => {
+    const latestFormValues = formApiRef.current?.getValues?.() || {};
+    const currentInputs = {
+      ...inputs,
+      ...latestFormValues,
+      WithdrawalFeeRules: withdrawalFeeRulesRef.current,
+    };
+
     if (
       withdrawalFeeRulesInvalidState &&
       !hasReplacedInvalidWithdrawalFeeRules
@@ -109,8 +139,13 @@ export default function SettingsWithdrawal({ options, refresh }) {
       return;
     }
 
+    if (hasPendingFeeRuleDraft) {
+      showError(t('请先保存或取消当前提现手续费规则编辑'));
+      return;
+    }
+
     const validation = validateWithdrawalFeeEditorRules(
-      inputs.WithdrawalFeeRules,
+      currentInputs.WithdrawalFeeRules,
       t,
     );
     if (validation.errors.length > 0) {
@@ -123,21 +158,21 @@ export default function SettingsWithdrawal({ options, refresh }) {
       const requestQueue = [
         API.put('/api/option/', {
           key: 'WithdrawalEnabled',
-          value: Boolean(inputs.WithdrawalEnabled),
+          value: Boolean(currentInputs.WithdrawalEnabled),
         }),
         API.put('/api/option/', {
           key: 'WithdrawalMinAmount',
-          value: String(inputs.WithdrawalMinAmount || 0),
+          value: String(currentInputs.WithdrawalMinAmount || 0),
         }),
         API.put('/api/option/', {
           key: 'WithdrawalInstruction',
-          value: inputs.WithdrawalInstruction || '',
+          value: currentInputs.WithdrawalInstruction || '',
         }),
         API.put('/api/option/', {
           key: 'WithdrawalFeeRules',
           value:
             withdrawalFeeRulesInvalidState?.rawValue ??
-            serializeWithdrawalFeeEditorRules(inputs.WithdrawalFeeRules),
+            serializeWithdrawalFeeEditorRules(currentInputs.WithdrawalFeeRules),
         }),
       ];
 
@@ -162,7 +197,10 @@ export default function SettingsWithdrawal({ options, refresh }) {
       <Form
         initValues={inputs}
         onValueChange={handleFormChange}
-        getFormApi={(api) => (formApiRef.current = api)}
+        getFormApi={(api) => {
+          formApiRef.current = api;
+          setIsFormApiReady(Boolean(api));
+        }}
       >
         <Form.Section text={t('提现设置')}>
           <Form.Switch
@@ -187,20 +225,25 @@ export default function SettingsWithdrawal({ options, refresh }) {
           <div style={{ marginBottom: 24 }}>
             <Text strong>{t('提现手续费规则')}</Text>
             <Text type='tertiary' style={{ display: 'block', marginTop: 4 }}>
-              {t('使用可视化编辑器维护区间、收费方式和预览结果，保存时会自动转换为系统配置格式。')}
+              {t(
+                '使用可视化编辑器维护区间和收费方式，保存时会自动转换为系统配置格式。',
+              )}
             </Text>
             {withdrawalFeeRulesInvalidState && (
               <Banner
                 type='danger'
                 closeIcon={null}
                 style={{ marginTop: 12 }}
-                description={t('检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存，或恢复默认示例并重新配置。')}
+                description={t(
+                  '检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存。',
+                )}
               />
             )}
             {/* invalid persisted WithdrawalFeeRules before normalizing into editor state */}
             <WithdrawalFeeRulesEditor
               value={inputs.WithdrawalFeeRules}
               onChange={handleFeeRulesChange}
+              onDraftStateChange={setHasPendingFeeRuleDraft}
             />
           </div>
 

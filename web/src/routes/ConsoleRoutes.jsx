@@ -72,10 +72,14 @@ const PersonalSetting = lazyWithRetry(
   () => import('../components/settings/PersonalSetting'),
   'personal-setting-route',
 );
+const CONSOLE_ROUTES_BUILD_TAG = '2026-04-21-dashboard-restore-v2';
 
 function ConsoleRoutes() {
   const location = useLocation();
-  const renderWithSuspense = (element, key = location.pathname) => (
+  const renderWithSuspense = (
+    element,
+    key = `${CONSOLE_ROUTES_BUILD_TAG}:${location.pathname}`,
+  ) => (
     <Suspense fallback={<Loading />} key={key}>
       {element}
     </Suspense>

@@ -24,12 +24,17 @@ import SetupCheck from './components/layout/SetupCheck';
 import { StatusContext } from './context/Status';
 import { getPricingRequireAuth } from './helpers/headerNavModules';
 import { lazyWithRetry } from './helpers/lazyWithRetry';
-import PublicRoutes from './routes/PublicRoutes';
+import HomeRoutes from './routes/HomeRoutes';
 
 const ConsoleRoutes = lazyWithRetry(
   () => import('./routes/ConsoleRoutes'),
   'console-routes',
 );
+const PublicRoutes = lazyWithRetry(
+  () => import('./routes/PublicRoutes'),
+  'public-routes',
+);
+const APP_BUILD_TAG = '2026-04-21-dashboard-restore-v2';
 
 function App() {
   const location = useLocation();
@@ -37,13 +42,20 @@ function App() {
   const pricingRequireAuth = useMemo(() => {
     return getPricingRequireAuth(statusState?.status?.HeaderNavModules);
   }, [statusState?.status?.HeaderNavModules]);
-  const RoutesComponent = location.pathname.startsWith('/console')
+  const isConsoleRoute = location.pathname.startsWith('/console');
+  const isHomeRoute = location.pathname === '/';
+  const RoutesComponent = isConsoleRoute
     ? ConsoleRoutes
-    : PublicRoutes;
+    : isHomeRoute
+      ? HomeRoutes
+      : PublicRoutes;
 
   return (
     <SetupCheck>
-      <Suspense fallback={<Loading />} key={location.pathname}>
+      <Suspense
+        fallback={<Loading />}
+        key={`${APP_BUILD_TAG}:${location.pathname}`}
+      >
         <RoutesComponent pricingRequireAuth={pricingRequireAuth} />
       </Suspense>
     </SetupCheck>

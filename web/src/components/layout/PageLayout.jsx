@@ -18,12 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import App from '../../App';
-import FooterBar from './Footer';
 import { ToastContainer } from 'react-toastify';
 import ErrorBoundary from '../common/ErrorBoundary';
-import React, { Suspense, lazy, useContext, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useContext, useEffect } from 'react';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
-import { useSidebarCollapsed } from '../../hooks/common/useSidebarCollapsed';
 import { useTranslation } from 'react-i18next';
 import { setStatusData } from '../../helpers/data';
 import { getLogo, getSystemName } from '../../helpers/branding';
@@ -34,11 +32,14 @@ import { StatusContext } from '../../context/Status';
 import { ensureLanguageResources } from '../../i18n/i18n';
 import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
-import MarketingHeaderBar from './MarketingHeaderBar';
+import MarketingPageLayout from './MarketingPageLayout';
+import { lazyWithRetry } from '../../helpers/lazyWithRetry';
 
-const ConsoleHeaderBar = lazy(() => import('./headerbar'));
-const ConsoleSiderBar = lazy(() => import('./SiderBar'));
-const SemiRuntime = lazy(() => import('../common/SemiRuntime'));
+const FooterBar = lazy(() => import('./Footer'));
+const ConsolePageLayout = lazyWithRetry(
+  () => import('./ConsolePageLayout'),
+  'console-page-layout',
+);
 
 const MINIMAL_SHELL_FALLBACK = (
   <div className='min-h-screen bg-white dark:bg-slate-950' />
@@ -63,8 +64,6 @@ const PageLayout = () => {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
-  const [collapsed, , setCollapsed] = useSidebarCollapsed();
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const { i18n } = useTranslation();
   const location = useLocation();
 
@@ -87,17 +86,6 @@ const PageLayout = () => {
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
-  const isMarketingRoute = location.pathname === '/';
-  const showSider = isConsoleRoute && (!isMobile || drawerOpen);
-  const sidebarWidth = collapsed
-    ? 'var(--sidebar-width-collapsed)'
-    : 'var(--sidebar-width)';
-
-  useEffect(() => {
-    if (isMobile && drawerOpen && collapsed) {
-      setCollapsed(false);
-    }
-  }, [isMobile, drawerOpen, collapsed, setCollapsed]);
 
   useEffect(() => {
     const rawUser = localStorage.getItem('user');
@@ -207,107 +195,26 @@ const PageLayout = () => {
         width: '100%',
       }}
     >
-      <FooterBar />
+      <Suspense fallback={null}>
+        <FooterBar />
+      </Suspense>
     </div>
   ) : null;
 
   const marketingShell = (
-    <>
-      <header
-        style={{
-          padding: 0,
-          height: 'auto',
-          lineHeight: 'normal',
-          position: 'fixed',
-          width: '100%',
-          top: 0,
-          zIndex: 100,
-        }}
-      >
-        <MarketingHeaderBar />
-      </header>
-      <div
-        style={{
-          overflow: isMobile ? 'visible' : 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <div
-          style={{
-            marginLeft: '0',
-            flex: '1 1 auto',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {appContent}
-          {footerContent}
-        </div>
-      </div>
-    </>
+    <MarketingPageLayout
+      appContent={appContent}
+      footerContent={footerContent}
+      isMobile={isMobile}
+    />
   );
 
   const consoleShell = (
-    <SemiRuntime>
-      <header
-        style={{
-          padding: 0,
-          height: 'auto',
-          lineHeight: 'normal',
-          position: 'fixed',
-          width: '100%',
-          top: 0,
-          zIndex: 100,
-        }}
-      >
-        <ConsoleHeaderBar
-          onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
-          drawerOpen={drawerOpen}
-        />
-      </header>
-      <div
-        style={{
-          overflow: isMobile ? 'visible' : 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {showSider ? (
-          <aside
-            className='app-sider'
-            style={{
-              position: 'fixed',
-              left: 0,
-              top: '64px',
-              zIndex: 99,
-              border: 'none',
-              paddingRight: '0',
-              width: sidebarWidth,
-            }}
-          >
-            <ConsoleSiderBar
-              onNavigate={() => {
-                if (isMobile) {
-                  setDrawerOpen(false);
-                }
-              }}
-            />
-          </aside>
-        ) : null}
-        <div
-          style={{
-            marginLeft: isMobile ? '0' : showSider ? sidebarWidth : '0',
-            flex: '1 1 auto',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {appContent}
-          {footerContent}
-        </div>
-      </div>
-    </SemiRuntime>
+    <ConsolePageLayout
+      appContent={appContent}
+      footerContent={footerContent}
+      isMobile={isMobile}
+    />
   );
 
   return (
@@ -319,10 +226,10 @@ const PageLayout = () => {
         overflow: isMobile ? 'visible' : 'hidden',
       }}
     >
-      {isMarketingRoute ? (
-        marketingShell
-      ) : (
+      {isConsoleRoute ? (
         <Suspense fallback={MINIMAL_SHELL_FALLBACK}>{consoleShell}</Suspense>
+      ) : (
+        marketingShell
       )}
       <ToastContainer />
     </div>

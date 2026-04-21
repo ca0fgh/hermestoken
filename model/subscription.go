@@ -874,35 +874,82 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	return tx.Save(&topup).Error
 }
 
-func ExpireSubscriptionOrder(tradeNo string) error {
+func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string) (bool, error) {
+	if tx == nil {
+		return false, errors.New("tx is nil")
+	}
 	if tradeNo == "" {
-		return errors.New("tradeNo is empty")
+		return false, errors.New("tradeNo is empty")
 	}
 	refCol := "`trade_no`"
 	if common.UsingPostgreSQL {
 		refCol = `"trade_no"`
 	}
+	var order SubscriptionOrder
+	if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+		return false, ErrSubscriptionOrderNotFound
+	}
+	if order.Status != common.TopUpStatusPending {
+		return false, nil
+	}
+	if order.StockReserved > 0 {
+		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId, true)
+		if err != nil {
+			return false, err
+		}
+		if err := releaseReservedSubscriptionOrderStockTx(tx, &order, plan); err != nil {
+			return false, err
+		}
+	}
+	order.Status = common.TopUpStatusExpired
+	order.CompleteTime = common.GetTimestamp()
+	return true, tx.Save(&order).Error
+}
+
+func ExpireSubscriptionOrder(tradeNo string) error {
+	if tradeNo == "" {
+		return errors.New("tradeNo is empty")
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var order SubscriptionOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
-			return ErrSubscriptionOrderNotFound
-		}
-		if order.Status != common.TopUpStatusPending {
-			return nil
-		}
-		if order.StockReserved > 0 {
-			plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId, true)
-			if err != nil {
-				return err
-			}
-			if err := releaseReservedSubscriptionOrderStockTx(tx, &order, plan); err != nil {
-				return err
-			}
-		}
-		order.Status = common.TopUpStatusExpired
-		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		_, err := expireSubscriptionOrderTx(tx, tradeNo)
+		return err
 	})
+}
+
+func ExpirePendingSubscriptionOrdersCreatedBefore(cutoffUnix int64, limit int) (int, error) {
+	if cutoffUnix <= 0 {
+		return 0, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var tradeNos []string
+	if err := DB.Model(&SubscriptionOrder{}).
+		Where("status = ? AND create_time <= ?", common.TopUpStatusPending, cutoffUnix).
+		Order("create_time asc").
+		Limit(limit).
+		Pluck("trade_no", &tradeNos).Error; err != nil {
+		return 0, err
+	}
+	expiredCount := 0
+	for _, tradeNo := range tradeNos {
+		if strings.TrimSpace(tradeNo) == "" {
+			continue
+		}
+		expired := false
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var expireErr error
+			expired, expireErr = expireSubscriptionOrderTx(tx, tradeNo)
+			return expireErr
+		})
+		if err != nil {
+			return expiredCount, err
+		}
+		if expired {
+			expiredCount++
+		}
+	}
+	return expiredCount, nil
 }
 
 // Admin bind (no payment). Creates a UserSubscription from a plan.

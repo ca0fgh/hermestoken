@@ -15,12 +15,13 @@ const localizedTask4Keys = [
 ];
 const localizedAdminKeys = [
   '保存提现设置',
-  '使用可视化编辑器维护区间、收费方式和预览结果，保存时会自动转换为系统配置格式。',
-  '检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存，或恢复默认示例并重新配置。',
+  '使用可视化编辑器维护区间和收费方式，保存时会自动转换为系统配置格式。',
+  '检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存。',
   '提现手续费规则配置已损坏，请先修复或替换后再保存。',
   '按列表顺序匹配金额区间，系统会使用第一条启用且命中的规则。',
-  '暂未配置提现手续费规则，可点击“新增规则”或“恢复默认示例”。',
+  '暂未配置提现手续费规则，可点击“新增规则”。',
   '当前有未保存的规则修改，确定要放弃并继续吗？',
+  '请先保存或取消当前提现手续费规则编辑',
   '费率按百分比填写，例如 2 表示按提现金额的 2% 收费。',
   '固定金额表示每笔提现直接收取的手续费。',
   '结束金额必须是有效数字',
@@ -36,7 +37,8 @@ const localizedAdminKeys = [
   '{{min}} < 金额 <= {{max}}',
   '未命中手续费规则',
 ];
-const getLocaleValue = (payload, key) => payload?.translation?.[key] ?? payload?.[key];
+const getLocaleValue = (payload, key) =>
+  payload?.translation?.[key] ?? payload?.[key];
 
 test('withdrawal locales define wallet and admin copy', () => {
   const keys = [

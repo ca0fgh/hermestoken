@@ -33,6 +33,7 @@ test('subscription admin editor exposes a separate stock_total field and stock s
   assert.match(addEditSource, /t\('库存'\)/);
   assert.match(addEditSource, /t\('套餐总库存，0 表示不限'\)/);
   assert.match(addEditSource, /t\('库存从开启后开始统计，历史销售不计入'\)/);
+  assert.match(addEditSource, /t\('锁定库存会在待支付订单超时后自动释放（30分钟）'\)/);
   assert.match(addEditSource, /t\('已售'\)/);
   assert.match(addEditSource, /t\('锁定'\)/);
   assert.match(addEditSource, /t\('剩余'\)/);

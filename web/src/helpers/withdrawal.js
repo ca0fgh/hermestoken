@@ -110,6 +110,9 @@ const normalizeEditorRule = (rule, index) => {
   };
 };
 
+const normalizeEditorRulesInCurrentOrder = (feeRules = []) =>
+  parseWithdrawalRulesInput(feeRules).map(normalizeEditorRule);
+
 const normalizeStoredWithdrawalFeeRules = (feeRules = []) =>
   sortEditorRules(normalizeWithdrawalFeeEditorRules(feeRules)).map((rule, index) => ({
     min_amount: rule.minAmount,
@@ -448,7 +451,13 @@ export const getWithdrawalStatusMeta = (status, t) => {
 };
 
 export const normalizeWithdrawalFeeEditorRules = (feeRules = []) =>
-  sortEditorRules(parseWithdrawalRulesInput(feeRules).map(normalizeEditorRule));
+  sortEditorRules(normalizeEditorRulesInCurrentOrder(feeRules));
+
+export const reindexWithdrawalFeeEditorRules = (feeRules = []) =>
+  normalizeEditorRulesInCurrentOrder(feeRules).map((rule, index) => ({
+    ...rule,
+    sortOrder: index + 1,
+  }));
 
 export const validateWithdrawalFeeEditorRules = (feeRules = [], t) => {
   const rules = normalizeWithdrawalFeeEditorRules(feeRules);

@@ -29,10 +29,14 @@ test('payment settings render withdrawal settings card with inline rule editor',
     settingsWithdrawalSource,
     /匹配第一条 enabled=true 且金额区间命中的规则/,
   );
+  assert.doesNotMatch(editorSource, /Text strong>\{t\('提现手续费规则'\)\}/);
   assert.match(editorSource, /新增规则/);
   assert.match(editorSource, /上移/);
   assert.match(editorSource, /下移/);
-  assert.match(editorSource, /恢复默认示例/);
+  assert.match(editorSource, /暂未配置提现手续费规则，可点击“新增规则”。/);
+  assert.doesNotMatch(editorSource, /恢复默认示例/);
+  assert.doesNotMatch(editorSource, /示例预览/);
+  assert.doesNotMatch(editorSource, /下面会按当前规则自动选取几个金额样本/);
 });
 
 test('settings withdrawal tracks persisted fee rule parse errors instead of silently normalizing them away', () => {
@@ -41,18 +45,24 @@ test('settings withdrawal tracks persisted fee rule parse errors instead of sile
   );
   const helperSource = readSource('src/helpers/withdrawal.js');
 
-  assert.match(helperSource, /export const parsePersistedWithdrawalFeeRules\s*=/);
+  assert.match(
+    helperSource,
+    /export const parsePersistedWithdrawalFeeRules\s*=/,
+  );
   assert.match(helperSource, /typeof value === 'number'/);
   assert.match(helperSource, /typeof enabledValue !== 'boolean'/);
   assert.match(settingsWithdrawalSource, /withdrawalFeeRulesInvalidState/i);
-  assert.match(settingsWithdrawalSource, /showError\(t\('提现手续费规则配置已损坏，请先修复或替换后再保存。'\)\)/);
+  assert.match(
+    settingsWithdrawalSource,
+    /showError\(t\('提现手续费规则配置已损坏，请先修复或替换后再保存。'\)\)/,
+  );
   assert.match(
     settingsWithdrawalSource,
     /invalid persisted WithdrawalFeeRules before normalizing into editor state/i,
   );
   assert.match(
     settingsWithdrawalSource,
-    /description=\{t\('检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存，或恢复默认示例并重新配置。'\)\}/,
+    /description=\{t\(\s*'检测到已保存的提现手续费规则配置无效。当前不会自动覆盖原始配置；请修复规则后重新保存。'/s,
   );
 });
 
@@ -77,4 +87,70 @@ test('withdrawal fee rule editor guards unsaved draft changes before replacing t
   assert.match(editorSource, /handleDraftReplacement/);
   assert.match(editorSource, /当前有未保存的规则修改/);
   assert.match(editorSource, /describeWithdrawalFeeRule\(rule,\s*t\)/);
+});
+
+test('settings withdrawal blocks page save while the fee rule editor still has an active draft', () => {
+  const settingsWithdrawalSource = readSource(
+    'src/pages/Setting/Payment/SettingsWithdrawal.jsx',
+  );
+  const editorSource = readSource(
+    'src/components/settings/withdrawal/WithdrawalFeeRulesEditor.jsx',
+  );
+
+  assert.match(settingsWithdrawalSource, /hasPendingFeeRuleDraft/);
+  assert.match(
+    settingsWithdrawalSource,
+    /showError\(t\('请先保存或取消当前提现手续费规则编辑'\)\)/,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /onDraftStateChange=\{setHasPendingFeeRuleDraft\}/,
+  );
+  assert.match(editorSource, /onDraftStateChange/);
+  assert.match(editorSource, /Boolean\(editingRuleId\)/);
+});
+
+test('settings withdrawal submits the latest committed form values and fee rules snapshot', () => {
+  const settingsWithdrawalSource = readSource(
+    'src/pages/Setting/Payment/SettingsWithdrawal.jsx',
+  );
+
+  assert.match(
+    settingsWithdrawalSource,
+    /const \[isFormApiReady, setIsFormApiReady\] = useState\(false\);/,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /const withdrawalFeeRulesRef = useRef\(\[\]\);/,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /const applyFormValuesToState = \(values = \{\}\) => \{/,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /const \{ WithdrawalFeeRules: _ignoredFeeRules, \.\.\.formValues \} = values;/,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /const latestFormValues = formApiRef\.current\?\.getValues\?\.\(\) \|\| \{\};/,
+  );
+  assert.match(settingsWithdrawalSource, /useEffect\(\(\) => \{/);
+  assert.match(
+    settingsWithdrawalSource,
+    /options\?\.WithdrawalEnabled,\s+options\?\.WithdrawalMinAmount,\s+options\?\.WithdrawalInstruction,\s+options\?\.WithdrawalFeeRules,\s+isFormApiReady/s,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /formApiRef\.current\.setValues\(\{\s*WithdrawalEnabled:\s*currentInputs\.WithdrawalEnabled,\s*WithdrawalMinAmount:\s*currentInputs\.WithdrawalMinAmount,\s*WithdrawalInstruction:\s*currentInputs\.WithdrawalInstruction,\s*\}\)/s,
+  );
+  assert.match(
+    settingsWithdrawalSource,
+    /WithdrawalFeeRules: withdrawalFeeRulesRef\.current/,
+  );
+  assert.match(settingsWithdrawalSource, /const currentInputs = \{/);
+  assert.match(
+    settingsWithdrawalSource,
+    /serializeWithdrawalFeeEditorRules\(currentInputs\.WithdrawalFeeRules\)/,
+  );
 });

@@ -129,6 +129,92 @@ func TestReleaseReservedSubscriptionOrderStockTxClearsReservedCount(t *testing.T
 	}
 }
 
+func TestExpirePendingSubscriptionOrdersCreatedBeforeReleasesReservedStock(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 9.9)
+	order := seedPendingReferralOrder(t, db, 1, plan.Id, "stock-auto-expire-order", 9.9)
+
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  5,
+		"stock_locked": 1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+	if err := db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]interface{}{
+		"stock_reserved": 1,
+		"create_time":    common.GetTimestamp() - 31*60,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed order timeout state: %v", err)
+	}
+
+	expiredCount, err := ExpirePendingSubscriptionOrdersCreatedBefore(common.GetTimestamp()-30*60, 50)
+	if err != nil {
+		t.Fatalf("ExpirePendingSubscriptionOrdersCreatedBefore() error = %v", err)
+	}
+	if expiredCount != 1 {
+		t.Fatalf("expected expiredCount=1, got %d", expiredCount)
+	}
+
+	var afterPlan SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&afterPlan).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if afterPlan.StockLocked != 0 {
+		t.Fatalf("expected stock_locked=0 after auto expiry, got %d", afterPlan.StockLocked)
+	}
+
+	var afterOrder SubscriptionOrder
+	if err := db.Where("id = ?", order.Id).First(&afterOrder).Error; err != nil {
+		t.Fatalf("failed to reload order: %v", err)
+	}
+	if afterOrder.Status != common.TopUpStatusExpired || afterOrder.StockReserved != 0 {
+		t.Fatalf("expected expired order with stock_reserved=0, got status=%s reserved=%d", afterOrder.Status, afterOrder.StockReserved)
+	}
+}
+
+func TestExpirePendingSubscriptionOrdersCreatedBeforeKeepsFreshOrdersLocked(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 9.9)
+	order := seedPendingReferralOrder(t, db, 1, plan.Id, "stock-auto-expire-fresh-order", 9.9)
+
+	if err := db.Model(&SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
+		"stock_total":  5,
+		"stock_locked": 1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed plan stock: %v", err)
+	}
+	if err := db.Model(&SubscriptionOrder{}).Where("id = ?", order.Id).Updates(map[string]interface{}{
+		"stock_reserved": 1,
+		"create_time":    common.GetTimestamp() - 10*60,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed fresh order state: %v", err)
+	}
+
+	expiredCount, err := ExpirePendingSubscriptionOrdersCreatedBefore(common.GetTimestamp()-30*60, 50)
+	if err != nil {
+		t.Fatalf("ExpirePendingSubscriptionOrdersCreatedBefore() error = %v", err)
+	}
+	if expiredCount != 0 {
+		t.Fatalf("expected expiredCount=0, got %d", expiredCount)
+	}
+
+	var afterPlan SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&afterPlan).Error; err != nil {
+		t.Fatalf("failed to reload plan: %v", err)
+	}
+	if afterPlan.StockLocked != 1 {
+		t.Fatalf("expected stock_locked=1 for fresh order, got %d", afterPlan.StockLocked)
+	}
+
+	var afterOrder SubscriptionOrder
+	if err := db.Where("id = ?", order.Id).First(&afterOrder).Error; err != nil {
+		t.Fatalf("failed to reload order: %v", err)
+	}
+	if afterOrder.Status != common.TopUpStatusPending || afterOrder.StockReserved != 1 {
+		t.Fatalf("expected pending order with stock_reserved=1, got status=%s reserved=%d", afterOrder.Status, afterOrder.StockReserved)
+	}
+}
+
 func TestReleaseReservedSubscriptionOrderStockTxRejectsInvariantMismatch(t *testing.T) {
 	db := setupSubscriptionReferralSettlementDB(t)
 	plan := seedReferralPlan(t, db, 9.9)

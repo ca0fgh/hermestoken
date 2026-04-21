@@ -172,6 +172,8 @@ const Dashboard = () => {
 
   // ========== 数据准备 ==========
   const apiInfoData = statusState?.status?.api_info || [];
+  const hasVisibleApiInfoPanel =
+    dashboardData.hasApiInfoPanel && apiInfoData.length > 0;
   const announcementData = (statusState?.status?.announcements || []).map(
     (item) => {
       const pubDate = item?.publishDate ? new Date(item.publishDate) : null;
@@ -247,13 +249,13 @@ const Dashboard = () => {
       {/* API信息和图表面板 */}
       <div className='mb-4'>
         <div
-          className={`grid grid-cols-1 gap-4 ${dashboardData.hasApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
+          className={`grid grid-cols-1 gap-4 ${hasVisibleApiInfoPanel ? 'lg:grid-cols-4' : ''}`}
         >
           {chartsPanelEnabled ? (
             <Suspense
               fallback={
                 <div
-                  className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${dashboardData.hasApiInfoPanel ? 'lg:col-span-3' : ''}`}
+                  className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${hasVisibleApiInfoPanel ? 'lg:col-span-3' : ''}`}
                 >
                   <div className='h-96 animate-pulse rounded-2xl bg-slate-100' />
                 </div>
@@ -272,15 +274,15 @@ const Dashboard = () => {
                 CARD_PROPS={CARD_PROPS}
                 CHART_CONFIG={CHART_CONFIG}
                 FLEX_CENTER_GAP2={FLEX_CENTER_GAP2}
-                hasApiInfoPanel={dashboardData.hasApiInfoPanel}
+                hasApiInfoPanel={hasVisibleApiInfoPanel}
                 t={dashboardData.t}
               />
             </Suspense>
           ) : (
             <section
-              className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${dashboardData.hasApiInfoPanel ? 'lg:col-span-3' : ''}`}
+              className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm ${hasVisibleApiInfoPanel ? 'lg:col-span-3' : ''}`}
             >
-              <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
+              <div className='flex flex-col gap-4 md:flex-row md:items-start md:justify-between'>
                 <div className='space-y-2'>
                   <div className='flex items-center gap-2 text-sm font-semibold text-slate-900'>
                     <BarChart3 size={16} />
@@ -294,7 +296,7 @@ const Dashboard = () => {
                 </div>
                 <button
                   type='button'
-                  className='inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700'
+                  className='inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 self-start'
                   onClick={() => setChartsPanelEnabled(true)}
                 >
                   {dashboardData.t('加载图表分析')}
@@ -303,7 +305,7 @@ const Dashboard = () => {
             </section>
           )}
 
-          {dashboardData.hasApiInfoPanel && (
+          {hasVisibleApiInfoPanel && (
             <ApiInfoPanel
               apiInfoData={apiInfoData}
               handleCopyUrl={(url) => handleCopyUrl(url, dashboardData.t)}

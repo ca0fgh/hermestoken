@@ -28,6 +28,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 import { selectFilter } from '../../../../helpers';
+import { getStoredServerAddress } from '../../../../helpers/storageJson';
 
 const APP_CONFIGS = {
   claude: {
@@ -53,14 +54,7 @@ const APP_CONFIGS = {
 };
 
 function getServerAddress() {
-  try {
-    const raw = localStorage.getItem('status');
-    if (raw) {
-      const status = JSON.parse(raw);
-      if (status.server_address) return status.server_address;
-    }
-  } catch (_) {}
-  return window.location.origin;
+  return getStoredServerAddress();
 }
 
 function buildCCSwitchURL(app, name, models, apiKey) {

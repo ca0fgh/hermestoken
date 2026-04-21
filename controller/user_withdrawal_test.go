@@ -67,7 +67,7 @@ func TestAdminApproveRejectAndMarkPaidWithdrawal(t *testing.T) {
 	}
 	common.OptionMap[model.WithdrawalEnabledOptionKey] = "true"
 	common.OptionMap[model.WithdrawalMinAmountOptionKey] = "10"
-	common.OptionMap[model.WithdrawalFeeRulesOptionKey] = `[]`
+	common.OptionMap[model.WithdrawalFeeRulesOptionKey] = `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`
 
 	withdrawal, err := model.CreateUserWithdrawal(&model.CreateUserWithdrawalParams{
 		UserID:         user.Id,
@@ -146,7 +146,7 @@ func TestAdminListWithdrawalsKeywordMatchesUserID(t *testing.T) {
 
 	common.OptionMap[model.WithdrawalEnabledOptionKey] = "true"
 	common.OptionMap[model.WithdrawalMinAmountOptionKey] = "10"
-	common.OptionMap[model.WithdrawalFeeRulesOptionKey] = `[]`
+	common.OptionMap[model.WithdrawalFeeRulesOptionKey] = `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`
 
 	if _, err := model.CreateUserWithdrawal(&model.CreateUserWithdrawalParams{
 		UserID:         user.Id,

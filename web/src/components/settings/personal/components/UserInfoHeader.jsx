@@ -26,15 +26,14 @@ import {
   Typography,
   Badge,
 } from '@douyinfe/semi-ui';
-import {
-  isRoot,
-  isAdmin,
-  renderQuota,
-  stringToColor,
-} from '../../../../helpers';
+import { renderQuota, stringToColor } from '../../../../helpers';
 import { Coins, BarChart2, Users } from 'lucide-react';
 
 const UserInfoHeader = ({ t, userState }) => {
+  const userRole = Number(userState?.user?.role) || 0;
+  const isRootUser = userRole >= 100;
+  const isAdminUser = userRole >= 10;
+
   const getUsername = () => {
     if (userState.user) {
       return userState.user.username;
@@ -80,7 +79,7 @@ const UserInfoHeader = ({ t, userState }) => {
                     {getUsername()}
                   </div>
                   <div className='flex flex-wrap items-center gap-2'>
-                    {isRoot() ? (
+                    {isRootUser ? (
                       <Tag
                         size='large'
                         shape='circle'
@@ -88,7 +87,7 @@ const UserInfoHeader = ({ t, userState }) => {
                       >
                         {t('超级管理员')}
                       </Tag>
-                    ) : isAdmin() ? (
+                    ) : isAdminUser ? (
                       <Tag
                         size='large'
                         shape='circle'

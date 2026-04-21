@@ -11,6 +11,14 @@ const pageLayoutPath = new URL(
   '../src/components/layout/PageLayout.jsx',
   import.meta.url,
 );
+const marketingPageLayoutPath = new URL(
+  '../src/components/layout/MarketingPageLayout.jsx',
+  import.meta.url,
+);
+const consolePageLayoutPath = new URL(
+  '../src/components/layout/ConsolePageLayout.jsx',
+  import.meta.url,
+);
 const noticeModalPath = new URL(
   '../src/components/layout/NoticeModal.jsx',
   import.meta.url,
@@ -45,8 +53,16 @@ const chartsPanelPath = new URL(
   '../src/components/dashboard/ChartsPanel.jsx',
   import.meta.url,
 );
+const apiInfoPanelPath = new URL(
+  '../src/components/dashboard/ApiInfoPanel.jsx',
+  import.meta.url,
+);
 const dashboardChartsHookPath = new URL(
   '../src/hooks/dashboard/useDashboardCharts.jsx',
+  import.meta.url,
+);
+const dashboardStatsHookPath = new URL(
+  '../src/hooks/dashboard/useDashboardStats.jsx',
   import.meta.url,
 );
 const lazyVChartPath = new URL(
@@ -63,15 +79,17 @@ const markdownRendererPath = new URL(
 );
 const consoleRoutesPath = new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url);
 const publicRoutesPath = new URL('../src/routes/PublicRoutes.jsx', import.meta.url);
+const homeRoutesPath = new URL('../src/routes/HomeRoutes.jsx', import.meta.url);
 const headerBarHookPath = new URL(
   '../src/hooks/common/useHeaderBar.js',
   import.meta.url,
 );
 
-test('app entry keeps public routes in the startup bundle while lazy loading the console route group', async () => {
+test('app entry keeps only the home route group in the startup bundle while lazy loading console and non-home public route groups', async () => {
   const appSource = await readFile(appPath, 'utf8');
   const consoleSource = await readFile(consoleRoutesPath, 'utf8');
   const publicSource = await readFile(publicRoutesPath, 'utf8');
+  const homeSource = await readFile(homeRoutesPath, 'utf8');
 
   assert.match(
     appSource,
@@ -79,11 +97,19 @@ test('app entry keeps public routes in the startup bundle while lazy loading the
   );
   assert.match(
     appSource,
-    /import PublicRoutes from '\.\/routes\/PublicRoutes';/,
+    /const PublicRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/PublicRoutes'\),/,
+  );
+  assert.match(
+    appSource,
+    /import HomeRoutes from '\.\/routes\/HomeRoutes';/,
   );
   assert.doesNotMatch(
     appSource,
-    /const PublicRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/PublicRoutes'\),/,
+    /const HomeRoutes = lazyWithRetry\([\s\S]*import\('\.\/routes\/HomeRoutes'\),/,
+  );
+  assert.match(
+    appSource,
+    /const isHomeRoute = location\.pathname === '\/';/,
   );
   assert.doesNotMatch(appSource, /import\('\.\/pages\/Setting'\)/);
   assert.doesNotMatch(appSource, /import\('\.\/pages\/Playground'\)/);
@@ -115,6 +141,11 @@ test('app entry keeps public routes in the startup bundle while lazy loading the
     publicSource,
     /const RegisterForm = lazyWithRetry\([\s\S]*import\('\.\.\/components\/auth\/RegisterForm'\),/,
   );
+  assert.match(homeSource, /import Home from '\.\.\/pages\/Home';/);
+  assert.doesNotMatch(
+    homeSource,
+    /lazyWithRetry\([\s\S]*LoginForm|lazyWithRetry\([\s\S]*RegisterForm|lazyWithRetry\([\s\S]*Pricing/,
+  );
 });
 
 test('vite build keeps only safe heavy dependencies in dedicated chunks', async () => {
@@ -122,7 +153,10 @@ test('vite build keeps only safe heavy dependencies in dedicated chunks', async 
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
 
   assert.match(source, /manualChunks:\s*(buildManualChunkName|\()/);
-  assert.match(source, /HOME_DEFERRED_PRELOAD_PATTERN = \/\(\?:semi-core\|visactor\|data-viz\)-\//);
+  assert.match(
+    source,
+    /HOME_DEFERRED_PRELOAD_PATTERN = \/\(\?:semi-core\|semi-icons\|visactor\|data-viz\)-\//,
+  );
   assert.match(source, /return 'seasonal-effects';/);
   assert.doesNotMatch(source, /return 'semi-vendor';/);
   assert.match(source, /onwarn:\s*(handleBuildWarning|\()/);
@@ -146,6 +180,19 @@ test('vite build keeps startup routing stable without forcing the entire Semi UI
   assert.doesNotMatch(source, /id\.includes\('i18next'\)[\s\S]*return 'i18n';/);
   assert.doesNotMatch(source, /return 'rich-content';/);
   assert.notEqual(reactCoreIndex, -1);
+});
+
+test('vite build groups semi icons into one shared async chunk instead of many tiny icon requests', async () => {
+  const source = await readFile(viteConfigPath, 'utf8');
+
+  assert.match(
+    source,
+    /id\.includes\('@douyinfe\/semi-icons'\)[\s\S]*return 'semi-icons';/,
+  );
+  assert.match(
+    source,
+    /HOME_DEFERRED_PRELOAD_PATTERN = \/\(\?:semi-core\|semi-icons\|visactor\|data-viz\)-\//,
+  );
 });
 
 test('vite build inlines the startup stylesheet into index.html to avoid an extra round trip on first paint', async () => {
@@ -198,6 +245,63 @@ test('startup shell files avoid the helpers barrel so render utilities stay out 
       assert.doesNotMatch(source, /from '\.\.\/\.\.\/\.\.\/helpers';/);
     }),
   );
+});
+
+test('page layout keeps the console chrome out of the startup shell by deferring the console layout module', async () => {
+  const pageLayoutSource = await readFile(pageLayoutPath, 'utf8');
+  const marketingPageLayoutSource = await readFile(marketingPageLayoutPath, 'utf8');
+  const consolePageLayoutSource = await readFile(consolePageLayoutPath, 'utf8');
+
+  assert.match(
+    pageLayoutSource,
+    /const ConsolePageLayout = lazyWithRetry\([\s\S]*import\('\.\/ConsolePageLayout'\),/,
+  );
+  assert.match(pageLayoutSource, /import MarketingPageLayout from '\.\/MarketingPageLayout';/);
+  assert.doesNotMatch(pageLayoutSource, /sidebar-width-collapsed/);
+  assert.doesNotMatch(pageLayoutSource, /ConsoleHeaderBar|ConsoleSiderBar|SemiRuntime/);
+  assert.match(consolePageLayoutSource, /sidebar-width-collapsed/);
+  assert.match(consolePageLayoutSource, /const ConsoleHeaderBar = lazy\(\(\) => import\('\.\/headerbar'\)\);/);
+  assert.match(consolePageLayoutSource, /const ConsoleSiderBar = lazy\(\(\) => import\('\.\/SiderBar'\)\);/);
+  assert.match(consolePageLayoutSource, /const SemiRuntime = lazy\(\(\) => import\('\.\.\/common\/SemiRuntime'\)\);/);
+  assert.doesNotMatch(marketingPageLayoutSource, /sidebar-width-collapsed/);
+  assert.doesNotMatch(marketingPageLayoutSource, /ConsoleHeaderBar|ConsoleSiderBar|SemiRuntime/);
+});
+
+test('page layout lazy loads the footer so the home startup bundle does not ship the entire footer link graph', async () => {
+  const pageLayoutSource = await readFile(pageLayoutPath, 'utf8');
+  const marketingPageLayoutSource = await readFile(marketingPageLayoutPath, 'utf8');
+  const consolePageLayoutSource = await readFile(consolePageLayoutPath, 'utf8');
+
+  assert.match(pageLayoutSource, /const FooterBar = lazy\(\(\) => import\('\.\/Footer'\)\);/);
+  assert.match(pageLayoutSource, /<Suspense fallback=\{null\}>[\s\S]*<FooterBar \/>[\s\S]*<\/Suspense>/);
+  assert.doesNotMatch(marketingPageLayoutSource, /from '\.\/Footer';/);
+  assert.doesNotMatch(consolePageLayoutSource, /from '\.\/Footer';/);
+});
+
+test('marketing layout lazy loads the interactive header chrome so the home shell can paint before user controls hydrate', async () => {
+  const marketingPageLayoutSource = await readFile(marketingPageLayoutPath, 'utf8');
+
+  assert.match(
+    marketingPageLayoutSource,
+    /const MarketingHeaderBar = lazyWithRetry\([\s\S]*import\('\.\/MarketingHeaderBar'\),/,
+  );
+  assert.doesNotMatch(marketingPageLayoutSource, /import MarketingHeaderBar from '\.\/MarketingHeaderBar';/);
+  assert.match(marketingPageLayoutSource, /<Suspense fallback=\{MARKETING_HEADER_FALLBACK\}>[\s\S]*<MarketingHeaderBar \/>[\s\S]*<\/Suspense>/);
+  assert.match(marketingPageLayoutSource, /const MARKETING_HEADER_FALLBACK = \(/);
+});
+
+test('page layout only mounts the console shell for /console routes so public auth pages do not fetch console-only user data', async () => {
+  const pageLayoutSource = await readFile(pageLayoutPath, 'utf8');
+
+  assert.match(
+    pageLayoutSource,
+    /const isConsoleRoute = location\.pathname\.startsWith\('\/console'\);/,
+  );
+  assert.match(
+    pageLayoutSource,
+    /\{isConsoleRoute \? \([\s\S]*consoleShell[\s\S]*\) : \([\s\S]*marketingShell[\s\S]*\)\}/,
+  );
+  assert.doesNotMatch(pageLayoutSource, /const isMarketingRoute = location\.pathname === '\/';/);
 });
 
 test('startup shell avoids the heavyweight axios helper and lazy loads markdown parsing for the home page', async () => {
@@ -256,6 +360,50 @@ test('i18n preloads zh-CN while keeping the non-default locales lazy', async () 
   assert.match(source, /const loadedLanguages = new Set\(defaultLanguageMessages \? \[DEFAULT_LANGUAGE\] : \[\]\);/);
 });
 
+test('dashboard keeps the original four summary cards including the performance metrics block', async () => {
+  const statsCardsSource = await readFile(statsCardsPath, 'utf8');
+  const dashboardStatsHookSource = await readFile(
+    dashboardStatsHookPath,
+    'utf8',
+  );
+
+  assert.match(statsCardsSource, /lg:grid-cols-4/);
+  assert.match(dashboardStatsHookSource, /createSectionTitle\(Gauge, t\('性能指标'\)\)/);
+  assert.match(dashboardStatsHookSource, /title: t\('平均RPM'\)/);
+  assert.match(dashboardStatsHookSource, /title: t\('平均TPM'\)/);
+});
+
+test('dashboard keeps the chart runtime behind an explicit first-screen load action', async () => {
+  const dashboardSource = await readFile(dashboardPath, 'utf8');
+
+  assert.match(
+    dashboardSource,
+    /const \[chartsPanelEnabled, setChartsPanelEnabled\] = useState\(false\);/,
+  );
+  assert.match(
+    dashboardSource,
+    /const shouldLoadAdminUserCharts =\s*chartsPanelEnabled &&\s*dashboardData\.isAdminUser &&\s*\['5', '6'\]\.includes\(dashboardData\.activeChartTab\);/,
+  );
+  assert.match(
+    dashboardSource,
+    /const hasVisibleApiInfoPanel =\s*dashboardData\.hasApiInfoPanel && apiInfoData\.length > 0;/,
+  );
+  assert.match(
+    dashboardSource,
+    /className=\{`grid grid-cols-1 gap-4 \$\{hasVisibleApiInfoPanel \? 'lg:grid-cols-4' : ''\}`\}/,
+  );
+  assert.match(dashboardSource, /图表分析改为按需加载/);
+  assert.match(dashboardSource, /加载图表分析/);
+  assert.match(
+    dashboardSource,
+    /chartsPanelEnabled \? \([\s\S]*<Suspense[\s\S]*<ChartsPanel[\s\S]*<\/Suspense>[\s\S]*\) : \([\s\S]*setChartsPanelEnabled\(true\)[\s\S]*\)/,
+  );
+  assert.match(
+    dashboardSource,
+    /\{hasVisibleApiInfoPanel && \([\s\S]*<ApiInfoPanel[\s\S]*\)\}/,
+  );
+});
+
 test('render helper lazy loads lobe icons instead of importing the full icon registry upfront', async () => {
   const source = await readFile(renderHelperPath, 'utf8');
 
@@ -305,7 +453,7 @@ test('dashboard chart runtime deep imports the lightweight VChartSimple entry an
   );
 });
 
-test('dashboard route keeps its modal lazy and moves the heavyweight chart analysis surface behind an explicit lazy gate', async () => {
+test('dashboard route keeps its modal lazy while rendering a compact chart placeholder before the heavy panel is requested', async () => {
   const source = await readFile(dashboardPath, 'utf8');
 
   assert.match(
@@ -334,9 +482,42 @@ test('dashboard route keeps its modal lazy and moves the heavyweight chart analy
   );
   assert.doesNotMatch(source, /const StatsCards = lazy/);
   assert.doesNotMatch(source, /import ChartsPanel from '\.\/ChartsPanel';/);
-  assert.match(source, /const \[chartsPanelEnabled, setChartsPanelEnabled\] = useState\(false\);/);
-  assert.match(source, /onClick=\{\(\) => setChartsPanelEnabled\(true\)\}/);
+  assert.match(
+    source,
+    /const hasVisibleApiInfoPanel =\s*dashboardData\.hasApiInfoPanel && apiInfoData\.length > 0;/,
+  );
+  assert.match(
+    source,
+    /<section[\s\S]*className=\{`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm \$\{hasVisibleApiInfoPanel \? 'lg:col-span-3' : ''\}`\}/,
+  );
+  assert.match(
+    source,
+    /className='flex flex-col gap-4 md:flex-row md:items-start md:justify-between'/,
+  );
+  assert.match(
+    source,
+    /className='inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-700 self-start'/,
+  );
+  assert.match(source, /chartsPanelEnabled/);
+  assert.match(source, /加载图表分析/);
+  assert.match(source, /图表分析改为按需加载/);
   assert.match(source, /import \{ getRelativeTime \} from '\.\.\/\.\.\/helpers\/time';/);
+});
+
+test('dashboard api info empty state stays compact so an empty side panel does not push the second row downward', async () => {
+  const source = await readFile(apiInfoPanelPath, 'utf8');
+
+  assert.doesNotMatch(source, /min-h-\[20rem\]/);
+  assert.doesNotMatch(
+    source,
+    /import \{ Card, Avatar, Tag, Divider, Empty \} from '@douyinfe\/semi-ui';/,
+  );
+  assert.doesNotMatch(source, /<Empty/);
+  assert.doesNotMatch(source, /className='flex items-center justify-center py-8'/);
+  assert.match(
+    source,
+    /className='flex items-start gap-3 rounded-xl border border-dashed border-slate-200 bg-white\/80 px-3 py-3 text-left'/,
+  );
 });
 
 test('dashboard chart panels use the lazy VChart wrapper while stats cards render with an inline sparkline instead of visactor', async () => {
@@ -376,13 +557,34 @@ test('dashboard chart panels use the lazy VChart wrapper while stats cards rende
   assert.doesNotMatch(dashboardRuntimeSource, /registerLabel/);
 });
 
-test('dashboard only loads admin user chart data after the heavy chart surface is enabled on user-specific tabs', async () => {
+test('dashboard summary cards restore the original fourth performance tile', async () => {
+  const [statsSource, dashboardStatsHookSource] = await Promise.all([
+    readFile(statsCardsPath, 'utf8'),
+    readFile(dashboardStatsHookPath, 'utf8'),
+  ]);
+
+  assert.match(statsSource, /grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4/);
+  assert.match(dashboardStatsHookSource, /性能指标/);
+  assert.match(dashboardStatsHookSource, /平均RPM/);
+  assert.match(dashboardStatsHookSource, /平均TPM/);
+  assert.match(dashboardStatsHookSource, /import \{ Wallet, Activity, Zap, Gauge \} from 'lucide-react';/);
+  assert.match(
+    dashboardStatsHookSource,
+    /IconStopwatchStroked|IconTypograph/,
+  );
+});
+
+test('dashboard only loads admin user chart data after the chart surface has been explicitly enabled', async () => {
   const source = await readFile(dashboardPath, 'utf8');
 
-  assert.match(source, /const shouldLoadAdminUserCharts =[\s\S]*\['5', '6'\]\.includes\(dashboardData\.activeChartTab\);/);
+  assert.match(
+    source,
+    /const shouldLoadAdminUserCharts =\s*chartsPanelEnabled &&\s*dashboardData\.isAdminUser &&\s*\['5', '6'\]\.includes\(dashboardData\.activeChartTab\);/,
+  );
   assert.match(source, /if \(!force && adminUserChartCacheKeyRef\.current === userChartCacheKey\) \{/);
   assert.match(source, /if \(shouldLoadAdminUserCharts\) \{\s*await loadUserData\(\{ force: true \}\);/);
   assert.match(source, /useEffect\(\(\) => \{\s*if \(!shouldLoadAdminUserCharts\) \{\s*return;\s*\}\s*void loadUserData\(\);\s*\}, \[loadUserData, shouldLoadAdminUserCharts\]\);/);
+  assert.match(source, /chartsPanelEnabled/);
 });
 
 test('dashboard chart hook no longer preloads the visactor theme before the chart runtime is requested', async () => {

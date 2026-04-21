@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useState, useEffect } from 'react';
+import { readStoredArray } from '../../helpers/storageJson';
 
 export const useNotifications = (statusState) => {
   const [noticeVisible, setNoticeVisible] = useState(false);
@@ -31,12 +32,7 @@ export const useNotifications = (statusState) => {
 
   const calculateUnreadCount = () => {
     if (!announcements.length) return 0;
-    let readKeys = [];
-    try {
-      readKeys = JSON.parse(localStorage.getItem('notice_read_keys')) || [];
-    } catch (_) {
-      readKeys = [];
-    }
+    const readKeys = readStoredArray('notice_read_keys');
     const readSet = new Set(readKeys);
     return announcements.filter((a) => !readSet.has(getAnnouncementKey(a)))
       .length;
@@ -44,12 +40,7 @@ export const useNotifications = (statusState) => {
 
   const getUnreadKeys = () => {
     if (!announcements.length) return [];
-    let readKeys = [];
-    try {
-      readKeys = JSON.parse(localStorage.getItem('notice_read_keys')) || [];
-    } catch (_) {
-      readKeys = [];
-    }
+    const readKeys = readStoredArray('notice_read_keys');
     const readSet = new Set(readKeys);
     return announcements
       .filter((a) => !readSet.has(getAnnouncementKey(a)))
@@ -69,12 +60,7 @@ export const useNotifications = (statusState) => {
   const handleNoticeClose = () => {
     setNoticeVisible(false);
     if (announcements.length) {
-      let readKeys = [];
-      try {
-        readKeys = JSON.parse(localStorage.getItem('notice_read_keys')) || [];
-      } catch (_) {
-        readKeys = [];
-      }
+      const readKeys = readStoredArray('notice_read_keys');
       const mergedKeys = Array.from(
         new Set([...readKeys, ...announcements.map(getAnnouncementKey)]),
       );

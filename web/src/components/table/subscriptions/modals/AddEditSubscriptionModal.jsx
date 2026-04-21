@@ -80,11 +80,26 @@ const AddEditSubscriptionModal = ({
   const isEdit = editingPlan?.plan?.id !== undefined;
   const formKey = isEdit ? `edit-${editingPlan?.plan?.id}` : 'create';
 
+  const getSiteDisplayCurrencyLabel = () => {
+    const quotaDisplayType = localStorage.getItem('quota_display_type') || 'USD';
+    if (quotaDisplayType === 'CNY') return 'CNY (¥)';
+    if (quotaDisplayType === 'TOKENS') return 'Tokens';
+    if (quotaDisplayType === 'CUSTOM') {
+      let symbol = '¤';
+      try {
+        const status = JSON.parse(localStorage.getItem('status') || '{}');
+        symbol = status?.custom_currency_symbol || symbol;
+      } catch {}
+      return `${t('自定义货币')} (${symbol})`;
+    }
+    return 'USD ($)';
+  };
+
   const getInitValues = () => ({
     title: '',
     subtitle: '',
     price_amount: 0,
-    currency: 'USD',
+    currency: getSiteDisplayCurrencyLabel(),
     duration_unit: 'month',
     duration_value: 1,
     custom_seconds: 0,
@@ -111,7 +126,7 @@ const AddEditSubscriptionModal = ({
       title: p.title || '',
       subtitle: p.subtitle || '',
       price_amount: Number(p.price_amount || 0),
-      currency: 'USD',
+      currency: getSiteDisplayCurrencyLabel(),
       duration_unit: p.duration_unit || 'month',
       duration_value: Number(p.duration_value || 1),
       custom_seconds: Number(p.custom_seconds || 0),
@@ -161,6 +176,7 @@ const AddEditSubscriptionModal = ({
         plan: {
           ...values,
           price_amount: Number(values.price_amount || 0),
+          // Plans are still stored with USD as the internal billing base.
           currency: 'USD',
           duration_value: Number(values.duration_value || 0),
           custom_seconds: Number(values.custom_seconds || 0),
@@ -388,7 +404,7 @@ const AddEditSubscriptionModal = ({
                         label={t('库存')}
                         min={0}
                         precision={0}
-                        extraText={`${t('套餐总库存，0 表示不限')} ${t('库存从开启后开始统计，历史销售不计入')}`}
+                        extraText={`${t('套餐总库存，0 表示不限')} ${t('库存从开启后开始统计，历史销售不计入')} ${t('锁定库存会在待支付订单超时后自动释放（30分钟）')}`}
                         style={{ width: '100%' }}
                       />
                     </Col>

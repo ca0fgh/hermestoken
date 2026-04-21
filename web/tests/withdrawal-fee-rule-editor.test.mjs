@@ -363,3 +363,60 @@ test('sample previews and withdrawal preview use left-open right-closed matching
     [5, 5, 9, 10, 10],
   );
 });
+
+test('reindex helper preserves the current editor row order when rules are manually moved', async () => {
+  const {
+    normalizeWithdrawalFeeEditorRules,
+    reindexWithdrawalFeeEditorRules,
+  } = await loadHelpers();
+
+  const initialRules = normalizeWithdrawalFeeEditorRules([
+    {
+      id: 'open-ended',
+      minAmount: 1999,
+      maxAmount: '',
+      feeType: 'ratio',
+      feeValue: 1,
+      enabled: true,
+      sortOrder: 1,
+    },
+    {
+      id: 'middle-band',
+      minAmount: 800,
+      maxAmount: 1999,
+      feeType: 'fixed',
+      feeValue: 2,
+      enabled: true,
+      sortOrder: 2,
+    },
+  ]);
+
+  const movedRules = [...initialRules];
+  const [movedRule] = movedRules.splice(1, 1);
+  movedRules.splice(0, 0, movedRule);
+
+  const reindexed = reindexWithdrawalFeeEditorRules(movedRules);
+
+  assert.deepEqual(
+    reindexed.map((rule) => ({
+      id: rule.id,
+      minAmount: rule.minAmount,
+      maxAmount: rule.maxAmount,
+      sortOrder: rule.sortOrder,
+    })),
+    [
+      {
+        id: 'middle-band',
+        minAmount: 800,
+        maxAmount: 1999,
+        sortOrder: 1,
+      },
+      {
+        id: 'open-ended',
+        minAmount: 1999,
+        maxAmount: '',
+        sortOrder: 2,
+      },
+    ],
+  );
+});

@@ -35,6 +35,7 @@ import {
   getServerAddress,
   encodeChannelConnectionString,
 } from '../../helpers/token';
+import { getStoredServerAddress } from '../../helpers/storageJson';
 
 export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
   const { t } = useTranslation();
@@ -222,15 +223,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       openFluentNotification(fullKey);
       return;
     }
-    let status = localStorage.getItem('status');
-    let serverAddress = '';
-    if (status) {
-      status = JSON.parse(status);
-      serverAddress = status.server_address;
-    }
-    if (serverAddress === '') {
-      serverAddress = window.location.origin;
-    }
+    const serverAddress = getStoredServerAddress();
     if (url.includes('{cherryConfig}') === true) {
       let cherryConfig = {
         id: 'new-api',

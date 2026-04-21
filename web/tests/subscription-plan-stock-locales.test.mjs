@@ -15,6 +15,7 @@ const requiredKeys = [
   '每个用户最多购买次数，0 表示不限',
   '套餐总库存，0 表示不限',
   '库存从开启后开始统计，历史销售不计入',
+  '锁定库存会在待支付订单超时后自动释放（30分钟）',
 ];
 
 test('subscription stock locales define every new stock copy key', () => {

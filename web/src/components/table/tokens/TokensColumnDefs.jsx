@@ -40,6 +40,7 @@ import {
   getModelCategories,
   showError,
 } from '../../../helpers';
+import { readStoredArray } from '../../../helpers/storageJson';
 import {
   IconTreeTriangleDown,
   IconCopy,
@@ -359,26 +360,21 @@ const renderOperations = (
   refresh,
   t,
 ) => {
-  let chatsArray = [];
-  try {
-    const raw = localStorage.getItem('chats');
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      for (let i = 0; i < parsed.length; i++) {
-        const item = parsed[i];
-        const name = Object.keys(item)[0];
-        if (!name) continue;
-        chatsArray.push({
-          node: 'item',
-          key: i,
-          name,
-          value: item[name],
-          onClick: () => onOpenLink(name, item[name], record),
-        });
-      }
+  const chatsArray = [];
+  const parsed = readStoredArray('chats');
+  if (parsed.length > 0) {
+    for (let i = 0; i < parsed.length; i++) {
+      const item = parsed[i];
+      const name = Object.keys(item || {})[0];
+      if (!name) continue;
+      chatsArray.push({
+        node: 'item',
+        key: i,
+        name,
+        value: item[name],
+        onClick: () => onOpenLink(name, item[name], record),
+      });
     }
-  } catch (_) {
-    showError(t('聊天链接配置错误，请联系管理员'));
   }
 
   return (

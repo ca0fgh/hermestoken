@@ -17,18 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
-import Dashboard from '../../components/dashboard';
+import React, { Suspense } from 'react';
+import { Route, Routes } from 'react-router-dom';
+import Loading from '../components/common/ui/Loading';
+import Home from '../pages/Home';
 
-const DASHBOARD_BUILD_TAG = '2026-04-21-dashboard-restore-v2';
+function HomeRoutes() {
+  return (
+    <Routes>
+      <Route
+        path='/'
+        element={
+          <Suspense fallback={<Loading />} key='home'>
+            <Home />
+          </Suspense>
+        }
+      />
+    </Routes>
+  );
+}
 
-const Detail = () => (
-  <div
-    className='mt-[60px] px-2'
-    data-dashboard-build={DASHBOARD_BUILD_TAG}
-  >
-    <Dashboard />
-  </div>
-);
-
-export default Detail;
+export default HomeRoutes;

@@ -18,12 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Card, Avatar, Tag, Divider, Empty } from '@douyinfe/semi-ui';
+import { Card, Avatar, Tag, Divider } from '@douyinfe/semi-ui';
 import { Server, Gauge, ExternalLink, Copy } from 'lucide-react';
-import {
-  IllustrationConstruction,
-  IllustrationConstructionDark,
-} from '@douyinfe/semi-illustrations';
 import ScrollableContainer from '../common/ui/ScrollableContainer';
 
 const ApiInfoPanel = ({
@@ -32,7 +28,6 @@ const ApiInfoPanel = ({
   handleSpeedTest,
   CARD_PROPS,
   FLEX_CENTER_GAP2,
-  ILLUSTRATION_SIZE,
   t,
 }) => {
   return (
@@ -107,15 +102,20 @@ const ApiInfoPanel = ({
             </React.Fragment>
           ))
         ) : (
-          <div className='flex justify-center items-center min-h-[20rem] w-full'>
-            <Empty
-              image={<IllustrationConstruction style={ILLUSTRATION_SIZE} />}
-              darkModeImage={
-                <IllustrationConstructionDark style={ILLUSTRATION_SIZE} />
-              }
-              title={t('暂无API信息')}
-              description={t('请联系管理员在系统设置中配置API信息')}
-            />
+          <div className='p-4'>
+            <div className='flex items-start gap-3 rounded-xl border border-dashed border-slate-200 bg-white/80 px-3 py-3 text-left'>
+              <div className='flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-400'>
+                <Server size={18} />
+              </div>
+              <div className='min-w-0'>
+                <div className='text-sm font-semibold text-slate-900'>
+                  {t('暂无API信息')}
+                </div>
+                <div className='mt-1 text-xs leading-5 text-slate-500'>
+                  {t('请联系管理员在系统设置中配置API信息')}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </ScrollableContainer>
