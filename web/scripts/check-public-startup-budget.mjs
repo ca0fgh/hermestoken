@@ -67,7 +67,30 @@ async function readBuiltIndexHtml(distDir) {
 }
 
 function normalizeBuiltAssetPath(assetPath) {
-  return assetPath.replace(/^\.\//, '').replace(/^\/+/, '');
+  const normalizedSource = String(assetPath || '')
+    .trim()
+    .replace(/^\.\//, '');
+  const pathname = (() => {
+    try {
+      return new URL(normalizedSource).pathname;
+    } catch {
+      return normalizedSource;
+    }
+  })()
+    .split(/[?#]/, 1)[0]
+    .replace(/^\/+/, '');
+
+  const assetMatch = pathname.match(/(?:^|\/)(assets\/.+)$/);
+  if (assetMatch) {
+    return assetMatch[1];
+  }
+
+  const viteMatch = pathname.match(/(?:^|\/)(\.vite\/.+)$/);
+  if (viteMatch) {
+    return viteMatch[1];
+  }
+
+  return pathname;
 }
 
 function collectHtmlAssetReferences(indexHtml, pattern) {
@@ -94,13 +117,17 @@ function findPublicEntryFile(indexHtml) {
 }
 
 function findManifestEntryByFile(manifest, entryFile) {
+  const normalizedEntryFile = normalizeBuiltAssetPath(entryFile);
+
   for (const [manifestKey, manifestEntry] of Object.entries(manifest)) {
-    if (manifestEntry?.file === entryFile) {
+    if (normalizeBuiltAssetPath(manifestEntry?.file) === normalizedEntryFile) {
       return { manifestKey, manifestEntry };
     }
   }
 
-  throw new Error(`Could not map built entry asset "${entryFile}" back to the Vite manifest.`);
+  throw new Error(
+    `Could not map built entry asset "${entryFile}" back to the Vite manifest.`,
+  );
 }
 
 export function resolvePublicStartupRequestFiles({ indexHtml, manifest }) {
@@ -112,28 +139,24 @@ export function resolvePublicStartupRequestFiles({ indexHtml, manifest }) {
     indexHtml,
     MODULE_PRELOAD_LINK_PATTERN,
   );
-  const rootFiles = [entryFile, ...modulePreloadFiles];
-  const requestFiles = new Set(rootFiles);
-  const jsFiles = new Set();
+  const requestFiles = new Set([
+    entryFile,
+    ...modulePreloadFiles,
+    ...stylesheetFiles,
+  ]);
   const visitedKeys = new Set();
   const pendingKeys = [];
   const entryManifestMatch = findManifestEntryByFile(manifest, entryFile);
 
-  for (const rootFile of rootFiles) {
-    if (isJavaScriptAsset(rootFile)) {
-      jsFiles.add(rootFile);
-    }
-
+  for (const rootFile of [entryFile, ...modulePreloadFiles]) {
     const manifestMatch = findManifestEntryByFile(manifest, rootFile);
     if (manifestMatch.manifestKey !== 'index.html') {
       pendingKeys.push(manifestMatch.manifestKey);
     }
   }
 
-  if (modulePreloadFiles.length === 0) {
-    for (const importedManifestKey of entryManifestMatch.manifestEntry.imports || []) {
-      pendingKeys.push(importedManifestKey);
-    }
+  for (const importedManifestKey of entryManifestMatch.manifestEntry.imports || []) {
+    pendingKeys.push(importedManifestKey);
   }
 
   while (pendingKeys.length > 0) {
@@ -151,9 +174,6 @@ export function resolvePublicStartupRequestFiles({ indexHtml, manifest }) {
 
     if (manifestEntry.file) {
       requestFiles.add(manifestEntry.file);
-      if (isJavaScriptAsset(manifestEntry.file)) {
-        jsFiles.add(manifestEntry.file);
-      }
     }
 
     for (const cssFile of manifestEntry.css || []) {
@@ -175,20 +195,7 @@ function collectStartupAssets(indexHtml, manifest) {
     indexHtml,
     manifest,
   });
-  const requestFileSet = new Set(requestFiles);
   const jsFiles = requestFiles.filter((fileName) => isJavaScriptAsset(fileName));
-
-  for (const manifestEntry of Object.values(manifest)) {
-    if (!manifestEntry?.file || !requestFileSet.has(manifestEntry.file)) {
-      continue;
-    }
-
-    for (const cssFile of manifestEntry.css || []) {
-      if (requestFileSet.has(cssFile) && !jsFiles.includes(cssFile)) {
-        continue;
-      }
-    }
-  }
 
   return {
     requestFiles,

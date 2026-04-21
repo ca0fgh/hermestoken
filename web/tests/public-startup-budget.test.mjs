@@ -80,5 +80,72 @@ test('resolvePublicStartupRequestFiles seeds the startup graph from html modulep
     },
   });
 
+  assert.deepEqual(result, [
+    'assets/chart-runtime.js',
+    'assets/index.js',
+    'assets/react-core.js',
+  ]);
+});
+
+test('resolvePublicStartupRequestFiles normalizes rooted asset-base urls back to manifest assets', () => {
+  const result = resolvePublicStartupRequestFiles({
+    indexHtml: `
+      <!doctype html>
+      <html>
+        <head>
+          <script type="module" crossorigin src="/app/assets/index.js"></script>
+          <link rel="stylesheet" crossorigin href="/app/assets/index.css">
+        </head>
+      </html>
+    `,
+    manifest: {
+      'index.html': {
+        file: 'assets/index.js',
+        imports: ['_react-core.js'],
+        css: ['assets/index.css'],
+      },
+      '_react-core.js': {
+        file: 'assets/react-core.js',
+      },
+    },
+  });
+
+  assert.deepEqual(result, [
+    'assets/index.css',
+    'assets/index.js',
+    'assets/react-core.js',
+  ]);
+});
+
+test('resolvePublicStartupRequestFiles normalizes absolute asset-base urls back to manifest assets', () => {
+  const result = resolvePublicStartupRequestFiles({
+    indexHtml: `
+      <!doctype html>
+      <html>
+        <head>
+          <script
+            type="module"
+            crossorigin
+            src="https://cdn.example.com/app/assets/index.js"
+          ></script>
+          <link
+            rel="modulepreload"
+            crossorigin
+            href="https://cdn.example.com/app/assets/react-core.js"
+          >
+        </head>
+      </html>
+    `,
+    manifest: {
+      'index.html': {
+        file: 'assets/index.js',
+        imports: ['_react-core.js'],
+      },
+      '_react-core.js': {
+        file: 'assets/react-core.js',
+      },
+    },
+  });
+
   assert.deepEqual(result, ['assets/index.js', 'assets/react-core.js']);
 });

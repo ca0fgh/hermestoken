@@ -344,18 +344,17 @@ test('vite build keeps axios isolated without forcing history into its own start
   assert.match(source, /id\.includes\('\/marked\/'\)[\s\S]*return 'markdown-runtime';/);
 });
 
-test('i18n preloads zh-CN while keeping the non-default locales lazy', async () => {
+test('i18n lazy loads zh-CN while keeping the locale loader map explicit', async () => {
   const source = await readFile(i18nPath, 'utf8');
 
   assert.doesNotMatch(source, /from 'i18next-browser-languagedetector';/);
   assert.doesNotMatch(source, /\.use\(LanguageDetector\)/);
-  assert.match(source, /import zhCNTranslation from '\.\/locales\/zh-CN\.json';/);
   assert.match(source, /const localeLoaders = \{/);
   assert.doesNotMatch(source, /import\.meta\.glob\('\.\/locales\/\*\.json'\)/);
-  assert.doesNotMatch(source, /'zh-CN': \(\) => import\('\.\/locales\/zh-CN\.json'\)/);
+  assert.match(source, /'zh-CN': \(\) => import\('\.\/locales\/zh-CN\.json'\)/);
   assert.match(source, /en: \(\) => import\('\.\/locales\/en\.json'\)/);
   assert.match(source, /'zh-TW': \(\) => import\('\.\/locales\/zh-TW\.json'\)/);
-  assert.match(source, /const defaultLanguageMessages = getTranslationMessages\(zhCNTranslation\);/);
+  assert.match(source, /const defaultLanguageMessages = null;/);
   assert.match(source, /resources:\s*defaultLanguageMessages\s*\?\s*\{\s*\[DEFAULT_LANGUAGE\]:\s*\{\s*translation:\s*defaultLanguageMessages,/);
   assert.match(source, /const loadedLanguages = new Set\(defaultLanguageMessages \? \[DEFAULT_LANGUAGE\] : \[\]\);/);
 });
