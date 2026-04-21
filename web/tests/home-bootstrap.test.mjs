@@ -7,9 +7,9 @@ const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
 test('home page prefers public bootstrap content before network fetches', async () => {
   const source = await readFile(homePath, 'utf8');
 
-  assert.match(source, /readInjectedBootstrap\(\)/);
-  assert.match(source, /readCachedPublicBootstrap\(\)/);
+  assert.match(source, /resolveHomeStartupBootstrap\(\)/);
   assert.match(source, /scheduleNonCriticalWork\(/);
+  assert.match(source, /initialNoticeHtml=\{noticeHtml\}/);
 });
 
 test('home page no longer parses markdown in the startup path', async () => {

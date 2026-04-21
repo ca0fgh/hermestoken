@@ -42,6 +42,7 @@ type PublicHomeSnapshot struct {
 
 type PublicNoticeSnapshot struct {
 	Markdown string `json:"markdown,omitempty"`
+	HTML     string `json:"html,omitempty"`
 }
 
 type PublicBootstrapPayload struct {
@@ -76,6 +77,7 @@ func BuildPublicBootstrapPayload() PublicBootstrapPayload {
 		},
 		Notice: PublicNoticeSnapshot{
 			Markdown: noticeMarkdown,
+			HTML:     renderPublicMarkdownHTML(noticeMarkdown),
 		},
 	}
 
@@ -86,11 +88,11 @@ func BuildPublicBootstrapPayload() PublicBootstrapPayload {
 			URL:  homeMarkdown,
 		}
 	case homeMarkdown != "":
-		var rendered bytes.Buffer
-		if err := goldmark.Convert([]byte(homeMarkdown), &rendered); err == nil {
+		renderedHomeHTML := renderPublicMarkdownHTML(homeMarkdown)
+		if renderedHomeHTML != "" {
 			payload.Home = PublicHomeSnapshot{
 				Mode:     PublicHomeModeHTML,
-				HTML:     rendered.String(),
+				HTML:     renderedHomeHTML,
 				Markdown: homeMarkdown,
 			}
 			break
@@ -103,6 +105,19 @@ func BuildPublicBootstrapPayload() PublicBootstrapPayload {
 	}
 
 	return payload
+}
+
+func renderPublicMarkdownHTML(markdown string) string {
+	if strings.TrimSpace(markdown) == "" {
+		return ""
+	}
+
+	var rendered bytes.Buffer
+	if err := goldmark.Convert([]byte(markdown), &rendered); err != nil {
+		return ""
+	}
+
+	return rendered.String()
 }
 
 func renderPublicHomeShell(payload PublicBootstrapPayload) string {

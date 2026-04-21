@@ -28,21 +28,17 @@ import { useIsMobile } from '../../hooks/common/useIsMobile';
 import { useActualTheme } from '../../context/Theme';
 import { useTranslation } from 'react-i18next';
 import { lazyWithRetry } from '../../helpers/lazyWithRetry';
-import { readInjectedBootstrap } from '../../helpers/bootstrapData';
-import {
-  cachePublicBootstrap,
-  readCachedPublicBootstrap,
-} from '../../helpers/publicStartupCache';
+import { cachePublicBootstrap } from '../../helpers/publicStartupCache';
 import { scheduleNonCriticalWork } from '../../helpers/idleTask';
 import { readStoredValue } from '../../helpers/storageJson';
+import { resolveHomeStartupBootstrap } from './startupBootstrap';
 
 const MarketingNoticeModal = lazyWithRetry(
   () => import('../../components/layout/MarketingNoticeModal'),
   'marketing-notice-modal',
 );
 
-const startupBootstrap =
-  readInjectedBootstrap() || readCachedPublicBootstrap() || null;
+const startupBootstrap = resolveHomeStartupBootstrap();
 
 async function fetchPublicBootstrap() {
   const response = await fetch('/api/public/bootstrap', {
@@ -63,6 +59,10 @@ function isNoticeDismissedToday() {
   return lastCloseDate === new Date().toDateString();
 }
 
+function hasBootstrapNotice(notice) {
+  return Boolean(notice?.html || notice?.markdown);
+}
+
 const Home = () => {
   const { t, i18n } = useTranslation();
   const actualTheme = useActualTheme();
@@ -80,7 +80,10 @@ const Home = () => {
       : '',
   );
   const [noticeVisible, setNoticeVisible] = useState(
-    Boolean(startupBootstrap?.notice?.markdown) && !isNoticeDismissedToday(),
+    hasBootstrapNotice(startupBootstrap?.notice) && !isNoticeDismissedToday(),
+  );
+  const [noticeHtml, setNoticeHtml] = useState(
+    startupBootstrap?.notice?.html || '',
   );
   const homepageIframeRef = useRef(null);
   const isMobile = useIsMobile();
@@ -131,8 +134,6 @@ const Home = () => {
       return;
     }
 
-    cachePublicBootstrap(payload);
-
     if (payload.home?.mode === 'iframe') {
       setHomePageFrameUrl(payload.home?.url || '');
       setHomePageContent('');
@@ -141,8 +142,9 @@ const Home = () => {
       setHomePageContent(payload.home?.html || '');
     }
 
+    setNoticeHtml(payload.notice?.html || '');
     setNoticeVisible(
-      Boolean(payload.notice?.markdown) && !isNoticeDismissedToday(),
+      hasBootstrapNotice(payload.notice) && !isNoticeDismissedToday(),
     );
     setHomePageContentLoaded(true);
   }, []);
@@ -159,6 +161,7 @@ const Home = () => {
         const payload = await fetchPublicBootstrap();
 
         if (payload?.success && payload?.data) {
+          cachePublicBootstrap(payload.data);
           applyBootstrap(payload.data);
           return;
         }
@@ -187,6 +190,7 @@ const Home = () => {
             visible={noticeVisible}
             onClose={() => setNoticeVisible(false)}
             isMobile={isMobile}
+            initialNoticeHtml={noticeHtml}
           />
         </Suspense>
       ) : null}

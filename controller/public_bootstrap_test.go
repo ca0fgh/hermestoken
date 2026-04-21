@@ -51,6 +51,9 @@ func TestBuildPublicBootstrapPayloadReturnsPublicSubset(t *testing.T) {
 	if payload.Notice.Markdown != "Scheduled maintenance tonight" {
 		t.Fatalf("Notice.Markdown = %q, want %q", payload.Notice.Markdown, "Scheduled maintenance tonight")
 	}
+	if !strings.Contains(payload.Notice.HTML, "<p>Scheduled maintenance tonight</p>") {
+		t.Fatalf("Notice.HTML = %q, want rendered notice html", payload.Notice.HTML)
+	}
 }
 
 func TestRenderPublicHomeIndexEmbedsBootstrapAndShell(t *testing.T) {
