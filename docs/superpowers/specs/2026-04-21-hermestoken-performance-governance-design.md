@@ -502,9 +502,9 @@ This design intentionally chooses a layered optimization strategy that fixes the
 
 ## Verification Checklist
 
-- `go test ./controller -run 'TestBuildPublicBootstrapPayloadReturnsPublicSubset|TestRenderPublicHomeIndexEmbedsBootstrapAndShell'`
-- `go test ./router -run 'TestPublicBootstrapEndpointReturnsCacheableJSON|TestInternalPublicHomeEndpointReturnsNoCacheHTML'`
-- `cd web && node --test tests/bootstrap-data.test.mjs tests/public-startup-entry.test.mjs tests/public-layout-mode.test.mjs tests/home-bootstrap.test.mjs tests/public-startup-budget.test.mjs`
-- `cd web && npm run build && npm run perf:budget`
-- `python3 -m unittest scripts.tests.test_prod`
-- `Browser benchmark on https://hermestoken.top/ confirms meaningful HTML before React enhancement and materially lower startup timings than the 2026-04-21 baseline.`
+- [x] `go test ./controller -run 'TestBuildPublicBootstrapPayloadReturnsPublicSubset|TestRenderPublicHomeIndexEmbedsBootstrapAndShell'`
+- [x] `go test ./router -run 'TestPublicBootstrapEndpointReturnsCacheableJSON|TestInternalPublicHomeEndpointReturnsNoCacheHTML'`
+- [x] `cd web && node --test tests/bootstrap-data.test.mjs tests/public-startup-entry.test.mjs tests/public-layout-mode.test.mjs tests/home-bootstrap.test.mjs tests/public-startup-budget.test.mjs`
+- [x] `cd web && npm run build && npm run perf:budget`
+- [x] `python3 -m unittest scripts.tests.test_prod`
+- [ ] Post-deploy gate: browser benchmark on `https://hermestoken.top/` confirms meaningful HTML before React enhancement and materially lower startup timings than the 2026-04-21 baseline.
