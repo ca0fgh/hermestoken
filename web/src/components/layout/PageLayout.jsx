@@ -34,6 +34,7 @@ import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
 import MarketingPageLayout from './MarketingPageLayout';
 import { lazyWithRetry } from '../../helpers/lazyWithRetry';
+import { shouldFetchFullStatus } from './pageLayoutStatusFetch';
 
 const FooterBar = lazy(() => import('./Footer'));
 const ConsolePageLayout = lazyWithRetry(
@@ -60,7 +61,7 @@ async function fetchStatusPayload() {
   return response.json();
 }
 
-const PageLayout = () => {
+const PageLayout = ({ startupMode = 'console' }) => {
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState, statusDispatch] = useContext(StatusContext);
   const isMobile = useIsMobile();
@@ -86,6 +87,11 @@ const PageLayout = () => {
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
+  const shouldLoadFullStatus = shouldFetchFullStatus({
+    startupMode,
+    isConsoleRoute,
+    status: statusState?.status,
+  });
 
   useEffect(() => {
     const rawUser = localStorage.getItem('user');
@@ -101,6 +107,10 @@ const PageLayout = () => {
   }, [userDispatch]);
 
   useEffect(() => {
+    if (!shouldLoadFullStatus) {
+      return;
+    }
+
     const loadStatus = async () => {
       try {
         const { success, data } = await fetchStatusPayload();
@@ -116,7 +126,7 @@ const PageLayout = () => {
     };
 
     loadStatus().catch(console.error);
-  }, [statusDispatch]);
+  }, [shouldLoadFullStatus, statusDispatch]);
 
   useEffect(() => {
     const systemName = getSystemName();

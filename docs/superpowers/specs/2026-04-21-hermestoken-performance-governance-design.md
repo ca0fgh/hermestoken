@@ -499,3 +499,12 @@ This design is considered successful when all of the following are true:
 ## Implementation Handoff Notes
 
 This design intentionally chooses a layered optimization strategy that fixes the current pain without forcing a full framework migration. The implementation plan should keep the rollout incremental and always preserve a working public page and a working console shell after each stage.
+
+## Verification Checklist
+
+- [x] `go test ./controller -run 'TestBuildPublicBootstrapPayloadReturnsPublicSubset|TestRenderPublicHomeIndexEmbedsBootstrapAndShell'`
+- [x] `go test ./router -run 'TestPublicBootstrapEndpointReturnsCacheableJSON|TestInternalPublicHomeEndpointReturnsNoCacheHTML'`
+- [x] `cd web && node --test tests/bootstrap-data.test.mjs tests/public-startup-entry.test.mjs tests/public-layout-mode.test.mjs tests/home-bootstrap.test.mjs tests/public-startup-budget.test.mjs`
+- [x] `cd web && npm run build && npm run perf:budget`
+- [x] `python3 -m unittest scripts.tests.test_prod`
+- [ ] Post-deploy gate: browser benchmark on `https://hermestoken.top/` confirms meaningful HTML before React enhancement and materially lower startup timings than the 2026-04-21 baseline.

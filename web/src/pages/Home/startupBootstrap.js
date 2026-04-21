@@ -17,8 +17,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export {
-  buildInitialStatusState,
-  StatusContext,
-  StatusProvider,
-} from './provider.js';
+import { readInjectedBootstrap } from '../../helpers/bootstrapData.js';
+import {
+  cachePublicBootstrap,
+  readCachedPublicBootstrap,
+} from '../../helpers/publicStartupCache.js';
+
+export function resolveHomeStartupBootstrap({
+  readInjectedBootstrap: readInjected = readInjectedBootstrap,
+  readCachedPublicBootstrap: readCached = readCachedPublicBootstrap,
+  cachePublicBootstrap: cacheBootstrap = cachePublicBootstrap,
+} = {}) {
+  const injectedBootstrap = readInjected();
+
+  if (injectedBootstrap) {
+    cacheBootstrap(injectedBootstrap);
+    return injectedBootstrap;
+  }
+
+  return readCached() || null;
+}

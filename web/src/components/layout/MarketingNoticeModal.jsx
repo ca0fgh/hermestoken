@@ -25,6 +25,7 @@ import { writeStoredValue } from '../../helpers/storageJson';
 import { sanitizeNoticeHtml } from '../../helpers/noticeHtml';
 import { getRelativeTime } from '../../helpers/time';
 import { StatusContext } from '../../context/Status';
+import { shouldFetchMarketingNotice } from './marketingNoticeFetchGate';
 import { marked } from 'marked';
 import { Bell, Megaphone, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -41,11 +42,14 @@ const MarketingNoticeModal = ({
   onClose,
   isMobile,
   defaultTab = 'inApp',
+  initialNoticeHtml = '',
   unreadKeys = [],
 }) => {
   const { t } = useTranslation();
   const [statusState] = useContext(StatusContext);
-  const [noticeContent, setNoticeContent] = useState('');
+  const [noticeContent, setNoticeContent] = useState(() =>
+    sanitizeNoticeHtml(initialNoticeHtml),
+  );
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(defaultTab);
   const isDarkMode =
@@ -111,7 +115,12 @@ const MarketingNoticeModal = ({
   }, [defaultTab, visible]);
 
   useEffect(() => {
-    if (!visible) {
+    setNoticeContent(sanitizeNoticeHtml(initialNoticeHtml));
+  }, [initialNoticeHtml]);
+
+  useEffect(() => {
+    if (!shouldFetchMarketingNotice({ visible, initialNoticeHtml })) {
+      setLoading(false);
       return;
     }
 
@@ -139,7 +148,7 @@ const MarketingNoticeModal = ({
     };
 
     void displayNotice();
-  }, [visible]);
+  }, [initialNoticeHtml, visible]);
 
   if (!visible) {
     return null;

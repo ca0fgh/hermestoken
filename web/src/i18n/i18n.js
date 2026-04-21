@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import zhCNTranslation from './locales/zh-CN.json';
 
 import { normalizeLanguage, supportedLanguages } from './language';
 
 const DEFAULT_LANGUAGE = 'zh-CN';
-const defaultLanguageMessages = getTranslationMessages(zhCNTranslation);
+const defaultLanguageMessages = null;
 const localeLoaders = {
+  'zh-CN': () => import('./locales/zh-CN.json'),
   en: () => import('./locales/en.json'),
   'zh-TW': () => import('./locales/zh-TW.json'),
   fr: () => import('./locales/fr.json'),
@@ -120,21 +120,25 @@ i18n
     },
   });
 
-export async function initializeI18n() {
+export async function initializeI18n(preferredLanguageOverride) {
   const preferredLanguage =
+    normalizeLanguage(preferredLanguageOverride) ||
     getPreferredLanguage() ||
     normalizeLanguage(i18n.resolvedLanguage || i18n.language) ||
     DEFAULT_LANGUAGE;
 
-  await ensureLanguageResources(preferredLanguage);
+  const resolvedLanguage = await ensureLanguageResources(preferredLanguage);
 
-  if (preferredLanguage !== i18n.language) {
-    await i18n.changeLanguage(preferredLanguage);
+  if (resolvedLanguage !== i18n.language) {
+    await i18n.changeLanguage(resolvedLanguage);
     return i18n;
   }
 
-  if (preferredLanguage !== DEFAULT_LANGUAGE) {
-    await i18n.changeLanguage(preferredLanguage);
+  if (
+    resolvedLanguage !== DEFAULT_LANGUAGE ||
+    i18n.resolvedLanguage !== resolvedLanguage
+  ) {
+    await i18n.changeLanguage(resolvedLanguage);
   }
 
   return i18n;

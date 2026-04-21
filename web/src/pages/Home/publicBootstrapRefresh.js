@@ -17,8 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export {
-  buildInitialStatusState,
-  StatusContext,
-  StatusProvider,
-} from './provider.js';
+export const PUBLIC_BOOTSTRAP_REFRESH_REQUEST_INIT = Object.freeze({
+  cache: 'no-store',
+  headers: Object.freeze({
+    'Cache-Control': 'no-store',
+  }),
+});
+
+export async function fetchPublicBootstrap(fetchFn = globalThis.fetch) {
+  const response = await fetchFn(
+    '/api/public/bootstrap',
+    PUBLIC_BOOTSTRAP_REFRESH_REQUEST_INIT,
+  );
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}

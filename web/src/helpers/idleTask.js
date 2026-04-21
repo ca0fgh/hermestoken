@@ -17,8 +17,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export {
-  buildInitialStatusState,
-  StatusContext,
-  StatusProvider,
-} from './provider.js';
+export function scheduleNonCriticalWork(task, timeout = 250) {
+  const runtime = globalThis;
+
+  if (typeof runtime.requestIdleCallback === 'function') {
+    const idleId = runtime.requestIdleCallback(() => {
+      void task();
+    }, { timeout });
+
+    return () => {
+      if (typeof runtime.cancelIdleCallback === 'function') {
+        runtime.cancelIdleCallback(idleId);
+      }
+    };
+  }
+
+  const timerId = runtime.setTimeout(() => {
+    void task();
+  }, timeout);
+
+  return () => {
+    runtime.clearTimeout(timerId);
+  };
+}

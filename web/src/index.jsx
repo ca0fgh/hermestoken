@@ -17,14 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import { UserProvider } from './context/User';
 import 'react-toastify/dist/ReactToastify.css';
-import { StatusProvider } from './context/Status';
-import { ThemeProvider } from './context/Theme';
-import PageLayout from './components/layout/PageLayout';
+import { renderConsoleApp } from './bootstrap/consoleApp';
+import { renderPublicApp } from './bootstrap/publicApp';
+import { resolveRoutePublicBootstrap } from './bootstrap/publicStartup';
+import { readClientStartupSettings, readInjectedBootstrap } from './helpers/bootstrapData';
+import { setPublicStartupStatusData } from './helpers/data';
 import { initializeI18n } from './i18n/i18n';
 import './index.css';
 
@@ -40,27 +39,27 @@ if (typeof window !== 'undefined') {
 
 // initialization
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
+const rootElement = ReactDOM.createRoot(document.getElementById('root'));
+const injectedBootstrap = readInjectedBootstrap();
+const startupSettings = readClientStartupSettings();
+const pathname = window.location.pathname;
+const isConsoleRoute = pathname.startsWith('/console');
+const publicBootstrap = isConsoleRoute
+  ? null
+  : resolveRoutePublicBootstrap({ pathname, injectedBootstrap });
 
-const renderApp = () => {
-  root.render(
-    <React.StrictMode>
-      <StatusProvider>
-        <UserProvider>
-          <BrowserRouter
-            future={{
-              v7_startTransition: true,
-              v7_relativeSplatPath: true,
-            }}
-          >
-            <ThemeProvider>
-              <PageLayout />
-            </ThemeProvider>
-          </BrowserRouter>
-        </UserProvider>
-      </StatusProvider>
-    </React.StrictMode>,
-  );
-};
+if (publicBootstrap?.status) {
+  try {
+    setPublicStartupStatusData(publicBootstrap.status);
+  } catch {
+    // Ignore storage write failures during non-blocking startup.
+  }
+}
 
-initializeI18n().catch(console.error).finally(renderApp);
+if (isConsoleRoute) {
+  renderConsoleApp(rootElement);
+} else {
+  renderPublicApp(rootElement, publicBootstrap);
+}
+
+initializeI18n(startupSettings.language).catch(console.error);

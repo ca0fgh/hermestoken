@@ -17,6 +17,41 @@
     />
     <meta name="generator" content="new-api" />
     <title>HERMESTOKEN</title>
+    <script>
+      (() => {
+        const fallbackPrefs = { themeMode: 'auto', language: 'zh-CN' };
+        const rootElement = document.documentElement;
+        const shouldUseDarkTheme = (themeMode) => {
+          const prefersDark = Boolean(
+            window.matchMedia?.('(prefers-color-scheme: dark)').matches,
+          );
+
+          return themeMode === 'dark' || (themeMode === 'auto' && prefersDark);
+        };
+
+        try {
+          const themeMode =
+            window.localStorage.getItem('theme-mode') || fallbackPrefs.themeMode;
+          const language =
+            window.localStorage.getItem('i18nextLng') || fallbackPrefs.language;
+
+          window.__HERMES_CLIENT_PREFS__ = { themeMode, language };
+
+          if (shouldUseDarkTheme(themeMode)) {
+            rootElement.classList.add('dark');
+          } else {
+            rootElement.classList.remove('dark');
+          }
+        } catch {
+          window.__HERMES_CLIENT_PREFS__ = fallbackPrefs;
+          if (shouldUseDarkTheme(fallbackPrefs.themeMode)) {
+            rootElement.classList.add('dark');
+          } else {
+            rootElement.classList.remove('dark');
+          }
+        }
+      })();
+    </script>
     <!--umami-->
     <!--Google Analytics-->
   </head>
