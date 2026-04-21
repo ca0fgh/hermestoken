@@ -186,15 +186,13 @@ func ListReferralTemplateBindingBundlesByUser(userID int, referralType string) (
 
 		bundleView, exists := bundleViews[bundleKey]
 		if !exists {
-			copyTemplateIDs := append([]int(nil), bundle.TemplateIDs...)
-			copyGroups := append([]string(nil), bundle.Groups...)
 			bundleView = &ReferralTemplateBindingBundleView{
 				BindingIDs: []int{},
 				ReferralTemplateBundle: ReferralTemplateBundle{
 					BundleKey:              bundle.BundleKey,
-					TemplateIDs:            copyTemplateIDs,
+					TemplateIDs:            []int{},
 					ReferralType:           bundle.ReferralType,
-					Groups:                 copyGroups,
+					Groups:                 []string{},
 					Name:                   bundle.Name,
 					LevelType:              bundle.LevelType,
 					Enabled:                bundle.Enabled,
@@ -212,6 +210,16 @@ func ListReferralTemplateBindingBundlesByUser(userID int, referralType string) (
 		if view.Binding.Id > 0 {
 			bundleView.BindingIDs = append(bundleView.BindingIDs, view.Binding.Id)
 		}
+		if !containsInt(bundleView.TemplateIDs, view.Template.Id) {
+			bundleView.TemplateIDs = append(bundleView.TemplateIDs, view.Template.Id)
+		}
+		boundGroup := strings.TrimSpace(view.Binding.Group)
+		if boundGroup == "" {
+			boundGroup = strings.TrimSpace(view.Template.Group)
+		}
+		if boundGroup != "" && !containsString(bundleView.Groups, boundGroup) {
+			bundleView.Groups = append(bundleView.Groups, boundGroup)
+		}
 	}
 
 	items := make([]ReferralTemplateBindingBundleView, 0, len(bundleOrder))
@@ -221,6 +229,24 @@ func ListReferralTemplateBindingBundlesByUser(userID int, referralType string) (
 		items = append(items, *bundleView)
 	}
 	return items, nil
+}
+
+func containsInt(items []int, target int) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func ResolveBindingInviteeShareDefault(view ReferralTemplateBindingView) int {

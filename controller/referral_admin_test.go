@@ -782,6 +782,63 @@ func TestAdminListReferralTemplateBindingsBundleViewAggregatesByTemplateBundle(t
 	}
 }
 
+func TestAdminListReferralTemplateBindingsBundleViewShowsOnlyActuallyBoundGroups(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	user := seedSubscriptionReferralControllerUser(t, "binding-bundle-partial-user", 0, dto.UserSetting{})
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"default", "vip"},
+		Name:                   "binding-bundle-partial-template",
+		LevelType:              model.ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1200,
+		InviteeShareDefaultBps: 600,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to create template bundle: %v", err)
+	}
+
+	if _, err := model.UpsertReferralTemplateBinding(&model.ReferralTemplateBinding{
+		UserId:       user.Id,
+		ReferralType: model.ReferralTypeSubscription,
+		TemplateId:   rows[0].Id,
+		CreatedBy:    1,
+		UpdatedBy:    1,
+	}); err != nil {
+		t.Fatalf("failed to create partial bundle binding: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/referral/bindings/users/"+strconv.Itoa(user.Id)+"?referral_type="+model.ReferralTypeSubscription+"&view=bundle", nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(user.Id)}}
+	ctx.Request.URL.RawQuery = "referral_type=" + model.ReferralTypeSubscription + "&view=bundle"
+	AdminListReferralTemplateBindingsByUser(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var payload struct {
+		Items []model.ReferralTemplateBindingBundleView `json:"items"`
+	}
+	if err := common.Unmarshal(response.Data, &payload); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("bundle item count = %d, want 1", len(payload.Items))
+	}
+	if strings.Join(payload.Items[0].Groups, ",") != "default" {
+		t.Fatalf("groups = %v, want [default] for partial binding", payload.Items[0].Groups)
+	}
+	if len(payload.Items[0].BindingIDs) != 1 {
+		t.Fatalf("binding id count = %d, want 1", len(payload.Items[0].BindingIDs))
+	}
+	if len(payload.Items[0].TemplateIDs) != 1 || payload.Items[0].TemplateIDs[0] != rows[0].Id {
+		t.Fatalf("template ids = %v, want [%d]", payload.Items[0].TemplateIDs, rows[0].Id)
+	}
+}
+
 func TestAdminUpsertReferralTemplateBindingUsesTemplateBundleScope(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 

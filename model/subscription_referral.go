@@ -107,6 +107,14 @@ func reverseReferralSettlementBatch(batchID int) error {
 	}
 
 	return DB.Transaction(func(tx *gorm.DB) error {
+		var batch ReferralSettlementBatch
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&batch, batchID).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrSubscriptionReferralRecordNotFound
+			}
+			return err
+		}
+
 		var records []ReferralSettlementRecord
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("batch_id = ?", batchID).Find(&records).Error; err != nil {
 			return err
@@ -152,6 +160,31 @@ func reverseReferralSettlementBatch(batchID int) error {
 			}
 		}
 
+		batch.Status = resolveReferralSettlementBatchStatus(records)
+		if err := tx.Save(&batch).Error; err != nil {
+			return err
+		}
+
 		return nil
 	})
+}
+
+func resolveReferralSettlementBatchStatus(records []ReferralSettlementRecord) string {
+	if len(records) == 0 {
+		return SubscriptionReferralStatusCredited
+	}
+
+	allReversed := true
+	for _, record := range records {
+		if record.Status == SubscriptionReferralStatusPartialRevert || record.DebtQuota > 0 {
+			return SubscriptionReferralStatusPartialRevert
+		}
+		if record.Status != SubscriptionReferralStatusReversed {
+			allReversed = false
+		}
+	}
+	if allReversed {
+		return SubscriptionReferralStatusReversed
+	}
+	return SubscriptionReferralStatusCredited
 }

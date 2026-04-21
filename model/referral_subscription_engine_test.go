@@ -427,6 +427,9 @@ func TestReverseSubscriptionReferralByTradeNoReversesTemplateBatch(t *testing.T)
 	if batch == nil {
 		t.Fatal("expected settlement batch to remain after reverse")
 	}
+	if batch.Status != SubscriptionReferralStatusReversed {
+		t.Fatalf("batch status = %q, want %q", batch.Status, SubscriptionReferralStatusReversed)
+	}
 	for _, record := range records {
 		if record.Status != SubscriptionReferralStatusReversed {
 			t.Fatalf("record %s status = %q, want %q", record.RewardComponent, record.Status, SubscriptionReferralStatusReversed)
@@ -439,5 +442,41 @@ func TestReverseSubscriptionReferralByTradeNoReversesTemplateBatch(t *testing.T)
 	}
 	if immediateInviter.AffQuota != 0 {
 		t.Fatalf("immediate inviter aff_quota = %d, want 0", immediateInviter.AffQuota)
+	}
+}
+
+func TestReverseSubscriptionReferralByTradeNoMarksBatchPartiallyReversedWhenDebtRemains(t *testing.T) {
+	_, order, _ := seedTemplateContributionLedger(t)
+
+	_, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	beneficiaryIDs := make([]int, 0, len(records))
+	for _, record := range records {
+		beneficiaryIDs = append(beneficiaryIDs, record.BeneficiaryUserId)
+	}
+	if err := DB.Model(&User{}).Where("id IN ?", beneficiaryIDs).Update("aff_quota", 0).Error; err != nil {
+		t.Fatalf("failed to zero beneficiary aff_quota: %v", err)
+	}
+
+	if err := ReverseSubscriptionReferralByTradeNo(order.TradeNo, 1); err != nil {
+		t.Fatalf("ReverseSubscriptionReferralByTradeNo() error = %v", err)
+	}
+
+	batch, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	if batch == nil {
+		t.Fatal("expected settlement batch to remain after reverse")
+	}
+	if batch.Status != SubscriptionReferralStatusPartialRevert {
+		t.Fatalf("batch status = %q, want %q", batch.Status, SubscriptionReferralStatusPartialRevert)
+	}
+	for _, record := range records {
+		if record.Status != SubscriptionReferralStatusPartialRevert {
+			t.Fatalf("record %s status = %q, want %q", record.RewardComponent, record.Status, SubscriptionReferralStatusPartialRevert)
+		}
+		if record.ReversedQuota != 0 {
+			t.Fatalf("record %s reversed quota = %d, want 0", record.RewardComponent, record.ReversedQuota)
+		}
+		if record.DebtQuota <= 0 {
+			t.Fatalf("record %s debt quota = %d, want > 0", record.RewardComponent, record.DebtQuota)
+		}
 	}
 }
