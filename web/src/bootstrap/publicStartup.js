@@ -20,9 +20,21 @@ For commercial licensing, please contact support@quantumnous.com
 import { resolvePublicStartupBootstrap } from '../helpers/publicStartupCache.js';
 
 export const PUBLIC_HOME_SHELL_ID = 'hermes-public-home-shell';
+export const PUBLIC_BOOTSTRAP_SCOPE_HOME = 'home';
 
 export function isHomeRoutePathname(pathname) {
   return pathname === '/';
+}
+
+export function markPublicHomeBootstrapStatus(status) {
+  if (!status) {
+    return status;
+  }
+
+  return {
+    ...status,
+    __publicBootstrapScope: PUBLIC_BOOTSTRAP_SCOPE_HOME,
+  };
 }
 
 export function resolveRoutePublicBootstrap({
@@ -34,7 +46,15 @@ export function resolveRoutePublicBootstrap({
     return null;
   }
 
-  return resolvePublicStartupBootstrap(injectedBootstrap, storage);
+  const bootstrap = resolvePublicStartupBootstrap(injectedBootstrap, storage);
+  if (!bootstrap?.status) {
+    return bootstrap;
+  }
+
+  return {
+    ...bootstrap,
+    status: markPublicHomeBootstrapStatus(bootstrap.status),
+  };
 }
 
 export function removePublicHomeShell(doc = globalThis.document) {

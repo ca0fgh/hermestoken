@@ -26,6 +26,17 @@ test('status fetch helper only fetches full status when bootstrap requires it', 
   );
   assert.equal(
     shouldFetchFullStatus({
+      startupMode: 'public',
+      isConsoleRoute: false,
+      status: {
+        system_name: 'HermesToken',
+        __publicBootstrapScope: 'home',
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    shouldFetchFullStatus({
       startupMode: 'console',
       isConsoleRoute: false,
       status: { system_name: 'HermesToken' },

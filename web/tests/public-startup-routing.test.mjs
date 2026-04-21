@@ -29,6 +29,7 @@ test('resolveRoutePublicBootstrap seeds from cache only on the home route', asyn
   assert.deepEqual(publicHomePayload, {
     status: {
       system_name: 'HermesToken Home',
+      __publicBootstrapScope: 'home',
     },
   });
   assert.equal(homeStorage.getItemCalls, 1);
@@ -73,7 +74,12 @@ test('resolveRoutePublicBootstrap refreshes cached bootstrap for the home route 
       injectedBootstrap,
       storage,
     }),
-    injectedBootstrap,
+    {
+      status: {
+        system_name: 'HermesToken Fresh',
+        __publicBootstrapScope: 'home',
+      },
+    },
   );
   assert.equal(storage.setItemCalls, 1);
 

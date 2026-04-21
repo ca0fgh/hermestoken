@@ -17,6 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { PUBLIC_BOOTSTRAP_SCOPE_HOME } from '../../bootstrap/publicStartup.js';
+
 export function shouldFetchFullStatus({ startupMode, isConsoleRoute, status }) {
-  return startupMode === 'console' || isConsoleRoute || !status;
+  return (
+    startupMode === 'console' ||
+    isConsoleRoute ||
+    !status ||
+    status.__publicBootstrapScope === PUBLIC_BOOTSTRAP_SCOPE_HOME
+  );
 }
