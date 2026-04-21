@@ -1,4 +1,5 @@
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -145,6 +146,58 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("brotli on;", with_brotli)
         self.assertIn("brotli_types", with_brotli)
 
+    def test_build_nginx_site_config_avoids_extra_blank_line_before_assets_without_brotli(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+            frontend_dist_path=Path("/opt/hermestoken/web/dist"),
+            enable_brotli=False,
+        )
+
+        self.assertIn("image/svg+xml;\n\n    location ^~ /assets/ {", config)
+        self.assertNotIn("image/svg+xml;\n\n\n    location ^~ /assets/ {", config)
+
+    @mock.patch("prod.run_command")
+    def test_detect_nginx_supports_brotli_returns_true_when_syntax_probe_succeeds(self, run_command):
+        captured = {}
+
+        def fake_run(command, *, check, stream_output, **kwargs):
+            self.assertEqual(command[0], "nginx")
+            self.assertIn("-t", command)
+            self.assertIn("-p", command)
+            self.assertIn("-c", command)
+            self.assertFalse(check)
+            self.assertFalse(stream_output)
+            config_path = Path(command[command.index("-c") + 1])
+            captured["config"] = config_path.read_text(encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        run_command.side_effect = fake_run
+
+        self.assertTrue(prod.detect_nginx_supports_brotli())
+        self.assertIn("brotli on;", captured["config"])
+        self.assertIn("brotli_static on;", captured["config"])
+        self.assertIn("brotli_types", captured["config"])
+
+    @mock.patch("prod.run_command")
+    def test_detect_nginx_supports_brotli_returns_false_when_syntax_probe_fails(self, run_command):
+        captured = {}
+
+        def fake_run(command, *, check, stream_output, **kwargs):
+            self.assertEqual(command[0], "nginx")
+            self.assertIn("-t", command)
+            self.assertIn("-c", command)
+            self.assertFalse(check)
+            self.assertFalse(stream_output)
+            config_path = Path(command[command.index("-c") + 1])
+            captured["config"] = config_path.read_text(encoding="utf-8")
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="unknown directive")
+
+        run_command.side_effect = fake_run
+
+        self.assertFalse(prod.detect_nginx_supports_brotli())
+        self.assertIn("brotli on;", captured["config"])
+
     def test_detect_real_ip_conf_returns_true_when_conf_d_already_manages_directives(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             conf_d_path = Path(tmp_dir) / "conf.d"
@@ -158,12 +211,14 @@ class ProdLauncherTests(unittest.TestCase):
                 prod.detect_real_ip_conf_in_conf_d(conf_d_path=conf_d_path)
             )
 
+    @mock.patch("prod.detect_nginx_supports_brotli", return_value=False)
     @mock.patch("prod.run_command")
     @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
     def test_sync_nginx_site_config_avoids_duplicate_real_ip_block_when_conf_d_exists(
         self,
         which,
         run_command,
+        detect_nginx_supports_brotli,
     ):
         stdout = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -189,24 +244,27 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertTrue(changed)
         which.assert_called_once_with("nginx")
+        detect_nginx_supports_brotli.assert_called_once_with()
         self.assertEqual(
             run_command.call_args_list,
             [
-                mock.call(["nginx", "-V"], check=False, stream_output=False),
                 mock.call(["nginx", "-t"], check=True, stream_output=False),
                 mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
             ],
         )
         self.assertNotIn("real_ip_header CF-Connecting-IP;", rendered)
         self.assertIn("proxy_pass http://127.0.0.1:3000;", rendered)
+        self.assertNotIn("brotli on;", rendered)
         self.assertIn("existing real_ip nginx config", stdout.getvalue())
 
+    @mock.patch("prod.detect_nginx_supports_brotli", return_value=False)
     @mock.patch("prod.run_command")
     @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
     def test_sync_nginx_site_config_writes_file_and_reloads_nginx(
         self,
         which,
         run_command,
+        detect_nginx_supports_brotli,
     ):
         stdout = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -220,28 +278,27 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertTrue(changed)
         which.assert_called_once_with("nginx")
-        self.assertEqual(run_command.call_count, 3)
+        detect_nginx_supports_brotli.assert_called_once_with()
+        self.assertEqual(run_command.call_count, 2)
         self.assertEqual(
             run_command.call_args_list[0],
-            mock.call(["nginx", "-V"], check=False, stream_output=False),
-        )
-        self.assertEqual(
-            run_command.call_args_list[1],
             mock.call(["nginx", "-t"], check=True, stream_output=False),
         )
         self.assertEqual(
-            run_command.call_args_list[2],
+            run_command.call_args_list[1],
             mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
         )
         self.assertIn("Nginx site config synced", stdout.getvalue())
         self.assertIn("Nginx reloaded", stdout.getvalue())
 
+    @mock.patch("prod.detect_nginx_supports_brotli", return_value=False)
     @mock.patch("prod.run_command")
     @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
     def test_sync_nginx_site_config_preserves_file_when_unchanged(
         self,
         which,
         run_command,
+        detect_nginx_supports_brotli,
     ):
         stdout = io.StringIO()
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -266,15 +323,49 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertTrue(changed)
         which.assert_called_once_with("nginx")
+        detect_nginx_supports_brotli.assert_called_once_with()
         self.assertEqual(
             run_command.call_args_list,
             [
-                mock.call(["nginx", "-V"], check=False, stream_output=False),
                 mock.call(["nginx", "-t"], check=True, stream_output=False),
                 mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
             ],
         )
         self.assertIn("already up to date", stdout.getvalue())
+
+    @mock.patch("prod.detect_nginx_supports_brotli", return_value=True)
+    @mock.patch("prod.run_command")
+    @mock.patch("prod.shutil.which", return_value="/usr/sbin/nginx")
+    def test_sync_nginx_site_config_emits_brotli_when_detected(
+        self,
+        which,
+        run_command,
+        detect_nginx_supports_brotli,
+    ):
+        stdout = io.StringIO()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            site_path = Path(tmp_dir) / "default"
+            changed = prod.sync_nginx_site_config(
+                public_url="https://hermestoken.top",
+                env_values={"APP_PORT": "3000"},
+                output=stdout,
+                site_path=site_path,
+                frontend_dist_path=Path("/opt/hermestoken/web/dist"),
+            )
+            rendered = site_path.read_text(encoding="utf-8")
+
+        self.assertTrue(changed)
+        which.assert_called_once_with("nginx")
+        detect_nginx_supports_brotli.assert_called_once_with()
+        self.assertIn("brotli on;", rendered)
+        self.assertIn("brotli_types", rendered)
+        self.assertEqual(
+            run_command.call_args_list,
+            [
+                mock.call(["nginx", "-t"], check=True, stream_output=False),
+                mock.call(["systemctl", "reload", "nginx"], check=True, stream_output=False),
+            ],
+        )
 
     @mock.patch("prod.shutil.which", return_value=None)
     def test_sync_nginx_site_config_skips_when_nginx_missing(self, which):

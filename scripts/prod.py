@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Mapping, Optional, TextIO
 from urllib.parse import urlparse
@@ -45,6 +46,15 @@ NGINX_BACKEND_PROXY_PREFIXES = (
 NGINX_BACKEND_PROXY_REGEXES = (
     r"^/[^/]+/mj/",
 )
+NGINX_COMPRESSIBLE_TYPES = """        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/manifest+json
+        application/xml
+        image/svg+xml;
+"""
 
 CLOUDFLARE_REAL_IP_CIDRS = (
     "173.245.48.0/20",
@@ -226,19 +236,12 @@ real_ip_recursive on;
 
     brotli_block = ""
     if enable_brotli:
-        brotli_block = """    brotli on;
+        brotli_block = """
+    brotli on;
     brotli_comp_level 5;
     brotli_static on;
     brotli_types
-        text/plain
-        text/css
-        text/javascript
-        application/javascript
-        application/json
-        application/manifest+json
-        application/xml
-        image/svg+xml;
-"""
+""" + NGINX_COMPRESSIBLE_TYPES.rstrip()
 
     return f"""map $http_upgrade $connection_upgrade {{
     default upgrade;
@@ -284,15 +287,7 @@ server {{
     gzip_proxied any;
     gzip_vary on;
     gzip_types
-        text/plain
-        text/css
-        text/javascript
-        application/javascript
-        application/json
-        application/manifest+json
-        application/xml
-        image/svg+xml;
-{brotli_block}
+{NGINX_COMPRESSIBLE_TYPES.rstrip()}{brotli_block}
 
 {static_assets_block}\
 }}
@@ -300,16 +295,36 @@ server {{
 
 
 def detect_nginx_supports_brotli() -> bool:
-    try:
-        completed = run_command(["nginx", "-V"], check=False, stream_output=False)
-    except LauncherError:
-        return False
+    with tempfile.TemporaryDirectory(prefix="nginx-brotli-probe-") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        config_path = tmp_path / "nginx.conf"
+        config_path.write_text(
+            f"""pid {tmp_path / "nginx.pid"};
+error_log stderr notice;
 
-    combined_output = "\n".join(
-        part for part in (completed.stdout, completed.stderr) if isinstance(part, str) and part
-    )
-    normalized_output = combined_output.lower()
-    return "brotli" in normalized_output
+events {{}}
+
+http {{
+    brotli on;
+    brotli_comp_level 5;
+    brotli_static on;
+    brotli_types
+{NGINX_COMPRESSIBLE_TYPES.rstrip()}
+}}
+""",
+            encoding="utf-8",
+        )
+
+        try:
+            completed = run_command(
+                ["nginx", "-t", "-p", tmp_path.as_posix(), "-c", str(config_path)],
+                check=False,
+                stream_output=False,
+            )
+        except LauncherError:
+            return False
+
+    return completed.returncode == 0
 
 
 def detect_real_ip_conf_in_conf_d(*, conf_d_path: Path = DEFAULT_NGINX_CONF_D_PATH) -> bool:
