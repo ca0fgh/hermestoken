@@ -77,3 +77,37 @@ func TestRenderPublicHomeIndexEmbedsBootstrapAndShell(t *testing.T) {
 		t.Fatalf("rendered output missing injected root shell: %s", rendered)
 	}
 }
+
+func TestRenderPublicHomeShellDoesNotFallbackForEmptyExplicitModes(t *testing.T) {
+	testCases := []struct {
+		name    string
+		payload PublicBootstrapPayload
+		want    string
+	}{
+		{
+			name: "iframe mode without url still returns iframe shell",
+			payload: PublicBootstrapPayload{
+				Status: PublicStatusSnapshot{SystemName: "HermesToken"},
+				Home:   PublicHomeSnapshot{Mode: PublicHomeModeIframe},
+			},
+			want: `<iframe class="hermes-public-homeframe" src="" title="Public homepage" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>`,
+		},
+		{
+			name: "html mode without html returns empty string",
+			payload: PublicBootstrapPayload{
+				Status: PublicStatusSnapshot{SystemName: "HermesToken"},
+				Home:   PublicHomeSnapshot{Mode: PublicHomeModeHTML},
+			},
+			want: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := renderPublicHomeShell(tc.payload)
+			if got != tc.want {
+				t.Fatalf("renderPublicHomeShell() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

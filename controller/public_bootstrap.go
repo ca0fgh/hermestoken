@@ -107,15 +107,11 @@ func BuildPublicBootstrapPayload() PublicBootstrapPayload {
 func renderPublicHomeShell(payload PublicBootstrapPayload) string {
 	switch payload.Home.Mode {
 	case PublicHomeModeIframe:
-		if payload.Home.URL == "" {
-			break
-		}
 		return `<iframe class="hermes-public-homeframe" src="` + html.EscapeString(payload.Home.URL) + `" title="Public homepage" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe>`
 	case PublicHomeModeHTML:
-		if payload.Home.HTML == "" {
-			break
-		}
 		return payload.Home.HTML
+	case PublicHomeModeDefault:
+		// Fall back only when the payload explicitly requests the default shell.
 	}
 
 	systemName := strings.TrimSpace(payload.Status.SystemName)
