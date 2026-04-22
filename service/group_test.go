@@ -133,13 +133,13 @@ func TestValidateTokenSelectableGroupRejectsImplicitAssignedUserGroupWhenNotSele
 	}
 }
 
-func TestValidateTokenSelectableGroupAllowsImplicitAssignedUserGroupWhenExplicitlySelectable(t *testing.T) {
+func TestValidateTokenSelectableGroupStillRejectsDefaultGroupWhenExplicitlySelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
 
 	err := ValidateTokenSelectableGroup("default", "")
 
-	if err != nil {
-		t.Fatalf("expected blank token group to fall back to explicitly selectable assigned user group, got %v", err)
+	if err == nil {
+		t.Fatalf("expected default assigned group to stay blocked for token selection")
 	}
 }
 
@@ -153,16 +153,79 @@ func TestResolveTokenGroupForRequestRejectsAssignedUserGroupAsBlankFallbackWhenN
 	}
 }
 
-func TestResolveTokenGroupForRequestUsesAssignedUserGroupAsBlankFallbackWhenExplicitlySelectable(t *testing.T) {
+func TestResolveTokenGroupForRequestStillRejectsDefaultGroupWhenExplicitlySelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
 
 	resolvedGroup, err := ResolveTokenGroupForRequest("default", "")
 
-	if err != nil {
-		t.Fatalf("expected runtime fallback to use explicitly selectable assigned user group, got %v", err)
+	if err == nil {
+		t.Fatalf("expected runtime fallback to reject default assigned group, got %q", resolvedGroup)
 	}
-	if resolvedGroup != "default" {
-		t.Fatalf("expected resolved group default, got %q", resolvedGroup)
+}
+
+func TestGetUserTokenSelectableGroupsForUserIncludesAssignedNonDefaultGroup(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1,"cc-opus-福利渠道":1}`,
+	)
+	seedGroupTestUser(t, 105, "cc-opus-福利渠道")
+
+	groups := GetUserTokenSelectableGroupsForUser(105, "cc-opus-福利渠道")
+
+	if got := groups["cc-opus-福利渠道"]; got != "用户分组" {
+		t.Fatalf("expected assigned non-default user group to be token-selectable, got %q", got)
+	}
+	if _, ok := groups["default"]; ok {
+		t.Fatalf("expected default group to stay hidden from token-selectable groups")
+	}
+}
+
+func TestValidateTokenSelectableGroupForUserAllowsAssignedNonDefaultGroupFallback(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1,"cc-opus-福利渠道":1}`,
+	)
+	seedGroupTestUser(t, 106, "cc-opus-福利渠道")
+
+	if err := ValidateTokenSelectableGroupForUser(106, "cc-opus-福利渠道", ""); err != nil {
+		t.Fatalf("expected blank token group to fall back to assigned non-default user group, got %v", err)
+	}
+
+	resolvedGroup, err := ResolveTokenGroupForUserRequest(106, "cc-opus-福利渠道", "")
+	if err != nil {
+		t.Fatalf("expected runtime fallback to assigned non-default user group, got %v", err)
+	}
+	if resolvedGroup != "cc-opus-福利渠道" {
+		t.Fatalf("expected resolved group cc-opus-福利渠道, got %q", resolvedGroup)
+	}
+}
+
+func TestValidateTokenSelectableGroupForUserAllowsAssignedNonDefaultGroupExplicitSelection(t *testing.T) {
+	truncate(t)
+	withSelectableGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1,"cc-opus-福利渠道":1}`,
+	)
+	seedGroupTestUser(t, 107, "cc-opus-福利渠道")
+
+	if err := ValidateTokenSelectableGroupForUser(107, "cc-opus-福利渠道", "cc-opus-福利渠道"); err != nil {
+		t.Fatalf("expected explicit selection of assigned non-default user group to pass, got %v", err)
+	}
+
+	resolvedGroup, err := ResolveTokenGroupForUserRequest(107, "cc-opus-福利渠道", "cc-opus-福利渠道")
+	if err != nil {
+		t.Fatalf("expected runtime explicit selection of assigned non-default user group to pass, got %v", err)
+	}
+	if resolvedGroup != "cc-opus-福利渠道" {
+		t.Fatalf("expected resolved group cc-opus-福利渠道, got %q", resolvedGroup)
 	}
 }
 

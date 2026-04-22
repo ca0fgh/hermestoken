@@ -1357,6 +1357,7 @@
     "开启后不限制：必须设置模型倍率": "Après l'activation, aucune limite : le ratio de modèle doit être défini",
     "开启后创建令牌默认选择auto分组，初始令牌也将设为auto": "When enabled, new tokens default to auto group, initial tokens are also set to auto",
     "开启后未登录用户无法访问模型广场": "Lorsqu'il est activé, les utilisateurs non authentifiés ne peuvent pas accéder à la place du marché des modèles",
+    "控制是否显示模型广场入口": "Contrôle si l'entrée de la place de marché des modèles est affichée",
     "关闭后游客按 default 分组浏览模型广场": "Lorsque la connexion n'est pas requise, les visiteurs parcourent la place de marché des modèles avec le groupe default",
     "开启后，using_group 会参与 cache key（不同分组隔离）。": "Une fois activé, using_group fera partie de la clé de cache (isolation par groupe).",
     "开启后，仅\"消费\"和\"错误\"日志将记录您的客户端IP地址": "Après l'activation, seuls les journaux \"consommation\" et \"erreur\" enregistreront votre adresse IP client",

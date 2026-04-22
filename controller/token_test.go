@@ -113,6 +113,23 @@ func withTokenGroupSettings(t *testing.T, usableJSON string, specialJSON string)
 	})
 }
 
+func withTokenGroupSettingsAndRatios(t *testing.T, usableJSON string, specialJSON string, ratioJSON string) {
+	t.Helper()
+
+	originalRatios := ratio_setting.GroupRatio2JSONString()
+	withTokenGroupSettings(t, usableJSON, specialJSON)
+
+	if err := ratio_setting.UpdateGroupRatioByJSONString(ratioJSON); err != nil {
+		t.Fatalf("failed to set group ratios: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if err := ratio_setting.UpdateGroupRatioByJSONString(originalRatios); err != nil {
+			t.Fatalf("failed to restore group ratios: %v", err)
+		}
+	})
+}
+
 func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string) *model.Token {
 	t.Helper()
 
@@ -250,7 +267,13 @@ func TestGetTokenMasksKeyInResponse(t *testing.T) {
 
 func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
-	seedUser(t, db, 1, "default")
+	seedUser(t, db, 1, "standard")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
 	token := seedToken(t, db, 1, "editable-token", "yzab1234cdef5678")
 
 	body := map[string]any{
@@ -261,7 +284,7 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 		"unlimited_quota":      true,
 		"model_limits_enabled": false,
 		"model_limits":         "",
-		"group":                "default",
+		"group":                "standard",
 		"cross_group_retry":    false,
 	}
 
@@ -310,7 +333,7 @@ func TestAddTokenRejectsBlankGroupWhenAssignedDefaultGroupIsNotSelectable(t *tes
 	}
 }
 
-func TestAddTokenAllowsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelectable(t *testing.T) {
+func TestAddTokenStillRejectsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelectable(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	seedUser(t, db, 1, "default")
 	withTokenGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
@@ -330,8 +353,68 @@ func TestAddTokenAllowsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelectable(
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected token creation to fail when assigned default group is default, even if explicitly selectable")
+	}
+}
+
+func TestAddTokenAllowsBlankGroupWhenAssignedNonDefaultGroupIsCurrentUserGroup(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "cc-opus-福利渠道")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1,"cc-opus-福利渠道":1}`,
+	)
+
+	body := map[string]any{
+		"name":                 "new-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
-		t.Fatalf("expected token creation to succeed when assigned default group is explicitly selectable, got %q", response.Message)
+		t.Fatalf("expected token creation to succeed when assigned non-default group is current user group, got %q", response.Message)
+	}
+}
+
+func TestAddTokenAllowsExplicitAssignedNonDefaultGroupSelection(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "cc-opus-福利渠道")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1,"cc-opus-福利渠道":1}`,
+	)
+
+	body := map[string]any{
+		"name":                 "new-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "cc-opus-福利渠道",
+		"cross_group_retry":    false,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token creation to succeed when explicitly selecting assigned non-default group, got %q", response.Message)
 	}
 }
 

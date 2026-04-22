@@ -80,7 +80,7 @@ test('footer uses shared header-nav visibility instead of hard-coded docs/about 
   assert.match(source, /showAboutSection/);
 });
 
-test('settings header nav source explains guest pricing uses the default group', async () => {
+test('settings header nav source separates marketplace entry visibility from guest access copy', async () => {
   const source = await readFile(
     new URL(
       '../src/pages/Setting/Operation/SettingsHeaderNavModules.jsx',
@@ -89,6 +89,7 @@ test('settings header nav source explains guest pricing uses the default group',
     'utf8',
   );
 
+  assert.match(source, /t\('控制是否显示模型广场入口'\)/);
   assert.match(source, /t\('关闭后游客按 default 分组浏览模型广场'\)/);
   assert.match(source, /t\('default 是游客和新注册用户的公开基础分组'\)/);
 });

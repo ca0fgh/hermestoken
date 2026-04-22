@@ -39,16 +39,30 @@ func getUserGroupsByMode(userId int, userGroup string, includeAssignedUserGroup 
 	groupsCopy := setting.GetUserUsableGroupsCopy()
 	if userGroup != "" {
 		applySpecialUsableGroups(groupsCopy, userGroup)
-		if includeAssignedUserGroup {
-			if _, ok := groupsCopy[userGroup]; !ok {
-				groupsCopy[userGroup] = "用户分组"
-			}
+		if shouldIncludeAssignedUserGroup(userGroup, includeAssignedUserGroup) {
+			groupsCopy[userGroup] = "用户分组"
 		}
 	}
 	if userId > 0 {
 		appendActiveSubscriptionGroups(groupsCopy, userId)
 	}
+	if !includeAssignedUserGroup {
+		delete(groupsCopy, "default")
+	}
 	return groupsCopy
+}
+
+func shouldIncludeAssignedUserGroup(userGroup string, includeAssignedUserGroup bool) bool {
+	if userGroup == "" {
+		return false
+	}
+	if includeAssignedUserGroup {
+		return true
+	}
+	if userGroup == "default" {
+		return false
+	}
+	return ratio_setting.ContainsGroupRatio(userGroup)
 }
 
 func applySpecialUsableGroups(groups map[string]string, userGroup string) {

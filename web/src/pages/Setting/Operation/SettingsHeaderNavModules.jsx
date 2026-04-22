@@ -175,7 +175,7 @@ export default function SettingsHeaderNavModules(props) {
     {
       key: 'pricing',
       title: t('模型广场'),
-      description: t('关闭后游客按 default 分组浏览模型广场'),
+      description: t('控制是否显示模型广场入口'),
       hasSubConfig: true, // 标识该模块有子配置
     },
     {
