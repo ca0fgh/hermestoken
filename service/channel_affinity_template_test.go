@@ -176,6 +176,98 @@ func TestShouldSkipRetryAfterChannelAffinityFailure(t *testing.T) {
 	}
 }
 
+func TestInvalidateChannelAffinity_RemovesCurrentCacheKey(t *testing.T) {
+	ruleName := fmt.Sprintf("rule_%d", time.Now().UnixNano())
+	usingGroup := "default"
+	modelName := "claude-sonnet-4-6"
+	affinityValue := fmt.Sprintf("affinity_%d", time.Now().UnixNano())
+	cacheKeySuffix := buildChannelAffinityCacheKeySuffix(operation_setting.ChannelAffinityRule{
+		Name:              ruleName,
+		IncludeUsingGroup: true,
+		IncludeRuleName:   true,
+	}, modelName, usingGroup, affinityValue)
+
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 9527, time.Minute))
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	setChannelAffinityContext(ctx, channelAffinityMeta{
+		CacheKey:       cache.FullKey(cacheKeySuffix),
+		TTLSeconds:     600,
+		RuleName:       ruleName,
+		UsingGroup:     usingGroup,
+		ModelName:      modelName,
+		KeyFingerprint: affinityFingerprint(affinityValue),
+	})
+
+	removed := InvalidateChannelAffinity(ctx)
+	require.True(t, removed)
+
+	_, found, err := cache.Get(cacheKeySuffix)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func TestInvalidateChannelAffinity_NoContextKey(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+
+	removed := InvalidateChannelAffinity(ctx)
+	require.False(t, removed)
+}
+
+func TestEnableRetryAfterChannelAffinityFailure_RequiresCacheHit(t *testing.T) {
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	setChannelAffinityContext(ctx, channelAffinityMeta{
+		CacheKey:   "new-api:channel_affinity:v1:test",
+		TTLSeconds: 600,
+		RuleName:   "rule-no-hit",
+	})
+	ctx.Set(ginKeyChannelAffinitySkipRetry, true)
+
+	enabled := EnableRetryAfterChannelAffinityFailure(ctx)
+	require.False(t, enabled)
+	require.True(t, ShouldSkipRetryAfterChannelAffinityFailure(ctx))
+}
+
+func TestEnableRetryAfterChannelAffinityFailure_ClearsSkipAndInvalidates(t *testing.T) {
+	ruleName := fmt.Sprintf("rule_%d", time.Now().UnixNano())
+	usingGroup := "default"
+	modelName := "claude-sonnet-4-6"
+	affinityValue := fmt.Sprintf("affinity_%d", time.Now().UnixNano())
+	cacheKeySuffix := buildChannelAffinityCacheKeySuffix(operation_setting.ChannelAffinityRule{
+		Name:              ruleName,
+		IncludeUsingGroup: true,
+		IncludeRuleName:   true,
+	}, modelName, usingGroup, affinityValue)
+
+	cache := getChannelAffinityCache()
+	require.NoError(t, cache.SetWithTTL(cacheKeySuffix, 9527, time.Minute))
+
+	rec := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(rec)
+	setChannelAffinityContext(ctx, channelAffinityMeta{
+		CacheKey:       cache.FullKey(cacheKeySuffix),
+		TTLSeconds:     600,
+		RuleName:       ruleName,
+		UsingGroup:     usingGroup,
+		ModelName:      modelName,
+		KeyFingerprint: affinityFingerprint(affinityValue),
+	})
+	ctx.Set(ginKeyChannelAffinityCacheHit, true)
+	ctx.Set(ginKeyChannelAffinitySkipRetry, true)
+
+	enabled := EnableRetryAfterChannelAffinityFailure(ctx)
+	require.True(t, enabled)
+	require.False(t, ShouldSkipRetryAfterChannelAffinityFailure(ctx))
+
+	_, found, err := cache.Get(cacheKeySuffix)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
 func TestChannelAffinityHitCodexTemplatePassHeadersEffective(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -25,6 +25,8 @@ const (
 	ginKeyChannelAffinityMeta       = "channel_affinity_meta"
 	ginKeyChannelAffinityLogInfo    = "channel_affinity_log_info"
 	ginKeyChannelAffinitySkipRetry  = "channel_affinity_skip_retry_on_failure"
+	ginKeyChannelAffinityCacheHit   = "channel_affinity_cache_hit"
+	ginKeyChannelAffinityRetryReady = "channel_affinity_retry_ready"
 
 	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
 	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
@@ -243,6 +245,50 @@ func ClearChannelAffinityCacheByRuleName(ruleName string) (int, error) {
 		return 0, err
 	}
 	return deleted, nil
+}
+
+func InvalidateChannelAffinity(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+
+	cacheKey, _, ok := getChannelAffinityContext(c)
+	if !ok {
+		return false
+	}
+
+	cache := getChannelAffinityCache()
+	deleted, err := cache.DeleteMany([]string{cacheKey})
+	if err != nil {
+		common.SysError(fmt.Sprintf("channel affinity cache delete failed: key=%s, err=%v", cacheKey, err))
+		return false
+	}
+
+	return deleted[cache.FullKey(cacheKey)]
+}
+
+func EnableRetryAfterChannelAffinityFailure(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if retryReady, ok := c.Get(ginKeyChannelAffinityRetryReady); ok {
+		if ready, ok := retryReady.(bool); ok && ready {
+			return true
+		}
+	}
+	cacheHit, ok := c.Get(ginKeyChannelAffinityCacheHit)
+	if !ok {
+		return false
+	}
+	hit, ok := cacheHit.(bool)
+	if !ok || !hit {
+		return false
+	}
+
+	InvalidateChannelAffinity(c)
+	c.Set(ginKeyChannelAffinitySkipRetry, false)
+	c.Set(ginKeyChannelAffinityRetryReady, true)
+	return true
 }
 
 func matchAnyRegexCached(patterns []string, s string) bool {
@@ -604,17 +650,20 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			RequestPath:    path,
 		})
 
-		cache := getChannelAffinityCache()
-		channelID, found, err := cache.Get(cacheKeySuffix)
-		if err != nil {
-			common.SysError(fmt.Sprintf("channel affinity cache get failed: key=%s, err=%v", cacheKeyFull, err))
+			cache := getChannelAffinityCache()
+			channelID, found, err := cache.Get(cacheKeySuffix)
+			if err != nil {
+				common.SysError(fmt.Sprintf("channel affinity cache get failed: key=%s, err=%v", cacheKeyFull, err))
+				return 0, false
+			}
+			if found {
+				if c != nil {
+					c.Set(ginKeyChannelAffinityCacheHit, true)
+				}
+				return channelID, true
+			}
 			return 0, false
 		}
-		if found {
-			return channelID, true
-		}
-		return 0, false
-	}
 	return 0, false
 }
 

@@ -100,10 +100,11 @@ func Distribute() func(c *gin.Context) {
 				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+					clearAffinityOnFallback := true
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil {
 						if preferred.Status != common.ChannelStatusEnabled {
-							if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+							if !service.EnableRetryAfterChannelAffinityFailure(c) && service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
 								abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorChannelDisabled))
 								return
 							}
@@ -116,6 +117,7 @@ func Distribute() func(c *gin.Context) {
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
 									channel = preferred
 									service.MarkChannelAffinityUsed(c, g, preferred.Id)
+									clearAffinityOnFallback = false
 									break
 								}
 							}
@@ -123,7 +125,11 @@ func Distribute() func(c *gin.Context) {
 							channel = preferred
 							selectGroup = usingGroup
 							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+							clearAffinityOnFallback = false
 						}
+					}
+					if clearAffinityOnFallback {
+						service.EnableRetryAfterChannelAffinityFailure(c)
 					}
 				}
 
@@ -160,6 +166,8 @@ func Distribute() func(c *gin.Context) {
 		c.Next()
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
+		} else if c.Writer != nil && c.Writer.Status() >= http.StatusBadRequest {
+			service.InvalidateChannelAffinity(c)
 		}
 	}
 }
