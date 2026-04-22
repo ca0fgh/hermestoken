@@ -621,11 +621,81 @@ func getUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
 	return group, nil
 }
 
+func selectEffectiveSubscriptionUpgradeGroup(subscriptionGroup, planGroup string) string {
+	subscriptionGroup = strings.TrimSpace(subscriptionGroup)
+	planGroup = strings.TrimSpace(planGroup)
+
+	switch {
+	case subscriptionGroup != "" && ratio_setting.ContainsGroupRatio(subscriptionGroup):
+		return subscriptionGroup
+	case planGroup != "" && ratio_setting.ContainsGroupRatio(planGroup):
+		return planGroup
+	case subscriptionGroup != "":
+		return subscriptionGroup
+	default:
+		return planGroup
+	}
+}
+
+func getEffectiveSubscriptionUpgradeGroupTx(tx *gorm.DB, sub *UserSubscription) (string, error) {
+	if sub == nil {
+		return "", errors.New("subscription is nil")
+	}
+
+	planGroup := ""
+	if sub.PlanId > 0 {
+		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId, true)
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", err
+		}
+		if plan != nil {
+			planGroup = plan.UpgradeGroup
+		}
+	}
+
+	return selectEffectiveSubscriptionUpgradeGroup(sub.UpgradeGroup, planGroup), nil
+}
+
+func findLatestActiveSubscriptionUpgradeGroupTx(tx *gorm.DB, userId int, now int64, excludeSubscriptionID int) (string, error) {
+	if tx == nil {
+		return "", errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return "", errors.New("invalid userId")
+	}
+
+	query := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Order("end_time desc, id desc")
+	if excludeSubscriptionID > 0 {
+		query = query.Where("id <> ?", excludeSubscriptionID)
+	}
+
+	var subscriptions []UserSubscription
+	if err := query.Find(&subscriptions).Error; err != nil {
+		return "", err
+	}
+
+	for i := range subscriptions {
+		group, err := getEffectiveSubscriptionUpgradeGroupTx(tx, &subscriptions[i])
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(group) != "" {
+			return group, nil
+		}
+	}
+	return "", nil
+}
+
 func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now int64) (string, error) {
 	if tx == nil || sub == nil {
 		return "", errors.New("invalid downgrade args")
 	}
-	upgradeGroup := strings.TrimSpace(sub.UpgradeGroup)
+
+	upgradeGroup, err := getEffectiveSubscriptionUpgradeGroupTx(tx, sub)
+	if err != nil {
+		return "", err
+	}
 	if upgradeGroup == "" {
 		return "", nil
 	}
@@ -636,24 +706,22 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 	if currentGroup != upgradeGroup {
 		return "", nil
 	}
-	var activeSub UserSubscription
-	activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND id <> ? AND upgrade_group <> ''",
-		sub.UserId, "active", now, sub.Id).
-		Order("end_time desc, id desc").
-		Limit(1).
-		Find(&activeSub)
-	if activeQuery.Error == nil && activeQuery.RowsAffected > 0 {
-		return "", nil
+
+	targetGroup, err := findLatestActiveSubscriptionUpgradeGroupTx(tx, sub.UserId, now, sub.Id)
+	if err != nil {
+		return "", err
 	}
-	prevGroup := strings.TrimSpace(sub.PrevUserGroup)
-	if prevGroup == "" || prevGroup == currentGroup {
+	if targetGroup == "" {
+		targetGroup = strings.TrimSpace(sub.PrevUserGroup)
+	}
+	if targetGroup == "" || targetGroup == currentGroup {
 		return "", nil
 	}
 	if err := tx.Model(&User{}).Where("id = ?", sub.UserId).
-		Update("group", prevGroup).Error; err != nil {
+		Update("group", targetGroup).Error; err != nil {
 		return "", err
 	}
-	return prevGroup, nil
+	return targetGroup, nil
 }
 
 func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string) (*UserSubscription, error) {
@@ -1037,21 +1105,7 @@ func GetActiveUserSubscriptionUpgradeGroups(userId int) ([]string, error) {
 	seen := make(map[string]struct{}, len(rows))
 	groups := make([]string, 0, len(rows))
 	for _, row := range rows {
-		subscriptionGroup := strings.TrimSpace(row.SubscriptionUpgradeGroup)
-		planGroup := strings.TrimSpace(row.PlanUpgradeGroup)
-
-		group := ""
-		switch {
-		case subscriptionGroup != "" && ratio_setting.ContainsGroupRatio(subscriptionGroup):
-			group = subscriptionGroup
-		case planGroup != "" && ratio_setting.ContainsGroupRatio(planGroup):
-			group = planGroup
-		case subscriptionGroup != "":
-			group = subscriptionGroup
-		case planGroup != "":
-			group = planGroup
-		}
-
+		group := selectEffectiveSubscriptionUpgradeGroup(row.SubscriptionUpgradeGroup, row.PlanUpgradeGroup)
 		if group == "" {
 			continue
 		}
@@ -1240,55 +1294,31 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 	for userId := range userIds {
 		cacheGroup := ""
 		err := DB.Transaction(func(tx *gorm.DB) error {
-			res := tx.Model(&UserSubscription{}).
+			var dueSubs []UserSubscription
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
 				Where("user_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", userId, "active", now).
-				Updates(map[string]interface{}{
-					"status":     "expired",
-					"updated_at": common.GetTimestamp(),
-				})
-			if res.Error != nil {
-				return res.Error
-			}
-			expiredCount += int(res.RowsAffected)
-
-			// If there's an active upgraded subscription, keep current group.
-			var activeSub UserSubscription
-			activeQuery := tx.Where("user_id = ? AND status = ? AND end_time > ? AND upgrade_group <> ''",
-				userId, "active", now).
 				Order("end_time desc, id desc").
-				Limit(1).
-				Find(&activeSub)
-			if activeQuery.Error == nil && activeQuery.RowsAffected > 0 {
-				return nil
-			}
-
-			// No active upgraded subscription, downgrade to previous group if needed.
-			var lastExpired UserSubscription
-			expiredQuery := tx.Where("user_id = ? AND status = ? AND upgrade_group <> ''",
-				userId, "expired").
-				Order("end_time desc, id desc").
-				Limit(1).
-				Find(&lastExpired)
-			if expiredQuery.Error != nil || expiredQuery.RowsAffected == 0 {
-				return nil
-			}
-			upgradeGroup := strings.TrimSpace(lastExpired.UpgradeGroup)
-			prevGroup := strings.TrimSpace(lastExpired.PrevUserGroup)
-			if upgradeGroup == "" || prevGroup == "" {
-				return nil
-			}
-			currentGroup, err := getUserGroupByIdTx(tx, userId)
-			if err != nil {
+				Find(&dueSubs).Error; err != nil {
 				return err
 			}
-			if currentGroup != upgradeGroup || currentGroup == prevGroup {
-				return nil
+			for i := range dueSubs {
+				if err := tx.Model(&UserSubscription{}).
+					Where("id = ?", dueSubs[i].Id).
+					Updates(map[string]interface{}{
+						"status":     "expired",
+						"updated_at": common.GetTimestamp(),
+					}).Error; err != nil {
+					return err
+				}
+				expiredCount++
+				targetGroup, err := downgradeUserGroupForSubscriptionTx(tx, &dueSubs[i], now)
+				if err != nil {
+					return err
+				}
+				if targetGroup != "" {
+					cacheGroup = targetGroup
+				}
 			}
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("group", prevGroup).Error; err != nil {
-				return err
-			}
-			cacheGroup = prevGroup
 			return nil
 		})
 		if err != nil {
