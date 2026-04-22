@@ -156,7 +156,7 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesTeamDirectBatch
 	order, plan, fixture := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
 		ImmediateInviterLevel: ReferralLevelTypeTeam,
-		InviteeShareBps:       4000,
+		InviteeShareBps:       800,
 		Money:                 10,
 	})
 
@@ -174,6 +174,56 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesTeamDirectBatch
 	assertRewardComponents(t, records, []string{"team_direct_reward", "invitee_reward"})
 }
 
+func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_UsesOrderRateForTeamDirectInviteeShare(t *testing.T) {
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	order, plan, fixture := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeTeam,
+		ImmediateTeamCapBps:   5500,
+		InviteeShareBps:       3000,
+		Money:                 30,
+	})
+
+	if err := ApplyTemplateSubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplyTemplateSubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	_, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	teamDirectRecord := findRewardRecordByComponent(t, records, "team_direct_reward")
+	inviteeRecord := findRewardRecordByComponent(t, records, "invitee_reward")
+
+	if teamDirectRecord.RewardQuota != 750 {
+		t.Fatalf("team_direct_reward quota = %d, want 750", teamDirectRecord.RewardQuota)
+	}
+	if inviteeRecord.RewardQuota != 900 {
+		t.Fatalf("invitee_reward quota = %d, want 900", inviteeRecord.RewardQuota)
+	}
+	if teamDirectRecord.GrossRewardQuotaSnapshot == nil || *teamDirectRecord.GrossRewardQuotaSnapshot != 1650 {
+		t.Fatalf("team_direct_reward gross snapshot = %v, want 1650", teamDirectRecord.GrossRewardQuotaSnapshot)
+	}
+
+	immediateInviter, err := GetUserById(fixture.ImmediateInviter.Id, false)
+	if err != nil {
+		t.Fatalf("GetUserById(immediate inviter) error = %v", err)
+	}
+	if immediateInviter.AffQuota != 750 || immediateInviter.AffHistoryQuota != 750 {
+		t.Fatalf("immediate inviter quotas = (%d,%d), want (750,750)", immediateInviter.AffQuota, immediateInviter.AffHistoryQuota)
+	}
+
+	payerUser, err := GetUserById(fixture.PayerUser.Id, false)
+	if err != nil {
+		t.Fatalf("GetUserById(payer user) error = %v", err)
+	}
+	if payerUser.AffQuota != 900 || payerUser.AffHistoryQuota != 900 {
+		t.Fatalf("payer quotas = (%d,%d), want (900,900)", payerUser.AffQuota, payerUser.AffHistoryQuota)
+	}
+}
+
 func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesMixedTeamChainSnapshots(t *testing.T) {
 	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
@@ -183,7 +233,7 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesMixedTeamChainS
 			ReferralLevelTypeDirect,
 			ReferralLevelTypeTeam,
 		},
-		InviteeShareBps: 3000,
+		InviteeShareBps: 300,
 		Money:           10,
 	})
 
@@ -199,11 +249,49 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_WritesMixedTeamChainS
 	assertTeamChainSnapshotDistances(t, batch.TeamChainSnapshotJSON, []int{1, 3})
 }
 
+func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_UsesOrderRateForDirectInviteeShare(t *testing.T) {
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
+		Group:                 "vip",
+		ImmediateInviterLevel: ReferralLevelTypeDirect,
+		ImmediateDirectCapBps: 1200,
+		AncestorLevels: []string{
+			ReferralLevelTypeTeam,
+		},
+		InviteeShareBps: 500,
+		Money:           10,
+	})
+
+	if err := ApplyTemplateSubscriptionReferralOnOrderSuccessTx(DB, order, plan); err != nil {
+		t.Fatalf("ApplyTemplateSubscriptionReferralOnOrderSuccessTx() error = %v", err)
+	}
+
+	_, records := loadReferralSettlementBatchByTradeNo(t, order.TradeNo)
+	directRecord := findRewardRecordByComponent(t, records, "direct_reward")
+	inviteeRecord := findRewardRecordByComponent(t, records, "invitee_reward")
+	teamRecord := findRewardRecordByComponent(t, records, "team_reward")
+
+	if directRecord.RewardQuota != 70 {
+		t.Fatalf("direct_reward quota = %d, want 70", directRecord.RewardQuota)
+	}
+	if inviteeRecord.RewardQuota != 50 {
+		t.Fatalf("invitee_reward quota = %d, want 50", inviteeRecord.RewardQuota)
+	}
+	if teamRecord.RewardQuota != 130 {
+		t.Fatalf("team_reward quota = %d, want 130", teamRecord.RewardQuota)
+	}
+}
+
 func TestResolveTeamDifferentialActivationReturnsNilWithoutMatchedTeam(t *testing.T) {
 	fixture := seedTemplateEngineFixture(t, seedTemplateEngineFixtureInput{
 		Group:                 "vip",
 		ImmediateInviterLevel: ReferralLevelTypeDirect,
-		InviteeShareBps:       3000,
+		InviteeShareBps:       300,
 	})
 
 	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
@@ -228,7 +316,7 @@ func TestResolveTeamDifferentialActivationReturnsAllocationWhenMatchedTeamExists
 		AncestorLevels: []string{
 			ReferralLevelTypeTeam,
 		},
-		InviteeShareBps: 3000,
+		InviteeShareBps: 300,
 	})
 
 	context, err := ResolveSubscriptionTemplateSettlementContext(DB, ReferralTypeSubscription, "vip", fixture.PayerUser.Id, 0)
@@ -294,7 +382,7 @@ func TestApplyTemplateSubscriptionReferralOnOrderSuccessTx_DirectWithoutMatchedT
 	order, plan, _ := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
 		ImmediateInviterLevel: ReferralLevelTypeDirect,
-		InviteeShareBps:       3000,
+		InviteeShareBps:       300,
 		Money:                 10,
 	})
 
@@ -384,7 +472,7 @@ func TestListSubscriptionReferralInviteeContributionDetailsForTeamInviter(t *tes
 	order, plan, fixture := seedTemplateSettlementOrder(t, seedTemplateSettlementOrderInput{
 		Group:                 "vip",
 		ImmediateInviterLevel: ReferralLevelTypeTeam,
-		InviteeShareBps:       3000,
+		InviteeShareBps:       800,
 		Money:                 10,
 	})
 

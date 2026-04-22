@@ -39,18 +39,20 @@ func NormalizeSubscriptionReferralRateBps(rateBps int) int {
 }
 
 func CalculateSubscriptionReferralQuota(orderMoney float64, rateBps int) int {
+	return int(CalculateSubscriptionReferralQuotaWithQuotaPerUnit(orderMoney, rateBps, common.QuotaPerUnit))
+}
+
+func CalculateSubscriptionReferralQuotaWithQuotaPerUnit(orderMoney float64, rateBps int, quotaPerUnit float64) int64 {
 	normalizedRateBps := NormalizeSubscriptionReferralRateBps(rateBps)
-	if orderMoney <= 0 || normalizedRateBps == 0 || common.QuotaPerUnit <= 0 {
+	if orderMoney <= 0 || normalizedRateBps == 0 || quotaPerUnit <= 0 {
 		return 0
 	}
 
-	return int(
-		decimal.NewFromFloat(orderMoney).
-			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
-			Mul(decimal.NewFromInt(int64(normalizedRateBps))).
-			Div(decimal.NewFromInt(SubscriptionReferralMaxRateBps)).
-			IntPart(),
-	)
+	return decimal.NewFromFloat(orderMoney).
+		Mul(decimal.NewFromFloat(quotaPerUnit)).
+		Mul(decimal.NewFromInt(int64(normalizedRateBps))).
+		Div(decimal.NewFromInt(SubscriptionReferralMaxRateBps)).
+		IntPart()
 }
 
 func ResolveSubscriptionReferralConfig(totalRateBps int, inviteeRateBps int) SubscriptionReferralConfig {

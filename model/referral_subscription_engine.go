@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -287,20 +286,23 @@ func buildSubscriptionSettlementComponents(tx *gorm.DB, context *ReferralSettlem
 		return nil, err
 	}
 
-	directGross := int64(CalculateSubscriptionReferralQuota(order.Money, context.ActiveTemplate.DirectCapBps))
-	teamDirectGross := int64(CalculateSubscriptionReferralQuota(order.Money, context.ActiveTemplate.TeamCapBps))
-
 	records := make([]ReferralSettlementRecord, 0, 2+len(context.TeamChain))
 
 	switch context.Mode {
 	case ReferralSettlementModeTeamDirect:
-		records = append(records, buildImmediateRewardRecord(context, "team_direct_reward", ReferralLevelTypeTeam, teamDirectGross, context.ActiveTemplate.TeamCapBps, effectiveInviteeShareBps))
-		if inviteeRecord := buildInviteeRewardRecord(context, "team_direct_reward", teamDirectGross, effectiveInviteeShareBps); inviteeRecord != nil {
+		teamDirectConfig := ResolveSubscriptionReferralConfig(context.ActiveTemplate.TeamCapBps, effectiveInviteeShareBps)
+		teamDirectGross := int64(CalculateSubscriptionReferralQuota(order.Money, teamDirectConfig.TotalRateBps))
+		teamDirectInviteeQuota := int64(CalculateSubscriptionReferralQuota(order.Money, teamDirectConfig.InviteeRateBps))
+		records = append(records, buildImmediateRewardRecord(context, "team_direct_reward", ReferralLevelTypeTeam, teamDirectGross, teamDirectInviteeQuota, teamDirectConfig.TotalRateBps, teamDirectConfig.InviteeRateBps))
+		if inviteeRecord := buildInviteeRewardRecord(context, "team_direct_reward", teamDirectGross, teamDirectInviteeQuota, teamDirectConfig.InviteeRateBps); inviteeRecord != nil {
 			records = append(records, *inviteeRecord)
 		}
 	case ReferralSettlementModeDirectWithTeamChain:
-		records = append(records, buildImmediateRewardRecord(context, "direct_reward", ReferralLevelTypeDirect, directGross, context.ActiveTemplate.DirectCapBps, effectiveInviteeShareBps))
-		if inviteeRecord := buildInviteeRewardRecord(context, "direct_reward", directGross, effectiveInviteeShareBps); inviteeRecord != nil {
+		directConfig := ResolveSubscriptionReferralConfig(context.ActiveTemplate.DirectCapBps, effectiveInviteeShareBps)
+		directGross := int64(CalculateSubscriptionReferralQuota(order.Money, directConfig.TotalRateBps))
+		directInviteeQuota := int64(CalculateSubscriptionReferralQuota(order.Money, directConfig.InviteeRateBps))
+		records = append(records, buildImmediateRewardRecord(context, "direct_reward", ReferralLevelTypeDirect, directGross, directInviteeQuota, directConfig.TotalRateBps, directConfig.InviteeRateBps))
+		if inviteeRecord := buildInviteeRewardRecord(context, "direct_reward", directGross, directInviteeQuota, directConfig.InviteeRateBps); inviteeRecord != nil {
 			records = append(records, *inviteeRecord)
 		}
 		activation := resolveTeamDifferentialActivation(context, order)
@@ -345,12 +347,12 @@ func resolveTeamDifferentialActivation(context *ReferralSettlementContext, order
 	}
 }
 
-func buildImmediateRewardRecord(context *ReferralSettlementContext, component string, levelType string, grossQuota int64, appliedRateBps int, inviteeShareBps int) ReferralSettlementRecord {
+func buildImmediateRewardRecord(context *ReferralSettlementContext, component string, levelType string, grossQuota int64, inviteeRewardQuota int64, appliedRateBps int, inviteeShareBps int) ReferralSettlementRecord {
 	beneficiaryLevelType := levelType
 	appliedRate := appliedRateBps
 	grossSnapshot := grossQuota
 	inviteeShareSnapshot := inviteeShareBps
-	netQuota := grossQuota - calculateInviteeRewardQuota(grossQuota, inviteeShareBps)
+	netQuota := grossQuota - inviteeRewardQuota
 
 	return ReferralSettlementRecord{
 		ReferralType:             context.ReferralType,
@@ -366,8 +368,7 @@ func buildImmediateRewardRecord(context *ReferralSettlementContext, component st
 	}
 }
 
-func buildInviteeRewardRecord(context *ReferralSettlementContext, sourceComponent string, grossQuota int64, inviteeShareBps int) *ReferralSettlementRecord {
-	inviteeRewardQuota := calculateInviteeRewardQuota(grossQuota, inviteeShareBps)
+func buildInviteeRewardRecord(context *ReferralSettlementContext, sourceComponent string, grossQuota int64, inviteeRewardQuota int64, inviteeShareBps int) *ReferralSettlementRecord {
 	if inviteeRewardQuota <= 0 {
 		return nil
 	}
@@ -461,16 +462,6 @@ func resolveTemplateInviteeShareBps(tx *gorm.DB, context *ReferralSettlementCont
 	}
 
 	return NormalizeSubscriptionReferralRateBps(context.ActiveTemplate.InviteeShareDefaultBps), nil
-}
-
-func calculateInviteeRewardQuota(grossQuota int64, inviteeShareBps int) int64 {
-	if grossQuota <= 0 || inviteeShareBps <= 0 {
-		return 0
-	}
-	return decimal.NewFromInt(grossQuota).
-		Mul(decimal.NewFromInt(int64(NormalizeSubscriptionReferralRateBps(inviteeShareBps)))).
-		Div(decimal.NewFromInt(SubscriptionReferralMaxRateBps)).
-		IntPart()
 }
 
 func activeTemplateSnapshotFromContext(context *ReferralSettlementContext) map[string]interface{} {

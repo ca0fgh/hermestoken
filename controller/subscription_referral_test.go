@@ -235,8 +235,8 @@ func TestGetSubscriptionReferralSelfReturnsReceivedContributionDetails(t *testin
 	if detail.RoleType != model.ReferralLevelTypeDirect {
 		t.Fatalf("role_type = %q, want %q", detail.RoleType, model.ReferralLevelTypeDirect)
 	}
-	if detail.EffectiveRewardQuota <= 0 {
-		t.Fatalf("effective_reward_quota = %d, want > 0", detail.EffectiveRewardQuota)
+	if detail.EffectiveRewardQuota != 30 {
+		t.Fatalf("effective_reward_quota = %d, want 30", detail.EffectiveRewardQuota)
 	}
 	if detail.Status != "credited" {
 		t.Fatalf("status = %q, want credited", detail.Status)
@@ -419,10 +419,13 @@ func TestGetSubscriptionReferralInviteeReturnsContributionDetails(t *testing.T) 
 	if data.ContributionDetails[0].RoleType != model.ReferralLevelTypeTeam {
 		t.Fatalf("first role_type = %q, want %q", data.ContributionDetails[0].RoleType, model.ReferralLevelTypeTeam)
 	}
-	if data.ContributionDetails[0].EffectiveRewardQuota <= 0 {
-		t.Fatalf("first effective_reward_quota = %d, want > 0", data.ContributionDetails[0].EffectiveRewardQuota)
+	if data.ContributionDetails[0].EffectiveRewardQuota != 180 {
+		t.Fatalf("first effective_reward_quota = %d, want 180", data.ContributionDetails[0].EffectiveRewardQuota)
 	}
 	if data.ContributionDetails[1].RewardComponent != "invitee_reward" {
 		t.Fatalf("second reward_component = %q, want invitee_reward", data.ContributionDetails[1].RewardComponent)
+	}
+	if data.ContributionDetails[1].EffectiveRewardQuota != 70 {
+		t.Fatalf("second effective_reward_quota = %d, want 70", data.ContributionDetails[1].EffectiveRewardQuota)
 	}
 }

@@ -113,7 +113,7 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 	return fixture
 }
 
-func createTemplateBindingForUser(t *testing.T, userID int, group string, levelType string, _ int, directCapBps int, teamCapBps int) {
+func createTemplateBindingForUser(t *testing.T, userID int, group string, levelType string, inviteeShareDefaultBps int, directCapBps int, teamCapBps int) {
 	t.Helper()
 
 	template := &ReferralTemplate{
@@ -124,7 +124,7 @@ func createTemplateBindingForUser(t *testing.T, userID int, group string, levelT
 		Enabled:                true,
 		DirectCapBps:           directCapBps,
 		TeamCapBps:             teamCapBps,
-		InviteeShareDefaultBps: 800,
+		InviteeShareDefaultBps: inviteeShareDefaultBps,
 	}
 	if err := CreateReferralTemplate(template); err != nil {
 		t.Fatalf("failed to create template: %v", err)
@@ -175,6 +175,10 @@ type seedTemplateSettlementOrderInput struct {
 	ImmediateInviterLevel string
 	AncestorLevels        []string
 	InviteeShareBps       int
+	ImmediateDirectCapBps int
+	ImmediateTeamCapBps   int
+	AncestorDirectCapBps  []int
+	AncestorTeamCapBps    []int
 	Money                 float64
 }
 
@@ -186,6 +190,10 @@ func seedTemplateSettlementOrder(t *testing.T, input seedTemplateSettlementOrder
 		ImmediateInviterLevel: input.ImmediateInviterLevel,
 		AncestorLevels:        input.AncestorLevels,
 		InviteeShareBps:       input.InviteeShareBps,
+		ImmediateDirectCapBps: input.ImmediateDirectCapBps,
+		ImmediateTeamCapBps:   input.ImmediateTeamCapBps,
+		AncestorDirectCapBps:  input.AncestorDirectCapBps,
+		AncestorTeamCapBps:    input.AncestorTeamCapBps,
 	})
 
 	plan := &SubscriptionPlan{
@@ -245,6 +253,19 @@ func assertRewardComponents(t *testing.T, records []ReferralSettlementRecord, ex
 	}
 }
 
+func findRewardRecordByComponent(t *testing.T, records []ReferralSettlementRecord, component string) ReferralSettlementRecord {
+	t.Helper()
+
+	for _, record := range records {
+		if record.RewardComponent == component {
+			return record
+		}
+	}
+
+	t.Fatalf("missing reward component %q in %+v", component, records)
+	return ReferralSettlementRecord{}
+}
+
 func assertTeamChainSnapshotDistances(t *testing.T, raw string, expected []int) {
 	t.Helper()
 
@@ -275,7 +296,7 @@ func seedTemplateContributionLedger(t *testing.T) (*templateEngineFixture, *Subs
 			ReferralLevelTypeDirect,
 			ReferralLevelTypeTeam,
 		},
-		InviteeShareBps: 3000,
+		InviteeShareBps: 300,
 		Money:           10,
 	})
 
