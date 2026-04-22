@@ -67,6 +67,7 @@ services:
 
 volumes:
   pg_data_prod:
+    external: true
     name: hermestoken_pg_data_prod
 
 
