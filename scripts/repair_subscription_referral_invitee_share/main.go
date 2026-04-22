@@ -22,9 +22,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "init resources failed: %v\n", err)
 		os.Exit(1)
 	}
-	defer func() {
-		_ = model.CloseDB()
-	}()
 
 	batchIDs, err := resolveRepairBatchIDs(*batchID, *tradeNo, *limit)
 	if err != nil {
@@ -102,6 +99,9 @@ func initRepairResources() error {
 	_ = godotenv.Load(".env.production")
 
 	common.InitEnv()
+	if os.Getenv("SQL_DSN") == "" {
+		return fmt.Errorf("SQL_DSN is required; refusing to fall back to sqlite for repair")
+	}
 	logger.SetupLogger()
 
 	if err := model.InitDB(); err != nil {
