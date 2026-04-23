@@ -402,10 +402,12 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 				for _, mediaMessage := range message.ParseContent() {
 					switch mediaMessage.Type {
 					case "text":
-						claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
-							Type: "text",
-							Text: common.GetPointer[string](mediaMessage.Text),
-						})
+						if mediaMessage.Text != "" {
+							claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
+								Type: "text",
+								Text: common.GetPointer[string](mediaMessage.Text),
+							})
+						}
 					case dto.ContentTypeFile:
 						claudeFileMessage, err := buildClaudeFileMessage(c, mediaMessage.GetFile())
 						if err != nil {

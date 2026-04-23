@@ -48,6 +48,7 @@ func minorUnitsFromMoney(amount float64, currency string) (int64, error) {
 func shouldAcknowledgePaymentValidationError(err error) bool {
 	return errors.Is(err, model.ErrSubscriptionOrderNotFound) ||
 		errors.Is(err, model.ErrSubscriptionOrderStatusInvalid) ||
+		errors.Is(err, model.ErrPaymentMethodMismatch) ||
 		errors.Is(err, model.ErrSubscriptionOrderPaymentMethodMismatch) ||
 		errors.Is(err, model.ErrSubscriptionOrderAmountMismatch) ||
 		errors.Is(err, model.ErrSubscriptionOrderProductMismatch) ||

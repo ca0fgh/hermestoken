@@ -268,6 +268,16 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	//logInfo.ApiKey = ""
 	common.SysLog(fmt.Sprintf("testing channel %d with model %s , info %+v ", channel.Id, testModel, info.ToString()))
 
+	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+		}
+	}
+	_ = priceData
+
 	adaptor.Init(info)
 
 	var convertedRequest any
@@ -785,7 +795,7 @@ func testAllChannels(notify bool) error {
 			newAPIError := result.newAPIError
 			// request error disables the channel
 			if newAPIError != nil {
-				shouldBanChannel = service.ShouldDisableChannel(channel.Type, result.newAPIError)
+				shouldBanChannel = service.ShouldDisableChannel(result.newAPIError)
 			}
 
 			// 当错误检查通过，才检查响应时间

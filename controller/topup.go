@@ -32,6 +32,7 @@ func GetTopUpInfo(c *gin.Context) {
 	enableStripe := isStripeTopupAvailable()
 	enableCreem := isCreemTopupAvailable()
 	enableWaffo := isWaffoTopupAvailable()
+	enableWaffoPancake := isWaffoPancakeTopUpEnabled()
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
 	if enableStripe {
@@ -68,7 +69,7 @@ func GetTopUpInfo(c *gin.Context) {
 		if !hasWaffo {
 			waffoMethod := map[string]string{
 				"name":      "Waffo (Global Payment)",
-				"type":      "waffo",
+				"type":      model.PaymentMethodWaffo,
 				"color":     "rgba(var(--semi-blue-5), 1)",
 				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
 			}
@@ -76,24 +77,44 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	if enableWaffoPancake {
+		hasWaffoPancake := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodWaffoPancake {
+				hasWaffoPancake = true
+				break
+			}
+		}
+		if !hasWaffoPancake {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "Waffo Pancake",
+				"type":      model.PaymentMethodWaffoPancake,
+				"color":     "rgba(var(--semi-orange-5), 1)",
+				"min_topup": strconv.Itoa(setting.WaffoPancakeMinTopUp),
+			})
+		}
+	}
+
 	data := gin.H{
-		"enable_online_topup": isEpayTopupAvailable(),
-		"enable_stripe_topup": enableStripe,
-		"enable_creem_topup":  enableCreem,
-		"enable_waffo_topup":  enableWaffo,
+		"enable_online_topup":        isEpayTopupAvailable(),
+		"enable_stripe_topup":        enableStripe,
+		"enable_creem_topup":         enableCreem,
+		"enable_waffo_topup":         enableWaffo,
+		"enable_waffo_pancake_topup": enableWaffoPancake,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
 			}
 			return nil
 		}(),
-		"creem_products":   setting.CreemProducts,
-		"pay_methods":      payMethods,
-		"min_topup":        operation_setting.MinTopUp,
-		"stripe_min_topup": setting.StripeMinTopUp,
-		"waffo_min_topup":  setting.WaffoMinTopUp,
-		"amount_options":   operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":         operation_setting.GetPaymentSetting().AmountDiscount,
+		"creem_products":          setting.CreemProducts,
+		"pay_methods":             payMethods,
+		"min_topup":               operation_setting.MinTopUp,
+		"stripe_min_topup":        setting.StripeMinTopUp,
+		"waffo_min_topup":         setting.WaffoMinTopUp,
+		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
+		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -105,6 +126,17 @@ type EpayRequest struct {
 
 type AmountRequest struct {
 	Amount int64 `json:"amount"`
+}
+
+var nonEpayPaymentMethodsForCallback = []string{
+	model.PaymentMethodStripe,
+	model.PaymentMethodCreem,
+	model.PaymentMethodWaffo,
+	model.PaymentMethodWaffoPancake,
+}
+
+func isNonEpayPaymentMethodForEpayCallback(paymentMethod string) bool {
+	return lo.Contains(nonEpayPaymentMethodsForCallback, paymentMethod)
 }
 
 func GetEpayClient() *epay.Client {
@@ -395,7 +427,10 @@ func completeEpayTopUp(tradeNo string, paidType string, paidMoney string) error 
 	if topUp.Status != common.TopUpStatusPending && topUp.Status != "pending" {
 		return fmt.Errorf("订单状态异常: %s", topUp.Status)
 	}
-	if topUp.PaymentMethod == PaymentMethodStripe || topUp.PaymentMethod == PaymentMethodCreem || topUp.PaymentMethod == "waffo" {
+	if topUp.PaymentMethod == PaymentMethodStripe ||
+		topUp.PaymentMethod == PaymentMethodCreem ||
+		topUp.PaymentMethod == model.PaymentMethodWaffo ||
+		topUp.PaymentMethod == model.PaymentMethodWaffoPancake {
 		return fmt.Errorf("订单支付方式异常: %s", topUp.PaymentMethod)
 	}
 	if paidType == "" {

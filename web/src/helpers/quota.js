@@ -185,35 +185,38 @@ export function renderQuotaWithLessThanFloor(quota, digits = 2) {
 
 export function quotaToDisplayAmount(quota) {
   const numericQuota = Number(quota || 0);
-  if (!Number.isFinite(numericQuota) || numericQuota <= 0) {
+  if (!Number.isFinite(numericQuota) || numericQuota === 0) {
     return 0;
   }
 
+  const sign = Math.sign(numericQuota);
+  const absQuota = Math.abs(numericQuota);
   const { type, rate } = getCurrencyConfig();
   if (type === 'TOKENS') {
     return numericQuota;
   }
 
-  const displayAmount = numericQuota / getQuotaPerUnit();
+  const displayAmount = absQuota / getQuotaPerUnit();
   if (type === 'USD') {
-    return displayAmount;
+    return sign * displayAmount;
   }
 
-  return displayAmount * (rate || 1);
+  return sign * displayAmount * (rate || 1);
 }
 
 export function displayAmountToQuota(amount) {
   const numericAmount = Number(amount || 0);
-  if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+  if (!Number.isFinite(numericAmount) || numericAmount === 0) {
     return 0;
   }
 
+  const sign = Math.sign(numericAmount);
+  const absAmount = Math.abs(numericAmount);
   const { type, rate } = getCurrencyConfig();
   if (type === 'TOKENS') {
     return Math.round(numericAmount);
   }
 
-  const usdAmount =
-    type === 'USD' ? numericAmount : numericAmount / (rate || 1);
-  return Math.round(usdAmount * getQuotaPerUnit());
+  const usdAmount = type === 'USD' ? absAmount : absAmount / (rate || 1);
+  return sign * Math.round(usdAmount * getQuotaPerUnit());
 }

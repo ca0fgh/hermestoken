@@ -119,3 +119,4 @@ appendonlydir/
 .langgraph_api/
 .data/
 .gstack/
+token_estimator_test.go

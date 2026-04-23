@@ -794,9 +794,20 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	return sub, nil
 }
 
-// Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
-func CompleteSubscriptionOrder(tradeNo string, providerPayload string) error {
-	return CompleteSubscriptionOrderWithValidation(tradeNo, nil, providerPayload)
+// CompleteSubscriptionOrder completes a pending order and optionally enforces
+// the expected payment method. Existing 2-arg callers remain supported.
+func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentMethod ...string) error {
+	var verification *SubscriptionPaymentVerification
+	if len(expectedPaymentMethod) > 0 && strings.TrimSpace(expectedPaymentMethod[0]) != "" {
+		verification = &SubscriptionPaymentVerification{
+			PaymentMethod: strings.TrimSpace(expectedPaymentMethod[0]),
+		}
+	}
+	err := CompleteSubscriptionOrderWithValidation(tradeNo, verification, providerPayload)
+	if errors.Is(err, ErrSubscriptionOrderPaymentMethodMismatch) {
+		return ErrPaymentMethodMismatch
+	}
+	return err
 }
 
 func validateSubscriptionOrderPayment(order *SubscriptionOrder, plan *SubscriptionPlan, verification *SubscriptionPaymentVerification) error {
@@ -974,11 +985,28 @@ func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string) (bool, error) {
 	return true, tx.Save(&order).Error
 }
 
-func ExpireSubscriptionOrder(tradeNo string) error {
+func ExpireSubscriptionOrder(tradeNo string, expectedPaymentMethod ...string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
+	var expectedMethod string
+	if len(expectedPaymentMethod) > 0 {
+		expectedMethod = strings.TrimSpace(expectedPaymentMethod[0])
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if expectedMethod != "" {
+			refCol := "`trade_no`"
+			if common.UsingPostgreSQL {
+				refCol = `"trade_no"`
+			}
+			var order SubscriptionOrder
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+				return ErrSubscriptionOrderNotFound
+			}
+			if order.PaymentMethod != expectedMethod {
+				return ErrPaymentMethodMismatch
+			}
+		}
 		_, err := expireSubscriptionOrderTx(tx, tradeNo)
 		return err
 	})
