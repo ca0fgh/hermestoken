@@ -141,6 +141,42 @@ func TestGetPricingShowsOnlyDefaultMarketplaceModelsToGuests(t *testing.T) {
 	}
 }
 
+func TestGetPricingPreservesAllGroupModelsForGuests(t *testing.T) {
+	db := setupPricingControllerTestDB(t)
+	withHeaderNavModulesOption(t, `{"home":true,"pricing":{"enabled":true,"requireAuth":false}}`)
+	withPricingGuestSettings(
+		t,
+		`{"vip":"vip分组"}`,
+		`{"default":1,"vip":2}`,
+		`{"default":{"default":0.75}}`,
+	)
+	seedPricingModelMeta(t, db, "gpt-all", 1)
+	seedPricingAbility(t, db, "all", "gpt-all")
+	seedPricingModelMeta(t, db, "gpt-default", 1)
+	seedPricingAbility(t, db, "default", "gpt-default")
+	model.RefreshPricing()
+
+	ctx, recorder := newGuestPricingContext(t)
+	GetPricing(ctx)
+
+	response := decodeMarketplacePricingResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response for guest pricing")
+	}
+	if len(response.Data) != 2 {
+		t.Fatalf("expected guest to see all-group and default models, got %d", len(response.Data))
+	}
+	if len(response.DisplayGroups) != 2 {
+		t.Fatalf("expected guest display groups to include all and default, got %#v", response.DisplayGroups)
+	}
+	if response.DisplayGroups["all"] != "all" || response.DisplayGroups["default"] != "default" {
+		t.Fatalf("expected guest display groups to preserve all semantics, got %#v", response.DisplayGroups)
+	}
+	if len(response.GroupRatio) != 1 || response.GroupRatio["default"] != 0.75 {
+		t.Fatalf("expected guest group ratio to remain filtered to visible ratio groups, got %#v", response.GroupRatio)
+	}
+}
+
 func TestGetPricingShowsAllDisplayModelsToAuthenticatedUsers(t *testing.T) {
 	db := setupPricingControllerTestDB(t)
 	withHeaderNavModulesOption(t, `{"home":true,"pricing":{"enabled":true,"requireAuth":false}}`)

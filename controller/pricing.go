@@ -42,7 +42,7 @@ func filterPricingForMarketplaceDisplay(pricing []model.Pricing, isGuest bool) [
 
 	filtered := make([]model.Pricing, 0, len(pricing))
 	for _, item := range pricing {
-		if common.StringsContains(item.EnableGroup, "default") {
+		if common.StringsContains(item.EnableGroup, "default") || common.StringsContains(item.EnableGroup, "all") {
 			filtered = append(filtered, item)
 		}
 	}
@@ -53,7 +53,7 @@ func buildMarketplaceDisplayGroups(pricing []model.Pricing, isGuest bool) map[st
 	displayGroups := make(map[string]string)
 	for _, item := range pricing {
 		for _, group := range item.EnableGroup {
-			if isGuest && group != "default" {
+			if isGuest && group != "default" && group != "all" {
 				continue
 			}
 			if _, ok := displayGroups[group]; !ok {
@@ -89,6 +89,12 @@ func emptyPricingResponse() gin.H {
 }
 
 func GetPricing(c *gin.Context) {
+	pricingConfig := getPricingHeaderNavConfig(common.OptionMap["HeaderNavModules"])
+	if !pricingConfig.Enabled {
+		c.JSON(200, emptyPricingResponse())
+		return
+	}
+
 	totalStart := time.Now()
 
 	modelStart := time.Now()
@@ -144,9 +150,6 @@ func GetPricing(c *gin.Context) {
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroupForUser(currentUserID, displayGroup),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
-	}
-	if !getPricingHeaderNavConfig(common.OptionMap["HeaderNavModules"]).Enabled {
-		responsePayload = emptyPricingResponse()
 	}
 	responseDuration := time.Since(responseStart)
 	setServerTiming(c,
