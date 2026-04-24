@@ -188,12 +188,128 @@ describe('marketplace display group wiring', () => {
     expect(modalSource).toMatch(
       /displayGroups=\{categoryProps\.displayGroups\}/,
     );
+    expect(modalSource).toMatch(/setFilterGroup=\{handleGroupClick\}/);
     expect(sidebarSource).toMatch(/setSelectedGroup:\s*categoryProps\.setSelectedGroup/);
     expect(filterModalSource).toMatch(
       /setSelectedGroup:\s*sidebarProps\.setSelectedGroup/,
     );
     expect(sidebarSource).not.toMatch(/\busableGroup\b/);
     expect(modalSource).not.toMatch(/\busableGroup\b/);
+  });
+
+  test('FilterModalContent uses the desktop group-click handler semantics on mobile', async () => {
+    const handleGroupClickCalls = [];
+    const setFilterGroupCalls = [];
+
+    mock.module(
+      '../src/hooks/model-pricing/usePricingFilterCounts.js',
+      () => ({
+        usePricingFilterCounts: () => ({
+          quotaTypeModels: [],
+          endpointTypeModels: [],
+          vendorModels: [],
+          tagModels: [],
+          groupCountModels: [],
+        }),
+      }),
+    );
+    mock.module(
+      '../src/components/table/model-pricing/filter/PricingDisplaySettings.jsx',
+      () => ({
+        default: () => h('div', null, 'display-settings'),
+      }),
+    );
+    mock.module(
+      '../src/components/table/model-pricing/filter/PricingGroups.jsx',
+      () => ({
+        default: ({ setFilterGroup }) =>
+          h(
+            'button',
+            {
+              onClick: () => setFilterGroup('default'),
+              type: 'button',
+            },
+            'choose-group',
+          ),
+      }),
+    );
+    mock.module(
+      '../src/components/table/model-pricing/filter/PricingQuotaTypes.jsx',
+      () => ({
+        default: () => h('div', null, 'quota-types'),
+      }),
+    );
+    mock.module(
+      '../src/components/table/model-pricing/filter/PricingEndpointTypes.jsx',
+      () => ({
+        default: () => h('div', null, 'endpoint-types'),
+      }),
+    );
+    mock.module(
+      '../src/components/table/model-pricing/filter/PricingVendors.jsx',
+      () => ({
+        default: () => h('div', null, 'vendors'),
+      }),
+    );
+    mock.module(
+      '../src/components/table/model-pricing/filter/PricingTags.jsx',
+      () => ({
+        default: () => h('div', null, 'tags'),
+      }),
+    );
+
+    const { default: FilterModalContent } = await importFresh(
+      '../src/components/table/model-pricing/modal/components/FilterModalContent.jsx',
+      'filter-modal-content',
+    );
+
+    const renderer = await renderElement(
+      h(FilterModalContent, {
+        sidebarProps: {
+          showWithRecharge: false,
+          setShowWithRecharge: () => {},
+          currency: 'USD',
+          setCurrency: () => {},
+          siteDisplayType: 'USD',
+          handleChange: () => {},
+          setActiveKey: () => {},
+          showRatio: false,
+          setShowRatio: () => {},
+          viewMode: 'card',
+          setViewMode: () => {},
+          filterGroup: '__all__',
+          setFilterGroup: (value) => setFilterGroupCalls.push(value),
+          handleGroupClick: (value) => handleGroupClickCalls.push(value),
+          filterQuotaType: 'all',
+          setFilterQuotaType: () => {},
+          filterEndpointType: 'all',
+          setFilterEndpointType: () => {},
+          filterVendor: 'all',
+          setFilterVendor: () => {},
+          filterTag: 'all',
+          setFilterTag: () => {},
+          tokenUnit: 'M',
+          setTokenUnit: () => {},
+          loading: false,
+          models: [],
+          displayGroups: {
+            default: {},
+          },
+          groupRatio: {
+            default: 1,
+          },
+          searchValue: '',
+        },
+        t: (value) => value,
+      }),
+    );
+
+    await act(async () => {
+      renderer.root.findByType('button').props.onClick();
+    });
+
+    expect(handleGroupClickCalls).toEqual(['default']);
+    expect(setFilterGroupCalls).toEqual([]);
   });
 
   test('ModelPricingTable renders backend all/default groups and still excludes auto', async () => {
