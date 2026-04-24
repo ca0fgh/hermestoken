@@ -101,15 +101,17 @@ describe('marketplace display group wiring', () => {
         filterGroup: '__all__',
         setFilterGroup: () => {},
         displayGroups: {
+          auto: { label: 'AUTO' },
           all: { label: 'ALL' },
           default: { label: 'DEFAULT' },
         },
         groupRatio: {
+          auto: 1,
           all: 2,
           default: 3,
         },
         models: [
-          { model_name: 'alpha', enable_groups: ['all'] },
+          { model_name: 'alpha', enable_groups: ['all', 'auto'] },
           { model_name: 'beta', enable_groups: ['all', 'default'] },
         ],
         loading: false,
@@ -123,6 +125,7 @@ describe('marketplace display group wiring', () => {
     expect(text).toContain('__all__|全部分组|');
     expect(text).toContain('all|all|2x');
     expect(text).toContain('default|default|3x');
+    expect(text).not.toContain('auto|auto|1x');
     expect(text).not.toContain('usableGroup');
   });
 

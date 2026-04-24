@@ -42,7 +42,7 @@ const PricingGroups = ({
 }) => {
   const groups = [
     PRICING_GROUP_ALL_SENTINEL,
-    ...Object.keys(displayGroups).filter((key) => key !== ''),
+    ...Object.keys(displayGroups).filter((key) => key !== '' && key !== 'auto'),
   ];
 
   const items = groups.map((g) => {
