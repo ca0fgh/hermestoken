@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -627,6 +628,276 @@ type ClaudeResponseInfo struct {
 	ResponseText strings.Builder
 	Usage        *dto.Usage
 	Done         bool
+	// Probe the leading visible text before sending any downstream chunk so a
+	// pseudo-success upstream error cannot leak to clients or billing.
+	PseudoErrorLeadingText    strings.Builder
+	PseudoErrorChecked        bool
+	PseudoErrorBufferedClaude []pseudoClaudeBufferedChunk
+	PseudoErrorBufferedOpenAI []*dto.ChatCompletionsStreamResponse
+}
+
+type pseudoClaudeBufferedChunk struct {
+	Response dto.ClaudeResponse
+	Data     string
+}
+
+const pseudoClaudeErrorBufferLimit = 256
+
+func hasPseudoClaudeErrorPrefix(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	return strings.HasPrefix(trimmed, "[Error:") || strings.HasPrefix(trimmed, "Error:")
+}
+
+func isPotentialPseudoClaudeErrorPrefix(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return true
+	}
+	return strings.HasPrefix("[Error:", trimmed) || strings.HasPrefix("Error:", trimmed) || hasPseudoClaudeErrorPrefix(trimmed)
+}
+
+func hasPlainPseudoClaudeRateLimitLead(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	lower := strings.ToLower(trimmed)
+	return strings.HasPrefix(trimmed, "所有账号均已达速率限制") ||
+		strings.HasPrefix(lower, "reached message rate limit for this model")
+}
+
+func shouldContinuePseudoClaudeErrorProbe(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return true
+	}
+	if !hasPseudoClaudeErrorPrefix(trimmed) && !hasPlainPseudoClaudeRateLimitLead(trimmed) {
+		if isPotentialPseudoClaudeErrorPrefix(trimmed) {
+			return utf8.RuneCountInString(trimmed) < len("[Error:")
+		}
+		return false
+	}
+	if strings.Contains(trimmed, "]") || strings.Contains(trimmed, "\n") {
+		return false
+	}
+	return utf8.RuneCountInString(trimmed) < pseudoClaudeErrorBufferLimit
+}
+
+func normalizePseudoClaudeErrorMessage(text string) string {
+	trimmed := strings.TrimSpace(text)
+	trimmed = strings.TrimPrefix(trimmed, "[")
+	trimmed = strings.TrimSuffix(trimmed, "]")
+	return strings.TrimSpace(trimmed)
+}
+
+func detectPseudoClaudeTextError(text string) *types.NewAPIError {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil
+	}
+	hasPrefix := hasPseudoClaudeErrorPrefix(trimmed)
+	hasPlainRateLimitLead := hasPlainPseudoClaudeRateLimitLead(trimmed)
+	lower := strings.ToLower(trimmed)
+	if !hasPrefix && !hasPlainRateLimitLead {
+		return nil
+	}
+	switch {
+	case strings.Contains(trimmed, "所有账号均已达速率限制") ||
+		strings.Contains(trimmed, "请求过于频繁") ||
+		strings.Contains(lower, "rate limit") ||
+		strings.Contains(lower, "too many requests") ||
+		(strings.Contains(lower, "please try again later") && strings.Contains(lower, "resets in")):
+		message := normalizePseudoClaudeErrorMessage(trimmed)
+		return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, http.StatusTooManyRequests)
+	case hasPrefix && (strings.Contains(trimmed, "无效的令牌") ||
+		strings.Contains(trimmed, "未授权") ||
+		strings.Contains(lower, "invalid token") ||
+		strings.Contains(lower, "invalid api key") ||
+		strings.Contains(lower, "unauthorized") ||
+		strings.Contains(lower, "authentication")):
+		message := normalizePseudoClaudeErrorMessage(trimmed)
+		return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, http.StatusUnauthorized)
+	case hasPrefix && (strings.Contains(trimmed, "额度不足") ||
+		strings.Contains(trimmed, "余额不足") ||
+		strings.Contains(trimmed, "积分不足") ||
+		strings.Contains(lower, "insufficient credits") ||
+		strings.Contains(lower, "insufficient balance") ||
+		strings.Contains(lower, "quota exceeded") ||
+		strings.Contains(lower, "billing hard limit")):
+		message := normalizePseudoClaudeErrorMessage(trimmed)
+		return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, http.StatusForbidden)
+	case hasPrefix && (strings.Contains(trimmed, "模型不存在") ||
+		strings.Contains(trimmed, "不支持该模型") ||
+		strings.Contains(lower, "invalid model") ||
+		strings.Contains(lower, "model not found") ||
+		strings.Contains(lower, "unsupported model")):
+		message := normalizePseudoClaudeErrorMessage(trimmed)
+		return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, http.StatusBadRequest)
+	case hasPrefix && (strings.Contains(trimmed, "无可用渠道") ||
+		strings.Contains(trimmed, "服务繁忙") ||
+		strings.Contains(trimmed, "上游异常") ||
+		strings.Contains(lower, "no available channel") ||
+		strings.Contains(lower, "service unavailable") ||
+		strings.Contains(lower, "server error") ||
+		strings.Contains(lower, "internal error") ||
+		strings.Contains(lower, "upstream error") ||
+		strings.Contains(lower, "temporarily unavailable") ||
+		strings.Contains(lower, "overloaded")):
+		message := normalizePseudoClaudeErrorMessage(trimmed)
+		return types.NewOpenAIError(fmt.Errorf("%s", message), types.ErrorCodeBadResponseStatusCode, http.StatusServiceUnavailable)
+	default:
+		return nil
+	}
+}
+
+func extractClaudeStreamVisibleText(claudeResponse *dto.ClaudeResponse) string {
+	if claudeResponse == nil {
+		return ""
+	}
+	switch claudeResponse.Type {
+	case "content_block_start":
+		if claudeResponse.ContentBlock != nil &&
+			claudeResponse.ContentBlock.Type == "text" &&
+			claudeResponse.ContentBlock.Text != nil {
+			return *claudeResponse.ContentBlock.Text
+		}
+	case "content_block_delta":
+		if claudeResponse.Delta != nil && claudeResponse.Delta.Text != nil {
+			return *claudeResponse.Delta.Text
+		}
+	}
+	return ""
+}
+
+func extractClaudeResponseVisibleText(claudeResponse *dto.ClaudeResponse) string {
+	if claudeResponse == nil {
+		return ""
+	}
+	var builder strings.Builder
+	for _, block := range claudeResponse.Content {
+		if block.Type == "text" {
+			builder.WriteString(block.GetText())
+		}
+	}
+	if builder.Len() > 0 {
+		return builder.String()
+	}
+	return claudeResponse.Completion
+}
+
+func shouldFlushPseudoClaudeProbeWithoutVisibleText(claudeResponse *dto.ClaudeResponse) bool {
+	if claudeResponse == nil {
+		return false
+	}
+	if claudeResponse.Type == "message_stop" {
+		return true
+	}
+	if claudeResponse.Type == "message_delta" && claudeResponse.Delta != nil && claudeResponse.Delta.StopReason != nil {
+		return true
+	}
+	return false
+}
+
+func shouldBypassPseudoClaudeProbe(claudeResponse *dto.ClaudeResponse) bool {
+	if claudeResponse == nil {
+		return false
+	}
+	switch claudeResponse.Type {
+	case "content_block_start":
+		return claudeResponse.ContentBlock != nil && claudeResponse.ContentBlock.Type != "text"
+	case "content_block_delta":
+		return claudeResponse.Delta != nil && (claudeResponse.Delta.Thinking != nil || claudeResponse.Delta.PartialJson != nil || claudeResponse.Delta.Type == "thinking_delta" || claudeResponse.Delta.Type == "input_json_delta" || claudeResponse.Delta.Type == "signature_delta")
+	default:
+		return false
+	}
+}
+
+func bufferPseudoClaudeStreamChunk(info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo, claudeResponse *dto.ClaudeResponse, data string, response *dto.ChatCompletionsStreamResponse) {
+	if info == nil || claudeInfo == nil || claudeResponse == nil || claudeInfo.PseudoErrorChecked {
+		return
+	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		clone := *claudeResponse
+		claudeInfo.PseudoErrorBufferedClaude = append(claudeInfo.PseudoErrorBufferedClaude, pseudoClaudeBufferedChunk{
+			Response: clone,
+			Data:     data,
+		})
+		return
+	}
+	if response != nil {
+		claudeInfo.PseudoErrorBufferedOpenAI = append(claudeInfo.PseudoErrorBufferedOpenAI, response)
+	}
+}
+
+func flushPseudoClaudeStreamBuffer(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
+	if info == nil || claudeInfo == nil {
+		return
+	}
+	if info.RelayFormat == types.RelayFormatClaude {
+		for _, chunk := range claudeInfo.PseudoErrorBufferedClaude {
+			helper.ClaudeChunkData(c, chunk.Response, chunk.Data)
+		}
+		claudeInfo.PseudoErrorBufferedClaude = nil
+		return
+	}
+	for _, response := range claudeInfo.PseudoErrorBufferedOpenAI {
+		if err := helper.ObjectData(c, response); err != nil {
+			logger.LogError(c, "send buffered claude stream response failed: "+err.Error())
+		}
+	}
+	claudeInfo.PseudoErrorBufferedOpenAI = nil
+}
+
+func handlePseudoClaudeStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo, claudeResponse *dto.ClaudeResponse, data string, response *dto.ChatCompletionsStreamResponse) *types.NewAPIError {
+	if claudeResponse == nil {
+		return nil
+	}
+	if info == nil || claudeInfo == nil {
+		if response != nil {
+			if err := helper.ObjectData(c, response); err != nil {
+				logger.LogError(c, "send_stream_response_failed: "+err.Error())
+			}
+			return nil
+		}
+		helper.ClaudeChunkData(c, *claudeResponse, data)
+		return nil
+	}
+
+	if claudeInfo.PseudoErrorChecked {
+		switch info.RelayFormat {
+		case types.RelayFormatClaude:
+			helper.ClaudeChunkData(c, *claudeResponse, data)
+		case types.RelayFormatOpenAI:
+			if response != nil {
+				if err := helper.ObjectData(c, response); err != nil {
+					logger.LogError(c, "send_stream_response_failed: "+err.Error())
+				}
+			}
+		}
+		return nil
+	}
+
+	bufferPseudoClaudeStreamChunk(info, claudeInfo, claudeResponse, data, response)
+	segment := extractClaudeStreamVisibleText(claudeResponse)
+	if shouldBypassPseudoClaudeProbe(claudeResponse) {
+		claudeInfo.PseudoErrorChecked = true
+		flushPseudoClaudeStreamBuffer(c, info, claudeInfo)
+		return nil
+	}
+	if segment != "" {
+		claudeInfo.PseudoErrorLeadingText.WriteString(segment)
+	}
+	text := claudeInfo.PseudoErrorLeadingText.String()
+	if pseudoErr := detectPseudoClaudeTextError(text); pseudoErr != nil {
+		return pseudoErr
+	}
+	if shouldContinuePseudoClaudeErrorProbe(text) {
+		return nil
+	}
+	if segment == "" && claudeInfo.PseudoErrorLeadingText.Len() == 0 && !shouldFlushPseudoClaudeProbeWithoutVisibleText(claudeResponse) {
+		return nil
+	}
+
+	claudeInfo.PseudoErrorChecked = true
+	flushPseudoClaudeStreamBuffer(c, info, claudeInfo)
+	return nil
 }
 
 func cacheCreationTokensForOpenAIUsage(usage *dto.Usage) int {
@@ -811,6 +1082,11 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 		// 判断是否完整
 		claudeInfo.Done = true
 	} else if claudeResponse.Type == "content_block_start" {
+		if claudeResponse.ContentBlock != nil &&
+			claudeResponse.ContentBlock.Type == "text" &&
+			claudeResponse.ContentBlock.Text != nil {
+			claudeInfo.ResponseText.WriteString(*claudeResponse.ContentBlock.Text)
+		}
 	} else {
 		return false
 	}
@@ -853,23 +1129,33 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 				data = patchClaudeMessageDeltaUsageData(data, buildMessageDeltaPatchUsage(&claudeResponse, claudeInfo))
 			}
 		}
-		helper.ClaudeChunkData(c, claudeResponse, data)
+		return handlePseudoClaudeStreamChunk(c, info, claudeInfo, &claudeResponse, data, nil)
 	} else if info.RelayFormat == types.RelayFormatOpenAI {
 		response := StreamResponseClaude2OpenAI(&claudeResponse)
 
 		if !FormatClaudeResponseInfo(&claudeResponse, response, claudeInfo) {
 			return nil
 		}
-
-		err = helper.ObjectData(c, response)
-		if err != nil {
-			logger.LogError(c, "send_stream_response_failed: "+err.Error())
-		}
+		return handlePseudoClaudeStreamChunk(c, info, claudeInfo, &claudeResponse, data, response)
 	}
 	return nil
 }
 
-func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
+func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) *types.NewAPIError {
+	text := claudeInfo.PseudoErrorLeadingText.String()
+	if pseudoErr := detectPseudoClaudeTextError(text); pseudoErr != nil {
+		return pseudoErr
+	}
+	if !claudeInfo.PseudoErrorChecked {
+		claudeInfo.PseudoErrorChecked = true
+		flushPseudoClaudeStreamBuffer(c, info, claudeInfo)
+	}
+	if claudeInfo.Usage == nil {
+		claudeInfo.Usage = &dto.Usage{}
+	}
+	if info == nil {
+		return nil
+	}
 	if claudeInfo.Usage.PromptTokens == 0 {
 		//上游出错
 	}
@@ -905,6 +1191,7 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 		}
 		helper.Done(c)
 	}
+	return nil
 }
 
 func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
@@ -926,7 +1213,9 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		return nil, err
 	}
 
-	HandleStreamFinalResponse(c, info, claudeInfo)
+	if err = HandleStreamFinalResponse(c, info, claudeInfo); err != nil {
+		return nil, err
+	}
 	return claudeInfo.Usage, nil
 }
 
@@ -938,6 +1227,9 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	}
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)
+	}
+	if pseudoErr := detectPseudoClaudeTextError(extractClaudeResponseVisibleText(&claudeResponse)); pseudoErr != nil {
+		return pseudoErr
 	}
 	maybeMarkClaudeRefusal(c, claudeResponse.StopReason)
 	if claudeInfo.Usage == nil {
