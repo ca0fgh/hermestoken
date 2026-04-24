@@ -189,9 +189,10 @@ describe('marketplace display group wiring', () => {
         modelData: {
           model_name: 'demo',
           quota_type: 0,
-          enable_groups: ['vip', 'team'],
+          enable_groups: ['vip', 'team', 'auto'],
         },
         groupRatio: {
+          auto: 1,
           vip: 2,
           pro: 3,
           team: 4,
@@ -202,6 +203,7 @@ describe('marketplace display group wiring', () => {
         displayPrice: (value) => `$${value}`,
         showRatio: true,
         displayGroups: {
+          auto: { label: 'AUTO' },
           vip: { label: 'VIP' },
           pro: { label: 'PRO' },
         },
@@ -215,6 +217,8 @@ describe('marketplace display group wiring', () => {
     expect(text).toContain('price vip-price');
     expect(text).not.toContain('pro分组');
     expect(text).not.toContain('team分组');
+    expect(text).not.toContain('auto分组');
+    expect(text).not.toContain('price auto-price');
     expect(text).not.toContain('auto分组调用链路');
   });
 
