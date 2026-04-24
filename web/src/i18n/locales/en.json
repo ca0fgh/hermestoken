@@ -1954,6 +1954,7 @@
     "检测必须等待绘图成功才能进行放大等操作": "Detection must wait for drawing to succeed before performing zooming and other operations",
     "概览": "Overview",
     "模型": "Model",
+    "模型分组": "Model groups",
     "模型 {{name}} 缺少输入价格，无法计算补全/缓存/图片/音频价格对应的倍率": "Model {{name}} is missing an input price, so the ratios for completion, cache, image, and audio pricing cannot be calculated.",
     "模型 {{name}} 缺少音频输入价格，无法计算音频补全倍率": "Model {{name}} is missing an audio input price, so the audio completion ratio cannot be calculated.",
     "模型: {{ratio}}": "Model: {{ratio}}",
