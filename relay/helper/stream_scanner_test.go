@@ -56,6 +56,28 @@ func buildSSEBody(n int) string {
 	return b.String()
 }
 
+func TestGetStreamingTimeoutFallsBackToDefault(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	t.Cleanup(func() {
+		constant.StreamingTimeout = oldTimeout
+	})
+
+	constant.StreamingTimeout = 0
+	if got := getStreamingTimeout(); got != DefaultStreamingTimeout {
+		t.Fatalf("zero timeout fallback = %v, want %v", got, DefaultStreamingTimeout)
+	}
+
+	constant.StreamingTimeout = -5
+	if got := getStreamingTimeout(); got != DefaultStreamingTimeout {
+		t.Fatalf("negative timeout fallback = %v, want %v", got, DefaultStreamingTimeout)
+	}
+
+	constant.StreamingTimeout = 12
+	if got := getStreamingTimeout(); got != 12*time.Second {
+		t.Fatalf("positive timeout = %v, want %v", got, 12*time.Second)
+	}
+}
+
 type slowReader struct {
 	r     io.Reader
 	delay time.Duration
