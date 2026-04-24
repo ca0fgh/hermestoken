@@ -188,6 +188,12 @@ func TestGetPricingPreservesAllGroupModelsForGuests(t *testing.T) {
 func TestGetPricingShowsAllDisplayModelsToAuthenticatedUsers(t *testing.T) {
 	db := setupPricingControllerTestDB(t)
 	withHeaderNavModulesOption(t, `{"home":true,"pricing":{"enabled":true,"requireAuth":false}}`)
+	originalAutoGroups := setting.AutoGroups2JsonString()
+	t.Cleanup(func() {
+		if err := setting.UpdateAutoGroupsByJsonString(originalAutoGroups); err != nil {
+			t.Fatalf("failed to restore auto groups: %v", err)
+		}
+	})
 	withPricingGuestSettings(
 		t,
 		`{"vip":"vip分组"}`,
