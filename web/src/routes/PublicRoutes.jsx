@@ -73,7 +73,7 @@ function DynamicOAuth2Callback() {
   return <OAuth2Callback type={provider} />;
 }
 
-function PublicRoutes({ pricingRequireAuth = false }) {
+function PublicRoutes({ pricingEnabled = true, pricingRequireAuth = false }) {
   const location = useLocation();
   const renderWithSuspense = (element, key = location.pathname) => (
     <Suspense fallback={<Loading />} key={key}>
@@ -130,10 +130,14 @@ function PublicRoutes({ pricingRequireAuth = false }) {
       <Route
         path='/pricing'
         element={
-          pricingRequireAuth ? (
-            <PrivateRoute>{renderWithSuspense(<Pricing />)}</PrivateRoute>
+          pricingEnabled ? (
+            pricingRequireAuth ? (
+              <PrivateRoute>{renderWithSuspense(<Pricing />)}</PrivateRoute>
+            ) : (
+              renderWithSuspense(<Pricing />)
+            )
           ) : (
-            renderWithSuspense(<Pricing />)
+            renderWithSuspense(<NotFound />, 'pricing-not-found')
           )
         }
       />

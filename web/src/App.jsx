@@ -22,7 +22,7 @@ import { useLocation } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import SetupCheck from './components/layout/SetupCheck';
 import { StatusContext } from './context/Status';
-import { getPricingRequireAuth } from './helpers/headerNavModules';
+import { getPricingModuleConfig } from './helpers/headerNavModules';
 import { lazyWithRetry } from './helpers/lazyWithRetry';
 import HomeRoutes from './routes/HomeRoutes';
 
@@ -39,8 +39,8 @@ const APP_BUILD_TAG = '2026-04-21-dashboard-restore-v2';
 function App() {
   const location = useLocation();
   const [statusState] = useContext(StatusContext);
-  const pricingRequireAuth = useMemo(() => {
-    return getPricingRequireAuth(statusState?.status?.HeaderNavModules);
+  const pricingConfig = useMemo(() => {
+    return getPricingModuleConfig(statusState?.status?.HeaderNavModules);
   }, [statusState?.status?.HeaderNavModules]);
   const isConsoleRoute = location.pathname.startsWith('/console');
   const isHomeRoute = location.pathname === '/';
@@ -56,7 +56,10 @@ function App() {
         fallback={<Loading />}
         key={`${APP_BUILD_TAG}:${location.pathname}`}
       >
-        <RoutesComponent pricingRequireAuth={pricingRequireAuth} />
+        <RoutesComponent
+          pricingEnabled={pricingConfig.enabled}
+          pricingRequireAuth={pricingConfig.requireAuth}
+        />
       </Suspense>
     </SetupCheck>
   );
