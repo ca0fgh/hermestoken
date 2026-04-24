@@ -475,4 +475,19 @@ describe('marketplace display group wiring', () => {
     expect(sheetSource).not.toMatch(/\busableGroup\b/);
     expect(sheetSource).not.toMatch(/\bautoGroups\b/);
   });
+
+  test('model admin source uses marketplace display terminology for modal and table copy', () => {
+    const editModalSource = readSource(
+      '../src/components/table/models/modals/EditModelModal.jsx',
+    );
+    const columnDefsSource = readSource(
+      '../src/components/table/models/ModelsColumnDefs.jsx',
+    );
+
+    expect(editModalSource).toMatch(/label=\{t\('模型广场展示'\)\}/);
+    expect(editModalSource).toMatch(
+      /不会影响模型的实际调用与路由/,
+    );
+    expect(columnDefsSource).toMatch(/title: t\('广场展示'\)/);
+  });
 });

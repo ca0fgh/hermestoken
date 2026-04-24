@@ -537,7 +537,10 @@ const EditModelModal = (props) => {
                   <Col span={24}>
                     <Form.Switch
                       field='status'
-                      label={t('状态')}
+                      label={t('模型广场展示')}
+                      extraText={t(
+                        '仅控制模型广场展示，不影响真实调用与路由',
+                      )}
                       size='large'
                     />
                   </Col>
