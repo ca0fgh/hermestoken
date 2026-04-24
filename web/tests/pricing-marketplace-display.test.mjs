@@ -1,7 +1,14 @@
 import React from 'react';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { act, create } from 'react-test-renderer';
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -93,9 +100,18 @@ async function importModelsColumnDefsSubset() {
       "const renderLimitedItems = ({ items, renderItem }) => React.createElement('div', null, items.map((item, index) => renderItem(item, index)));\nconst renderDescription = (text) => text;\n",
     );
 
+  const fixtureDir = path.join(
+    tmpdir(),
+    'pricing-marketplace-display-test-fixtures',
+  );
+  const fixtureNodeModulesPath = path.join(fixtureDir, 'node_modules');
+  mkdirSync(fixtureDir, { recursive: true });
+  if (!existsSync(fixtureNodeModulesPath)) {
+    symlinkSync(path.join(process.cwd(), 'node_modules'), fixtureNodeModulesPath);
+  }
+
   const tempPath = path.join(
-    process.cwd(),
-    'tests',
+    fixtureDir,
     `models-column-defs-subset-${Date.now()}-${importCounter}.jsx`,
   );
   writeFileSync(tempPath, rewrittenSource, 'utf8');
