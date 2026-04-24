@@ -24,7 +24,7 @@ import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
  * 分组筛选组件
  * @param {string} filterGroup 当前选中的分组，'all' 表示不过滤
  * @param {Function} setFilterGroup 设置选中分组
- * @param {Record<string, any>} usableGroup 后端返回的可用分组对象
+ * @param {Record<string, any>} displayGroups 后端返回的展示分组对象
  * @param {Record<string, number>} groupRatio 分组倍率对象
  * @param {Array} models 模型列表
  * @param {boolean} loading 是否加载中
@@ -33,7 +33,7 @@ import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
 const PricingGroups = ({
   filterGroup,
   setFilterGroup,
-  usableGroup = {},
+  displayGroups = {},
   groupRatio = {},
   models = [],
   loading = false,
@@ -41,7 +41,7 @@ const PricingGroups = ({
 }) => {
   const groups = [
     'all',
-    ...Object.keys(usableGroup).filter((key) => key !== ''),
+    ...Object.keys(displayGroups).filter((key) => key !== ''),
   ];
 
   const items = groups.map((g) => {
@@ -70,7 +70,7 @@ const PricingGroups = ({
 
   return (
     <SelectableButtonGroup
-      title={t('可用令牌分组')}
+      title={t('模型分组')}
       items={items}
       activeValue={filterGroup}
       onChange={setFilterGroup}
