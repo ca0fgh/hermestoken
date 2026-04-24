@@ -58,6 +58,8 @@ const PricingGroups = ({
       const ratio = groupRatio[g];
       if (ratio !== undefined && ratio !== null) {
         ratioDisplay = `${ratio}x`;
+      } else {
+        ratioDisplay = '1x';
       }
     }
     return {

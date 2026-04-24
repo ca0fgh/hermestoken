@@ -1029,6 +1029,7 @@ export const resetPricingFilters = ({
   setCurrency,
   setShowRatio,
   setViewMode,
+  setSelectedGroup,
   setFilterGroup,
   setFilterQuotaType,
   setFilterEndpointType,
@@ -1043,6 +1044,7 @@ export const resetPricingFilters = ({
   setShowRatio?.(DEFAULT_PRICING_FILTERS.showRatio);
   setViewMode?.(DEFAULT_PRICING_FILTERS.viewMode);
   setTokenUnit?.(DEFAULT_PRICING_FILTERS.tokenUnit);
+  setSelectedGroup?.(DEFAULT_PRICING_FILTERS.filterGroup);
   setFilterGroup?.(DEFAULT_PRICING_FILTERS.filterGroup);
   setFilterQuotaType?.(DEFAULT_PRICING_FILTERS.filterQuotaType);
   setFilterEndpointType?.(DEFAULT_PRICING_FILTERS.filterEndpointType);

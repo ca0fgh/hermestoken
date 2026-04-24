@@ -50,6 +50,29 @@ async function importPricingUtilsSubset() {
   }
 }
 
+async function importResetPricingUtilsSubset() {
+  const source = readSource('../src/helpers/utils.jsx');
+  const sentinelLine = "export const PRICING_GROUP_ALL_SENTINEL = '__all__';";
+  const defaultsStart = source.indexOf('const DEFAULT_PRICING_FILTERS = {');
+  const resetEndMarker =
+    "  setCurrentPage?.(DEFAULT_PRICING_FILTERS.currentPage);\n};";
+  const resetEnd = source.indexOf(resetEndMarker, defaultsStart);
+  const subset = [
+    sentinelLine,
+    source.slice(defaultsStart, resetEnd + resetEndMarker.length),
+  ].join('\n\n');
+  const tempPath = path.join(
+    tmpdir(),
+    `pricing-reset-subset-${Date.now()}-${importCounter}.mjs`,
+  );
+  writeFileSync(tempPath, subset, 'utf8');
+  try {
+    return await import(`file://${tempPath}`);
+  } finally {
+    unlinkSync(tempPath);
+  }
+}
+
 async function renderElement(element) {
   let renderer;
 
@@ -141,19 +164,22 @@ describe('marketplace display group wiring', () => {
     expect(text).toContain('模型分组');
     expect(text).toContain('active:__all__');
     expect(text).toContain('__all__|全部分组|');
-    expect(text).toContain('all|all|');
+    expect(text).toContain('all|all|1x');
     expect(text).toContain('default|default|3x');
-    expect(text).not.toContain('all|all|1x');
+    expect(text).not.toContain('__all__|全部分组|1x');
     expect(text).not.toContain('auto|auto|1x');
     expect(text).not.toContain('usableGroup');
   });
 
-  test('PricingSidebar and FilterModalContent pass displayGroups', () => {
+  test('PricingSidebar, FilterModalContent, and PricingFilterModal thread reset/display props', () => {
     const sidebarSource = readSource(
       '../src/components/table/model-pricing/layout/PricingSidebar.jsx',
     );
     const modalSource = readSource(
       '../src/components/table/model-pricing/modal/components/FilterModalContent.jsx',
+    );
+    const filterModalSource = readSource(
+      '../src/components/table/model-pricing/modal/PricingFilterModal.jsx',
     );
 
     expect(sidebarSource).toMatch(
@@ -161,6 +187,10 @@ describe('marketplace display group wiring', () => {
     );
     expect(modalSource).toMatch(
       /displayGroups=\{categoryProps\.displayGroups\}/,
+    );
+    expect(sidebarSource).toMatch(/setSelectedGroup:\s*categoryProps\.setSelectedGroup/);
+    expect(filterModalSource).toMatch(
+      /setSelectedGroup:\s*sidebarProps\.setSelectedGroup/,
     );
     expect(sidebarSource).not.toMatch(/\busableGroup\b/);
     expect(modalSource).not.toMatch(/\busableGroup\b/);
@@ -288,6 +318,32 @@ describe('marketplace display group wiring', () => {
     expect(concreteAll.usedGroupRatio).toBe(1);
     expect(bestPrice.usedGroup).toBe('default');
     expect(bestPrice.usedGroupRatio).toBe(0.5);
+  });
+
+  test('resetPricingFilters resets selectedGroup back to the synthetic all sentinel', async () => {
+    const { resetPricingFilters, PRICING_GROUP_ALL_SENTINEL } =
+      await importResetPricingUtilsSubset();
+
+    const calls = [];
+    resetPricingFilters({
+      handleChange: (value) => calls.push(['search', value]),
+      setShowWithRecharge: (value) => calls.push(['showWithRecharge', value]),
+      setCurrency: (value) => calls.push(['currency', value]),
+      setShowRatio: (value) => calls.push(['showRatio', value]),
+      setViewMode: (value) => calls.push(['viewMode', value]),
+      setSelectedGroup: (value) => calls.push(['selectedGroup', value]),
+      setFilterGroup: (value) => calls.push(['filterGroup', value]),
+      setFilterQuotaType: (value) => calls.push(['filterQuotaType', value]),
+      setFilterEndpointType: (value) =>
+        calls.push(['filterEndpointType', value]),
+      setFilterVendor: (value) => calls.push(['filterVendor', value]),
+      setFilterTag: (value) => calls.push(['filterTag', value]),
+      setCurrentPage: (value) => calls.push(['currentPage', value]),
+      setTokenUnit: (value) => calls.push(['tokenUnit', value]),
+    });
+
+    expect(calls).toContainEqual(['selectedGroup', PRICING_GROUP_ALL_SENTINEL]);
+    expect(calls).toContainEqual(['filterGroup', PRICING_GROUP_ALL_SENTINEL]);
   });
 
   test('PricingPage and detail sheet use displayGroups without legacy marketplace props', () => {

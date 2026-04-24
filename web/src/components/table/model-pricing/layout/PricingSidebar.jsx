@@ -81,6 +81,7 @@ const PricingSidebar = ({
       setCurrency,
       setShowRatio,
       setViewMode,
+      setSelectedGroup: categoryProps.setSelectedGroup,
       setFilterGroup,
       setFilterQuotaType,
       setFilterEndpointType,
