@@ -17,6 +17,11 @@ var group2model2channels map[string]map[string][]int // enabled channel
 var channelsIDM map[int]*Channel                     // all channels include disabled
 var channelSyncLock sync.RWMutex
 
+type channelPriorityBucket struct {
+	priority int64
+	channels []*Channel
+}
+
 func InitChannelCache() {
 	if !common.MemoryCacheEnabled {
 		return
@@ -187,6 +192,248 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
 	}
 	// return null if no channel is not found
 	return nil, errors.New("channel not found")
+}
+
+func GetNextSatisfiedChannel(group string, model string, priorityIndex int, excludedChannelIDs map[int]struct{}) (*Channel, int, bool, error) {
+	buckets, err := getSatisfiedChannelBuckets(group, model)
+	if err != nil {
+		return nil, priorityIndex, false, err
+	}
+	if len(buckets) == 0 {
+		return nil, priorityIndex, false, nil
+	}
+
+	if priorityIndex < 0 {
+		priorityIndex = 0
+	}
+	if priorityIndex >= len(buckets) {
+		return nil, priorityIndex, false, nil
+	}
+
+	for idx := priorityIndex; idx < len(buckets); idx++ {
+		candidates := filterExcludedChannels(buckets[idx].channels, excludedChannelIDs)
+		if len(candidates) == 0 {
+			continue
+		}
+
+		channel, err := pickWeightedChannel(candidates)
+		if err != nil {
+			return nil, idx, false, err
+		}
+
+		hasMore := hasRemainingChannelCandidates(buckets, idx, excludedChannelIDs, channel.Id)
+		return channel, idx, hasMore, nil
+	}
+
+	return nil, len(buckets), false, nil
+}
+
+func GetSatisfiedChannelPriorityIndex(group string, model string, channelID int) (int, bool, error) {
+	if channelID <= 0 {
+		return 0, false, nil
+	}
+
+	buckets, err := getSatisfiedChannelBuckets(group, model)
+	if err != nil {
+		return 0, false, err
+	}
+	for idx, bucket := range buckets {
+		for _, channel := range bucket.channels {
+			if channel.Id == channelID {
+				return idx, true, nil
+			}
+		}
+	}
+	return 0, false, nil
+}
+
+func getSatisfiedChannelBuckets(group string, model string) ([]channelPriorityBucket, error) {
+	var channels []*Channel
+	var err error
+	if common.MemoryCacheEnabled {
+		channels, err = getSatisfiedChannelsFromCache(group, model)
+	} else {
+		channels, err = getSatisfiedChannelsFromDB(group, model)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(channels) == 0 {
+		return nil, nil
+	}
+
+	return buildChannelPriorityBuckets(channels), nil
+}
+
+func getSatisfiedChannelsFromCache(group string, model string) ([]*Channel, error) {
+	channelSyncLock.RLock()
+	defer channelSyncLock.RUnlock()
+
+	channelIDs := group2model2channels[group][model]
+	if len(channelIDs) == 0 {
+		normalizedModel := ratio_setting.FormatMatchingModelName(model)
+		channelIDs = group2model2channels[group][normalizedModel]
+	}
+	if len(channelIDs) == 0 {
+		return nil, nil
+	}
+
+	channels := make([]*Channel, 0, len(channelIDs))
+	seen := make(map[int]struct{}, len(channelIDs))
+	for _, channelID := range channelIDs {
+		if _, ok := seen[channelID]; ok {
+			continue
+		}
+		channel, ok := channelsIDM[channelID]
+		if !ok {
+			return nil, fmt.Errorf("数据库一致性错误，渠道# %d 不存在，请联系管理员修复", channelID)
+		}
+		seen[channelID] = struct{}{}
+		channels = append(channels, channel)
+	}
+	return channels, nil
+}
+
+func getSatisfiedChannelsFromDB(group string, model string) ([]*Channel, error) {
+	channelIDs, err := getSatisfiedChannelIDsFromDB(group, model)
+	if err != nil {
+		return nil, err
+	}
+	if len(channelIDs) == 0 {
+		return nil, nil
+	}
+
+	var channels []*Channel
+	if err := DB.Where("id in ?", channelIDs).Where("status = ?", common.ChannelStatusEnabled).Find(&channels).Error; err != nil {
+		return nil, err
+	}
+	return channels, nil
+}
+
+func getSatisfiedChannelIDsFromDB(group string, model string) ([]int, error) {
+	channelIDs, err := loadSatisfiedChannelIDsFromDB(group, model)
+	if err != nil {
+		return nil, err
+	}
+	if len(channelIDs) > 0 {
+		return channelIDs, nil
+	}
+
+	normalizedModel := ratio_setting.FormatMatchingModelName(model)
+	if normalizedModel == model {
+		return nil, nil
+	}
+	return loadSatisfiedChannelIDsFromDB(group, normalizedModel)
+}
+
+func loadSatisfiedChannelIDsFromDB(group string, model string) ([]int, error) {
+	var channelIDs []int
+	if err := DB.Model(&Ability{}).
+		Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+		Pluck("channel_id", &channelIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(channelIDs) == 0 {
+		return nil, nil
+	}
+
+	seen := make(map[int]struct{}, len(channelIDs))
+	deduped := make([]int, 0, len(channelIDs))
+	for _, channelID := range channelIDs {
+		if _, ok := seen[channelID]; ok {
+			continue
+		}
+		seen[channelID] = struct{}{}
+		deduped = append(deduped, channelID)
+	}
+	return deduped, nil
+}
+
+func buildChannelPriorityBuckets(channels []*Channel) []channelPriorityBucket {
+	bucketsByPriority := make(map[int64][]*Channel)
+	priorities := make([]int64, 0)
+	for _, channel := range channels {
+		priority := channel.GetPriority()
+		if _, ok := bucketsByPriority[priority]; !ok {
+			priorities = append(priorities, priority)
+		}
+		bucketsByPriority[priority] = append(bucketsByPriority[priority], channel)
+	}
+
+	sort.Slice(priorities, func(i, j int) bool {
+		return priorities[i] > priorities[j]
+	})
+
+	buckets := make([]channelPriorityBucket, 0, len(priorities))
+	for _, priority := range priorities {
+		buckets = append(buckets, channelPriorityBucket{
+			priority: priority,
+			channels: bucketsByPriority[priority],
+		})
+	}
+	return buckets
+}
+
+func filterExcludedChannels(channels []*Channel, excludedChannelIDs map[int]struct{}) []*Channel {
+	if len(excludedChannelIDs) == 0 {
+		return channels
+	}
+
+	filtered := make([]*Channel, 0, len(channels))
+	for _, channel := range channels {
+		if _, ok := excludedChannelIDs[channel.Id]; ok {
+			continue
+		}
+		filtered = append(filtered, channel)
+	}
+	return filtered
+}
+
+func pickWeightedChannel(channels []*Channel) (*Channel, error) {
+	if len(channels) == 0 {
+		return nil, errors.New("channel not found")
+	}
+	if len(channels) == 1 {
+		return channels[0], nil
+	}
+
+	sumWeight := 0
+	for _, channel := range channels {
+		sumWeight += channel.GetWeight()
+	}
+
+	smoothingFactor := 1
+	smoothingAdjustment := 0
+	if sumWeight == 0 {
+		sumWeight = len(channels) * 100
+		smoothingAdjustment = 100
+	} else if sumWeight/len(channels) < 10 {
+		smoothingFactor = 100
+	}
+
+	randomWeight := rand.Intn(sumWeight * smoothingFactor)
+	for _, channel := range channels {
+		randomWeight -= channel.GetWeight()*smoothingFactor + smoothingAdjustment
+		if randomWeight < 0 {
+			return channel, nil
+		}
+	}
+	return nil, errors.New("channel not found")
+}
+
+func hasRemainingChannelCandidates(buckets []channelPriorityBucket, startIndex int, excludedChannelIDs map[int]struct{}, selectedChannelID int) bool {
+	for idx := startIndex; idx < len(buckets); idx++ {
+		for _, channel := range buckets[idx].channels {
+			if channel.Id == selectedChannelID {
+				continue
+			}
+			if _, ok := excludedChannelIDs[channel.Id]; ok {
+				continue
+			}
+			return true
+		}
+	}
+	return false
 }
 
 func CacheGetChannel(id int) (*Channel, error) {

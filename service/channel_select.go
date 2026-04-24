@@ -12,11 +12,13 @@ import (
 )
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	Retry        *int
-	resetNextTry bool
+	Ctx           *gin.Context
+	TokenGroup    string
+	ModelName     string
+	Retry         *int
+	resetNextTry  bool
+	priorityIndex int
+	triedChannels map[int]struct{}
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -43,6 +45,40 @@ func (p *RetryParam) IncreaseRetry() {
 
 func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
+}
+
+func (p *RetryParam) GetPriorityIndex() int {
+	return p.priorityIndex
+}
+
+func (p *RetryParam) SetPriorityIndex(priorityIndex int) {
+	p.priorityIndex = priorityIndex
+}
+
+func (p *RetryParam) GetTriedChannels() map[int]struct{} {
+	if p.triedChannels == nil {
+		p.triedChannels = make(map[int]struct{})
+	}
+	return p.triedChannels
+}
+
+func (p *RetryParam) MarkChannelTried(channelId int) {
+	p.GetTriedChannels()[channelId] = struct{}{}
+}
+
+func (p *RetryParam) SeedSelectedChannel(group string, channelId int) error {
+	if p == nil || channelId <= 0 || group == "" {
+		return nil
+	}
+	priorityIndex, found, err := model.GetSatisfiedChannelPriorityIndex(group, p.ModelName, channelId)
+	if err != nil {
+		return err
+	}
+	p.MarkChannelTried(channelId)
+	if found {
+		p.SetPriorityIndex(priorityIndex)
+	}
+	return nil
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
@@ -82,7 +118,6 @@ func (p *RetryParam) ResetRetryNextTry() {
 //	         分组B, 优先级1
 func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
 	var channel *model.Channel
-	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 
@@ -153,9 +188,15 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		priorityIndex := 0
+		var err error
+		channel, priorityIndex, _, err = model.GetNextSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetPriorityIndex(), param.GetTriedChannels())
 		if err != nil {
 			return nil, param.TokenGroup, err
+		}
+		param.SetPriorityIndex(priorityIndex)
+		if channel != nil {
+			param.MarkChannelTried(channel.Id)
 		}
 	}
 	return channel, selectGroup, nil

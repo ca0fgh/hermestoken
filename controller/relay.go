@@ -183,6 +183,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		ModelName:  relayInfo.OriginModelName,
 		Retry:      common.GetPointer(0),
 	}
+	if err := retryParam.SeedSelectedChannel(relayInfo.UsingGroup, c.GetInt("channel_id")); err != nil {
+		logger.LogError(c, fmt.Sprintf("seed retry channel state failed: %v", err))
+	}
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
@@ -505,6 +508,9 @@ func RelayTask(c *gin.Context) {
 		TokenGroup: relayInfo.TokenGroup,
 		ModelName:  relayInfo.OriginModelName,
 		Retry:      common.GetPointer(0),
+	}
+	if err := retryParam.SeedSelectedChannel(relayInfo.UsingGroup, c.GetInt("channel_id")); err != nil {
+		logger.LogError(c, fmt.Sprintf("seed retry channel state failed: %v", err))
 	}
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
