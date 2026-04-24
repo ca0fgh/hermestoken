@@ -644,10 +644,16 @@ func UpdateUser(c *gin.Context) {
 			return
 		}
 	}
+	// 管理员普通资料更新不再承载额度写入；额度只允许走 /api/user/manage add_quota。
+	// 这样前端未携带 quota 字段时，不会因为 Go 的零值把用户额度覆盖成 0。
+	updatedUser.Quota = originUser.Quota
 	updatePassword := updatedUser.Password != ""
 	if err := updatedUser.Edit(updatePassword); err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if err := model.InvalidateUserCache(updatedUser.Id); err != nil {
+		common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d after update: %s", updatedUser.Id, err.Error()))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
