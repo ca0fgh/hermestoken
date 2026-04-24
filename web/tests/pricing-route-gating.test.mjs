@@ -1,11 +1,29 @@
 import React from 'react';
-import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from 'bun:test';
 import { act, create } from 'react-test-renderer';
 import { MemoryRouter } from 'react-router-dom';
 import { StatusContext } from '../src/context/Status/index.jsx';
 
 let importCounter = 0;
 const h = React.createElement;
+const SHIMMED_GLOBAL_KEYS = [
+  'IS_REACT_ACT_ENVIRONMENT',
+  'document',
+  'localStorage',
+  'navigator',
+  'sessionStorage',
+  'window',
+];
+let restoreBrowserGlobals = () => {};
 
 function createStorage() {
   const store = new Map();
@@ -33,6 +51,9 @@ function createStorage() {
 }
 
 function installBrowserShims() {
+  const originalGlobals = new Map(
+    SHIMMED_GLOBAL_KEYS.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+  );
   const localStorage = createStorage();
   const sessionStorage = createStorage();
   const location = {
@@ -70,6 +91,9 @@ function installBrowserShims() {
     defaultView: null,
     documentElement: {},
     location,
+    querySelector() {
+      return null;
+    },
     removeEventListener() {},
   };
 
@@ -97,6 +121,16 @@ function installBrowserShims() {
     sessionStorage,
     window: windowObject,
   });
+
+  return () => {
+    for (const [key, descriptor] of originalGlobals.entries()) {
+      if (descriptor) {
+        Object.defineProperty(globalThis, key, descriptor);
+      } else {
+        delete globalThis[key];
+      }
+    }
+  };
 }
 
 function getText(node) {
@@ -133,7 +167,7 @@ async function renderElement(element) {
 }
 
 beforeAll(() => {
-  installBrowserShims();
+  restoreBrowserGlobals = installBrowserShims();
 });
 
 beforeEach(() => {
@@ -143,6 +177,26 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore();
+});
+
+afterAll(() => {
+  restoreBrowserGlobals();
+});
+
+describe('browser shim lifecycle', () => {
+  test('restores the original global objects after shimming', () => {
+    const originalWindow = globalThis.window;
+    const originalDocument = globalThis.document;
+    const restoreGlobals = installBrowserShims();
+
+    expect(globalThis.window).not.toBe(originalWindow);
+    expect(globalThis.document).not.toBe(originalDocument);
+
+    restoreGlobals();
+
+    expect(globalThis.window).toBe(originalWindow);
+    expect(globalThis.document).toBe(originalDocument);
+  });
 });
 
 describe('App pricing config handoff', () => {
@@ -296,5 +350,101 @@ describe('PublicRoutes pricing behavior', () => {
     });
 
     expect(getText(renderer.toJSON())).toBe('PRICING_PAGE');
+  });
+});
+
+describe('marketing header pricing visibility', () => {
+  async function renderMarketingHeader(status) {
+    mock.module('react-i18next', () => ({
+      useTranslation: () => ({
+        t: (value) => value,
+        i18n: {
+          language: 'zh-CN',
+          changeLanguage() {},
+          off() {},
+          on() {},
+        },
+      }),
+    }));
+    mock.module('../src/context/Theme/index.jsx', () => ({
+      useActualTheme: () => 'light',
+      useSetTheme: () => () => {},
+      useTheme: () => 'light',
+    }));
+    mock.module('../src/helpers/branding.js', () => ({
+      getLogo: () => '',
+    }));
+    mock.module('../src/helpers/notifications.js', () => ({
+      showSuccess() {},
+    }));
+    mock.module('../src/hooks/common/useIsMobile.js', () => ({
+      useIsMobile: () => false,
+    }));
+    mock.module('../src/hooks/common/useMinimumLoadingTime.js', () => ({
+      useMinimumLoadingTime: (value) => value,
+    }));
+    mock.module('../src/hooks/common/useNotifications.js', () => ({
+      useNotifications: () => ({
+        getUnreadKeys: () => [],
+        handleNoticeClose() {},
+        handleNoticeOpen() {},
+        noticeVisible: false,
+        unreadCount: 0,
+      }),
+    }));
+    mock.module('../src/hooks/common/useSidebarCollapsed.js', () => ({
+      useSidebarCollapsed: () => [false, () => {}],
+    }));
+    mock.module('../src/i18n/i18n.js', () => ({
+      ensureLanguageResources: async () => {},
+    }));
+    mock.module('../src/i18n/language.js', () => ({
+      normalizeLanguage: (value) => value,
+    }));
+
+    const { default: MarketingHeaderBar } = await importFresh(
+      '../src/components/layout/MarketingHeaderBar.jsx',
+      'marketing-header',
+    );
+    const { UserContext } = await import('../src/context/User/index.jsx');
+
+    return renderElement(
+      h(
+        MemoryRouter,
+        { initialEntries: ['/'] },
+        h(
+          UserContext.Provider,
+          { value: [{ user: null }, () => {}] },
+          h(
+            StatusContext.Provider,
+            { value: [{ status }, () => {}] },
+            h(MarketingHeaderBar),
+          ),
+        ),
+      ),
+    );
+  }
+
+  test('hides the pricing link while status is still loading', async () => {
+    const renderer = await renderMarketingHeader(undefined);
+    const renderedText = getText(renderer.toJSON());
+
+    expect(renderedText).toContain('首页');
+    expect(renderedText).not.toContain('模型广场');
+  });
+
+  test('shows the pricing link once status enables the module', async () => {
+    const renderer = await renderMarketingHeader({
+      HeaderNavModules: {
+        pricing: {
+          enabled: true,
+          requireAuth: false,
+        },
+      },
+      self_use_mode_enabled: false,
+    });
+    const renderedText = getText(renderer.toJSON());
+
+    expect(renderedText).toContain('模型广场');
   });
 });
