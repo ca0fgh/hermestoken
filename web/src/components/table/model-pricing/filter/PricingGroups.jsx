@@ -19,10 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import SelectableButtonGroup from '../../../common/ui/SelectableButtonGroup';
+import { PRICING_GROUP_ALL_SENTINEL } from '../../../../helpers/utils';
 
 /**
  * 分组筛选组件
- * @param {string} filterGroup 当前选中的分组，'all' 表示不过滤
+ * @param {string} filterGroup 当前选中的分组，特殊值表示不过滤
  * @param {Function} setFilterGroup 设置选中分组
  * @param {Record<string, any>} displayGroups 后端返回的展示分组对象
  * @param {Record<string, number>} groupRatio 分组倍率对象
@@ -40,18 +41,18 @@ const PricingGroups = ({
   t,
 }) => {
   const groups = [
-    'all',
+    PRICING_GROUP_ALL_SENTINEL,
     ...Object.keys(displayGroups).filter((key) => key !== ''),
   ];
 
   const items = groups.map((g) => {
     const modelCount =
-      g === 'all'
+      g === PRICING_GROUP_ALL_SENTINEL
         ? models.length
         : models.filter((m) => m.enable_groups && m.enable_groups.includes(g))
             .length;
     let ratioDisplay = '';
-    if (g === 'all') {
+    if (g === PRICING_GROUP_ALL_SENTINEL) {
       // ratioDisplay = t('全部');
     } else {
       const ratio = groupRatio[g];
@@ -63,7 +64,7 @@ const PricingGroups = ({
     }
     return {
       value: g,
-      label: g === 'all' ? t('全部分组') : g,
+      label: g === PRICING_GROUP_ALL_SENTINEL ? t('全部分组') : g,
       tagCount: ratioDisplay,
     };
   });

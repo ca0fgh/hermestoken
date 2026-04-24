@@ -632,6 +632,8 @@ export const selectFilter = (input, option) => {
 
 // -------------------------------
 // 模型定价计算工具函数
+export const PRICING_GROUP_ALL_SENTINEL = '__all__';
+
 export const calculateModelPrice = ({
   record,
   selectedGroup,
@@ -646,7 +648,10 @@ export const calculateModelPrice = ({
   let usedGroup = selectedGroup;
   let usedGroupRatio = groupRatio[selectedGroup];
 
-  if (selectedGroup === 'all' || usedGroupRatio === undefined) {
+  if (
+    selectedGroup === PRICING_GROUP_ALL_SENTINEL ||
+    usedGroupRatio === undefined
+  ) {
     // 在模型可用分组中选择倍率最小的分组，若无则使用 1
     let minRatio = Number.POSITIVE_INFINITY;
     if (
@@ -1010,7 +1015,7 @@ const DEFAULT_PRICING_FILTERS = {
   showRatio: false,
   viewMode: 'card',
   tokenUnit: 'M',
-  filterGroup: 'all',
+  filterGroup: PRICING_GROUP_ALL_SENTINEL,
   filterQuotaType: 'all',
   filterEndpointType: 'all',
   filterVendor: 'all',

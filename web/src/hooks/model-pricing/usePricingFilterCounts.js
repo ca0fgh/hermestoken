@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMemo } from 'react';
+import { PRICING_GROUP_ALL_SENTINEL } from '../../helpers/utils';
 
 // 工具函数：将 tags 字符串转为小写去重数组
 const normalizeTags = (tags = '') =>
@@ -32,7 +33,7 @@ const normalizeTags = (tags = '') =>
  */
 export const usePricingFilterCounts = ({
   models = [],
-  filterGroup = 'all',
+  filterGroup = PRICING_GROUP_ALL_SENTINEL,
   filterQuotaType = 'all',
   filterEndpointType = 'all',
   filterVendor = 'all',
@@ -50,7 +51,10 @@ export const usePricingFilterCounts = ({
    */
   const matchesFilters = (model, ignore = []) => {
     // 分组
-    if (!ignore.includes('group') && filterGroup !== 'all') {
+    if (
+      !ignore.includes('group') &&
+      filterGroup !== PRICING_GROUP_ALL_SENTINEL
+    ) {
       if (!model.enable_groups || !model.enable_groups.includes(filterGroup))
         return false;
     }

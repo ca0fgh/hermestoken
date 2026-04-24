@@ -51,17 +51,25 @@ describe('marketplace display group wiring', () => {
     const source = readSource(
       '../src/hooks/model-pricing/useModelPricingData.jsx',
     );
+    const helperSource = readSource('../src/helpers/utils.jsx');
 
     expect(source).toMatch(/display_groups/);
+    expect(source).toMatch(/PRICING_GROUP_ALL_SENTINEL/);
     expect(source).toMatch(
       /const \[displayGroups, setDisplayGroups\] = useState\(\{\}\);/,
     );
     expect(source).toMatch(/displayGroups,/);
     expect(source).not.toMatch(/\busableGroup\b/);
     expect(source).not.toMatch(/\bautoGroups\b/);
+    expect(helperSource).toMatch(
+      /export const PRICING_GROUP_ALL_SENTINEL = '__all__';/,
+    );
   });
 
-  test('PricingGroups uses displayGroups, translated 模型分组 title, and renders display group buttons', async () => {
+  test('PricingGroups uses a distinct UI sentinel while preserving backend all/default display groups', async () => {
+    mock.module('../src/helpers/utils.jsx', () => ({
+      PRICING_GROUP_ALL_SENTINEL: '__all__',
+    }));
     mock.module('../src/components/common/ui/SelectableButtonGroup.jsx', () => ({
       default: ({ title, items, activeValue }) =>
         h(
@@ -90,19 +98,19 @@ describe('marketplace display group wiring', () => {
 
     const renderer = await renderElement(
       h(PricingGroups, {
-        filterGroup: 'vip',
+        filterGroup: '__all__',
         setFilterGroup: () => {},
         displayGroups: {
-          vip: { label: 'VIP' },
-          pro: { label: 'PRO' },
+          all: { label: 'ALL' },
+          default: { label: 'DEFAULT' },
         },
         groupRatio: {
-          vip: 2,
-          pro: 3,
+          all: 2,
+          default: 3,
         },
         models: [
-          { model_name: 'alpha', enable_groups: ['vip'] },
-          { model_name: 'beta', enable_groups: ['vip', 'pro'] },
+          { model_name: 'alpha', enable_groups: ['all'] },
+          { model_name: 'beta', enable_groups: ['all', 'default'] },
         ],
         loading: false,
         t: (value) => value,
@@ -111,9 +119,10 @@ describe('marketplace display group wiring', () => {
 
     const text = getText(renderer.toJSON());
     expect(text).toContain('模型分组');
-    expect(text).toContain('all|全部分组|');
-    expect(text).toContain('vip|vip|2x');
-    expect(text).toContain('pro|pro|3x');
+    expect(text).toContain('active:__all__');
+    expect(text).toContain('__all__|全部分组|');
+    expect(text).toContain('all|all|2x');
+    expect(text).toContain('default|default|3x');
     expect(text).not.toContain('usableGroup');
   });
 
@@ -135,7 +144,7 @@ describe('marketplace display group wiring', () => {
     expect(modalSource).not.toMatch(/\busableGroup\b/);
   });
 
-  test('ModelPricingTable renders only display groups enabled for the model', async () => {
+  test('ModelPricingTable renders backend all/default groups and still excludes auto', async () => {
     mock.module('@douyinfe/semi-ui', () => ({
       Card: ({ children }) => h('section', null, children),
       Avatar: ({ children }) => h('span', null, children),
@@ -189,12 +198,12 @@ describe('marketplace display group wiring', () => {
         modelData: {
           model_name: 'demo',
           quota_type: 0,
-          enable_groups: ['vip', 'team', 'auto'],
+          enable_groups: ['all', 'default', 'team', 'auto'],
         },
         groupRatio: {
           auto: 1,
-          vip: 2,
-          pro: 3,
+          all: 2,
+          default: 3,
           team: 4,
         },
         currency: 'USD',
@@ -204,8 +213,8 @@ describe('marketplace display group wiring', () => {
         showRatio: true,
         displayGroups: {
           auto: { label: 'AUTO' },
-          vip: { label: 'VIP' },
-          pro: { label: 'PRO' },
+          all: { label: 'ALL' },
+          default: { label: 'DEFAULT' },
         },
         t: (value) => value,
       }),
@@ -213,9 +222,10 @@ describe('marketplace display group wiring', () => {
 
     const text = getText(renderer.toJSON());
     expect(text).toContain('分组价格');
-    expect(text).toContain('vip分组');
-    expect(text).toContain('price vip-price');
-    expect(text).not.toContain('pro分组');
+    expect(text).toContain('all分组');
+    expect(text).toContain('default分组');
+    expect(text).toContain('price all-price');
+    expect(text).toContain('price default-price');
     expect(text).not.toContain('team分组');
     expect(text).not.toContain('auto分组');
     expect(text).not.toContain('price auto-price');
