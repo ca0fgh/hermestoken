@@ -73,6 +73,39 @@ async function importResetPricingUtilsSubset() {
   }
 }
 
+async function importModelsColumnDefsSubset() {
+  const source = readSource('../src/components/table/models/ModelsColumnDefs.jsx');
+  const rewrittenSource = source
+    .replace(
+      "import React from 'react';",
+      "import React from 'react';\nconst Button = ({ children, onClick }) => React.createElement('button', { onClick }, children);\nconst Space = ({ children }) => React.createElement('div', null, children);\nconst Tag = ({ children }) => React.createElement('span', null, children);\nconst Typography = { Text: ({ children }) => React.createElement('span', null, children) };\nconst Modal = { confirm: () => {} };\nconst Tooltip = ({ children }) => React.createElement('span', null, children);",
+    )
+    .replace(
+      /import\s*\{\s*Button,\s*Space,\s*Tag,\s*Typography,\s*Modal,\s*Tooltip,\s*\}\s*from '@douyinfe\/semi-ui';\n/,
+      '',
+    )
+    .replace(
+      /import\s*\{\s*timestamp2string,\s*getLobeHubIcon,\s*stringToColor,\s*\}\s*from '\.\.\/\.\.\/\.\.\/helpers';\n/,
+      "const timestamp2string = (value) => `ts:${value}`;\nconst getLobeHubIcon = (iconKey) => React.createElement('i', null, iconKey);\nconst stringToColor = () => 'blue';\n",
+    )
+    .replace(
+      /import\s*\{\s*renderLimitedItems,\s*renderDescription,\s*\}\s*from '\.\.\/\.\.\/common\/ui\/RenderUtils';\n/,
+      "const renderLimitedItems = ({ items, renderItem }) => React.createElement('div', null, items.map((item, index) => renderItem(item, index)));\nconst renderDescription = (text) => text;\n",
+    );
+
+  const tempPath = path.join(
+    process.cwd(),
+    'tests',
+    `models-column-defs-subset-${Date.now()}-${importCounter}.jsx`,
+  );
+  writeFileSync(tempPath, rewrittenSource, 'utf8');
+  try {
+    return await import(`file://${tempPath}`);
+  } finally {
+    unlinkSync(tempPath);
+  }
+}
+
 async function renderElement(element) {
   let renderer;
 
@@ -489,5 +522,52 @@ describe('marketplace display group wiring', () => {
       /不会影响模型的实际调用与路由/,
     );
     expect(columnDefsSource).toMatch(/title: t\('广场展示'\)/);
+  });
+
+  test('getModelsColumns exposes marketplace display labels for the display column and row actions', async () => {
+    const { getModelsColumns } = await importModelsColumnDefsSubset();
+
+    const manageModelCalls = [];
+    const columns = getModelsColumns({
+      t: (value) => value,
+      manageModel: (...args) => manageModelCalls.push(args),
+      setEditingModel: () => {},
+      setShowEdit: () => {},
+      refresh: async () => {},
+      vendorMap: {},
+    });
+
+    const displayColumn = columns.find((column) => column.dataIndex === 'status');
+    const operationsColumn = columns.find((column) => column.dataIndex === 'operate');
+
+    expect(displayColumn.title).toBe('广场展示');
+
+    const displayShown = await renderElement(
+      displayColumn.render(1, { status: 1 }),
+    );
+    expect(getText(displayShown.toJSON())).toContain('展示');
+
+    const displayHidden = await renderElement(
+      displayColumn.render(0, { status: 0 }),
+    );
+    expect(getText(displayHidden.toJSON())).toContain('隐藏');
+
+    const shownActions = await renderElement(
+      operationsColumn.render(null, { id: 11, status: 1 }),
+    );
+    const shownButtons = shownActions.root.findAllByType('button');
+    expect(getText(shownActions.toJSON())).toContain('隐藏');
+    expect(getText(shownActions.toJSON())).not.toContain('禁用');
+
+    await act(async () => {
+      shownButtons[0].props.onClick();
+    });
+    expect(manageModelCalls).toContainEqual([11, 'disable', { id: 11, status: 1 }]);
+
+    const hiddenActions = await renderElement(
+      operationsColumn.render(null, { id: 12, status: 0 }),
+    );
+    expect(getText(hiddenActions.toJSON())).toContain('展示');
+    expect(getText(hiddenActions.toJSON())).not.toContain('启用');
   });
 });

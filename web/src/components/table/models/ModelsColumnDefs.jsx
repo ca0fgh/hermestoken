@@ -198,14 +198,14 @@ const renderOperations = (
           size='small'
           onClick={() => manageModel(record.id, 'disable', record)}
         >
-          {t('禁用')}
+          {t('隐藏')}
         </Button>
       ) : (
         <Button
           size='small'
           onClick={() => manageModel(record.id, 'enable', record)}
         >
-          {t('启用')}
+          {t('展示')}
         </Button>
       )}
 
