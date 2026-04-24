@@ -4,6 +4,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"time"
 
@@ -32,6 +33,59 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 		}
 	}
 	return filtered
+}
+
+func filterPricingForMarketplaceDisplay(pricing []model.Pricing, isGuest bool) []model.Pricing {
+	if len(pricing) == 0 || !isGuest {
+		return pricing
+	}
+
+	filtered := make([]model.Pricing, 0, len(pricing))
+	for _, item := range pricing {
+		if common.StringsContains(item.EnableGroup, "default") {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func buildMarketplaceDisplayGroups(pricing []model.Pricing, isGuest bool) map[string]string {
+	displayGroups := make(map[string]string)
+	for _, item := range pricing {
+		for _, group := range item.EnableGroup {
+			if isGuest && group != "default" {
+				continue
+			}
+			if _, ok := displayGroups[group]; !ok {
+				displayGroups[group] = setting.GetUsableGroupDescription(group)
+			}
+		}
+	}
+	return displayGroups
+}
+
+func filterGroupRatioByDisplayGroups(groupRatio map[string]float64, displayGroups map[string]string) map[string]float64 {
+	filtered := make(map[string]float64, len(displayGroups))
+	for group := range displayGroups {
+		if ratio, ok := groupRatio[group]; ok {
+			filtered[group] = ratio
+		}
+	}
+	return filtered
+}
+
+func emptyPricingResponse() gin.H {
+	return gin.H{
+		"success":            true,
+		"data":               []model.Pricing{},
+		"vendors":            []model.PricingVendor{},
+		"group_ratio":        map[string]float64{},
+		"display_groups":     map[string]string{},
+		"usable_group":       map[string]string{},
+		"supported_endpoint": map[string]common.EndpointInfo{},
+		"auto_groups":        []string{},
+		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
+	}
 }
 
 func GetPricing(c *gin.Context) {
@@ -73,13 +127,10 @@ func GetPricing(c *gin.Context) {
 	contextDuration := time.Since(contextStart)
 
 	filterStart := time.Now()
-	pricing = filterPricingByUsableGroups(pricing, usableGroup)
-	// check groupRatio contains usableGroup
-	for group := range ratio_setting.GetGroupRatioCopy() {
-		if _, ok := usableGroup[group]; !ok {
-			delete(groupRatio, group)
-		}
-	}
+	isGuest := !exists
+	pricing = filterPricingForMarketplaceDisplay(pricing, isGuest)
+	displayGroups := buildMarketplaceDisplayGroups(pricing, isGuest)
+	groupRatio = filterGroupRatioByDisplayGroups(groupRatio, displayGroups)
 	filterDuration := time.Since(filterStart)
 
 	responseStart := time.Now()
@@ -88,10 +139,14 @@ func GetPricing(c *gin.Context) {
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
+		"display_groups":     displayGroups,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroupForUser(currentUserID, displayGroup),
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
+	}
+	if !getPricingHeaderNavConfig(common.OptionMap["HeaderNavModules"]).Enabled {
+		responsePayload = emptyPricingResponse()
 	}
 	responseDuration := time.Since(responseStart)
 	setServerTiming(c,
