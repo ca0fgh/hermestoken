@@ -1,7 +1,9 @@
 import React from 'react';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 import { act, create } from 'react-test-renderer';
-import { readFileSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 let importCounter = 0;
 const h = React.createElement;
@@ -29,6 +31,23 @@ function getText(node) {
 async function importFresh(modulePath, suffix) {
   importCounter += 1;
   return import(`${modulePath}?${suffix}-${importCounter}`);
+}
+
+async function importPricingUtilsSubset() {
+  const source = readSource('../src/helpers/utils.jsx');
+  const start = source.indexOf('export const PRICING_GROUP_ALL_SENTINEL');
+  const end = source.indexOf('export const getModelPriceItems');
+  const subset = source.slice(start, end);
+  const tempPath = path.join(
+    tmpdir(),
+    `pricing-utils-subset-${Date.now()}-${importCounter}.mjs`,
+  );
+  writeFileSync(tempPath, subset, 'utf8');
+  try {
+    return await import(`file://${tempPath}`);
+  } finally {
+    unlinkSync(tempPath);
+  }
 }
 
 async function renderElement(element) {
@@ -107,7 +126,6 @@ describe('marketplace display group wiring', () => {
         },
         groupRatio: {
           auto: 1,
-          all: 2,
           default: 3,
         },
         models: [
@@ -123,8 +141,9 @@ describe('marketplace display group wiring', () => {
     expect(text).toContain('模型分组');
     expect(text).toContain('active:__all__');
     expect(text).toContain('__all__|全部分组|');
-    expect(text).toContain('all|all|2x');
+    expect(text).toContain('all|all|');
     expect(text).toContain('default|default|3x');
+    expect(text).not.toContain('all|all|1x');
     expect(text).not.toContain('auto|auto|1x');
     expect(text).not.toContain('usableGroup');
   });
@@ -233,6 +252,42 @@ describe('marketplace display group wiring', () => {
     expect(text).not.toContain('auto分组');
     expect(text).not.toContain('price auto-price');
     expect(text).not.toContain('auto分组调用链路');
+  });
+
+  test('calculateModelPrice keeps concrete all separate from synthetic cheapest-group mode', async () => {
+    const {
+      calculateModelPrice,
+      PRICING_GROUP_ALL_SENTINEL,
+    } = await importPricingUtilsSubset();
+
+    const baseRecord = {
+      quota_type: 1,
+      model_price: 10,
+      enable_groups: ['all', 'default'],
+    };
+
+    const concreteAll = calculateModelPrice({
+      record: baseRecord,
+      selectedGroup: 'all',
+      groupRatio: { default: 0.5 },
+      tokenUnit: 'M',
+      displayPrice: (value) => `$${value}`,
+      currency: 'USD',
+    });
+
+    const bestPrice = calculateModelPrice({
+      record: baseRecord,
+      selectedGroup: PRICING_GROUP_ALL_SENTINEL,
+      groupRatio: { default: 0.5 },
+      tokenUnit: 'M',
+      displayPrice: (value) => `$${value}`,
+      currency: 'USD',
+    });
+
+    expect(concreteAll.usedGroup).toBe('all');
+    expect(concreteAll.usedGroupRatio).toBe(1);
+    expect(bestPrice.usedGroup).toBe('default');
+    expect(bestPrice.usedGroupRatio).toBe(0.5);
   });
 
   test('PricingPage and detail sheet use displayGroups without legacy marketplace props', () => {

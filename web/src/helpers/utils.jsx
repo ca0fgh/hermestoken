@@ -648,10 +648,7 @@ export const calculateModelPrice = ({
   let usedGroup = selectedGroup;
   let usedGroupRatio = groupRatio[selectedGroup];
 
-  if (
-    selectedGroup === PRICING_GROUP_ALL_SENTINEL ||
-    usedGroupRatio === undefined
-  ) {
+  if (selectedGroup === PRICING_GROUP_ALL_SENTINEL) {
     // 在模型可用分组中选择倍率最小的分组，若无则使用 1
     let minRatio = Number.POSITIVE_INFINITY;
     if (
@@ -672,6 +669,8 @@ export const calculateModelPrice = ({
     if (usedGroupRatio === undefined) {
       usedGroupRatio = 1;
     }
+  } else if (usedGroupRatio === undefined) {
+    usedGroupRatio = 1;
   }
 
   // 2. 根据计费类型计算价格
