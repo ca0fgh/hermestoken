@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -100,6 +101,13 @@ func TestGetPricingReturnsEmptyMarketplaceDataWhenMarketplaceDisabled(t *testing
 	}
 	if len(response.GroupRatio) != 0 {
 		t.Fatalf("expected empty group ratio when marketplace is disabled, got %#v", response.GroupRatio)
+	}
+	serverTiming := recorder.Header().Get("Server-Timing")
+	if serverTiming == "" {
+		t.Fatal("expected Server-Timing header when marketplace is disabled")
+	}
+	if !strings.Contains(serverTiming, "pricing_total") {
+		t.Fatalf("expected Server-Timing header %q to contain pricing_total", serverTiming)
 	}
 }
 

@@ -91,6 +91,14 @@ func emptyPricingResponse() gin.H {
 func GetPricing(c *gin.Context) {
 	pricingConfig := getPricingHeaderNavConfig(common.OptionMap["HeaderNavModules"])
 	if !pricingConfig.Enabled {
+		disabledStart := time.Now()
+		setServerTiming(c,
+			serverTimingMetric{name: "pricing_model", dur: 0},
+			serverTimingMetric{name: "pricing_context", dur: 0},
+			serverTimingMetric{name: "pricing_filter", dur: 0},
+			serverTimingMetric{name: "pricing_response", dur: 0},
+			serverTimingMetric{name: "pricing_total", dur: float64(time.Since(disabledStart).Microseconds()) / 1000},
+		)
 		c.JSON(200, emptyPricingResponse())
 		return
 	}
