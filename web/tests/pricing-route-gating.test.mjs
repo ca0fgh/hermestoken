@@ -159,8 +159,9 @@ async function renderElement(element) {
 
   await act(async () => {
     renderer = create(element);
-    await Promise.resolve();
-    await Promise.resolve();
+    for (let index = 0; index < 5; index += 1) {
+      await Promise.resolve();
+    }
   });
 
   return renderer;
@@ -199,119 +200,19 @@ describe('browser shim lifecycle', () => {
   });
 });
 
-describe('App pricing config handoff', () => {
-  test('keeps marketplace routes closed until status is loaded', async () => {
-    mock.module('../src/components/layout/SetupCheck.jsx', () => ({
-      default: ({ children }) => children,
-    }));
-    mock.module('../src/components/common/ui/Loading.jsx', () => ({
-      default: () => h('div', null, 'LOADING'),
-    }));
-    mock.module('../src/helpers/lazyWithRetry.js', () => ({
-      lazyWithRetry: (_load, key) => {
-        if (key === 'public-routes') {
-          return ({ pricingEnabled, pricingRequireAuth }) =>
-            h(
-              'div',
-              null,
-              `pricingEnabled:${String(pricingEnabled)};pricingRequireAuth:${String(pricingRequireAuth)}`,
-            );
-        }
-
-        return () => h('div', null, `route:${key}`);
-      },
-    }));
-
-    const { default: App } = await importFresh('../src/App.jsx', 'app-no-status');
-    const renderer = await renderElement(
-      h(
-        MemoryRouter,
-        { initialEntries: ['/pricing'] },
-        h(
-          StatusContext.Provider,
-          { value: [{ status: undefined }, () => {}] },
-          h(App),
-        ),
-      ),
-    );
-
-    expect(getText(renderer.toJSON())).toContain('pricingEnabled:false');
-    expect(getText(renderer.toJSON())).toContain('pricingRequireAuth:false');
-  });
-
-  test('passes through loaded marketplace config', async () => {
-    mock.module('../src/components/layout/SetupCheck.jsx', () => ({
-      default: ({ children }) => children,
-    }));
-    mock.module('../src/components/common/ui/Loading.jsx', () => ({
-      default: () => h('div', null, 'LOADING'),
-    }));
-    mock.module('../src/helpers/lazyWithRetry.js', () => ({
-      lazyWithRetry: (_load, key) => {
-        if (key === 'public-routes') {
-          return ({ pricingEnabled, pricingRequireAuth }) =>
-            h(
-              'div',
-              null,
-              `pricingEnabled:${String(pricingEnabled)};pricingRequireAuth:${String(pricingRequireAuth)}`,
-            );
-        }
-
-        return () => h('div', null, `route:${key}`);
-      },
-    }));
-
-    const { default: App } = await importFresh('../src/App.jsx', 'app-loaded-status');
-    const renderer = await renderElement(
-      h(
-        MemoryRouter,
-        { initialEntries: ['/pricing'] },
-        h(
-          StatusContext.Provider,
-          {
-            value: [
-              {
-                status: {
-                  HeaderNavModules: {
-                    pricing: {
-                      enabled: true,
-                      requireAuth: true,
-                    },
-                  },
-                },
-              },
-              () => {},
-            ],
-          },
-          h(App),
-        ),
-      ),
-    );
-
-    expect(getText(renderer.toJSON())).toContain('pricingEnabled:true');
-    expect(getText(renderer.toJSON())).toContain('pricingRequireAuth:true');
-  });
-});
-
 describe('PublicRoutes pricing behavior', () => {
   async function renderPricingRoute(props) {
     mock.module('../src/components/common/ui/Loading.jsx', () => ({
       default: () => h('div', null, 'LOADING'),
     }));
-    mock.module('../src/helpers/lazyWithRetry.js', () => ({
-      lazyWithRetry: (_load, key) => {
-        if (key === 'not-found-route') {
-          return () => h('div', null, 'NOT_FOUND');
-        }
-        if (key === 'pricing-route') {
-          return () => h('div', null, 'PRICING_PAGE');
-        }
-        if (key === 'login-route') {
-          return () => h('div', null, 'LOGIN_PAGE');
-        }
-
-        return () => h('div', null, `route:${key}`);
-      },
+    mock.module('../src/pages/NotFound/index.jsx', () => ({
+      default: () => h('div', null, 'NOT_FOUND'),
+    }));
+    mock.module('../src/pages/Pricing/index.jsx', () => ({
+      default: () => h('div', null, 'PRICING_PAGE'),
+    }));
+    mock.module('../src/components/auth/LoginForm.jsx', () => ({
+      default: () => h('div', null, 'LOGIN_PAGE'),
     }));
 
     const { default: PublicRoutes } = await importFresh(
@@ -355,6 +256,9 @@ describe('PublicRoutes pricing behavior', () => {
 
 describe('marketing header pricing visibility', () => {
   async function renderMarketingHeader(status) {
+    const actualUseIsMobile = await import('../src/hooks/common/useIsMobile.js');
+    const actualLanguage = await import('../src/i18n/language.js');
+
     mock.module('react-i18next', () => ({
       useTranslation: () => ({
         t: (value) => value,
@@ -378,6 +282,7 @@ describe('marketing header pricing visibility', () => {
       showSuccess() {},
     }));
     mock.module('../src/hooks/common/useIsMobile.js', () => ({
+      ...actualUseIsMobile,
       useIsMobile: () => false,
     }));
     mock.module('../src/hooks/common/useMinimumLoadingTime.js', () => ({
@@ -399,6 +304,7 @@ describe('marketing header pricing visibility', () => {
       ensureLanguageResources: async () => {},
     }));
     mock.module('../src/i18n/language.js', () => ({
+      ...actualLanguage,
       normalizeLanguage: (value) => value,
     }));
 
@@ -446,5 +352,60 @@ describe('marketing header pricing visibility', () => {
     const renderedText = getText(renderer.toJSON());
 
     expect(renderedText).toContain('模型广场');
+  });
+});
+
+describe('App pricing config handoff', () => {
+  async function renderApp(status) {
+    const mockPublicRoutes = ({ pricingEnabled, pricingRequireAuth }) =>
+      h(
+        'div',
+        null,
+        `pricingEnabled:${String(pricingEnabled)};pricingRequireAuth:${String(pricingRequireAuth)}`,
+      );
+
+    mock.module('../src/components/layout/SetupCheck.jsx', () => ({
+      default: ({ children }) => children,
+    }));
+    mock.module('../src/components/common/ui/Loading.jsx', () => ({
+      default: () => h('div', null, 'LOADING'),
+    }));
+    mock.module('../src/routes/PublicRoutes.jsx', () => ({
+      default: mockPublicRoutes,
+    }));
+
+    const { default: App } = await importFresh('../src/App.jsx', 'app');
+    return renderElement(
+      h(
+        MemoryRouter,
+        { initialEntries: ['/pricing'] },
+        h(
+          StatusContext.Provider,
+          { value: [{ status }, () => {}] },
+          h(App),
+        ),
+      ),
+    );
+  }
+
+  test('keeps marketplace routes closed until status is loaded', async () => {
+    const renderer = await renderApp(undefined);
+
+    expect(getText(renderer.toJSON())).toContain('pricingEnabled:false');
+    expect(getText(renderer.toJSON())).toContain('pricingRequireAuth:false');
+  });
+
+  test('passes through loaded marketplace config', async () => {
+    const renderer = await renderApp({
+      HeaderNavModules: {
+        pricing: {
+          enabled: true,
+          requireAuth: true,
+        },
+      },
+    });
+
+    expect(getText(renderer.toJSON())).toContain('pricingEnabled:true');
+    expect(getText(renderer.toJSON())).toContain('pricingRequireAuth:true');
   });
 });
