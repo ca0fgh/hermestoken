@@ -73,7 +73,7 @@ function DynamicOAuth2Callback() {
   return <OAuth2Callback type={provider} />;
 }
 
-function PublicRoutes({ pricingEnabled = true, pricingRequireAuth = false }) {
+function PublicRoutes({ pricingEnabled = false, pricingRequireAuth = false }) {
   const location = useLocation();
   const renderWithSuspense = (element, key = location.pathname) => (
     <Suspense fallback={<Loading />} key={key}>

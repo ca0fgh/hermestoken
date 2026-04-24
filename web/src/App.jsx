@@ -40,8 +40,15 @@ function App() {
   const location = useLocation();
   const [statusState] = useContext(StatusContext);
   const pricingConfig = useMemo(() => {
+    if (!statusState?.status) {
+      return {
+        enabled: false,
+        requireAuth: false,
+      };
+    }
+
     return getPricingModuleConfig(statusState?.status?.HeaderNavModules);
-  }, [statusState?.status?.HeaderNavModules]);
+  }, [statusState?.status, statusState?.status?.HeaderNavModules]);
   const isConsoleRoute = location.pathname.startsWith('/console');
   const isHomeRoute = location.pathname === '/';
   const RoutesComponent = isConsoleRoute
