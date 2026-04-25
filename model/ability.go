@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
@@ -42,6 +43,21 @@ func GetGroupEnabledModels(group string) []string {
 	// Find distinct models
 	DB.Table("abilities").Where(commonGroupCol+" = ? and enabled = ?", group, true).Distinct("model").Pluck("model", &models)
 	return models
+}
+
+func GetEnabledGroupsForChannelModel(channelID int, modelName string) ([]string, error) {
+	modelName = strings.TrimSpace(modelName)
+	if channelID <= 0 || modelName == "" {
+		return []string{}, nil
+	}
+
+	var groups []string
+	err := DB.Table("abilities").
+		Where("channel_id = ? and model = ? and enabled = ?", channelID, modelName, true).
+		Distinct(commonGroupCol).
+		Order(commonGroupCol+" ASC").
+		Pluck(commonGroupCol, &groups).Error
+	return groups, err
 }
 
 func GetEnabledModels() []string {

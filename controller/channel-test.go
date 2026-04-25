@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,6 +55,99 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
 	return normalized
+}
+
+func orderChannelTestGroups(groups []string) []string {
+	seen := make(map[string]struct{}, len(groups))
+	ordered := make([]string, 0, len(groups))
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+		ordered = append(ordered, group)
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i] == "default" {
+			return true
+		}
+		if ordered[j] == "default" {
+			return false
+		}
+		return ordered[i] < ordered[j]
+	})
+	return ordered
+}
+
+func resolveChannelTestGroups(channel *model.Channel, modelNames ...string) []string {
+	if channel == nil {
+		return []string{}
+	}
+
+	groups := resolveChannelTestAbilityGroups(channel, modelNames...)
+	if len(groups) == 0 {
+		groups = channel.GetGroups()
+	}
+	return orderChannelTestGroups(groups)
+}
+
+func resolveChannelTestAbilityGroups(channel *model.Channel, modelNames ...string) []string {
+	if channel == nil {
+		return []string{}
+	}
+
+	groups := make([]string, 0)
+	seenModels := make(map[string]struct{}, len(modelNames))
+	for _, modelName := range modelNames {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" {
+			continue
+		}
+		if _, ok := seenModels[modelName]; ok {
+			continue
+		}
+		seenModels[modelName] = struct{}{}
+
+		abilityGroups, err := model.GetEnabledGroupsForChannelModel(channel.Id, modelName)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("failed to resolve channel test groups: channel_id=%d model=%s error=%v", channel.Id, modelName, err))
+			continue
+		}
+		groups = append(groups, abilityGroups...)
+	}
+	return orderChannelTestGroups(groups)
+}
+
+func selectChannelTestUsingGroup(testGroups []string, userGroup string) string {
+	userGroup = strings.TrimSpace(userGroup)
+	for _, group := range testGroups {
+		if group == userGroup {
+			return group
+		}
+	}
+	if len(testGroups) > 0 {
+		return testGroups[0]
+	}
+	return userGroup
+}
+
+func addChannelTestLogInfo(other map[string]interface{}, testGroups []string, usingGroup string) {
+	if other == nil {
+		return
+	}
+	other["channel_test"] = true
+	if len(testGroups) == 0 {
+		return
+	}
+	other["channel_test_groups"] = testGroups
+	if adminInfo, ok := other["admin_info"].(map[string]interface{}); ok {
+		adminInfo["channel_test_groups"] = testGroups
+		adminInfo["channel_test_using_group"] = usingGroup
+	}
 }
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
@@ -134,6 +228,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if strings.HasPrefix(requestPath, "/v1/responses/compact") {
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
+	channelTestGroups := resolveChannelTestGroups(channel, testModel)
+	channelTestLogGroup := strings.Join(channelTestGroups, ",")
 
 	c.Request = &http.Request{
 		Method: "POST",
@@ -155,8 +251,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	c.Request.Header.Set("Content-Type", "application/json")
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	group, _ := model.GetUserGroup(1, false)
-	c.Set("group", group)
+	userGroup, _ := model.GetUserGroup(1, false)
+	c.Set("group", selectChannelTestUsingGroup(channelTestGroups, userGroup))
 
 	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
 	if newAPIError != nil {
@@ -242,6 +338,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	testModel = info.UpstreamModelName
+	mappedChannelTestGroups := resolveChannelTestAbilityGroups(channel, testModel)
+	if len(mappedChannelTestGroups) > 0 && strings.Join(mappedChannelTestGroups, ",") != channelTestLogGroup {
+		channelTestGroups = orderChannelTestGroups(append(channelTestGroups, mappedChannelTestGroups...))
+		channelTestLogGroup = strings.Join(channelTestGroups, ",")
+	}
 	// 更新请求中的模型名称
 	request.SetModelName(testModel)
 
@@ -487,6 +588,10 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		priceData.ModelPrice,
 		priceData.GroupRatioInfo.GroupSpecialRatio,
 	)
+	addChannelTestLogInfo(other, channelTestGroups, info.UsingGroup)
+	if channelTestLogGroup == "" {
+		channelTestLogGroup = c.GetString("group")
+	}
 	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
@@ -498,7 +603,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		TokenId:          0,
 		UseTimeSeconds:   int(float64(milliseconds) / 1000.0),
 		IsStream:         isStream,
-		Group:            c.GetString("group"),
+		Group:            channelTestLogGroup,
 		Other:            other,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))

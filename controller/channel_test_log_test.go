@@ -14,7 +14,7 @@ import (
 
 func TestChannelTestRecordsConsumeLog(t *testing.T) {
 	db := setupChannelControllerTestDB(t)
-	withChannelGroupRatios(t, `{"default":1,"veo-福利渠道":1}`)
+	withChannelGroupRatios(t, `{"default":1,"veo-福利渠道":1,"cc-opus-福利渠道":1}`)
 
 	if err := db.AutoMigrate(&model.User{}, &model.Log{}); err != nil {
 		t.Fatalf("failed to migrate channel test log tables: %v", err)
@@ -67,9 +67,12 @@ func TestChannelTestRecordsConsumeLog(t *testing.T) {
 		Name:     "test-openai-channel",
 		BaseURL:  common.GetPointer(upstream.URL),
 		Models:   "claude-opus-4-6",
-		Group:    "default",
+		Group:    "default,cc-opus-福利渠道",
 		Priority: common.GetPointer(int64(0)),
 		Weight:   common.GetPointer(uint(0)),
+	}
+	if err := channel.AddAbilities(db); err != nil {
+		t.Fatalf("failed to add channel abilities: %v", err)
 	}
 
 	result := testChannel(channel, "claude-opus-4-6", "", false)
@@ -94,5 +97,8 @@ func TestChannelTestRecordsConsumeLog(t *testing.T) {
 	}
 	if logEntry.UserId != user.Id {
 		t.Fatalf("expected consume log user_id=%d, got %d", user.Id, logEntry.UserId)
+	}
+	if logEntry.Group != "default,cc-opus-福利渠道" {
+		t.Fatalf("expected consume log group to use channel test groups, got %q", logEntry.Group)
 	}
 }
