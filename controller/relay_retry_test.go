@@ -1,11 +1,15 @@
 package controller
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -31,6 +35,27 @@ func TestShouldRetry_SelectedChannelRetriesAnyUpstreamErrorWithinBudget(t *testi
 	require.True(t, shouldRetry(
 		c,
 		types.NewOpenAIError(errors.New("invalid upstream body"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+		1,
+	))
+}
+
+func TestShouldRetry_SelectedChannelRetriesWhenChannelAffinityRuleSkipsOnCacheMiss(t *testing.T) {
+	c := newRetryTestContext()
+	c.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/v1/messages",
+		bytes.NewBufferString(fmt.Sprintf(`{"metadata":{"user_id":"retry-affinity-miss-%d"}}`, time.Now().UnixNano())),
+	)
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	_, found := service.GetPreferredChannelByAffinity(c, "claude-sonnet-4-6", "cc-opus-福利渠道")
+	require.False(t, found)
+	require.True(t, service.ShouldSkipRetryAfterChannelAffinityFailure(c))
+
+	c.Set("channel_id", 123)
+	require.True(t, shouldRetry(
+		c,
+		types.NewOpenAIError(errors.New("temporary upstream error"), types.ErrorCodeBadResponseStatusCode, http.StatusBadGateway),
 		1,
 	))
 }
