@@ -68,8 +68,12 @@ export const useHeaderBar = ({ onMobileMenuToggle, drawerOpen }) => {
 
   // 使用useMemo确保headerNavModules正确响应statusState变化
   const headerNavModules = useMemo(() => {
+    if (!statusState?.status) {
+      return undefined;
+    }
+
     return normalizeHeaderNavModules(headerNavModulesConfig);
-  }, [headerNavModulesConfig]);
+  }, [statusState?.status, headerNavModulesConfig]);
 
   // 获取模型广场权限配置
   const pricingRequireAuth = useMemo(() => {

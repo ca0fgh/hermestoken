@@ -84,8 +84,12 @@ export function isHeaderNavModuleEnabled(modules, key) {
   return normalizedModules[key] === true;
 }
 
+export function getPricingModuleConfig(modules) {
+  return normalizeHeaderNavModules(modules).pricing;
+}
+
 export function getPricingRequireAuth(modules) {
-  return normalizeHeaderNavModules(modules).pricing.requireAuth === true;
+  return getPricingModuleConfig(modules).requireAuth === true;
 }
 
 export function getFooterSectionVisibility(modules, docsLink) {

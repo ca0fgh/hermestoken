@@ -35,18 +35,16 @@ const ModelPricingTable = ({
   tokenUnit,
   displayPrice,
   showRatio,
-  usableGroup,
-  autoGroups = [],
+  displayGroups,
   t,
 }) => {
   const modelEnableGroups = Array.isArray(modelData?.enable_groups)
     ? modelData.enable_groups
     : [];
-  const autoChain = autoGroups.filter((g) => modelEnableGroups.includes(g));
   const renderGroupPriceTable = () => {
     // 仅展示模型可用的分组：模型 enable_groups 与用户可用分组的交集
 
-    const availableGroups = Object.keys(usableGroup || {})
+    const availableGroups = Object.keys(displayGroups || {})
       .filter((g) => g !== '')
       .filter((g) => g !== 'auto')
       .filter((g) => modelEnableGroups.includes(g));
@@ -168,21 +166,6 @@ const ModelPricingTable = ({
           </div>
         </div>
       </div>
-      {autoChain.length > 0 && (
-        <div className='flex flex-wrap items-center gap-1 mb-4'>
-          <span className='text-sm text-gray-600'>{t('auto分组调用链路')}</span>
-          <span className='text-sm'>→</span>
-          {autoChain.map((g, idx) => (
-            <React.Fragment key={g}>
-              <Tag color='white' size='small' shape='circle'>
-                {g}
-                {t('分组')}
-              </Tag>
-              {idx < autoChain.length - 1 && <span className='text-sm'>→</span>}
-            </React.Fragment>
-          ))}
-        </div>
-      )}
       {renderGroupPriceTable()}
     </Card>
   );

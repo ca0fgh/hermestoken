@@ -295,20 +295,7 @@ export default function SettingsHeaderNavModules(props) {
                               display: 'block',
                             }}
                           >
-                            {t('关闭后游客按 default 分组浏览模型广场')}
-                          </Text>
-                          <Text
-                            type='secondary'
-                            size='small'
-                            style={{
-                              fontSize: '11px',
-                              color: 'var(--semi-color-text-2)',
-                              lineHeight: '1.4',
-                              display: 'block',
-                              marginTop: '4px',
-                            }}
-                          >
-                            {t('default 是游客和新注册用户的公开基础分组')}
+                            {t('关闭后游客按 default 分组浏览模型广场，登录用户可查看全部展示模型')}
                           </Text>
                         </div>
                         <div style={{ marginLeft: '16px' }}>
