@@ -57,6 +57,7 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 }
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
+	tik := time.Now()
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
@@ -276,8 +277,6 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
 		}
 	}
-	_ = priceData
-
 	adaptor.Init(info)
 
 	var convertedRequest any
@@ -442,7 +441,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			newAPIError: respErr,
 		}
 	}
-	if _, usageErr := coerceTestUsage(usageA, isStream, info.GetEstimatePromptTokens()); usageErr != nil {
+	usage, usageErr := coerceTestUsage(usageA, isStream, info.GetEstimatePromptTokens())
+	if usageErr != nil {
 		return testResult{
 			context:     c,
 			localErr:    usageErr,
@@ -465,8 +465,42 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
-	// Channel tests are admin diagnostics, not end-user traffic.
-	// Do not persist synthetic consume logs into regular usage history.
+	quota := 0
+	if !priceData.UsePrice {
+		quota = usage.PromptTokens + int(math.Round(float64(usage.CompletionTokens)*priceData.CompletionRatio))
+		quota = int(math.Round(float64(quota) * priceData.ModelRatio * priceData.GroupRatioInfo.GroupRatio))
+		if priceData.GroupRatioInfo.GroupRatio != 0 && priceData.ModelRatio != 0 && quota <= 0 {
+			quota = 1
+		}
+	} else {
+		quota = int(math.Round(priceData.ModelPrice * priceData.GroupRatioInfo.GroupRatio * common.QuotaPerUnit))
+	}
+	milliseconds := time.Since(tik).Milliseconds()
+	other := service.GenerateTextOtherInfo(
+		c,
+		info,
+		priceData.ModelRatio,
+		priceData.GroupRatioInfo.GroupRatio,
+		priceData.CompletionRatio,
+		usage.PromptTokensDetails.CachedTokens,
+		priceData.CacheRatio,
+		priceData.ModelPrice,
+		priceData.GroupRatioInfo.GroupSpecialRatio,
+	)
+	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
+		ChannelId:        channel.Id,
+		PromptTokens:     usage.PromptTokens,
+		CompletionTokens: usage.CompletionTokens,
+		ModelName:        testModel,
+		TokenName:        "模型测试",
+		Quota:            quota,
+		Content:          "模型测试",
+		TokenId:          0,
+		UseTimeSeconds:   int(float64(milliseconds) / 1000.0),
+		IsStream:         isStream,
+		Group:            c.GetString("group"),
+		Other:            other,
+	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	return testResult{
 		context:     c,

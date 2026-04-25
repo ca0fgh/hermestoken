@@ -12,7 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 )
 
-func TestChannelTestDoesNotRecordConsumeLog(t *testing.T) {
+func TestChannelTestRecordsConsumeLog(t *testing.T) {
 	db := setupChannelControllerTestDB(t)
 	withChannelGroupRatios(t, `{"default":1,"veo-福利渠道":1}`)
 
@@ -80,13 +80,19 @@ func TestChannelTestDoesNotRecordConsumeLog(t *testing.T) {
 		t.Fatalf("testChannel returned api error: %v", result.newAPIError)
 	}
 
-	var consumeCount int64
-	if err := db.Model(&model.Log{}).
-		Where("type = ? AND token_name = ?", model.LogTypeConsume, "模型测试").
-		Count(&consumeCount).Error; err != nil {
-		t.Fatalf("failed to count consume logs: %v", err)
+	var logEntry model.Log
+	if err := db.Where("type = ? AND token_name = ?", model.LogTypeConsume, "模型测试").
+		Order("id desc").
+		First(&logEntry).Error; err != nil {
+		t.Fatalf("expected channel test to record consume log: %v", err)
 	}
-	if consumeCount != 0 {
-		t.Fatalf("expected channel tests to avoid consume logs, got %d synthetic consume logs", consumeCount)
+	if logEntry.ChannelId != channel.Id {
+		t.Fatalf("expected consume log channel_id=%d, got %d", channel.Id, logEntry.ChannelId)
+	}
+	if logEntry.ModelName != "claude-opus-4-6" {
+		t.Fatalf("expected consume log model claude-opus-4-6, got %s", logEntry.ModelName)
+	}
+	if logEntry.UserId != user.Id {
+		t.Fatalf("expected consume log user_id=%d, got %d", user.Id, logEntry.UserId)
 	}
 }
