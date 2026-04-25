@@ -39,10 +39,9 @@ const ModelDetailSideSheet = ({
   tokenUnit,
   displayPrice,
   showRatio,
-  usableGroup,
+  displayGroups,
   vendorsMap,
   endpointMap,
-  autoGroups,
   t,
 }) => {
   const isMobile = useIsMobile();
@@ -97,8 +96,7 @@ const ModelDetailSideSheet = ({
               tokenUnit={tokenUnit}
               displayPrice={displayPrice}
               showRatio={showRatio}
-              usableGroup={usableGroup}
-              autoGroups={autoGroups}
+              displayGroups={displayGroups}
               t={t}
             />
           </>

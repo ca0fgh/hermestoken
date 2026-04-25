@@ -19,16 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 
 import { useMemo } from 'react';
 import {
-  DEFAULT_HEADER_NAV_MODULES,
   isHeaderNavModuleEnabled,
   normalizeHeaderNavModules,
 } from '../../helpers/headerNavModules';
 
 export const useNavigation = (t, docsLink, headerNavModules) => {
   const mainNavLinks = useMemo(() => {
-    const modules = normalizeHeaderNavModules(
-      headerNavModules || DEFAULT_HEADER_NAV_MODULES,
-    );
+    const hasLoadedHeaderModules = headerNavModules !== undefined;
+    const modules = normalizeHeaderNavModules(headerNavModules);
 
     const allLinks = [
       {
@@ -69,7 +67,9 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         return Boolean(docsLink) && isHeaderNavModuleEnabled(modules, 'docs');
       }
       if (link.itemKey === 'pricing') {
-        return isHeaderNavModuleEnabled(modules, 'pricing');
+        return (
+          hasLoadedHeaderModules && isHeaderNavModuleEnabled(modules, 'pricing')
+        );
       }
       return isHeaderNavModuleEnabled(modules, link.itemKey);
     });

@@ -174,6 +174,12 @@ const renderBoundChannels = (channels) => {
   });
 };
 
+const renderMarketplaceDisplay = (status, t) => (
+  <Tag size='small' shape='circle' color={status === 1 ? 'green' : 'orange'}>
+    {status === 1 ? t('展示') : t('隐藏')}
+  </Tag>
+);
+
 // Render operations column
 const renderOperations = (
   text,
@@ -192,14 +198,14 @@ const renderOperations = (
           size='small'
           onClick={() => manageModel(record.id, 'disable', record)}
         >
-          {t('禁用')}
+          {t('隐藏')}
         </Button>
       ) : (
         <Button
           size='small'
           onClick={() => manageModel(record.id, 'enable', record)}
         >
-          {t('启用')}
+          {t('展示')}
         </Button>
       )}
 
@@ -346,6 +352,11 @@ export const getModelsColumns = ({
       title: t('计费类型'),
       dataIndex: 'quota_types',
       render: (qts) => renderQuotaTypes(qts, t),
+    },
+    {
+      title: t('广场展示'),
+      dataIndex: 'status',
+      render: (status) => renderMarketplaceDisplay(status, t),
     },
     {
       title: t('创建时间'),

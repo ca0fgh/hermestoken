@@ -68,7 +68,7 @@ const PricingPage = () => {
         onClose={pricingData.closeModelDetail}
         modelData={pricingData.selectedModel}
         groupRatio={pricingData.groupRatio}
-        usableGroup={pricingData.usableGroup}
+        displayGroups={pricingData.displayGroups}
         currency={pricingData.currency}
         siteDisplayType={pricingData.siteDisplayType}
         tokenUnit={pricingData.tokenUnit}
@@ -76,7 +76,6 @@ const PricingPage = () => {
         showRatio={allProps.showRatio}
         vendorsMap={pricingData.vendorsMap}
         endpointMap={pricingData.endpointMap}
-        autoGroups={pricingData.autoGroups}
         t={pricingData.t}
       />
     </div>

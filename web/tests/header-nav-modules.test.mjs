@@ -90,6 +90,8 @@ test('settings header nav source separates marketplace entry visibility from gue
   );
 
   assert.match(source, /t\('控制是否显示模型广场入口'\)/);
-  assert.match(source, /t\('关闭后游客按 default 分组浏览模型广场'\)/);
-  assert.match(source, /t\('default 是游客和新注册用户的公开基础分组'\)/);
+  assert.match(
+    source,
+    /t\('关闭后游客按 default 分组浏览模型广场，登录用户可查看全部展示模型'\)/,
+  );
 });
