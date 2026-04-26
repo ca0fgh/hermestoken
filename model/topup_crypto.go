@@ -486,6 +486,13 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 				return err
 			}
 		}
+		if savedTx.MatchedOrderId != 0 {
+			var order CryptoPaymentOrder
+			if err := tx.Where("id = ?", savedTx.MatchedOrderId).First(&order).Error; err == nil {
+				matchedOrder = &order
+			}
+			return nil
+		}
 
 		var orders []CryptoPaymentOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(

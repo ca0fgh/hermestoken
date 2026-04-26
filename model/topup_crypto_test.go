@@ -332,3 +332,51 @@ func TestCompleteReadyCryptoOrders(t *testing.T) {
 	assert.Equal(t, 1, completed)
 	assert.Equal(t, 5000000, getUserQuotaForPaymentGuardTest(t, 1101))
 }
+
+func TestRecordCryptoTransferDoesNotReassignMatchedTransaction(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 1201, 0)
+	insertUserForPaymentGuardTest(t, 1202, 0)
+	firstOrder := seedCryptoOrderForCompletion(t, 1201, 10, "10003721")
+	secondOrder := seedCryptoOrderForCompletion(t, 1202, 10, "10003721")
+	secondOrder.Status = CryptoPaymentStatusPending
+	require.NoError(t, DB.Save(secondOrder).Error)
+	require.NoError(t, DB.Create(&CryptoPaymentTransaction{
+		Network:         firstOrder.Network,
+		TxHash:          "0xalready-matched",
+		LogIndex:        0,
+		ToAddress:       firstOrder.ReceiveAddress,
+		TokenContract:   firstOrder.TokenContract,
+		TokenSymbol:     CryptoTokenUSDT,
+		TokenDecimals:   firstOrder.TokenDecimals,
+		Amount:          firstOrder.PayAmount,
+		AmountBaseUnits: firstOrder.PayAmountBaseUnits,
+		Confirmations:   1,
+		Status:          CryptoTransactionStatusSeen,
+		MatchedOrderId:  firstOrder.Id,
+		CreateTime:      time.Now().Unix(),
+		UpdateTime:      time.Now().Unix(),
+	}).Error)
+
+	_, matched, err := RecordCryptoTransfer(CryptoObservedTransfer{
+		Network:         secondOrder.Network,
+		TxHash:          "0xalready-matched",
+		LogIndex:        0,
+		BlockNumber:     125,
+		ToAddress:       secondOrder.ReceiveAddress,
+		TokenContract:   secondOrder.TokenContract,
+		TokenDecimals:   secondOrder.TokenDecimals,
+		Amount:          secondOrder.PayAmount,
+		AmountBaseUnits: secondOrder.PayAmountBaseUnits,
+		Confirmations:   2,
+		ObservedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, matched)
+	assert.Equal(t, firstOrder.Id, matched.Id)
+
+	var tx CryptoPaymentTransaction
+	require.NoError(t, DB.Where("tx_hash = ?", "0xalready-matched").First(&tx).Error)
+	assert.Equal(t, firstOrder.Id, tx.MatchedOrderId)
+	assert.Equal(t, CryptoPaymentStatusPending, GetCryptoPaymentOrderByTradeNo(secondOrder.TradeNo).Status)
+}
