@@ -47,3 +47,10 @@ func TestCryptoPaymentMethodConstant(t *testing.T) {
 	assert.Equal(t, "crypto_usdt", PaymentMethodCryptoUSDT)
 	assert.Equal(t, common.TopUpStatusPending, CryptoTopUpInitialStatus())
 }
+
+func TestCryptoTablesAutoMigrate(t *testing.T) {
+	truncateTables(t)
+	require.True(t, DB.Migrator().HasTable(&CryptoPaymentOrder{}))
+	require.True(t, DB.Migrator().HasTable(&CryptoPaymentTransaction{}))
+	require.True(t, DB.Migrator().HasTable(&CryptoScannerState{}))
+}

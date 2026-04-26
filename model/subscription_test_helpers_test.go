@@ -48,6 +48,9 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 		&ReferralSettlementBatch{},
 		&ReferralSettlementRecord{},
 		&TopUp{},
+		&CryptoPaymentOrder{},
+		&CryptoPaymentTransaction{},
+		&CryptoScannerState{},
 		&Log{},
 	); err != nil {
 		t.Fatalf("failed to migrate settlement tables: %v", err)
