@@ -601,3 +601,29 @@ func CompleteReadyCryptoOrders(network string) (int, error) {
 	}
 	return completed, nil
 }
+
+func ListCryptoPaymentOrders(pageInfo *common.PageInfo) ([]*CryptoPaymentOrder, int64, error) {
+	var orders []*CryptoPaymentOrder
+	var total int64
+	query := DB.Model(&CryptoPaymentOrder{})
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&orders).Error; err != nil {
+		return nil, 0, err
+	}
+	return orders, total, nil
+}
+
+func ListCryptoPaymentTransactions(pageInfo *common.PageInfo) ([]*CryptoPaymentTransaction, int64, error) {
+	var transactions []*CryptoPaymentTransaction
+	var total int64
+	query := DB.Model(&CryptoPaymentTransaction{})
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if err := query.Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Find(&transactions).Error; err != nil {
+		return nil, 0, err
+	}
+	return transactions, total, nil
+}

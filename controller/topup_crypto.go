@@ -101,3 +101,54 @@ func cryptoOrderResponse(order *model.CryptoPaymentOrder) gin.H {
 		"confirmations":          model.GetCryptoOrderConfirmations(order.Id),
 	}
 }
+
+func AdminListCryptoTopUpOrders(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	orders, total, err := model.ListCryptoPaymentOrders(pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	items := make([]gin.H, 0, len(orders))
+	for _, order := range orders {
+		items = append(items, gin.H{
+			"id":                     order.Id,
+			"topup_id":               order.TopUpId,
+			"trade_no":               order.TradeNo,
+			"user_id":                order.UserId,
+			"payment_method":         model.PaymentMethodCryptoUSDT,
+			"network":                order.Network,
+			"token_symbol":           order.TokenSymbol,
+			"receive_address":        order.ReceiveAddress,
+			"base_amount":            order.BaseAmount,
+			"pay_amount":             order.PayAmount,
+			"pay_amount_base_units":  order.PayAmountBaseUnits,
+			"required_confirmations": order.RequiredConfirmations,
+			"status":                 order.Status,
+			"matched_tx_hash":        order.MatchedTxHash,
+			"matched_log_index":      order.MatchedLogIndex,
+			"expires_at":             order.ExpiresAt,
+			"create_time":            order.CreateTime,
+			"update_time":            order.UpdateTime,
+		})
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(items)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminListCryptoTransactions(c *gin.Context) {
+	pageInfo := common.GetPageQuery(c)
+	transactions, total, err := model.ListCryptoPaymentTransactions(pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(transactions)
+	common.ApiSuccess(c, pageInfo)
+}
+
+func AdminCompleteCryptoTopUp(c *gin.Context) {
+	common.ApiErrorMsg(c, "链上证据不完整")
+}

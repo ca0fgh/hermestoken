@@ -163,6 +163,14 @@ func SetApiRouter(router *gin.Engine) {
 			withdrawalAdminRoute.POST("/:id/mark-paid", controller.AdminMarkWithdrawalPaid)
 		}
 
+		cryptoAdminRoute := apiRouter.Group("/admin/crypto")
+		cryptoAdminRoute.Use(middleware.AdminAuth())
+		{
+			cryptoAdminRoute.GET("/topup/orders", controller.AdminListCryptoTopUpOrders)
+			cryptoAdminRoute.GET("/topup/transactions", controller.AdminListCryptoTransactions)
+			cryptoAdminRoute.POST("/topup/orders/:trade_no/complete", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.SecureVerificationRequired(), controller.AdminCompleteCryptoTopUp)
+		}
+
 		// Subscription billing (plans, purchase, admin management)
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())
