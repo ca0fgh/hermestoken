@@ -426,3 +426,143 @@ func cryptoEvidenceMatchesOrder(order *CryptoPaymentOrder, evidence CryptoTxEvid
 		strings.TrimSpace(evidence.TxHash) != "" &&
 		evidence.LogIndex >= 0
 }
+
+type CryptoObservedTransfer struct {
+	Network         string
+	TxHash          string
+	LogIndex        int
+	BlockNumber     int64
+	BlockTimestamp  int64
+	FromAddress     string
+	ToAddress       string
+	TokenContract   string
+	TokenDecimals   int
+	Amount          string
+	AmountBaseUnits string
+	Confirmations   int64
+	RawPayload      string
+	ObservedAt      time.Time
+}
+
+func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransaction, *CryptoPaymentOrder, error) {
+	if transfer.ObservedAt.IsZero() {
+		transfer.ObservedAt = time.Now()
+	}
+	var savedTx CryptoPaymentTransaction
+	var matchedOrder *CryptoPaymentOrder
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		txRecord := CryptoPaymentTransaction{
+			Network:         NormalizeCryptoNetwork(transfer.Network),
+			TxHash:          strings.TrimSpace(transfer.TxHash),
+			LogIndex:        transfer.LogIndex,
+			BlockNumber:     transfer.BlockNumber,
+			BlockTimestamp:  transfer.BlockTimestamp,
+			FromAddress:     strings.TrimSpace(transfer.FromAddress),
+			ToAddress:       strings.TrimSpace(transfer.ToAddress),
+			TokenContract:   strings.TrimSpace(transfer.TokenContract),
+			TokenSymbol:     CryptoTokenUSDT,
+			TokenDecimals:   transfer.TokenDecimals,
+			Amount:          transfer.Amount,
+			AmountBaseUnits: transfer.AmountBaseUnits,
+			Confirmations:   transfer.Confirmations,
+			Status:          CryptoTransactionStatusSeen,
+			RawPayload:      transfer.RawPayload,
+			CreateTime:      transfer.ObservedAt.Unix(),
+			UpdateTime:      transfer.ObservedAt.Unix(),
+		}
+		if err := tx.Where("network = ? AND tx_hash = ? AND log_index = ?", txRecord.Network, txRecord.TxHash, txRecord.LogIndex).First(&savedTx).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				savedTx = txRecord
+				if err := tx.Create(&savedTx).Error; err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			savedTx.Confirmations = transfer.Confirmations
+			savedTx.UpdateTime = transfer.ObservedAt.Unix()
+			if err := tx.Save(&savedTx).Error; err != nil {
+				return err
+			}
+		}
+
+		var orders []CryptoPaymentOrder
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(
+			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at >= ? AND status = ?",
+			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, transfer.ObservedAt.Unix(), CryptoPaymentStatusPending,
+		).Find(&orders).Error; err != nil {
+			return err
+		}
+		if len(orders) == 1 {
+			order := orders[0]
+			order.Status = CryptoPaymentStatusDetected
+			order.MatchedTxHash = txRecord.TxHash
+			order.MatchedLogIndex = txRecord.LogIndex
+			order.DetectedAt = transfer.ObservedAt.Unix()
+			order.UpdateTime = transfer.ObservedAt.Unix()
+			if err := tx.Save(&order).Error; err != nil {
+				return err
+			}
+			savedTx.MatchedOrderId = order.Id
+			if err := tx.Save(&savedTx).Error; err != nil {
+				return err
+			}
+			matchedOrder = &order
+			return nil
+		}
+		if len(orders) > 1 {
+			for _, order := range orders {
+				if err := tx.Model(&CryptoPaymentOrder{}).Where("id = ?", order.Id).Updates(map[string]any{"status": CryptoPaymentStatusAmbiguous, "update_time": transfer.ObservedAt.Unix()}).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		var expired CryptoPaymentOrder
+		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(
+			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at < ? AND status IN ?",
+			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, transfer.ObservedAt.Unix(), []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
+		).Order("expires_at desc").First(&expired).Error
+		if err == nil {
+			expired.Status = CryptoPaymentStatusLatePaid
+			expired.MatchedTxHash = txRecord.TxHash
+			expired.MatchedLogIndex = txRecord.LogIndex
+			expired.UpdateTime = transfer.ObservedAt.Unix()
+			if err := tx.Save(&expired).Error; err != nil {
+				return err
+			}
+			savedTx.MatchedOrderId = expired.Id
+			if err := tx.Save(&savedTx).Error; err != nil {
+				return err
+			}
+			matchedOrder = &expired
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return &savedTx, matchedOrder, nil
+}
+
+func GetCryptoScannerState(network string) (*CryptoScannerState, error) {
+	var state CryptoScannerState
+	if err := DB.Where("network = ?", NormalizeCryptoNetwork(network)).First(&state).Error; err != nil {
+		return nil, err
+	}
+	return &state, nil
+}
+
+func UpsertCryptoScannerState(network string, lastScannedBlock int64, lastFinalizedBlock int64) error {
+	state := CryptoScannerState{
+		Network:            NormalizeCryptoNetwork(network),
+		LastScannedBlock:   lastScannedBlock,
+		LastFinalizedBlock: lastFinalizedBlock,
+		UpdatedAt:          cryptoNow(),
+	}
+	return DB.Save(&state).Error
+}

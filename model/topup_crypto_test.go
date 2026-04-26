@@ -234,3 +234,66 @@ func seedCryptoOrderForCompletion(t *testing.T, userID int, amount int64, payUni
 	require.NoError(t, DB.Create(order).Error)
 	return order
 }
+
+func TestRecordCryptoTransferMatchesPendingOrder(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 1001, 0)
+	order := seedCryptoOrderForCompletion(t, 1001, 10, "10003721")
+	order.Status = CryptoPaymentStatusPending
+	require.NoError(t, DB.Save(order).Error)
+
+	tx, matched, err := RecordCryptoTransfer(CryptoObservedTransfer{
+		Network:         order.Network,
+		TxHash:          "0xseen1",
+		LogIndex:        0,
+		BlockNumber:     123,
+		FromAddress:     "sender",
+		ToAddress:       order.ReceiveAddress,
+		TokenContract:   order.TokenContract,
+		TokenDecimals:   order.TokenDecimals,
+		Amount:          order.PayAmount,
+		AmountBaseUnits: order.PayAmountBaseUnits,
+		Confirmations:   1,
+		ObservedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+	require.NotNil(t, matched)
+	assert.Equal(t, order.Id, matched.Id)
+	assert.Equal(t, CryptoPaymentStatusDetected, GetCryptoPaymentOrderByTradeNo(order.TradeNo).Status)
+}
+
+func TestRecordCryptoTransferMarksLatePaidForExpiredExactAmount(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 1002, 0)
+	order := seedCryptoOrderForCompletion(t, 1002, 10, "10003721")
+	order.Status = CryptoPaymentStatusExpired
+	order.ExpiresAt = time.Now().Add(-time.Minute).Unix()
+	require.NoError(t, DB.Save(order).Error)
+
+	_, matched, err := RecordCryptoTransfer(CryptoObservedTransfer{
+		Network:         order.Network,
+		TxHash:          "0xlate1",
+		LogIndex:        0,
+		BlockNumber:     124,
+		ToAddress:       order.ReceiveAddress,
+		TokenContract:   order.TokenContract,
+		TokenDecimals:   order.TokenDecimals,
+		Amount:          order.PayAmount,
+		AmountBaseUnits: order.PayAmountBaseUnits,
+		Confirmations:   1,
+		ObservedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, matched)
+	assert.Equal(t, CryptoPaymentStatusLatePaid, GetCryptoPaymentOrderByTradeNo(order.TradeNo).Status)
+}
+
+func TestCryptoScannerStateUpsert(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, UpsertCryptoScannerState(CryptoNetworkBSCERC20, 100, 85))
+	state, err := GetCryptoScannerState(CryptoNetworkBSCERC20)
+	require.NoError(t, err)
+	assert.EqualValues(t, 100, state.LastScannedBlock)
+	assert.EqualValues(t, 85, state.LastFinalizedBlock)
+}
