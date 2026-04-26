@@ -1,0 +1,147 @@
+package model
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/shopspring/decimal"
+)
+
+const (
+	CryptoNetworkTronTRC20 = "tron_trc20"
+	CryptoNetworkBSCERC20  = "bsc_erc20"
+
+	CryptoTokenUSDT = "USDT"
+
+	CryptoPaymentStatusPending   = "pending"
+	CryptoPaymentStatusDetected  = "detected"
+	CryptoPaymentStatusConfirmed = "confirmed"
+	CryptoPaymentStatusSuccess   = "success"
+	CryptoPaymentStatusExpired   = "expired"
+	CryptoPaymentStatusUnderpaid = "underpaid"
+	CryptoPaymentStatusOverpaid  = "overpaid"
+	CryptoPaymentStatusAmbiguous = "ambiguous"
+	CryptoPaymentStatusLatePaid  = "late_paid"
+	CryptoPaymentStatusFailed    = "failed"
+
+	CryptoTransactionStatusSeen      = "seen"
+	CryptoTransactionStatusConfirmed = "confirmed"
+	CryptoTransactionStatusIgnored   = "ignored"
+	CryptoTransactionStatusOrphaned  = "orphaned"
+)
+
+var (
+	ErrCryptoInvalidAmount       = errors.New("invalid crypto payment amount")
+	ErrCryptoInvalidSuffix       = errors.New("invalid crypto payment suffix")
+	ErrCryptoOrderNotFound       = errors.New("crypto payment order not found")
+	ErrCryptoOrderStatusInvalid  = errors.New("crypto payment order status invalid")
+	ErrCryptoTransactionMismatch = errors.New("crypto transaction evidence mismatch")
+	ErrCryptoAmountCollision     = errors.New("crypto payment amount collision")
+)
+
+type CryptoPaymentOrder struct {
+	Id                    int    `json:"id"`
+	TopUpId               int    `json:"topup_id" gorm:"uniqueIndex"`
+	TradeNo               string `json:"trade_no" gorm:"uniqueIndex;type:varchar(255)"`
+	UserId                int    `json:"user_id" gorm:"index"`
+	Network               string `json:"network" gorm:"type:varchar(32);index"`
+	TokenSymbol           string `json:"token_symbol" gorm:"type:varchar(16)"`
+	TokenContract         string `json:"token_contract" gorm:"type:varchar(128);index"`
+	TokenDecimals         int    `json:"token_decimals"`
+	ReceiveAddress        string `json:"receive_address" gorm:"type:varchar(128);index"`
+	BaseAmount            string `json:"base_amount" gorm:"type:varchar(64)"`
+	PayAmount             string `json:"pay_amount" gorm:"type:varchar(64)"`
+	PayAmountBaseUnits    string `json:"pay_amount_base_units" gorm:"type:varchar(128);index"`
+	UniqueSuffix          int    `json:"unique_suffix"`
+	ExpiresAt             int64  `json:"expires_at" gorm:"index"`
+	RequiredConfirmations int    `json:"required_confirmations"`
+	Status                string `json:"status" gorm:"type:varchar(32);index"`
+	MatchedTxHash         string `json:"matched_tx_hash" gorm:"type:varchar(128);index"`
+	MatchedLogIndex       int    `json:"matched_log_index" gorm:"default:-1"`
+	DetectedAt            int64  `json:"detected_at"`
+	ConfirmedAt           int64  `json:"confirmed_at"`
+	CompletedAt           int64  `json:"completed_at"`
+	CreateTime            int64  `json:"create_time"`
+	UpdateTime            int64  `json:"update_time"`
+}
+
+type CryptoPaymentTransaction struct {
+	Id              int    `json:"id"`
+	Network         string `json:"network" gorm:"type:varchar(32);uniqueIndex:idx_crypto_tx_event"`
+	TxHash          string `json:"tx_hash" gorm:"type:varchar(128);uniqueIndex:idx_crypto_tx_event"`
+	LogIndex        int    `json:"log_index" gorm:"uniqueIndex:idx_crypto_tx_event"`
+	BlockNumber     int64  `json:"block_number" gorm:"index"`
+	BlockTimestamp  int64  `json:"block_timestamp"`
+	FromAddress     string `json:"from_address" gorm:"type:varchar(128);index"`
+	ToAddress       string `json:"to_address" gorm:"type:varchar(128);index"`
+	TokenContract   string `json:"token_contract" gorm:"type:varchar(128);index"`
+	TokenSymbol     string `json:"token_symbol" gorm:"type:varchar(16)"`
+	TokenDecimals   int    `json:"token_decimals"`
+	Amount          string `json:"amount" gorm:"type:varchar(64)"`
+	AmountBaseUnits string `json:"amount_base_units" gorm:"type:varchar(128);index"`
+	Confirmations   int64  `json:"confirmations"`
+	Status          string `json:"status" gorm:"type:varchar(32);index"`
+	MatchedOrderId  int    `json:"matched_order_id" gorm:"index"`
+	RawPayload      string `json:"raw_payload" gorm:"type:text"`
+	CreateTime      int64  `json:"create_time"`
+	UpdateTime      int64  `json:"update_time"`
+}
+
+type CryptoScannerState struct {
+	Network            string `json:"network" gorm:"primaryKey;type:varchar(32)"`
+	LastScannedBlock   int64  `json:"last_scanned_block"`
+	LastFinalizedBlock int64  `json:"last_finalized_block"`
+	UpdatedAt          int64  `json:"updated_at"`
+}
+
+func CryptoTopUpInitialStatus() string {
+	return common.TopUpStatusPending
+}
+
+func IsActiveCryptoOrderStatus(status string) bool {
+	switch status {
+	case CryptoPaymentStatusPending, CryptoPaymentStatusDetected, CryptoPaymentStatusConfirmed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (o *CryptoPaymentOrder) IsExpired(now time.Time) bool {
+	if o == nil || o.ExpiresAt <= 0 {
+		return false
+	}
+	return now.Unix() > o.ExpiresAt
+}
+
+func CryptoPayAmountFromSuffix(baseAmount decimal.Decimal, tokenDecimals int, suffix int) (string, string, error) {
+	if baseAmount.LessThanOrEqual(decimal.Zero) || tokenDecimals < 6 {
+		return "", "", ErrCryptoInvalidAmount
+	}
+	if suffix < 1 || suffix > 9999 {
+		return "", "", ErrCryptoInvalidSuffix
+	}
+	payAmount := baseAmount.Add(decimal.NewFromInt(int64(suffix)).Div(decimal.NewFromInt(1_000_000)))
+	payDisplay := payAmount.StringFixed(6)
+	unitMultiplier := decimal.NewFromInt(10).Pow(decimal.NewFromInt(int64(tokenDecimals)))
+	baseUnits := payAmount.Mul(unitMultiplier).Round(0)
+	return payDisplay, baseUnits.StringFixed(0), nil
+}
+
+func NormalizeCryptoNetwork(network string) string {
+	return strings.ToLower(strings.TrimSpace(network))
+}
+
+func cryptoNow() int64 {
+	return time.Now().Unix()
+}
+
+func cryptoRefCol(column string) string {
+	if common.UsingPostgreSQL {
+		return fmt.Sprintf("\"%s\"", column)
+	}
+	return fmt.Sprintf("`%s`", column)
+}

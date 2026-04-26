@@ -39,6 +39,7 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodWallet       = "wallet"
+	PaymentMethodCryptoUSDT   = "crypto_usdt"
 )
 
 var (
