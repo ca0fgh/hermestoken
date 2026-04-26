@@ -162,6 +162,9 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   // 渲染支付方式
   const renderPaymentMethod = (pm) => {
+    if (pm === 'crypto_usdt') {
+      return <Tag color='blue'>USDT</Tag>;
+    }
     const displayName = PAYMENT_METHOD_MAP[pm];
     return <Text>{displayName ? t(displayName) : pm || '-'}</Text>;
   };
@@ -243,7 +246,10 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         key: 'action',
         render: (_, record) => {
           const actions = [];
-          if (record.status === 'pending') {
+          if (
+            record.status === 'pending' &&
+            record.payment_method !== 'crypto_usdt'
+          ) {
             actions.push(
               <Button
                 key='complete'
