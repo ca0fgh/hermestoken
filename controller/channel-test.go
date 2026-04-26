@@ -944,6 +944,41 @@ func shouldWaitAutoDisabledChannelRecoveryCooldown(channel *model.Channel, now i
 	return now-disabledAt < int64(cooldown.Seconds())
 }
 
+func shouldWaitAutoDisabledModelAbilityRecoveryCooldown(disabledInfo service.AutoDisabledModelAbilityInfo, now int64, cooldown time.Duration) bool {
+	if cooldown <= 0 || disabledInfo.StatusTime <= 0 {
+		return false
+	}
+	return now-disabledInfo.StatusTime < int64(cooldown.Seconds())
+}
+
+func recoverAutoDisabledChannelModelAbilities(channel *model.Channel, notify bool, now int64, cooldown time.Duration) {
+	if channel == nil || !common.AutomaticEnableChannelEnabled {
+		return
+	}
+	disabledModels := service.GetAutoDisabledChannelModelAbilities(channel)
+	for modelName, disabledInfo := range disabledModels {
+		modelName = strings.TrimSpace(modelName)
+		if modelName == "" {
+			continue
+		}
+		if !notify && shouldWaitAutoDisabledModelAbilityRecoveryCooldown(disabledInfo, now, cooldown) {
+			continue
+		}
+		result := testChannel(channel, modelName, "", false)
+		if result.newAPIError == nil {
+			service.EnableChannelModelAbility(channel.Id, modelName, channel.Name)
+			continue
+		}
+		if service.ShouldDisableChannelModelAbility(result.newAPIError) && channel.GetAutoBan() {
+			service.DisableChannelModelAbility(
+				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()),
+				modelName,
+				result.newAPIError.ErrorWithStatusCode(),
+			)
+		}
+	}
+}
+
 func testAllChannels(notify bool) error {
 
 	testAllChannelsLock.Lock()
@@ -969,11 +1004,13 @@ func testAllChannels(notify bool) error {
 			testAllChannelsLock.Unlock()
 		}()
 
+		cooldown := autoDisabledChannelRecoveryCooldown()
 		for _, channel := range channels {
 			if channel.Status == common.ChannelStatusManuallyDisabled {
 				continue
 			}
-			if !notify && shouldWaitAutoDisabledChannelRecoveryCooldown(channel, common.GetTimestamp(), autoDisabledChannelRecoveryCooldown()) {
+			now := common.GetTimestamp()
+			if !notify && shouldWaitAutoDisabledChannelRecoveryCooldown(channel, now, cooldown) {
 				continue
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
@@ -1006,6 +1043,9 @@ func testAllChannels(notify bool) error {
 			// enable channel
 			if !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
 				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
+			}
+			if newAPIError == nil {
+				recoverAutoDisabledChannelModelAbilities(channel, notify, now, cooldown)
 			}
 
 			channel.UpdateResponseTime(milliseconds)

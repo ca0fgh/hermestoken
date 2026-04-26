@@ -11,6 +11,14 @@ import (
 	"github.com/QuantumNous/new-api/types"
 )
 
+const autoDisabledModelAbilitiesInfoKey = "auto_disabled_model_abilities"
+
+type AutoDisabledModelAbilityInfo struct {
+	Reason     string   `json:"reason"`
+	StatusTime int64    `json:"status_time"`
+	Groups     []string `json:"groups,omitempty"`
+}
+
 func formatNotifyType(channelId int, status int) string {
 	return fmt.Sprintf("%s_%d_%d", dto.NotifyTypeChannelUpdate, channelId, status)
 }
@@ -83,11 +91,111 @@ func DisableChannelModelAbility(channelError types.ChannelError, modelName strin
 		return
 	}
 	common.SysLog(fmt.Sprintf("通道「%s」（#%d）模型 %s 不可用，准备禁用该模型能力，原因：%s", channelError.ChannelName, channelError.ChannelId, modelName, reason))
-	if err := model.UpdateAbilityStatusByChannelModel(channelError.ChannelId, modelName, false); err != nil {
+	groups, err := model.GetEnabledGroupsForChannelModel(channelError.ChannelId, modelName)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to get enabled groups before disabling channel model ability: channel_id=%d, model=%s, error=%v", channelError.ChannelId, modelName, err))
+	}
+	if len(groups) == 0 {
+		if channel, err := model.GetChannelById(channelError.ChannelId, true); err == nil {
+			groups = GetAutoDisabledChannelModelAbilities(channel)[modelName].Groups
+		}
+	}
+	if err := model.UpdateAbilityStatusByChannelModelGroups(channelError.ChannelId, modelName, groups, false); err != nil {
 		common.SysLog(fmt.Sprintf("failed to disable channel model ability: channel_id=%d, model=%s, error=%v", channelError.ChannelId, modelName, err))
 		return
 	}
+	if err := SaveAutoDisabledChannelModelAbility(channelError.ChannelId, modelName, reason, groups); err != nil {
+		common.SysLog(fmt.Sprintf("failed to save disabled channel model ability info: channel_id=%d, model=%s, error=%v", channelError.ChannelId, modelName, err))
+	}
 	model.CacheDisableChannelModel(channelError.ChannelId, modelName)
+}
+
+func EnableChannelModelAbility(channelId int, modelName string, channelName string) {
+	modelName = strings.TrimSpace(modelName)
+	if channelId <= 0 || modelName == "" {
+		return
+	}
+	channel, err := model.GetChannelById(channelId, true)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to get channel before enabling channel model ability: channel_id=%d, model=%s, error=%v", channelId, modelName, err))
+		return
+	}
+	disabledInfo := GetAutoDisabledChannelModelAbilities(channel)[modelName]
+	if err := model.UpdateAbilityStatusByChannelModelGroups(channelId, modelName, disabledInfo.Groups, true); err != nil {
+		common.SysLog(fmt.Sprintf("failed to enable channel model ability: channel_id=%d, model=%s, error=%v", channelId, modelName, err))
+		return
+	}
+	if err := ClearAutoDisabledChannelModelAbility(channelId, modelName); err != nil {
+		common.SysLog(fmt.Sprintf("failed to clear disabled channel model ability info: channel_id=%d, model=%s, error=%v", channelId, modelName, err))
+	}
+	model.InitChannelCache()
+	subject := fmt.Sprintf("通道「%s」（#%d）模型 %s 已被启用", channelName, channelId, modelName)
+	content := fmt.Sprintf("通道「%s」（#%d）模型 %s 探活成功，已自动启用", channelName, channelId, modelName)
+	NotifyRootUser(formatNotifyType(channelId, common.ChannelStatusEnabled), subject, content)
+}
+
+func GetAutoDisabledChannelModelAbilities(channel *model.Channel) map[string]AutoDisabledModelAbilityInfo {
+	if channel == nil {
+		return map[string]AutoDisabledModelAbilityInfo{}
+	}
+	raw, ok := channel.GetOtherInfo()[autoDisabledModelAbilitiesInfoKey]
+	if !ok || raw == nil {
+		return map[string]AutoDisabledModelAbilityInfo{}
+	}
+	rawBytes, err := common.Marshal(raw)
+	if err != nil {
+		return map[string]AutoDisabledModelAbilityInfo{}
+	}
+	disabled := make(map[string]AutoDisabledModelAbilityInfo)
+	if err := common.Unmarshal(rawBytes, &disabled); err != nil {
+		return map[string]AutoDisabledModelAbilityInfo{}
+	}
+	return disabled
+}
+
+func SaveAutoDisabledChannelModelAbility(channelId int, modelName string, reason string, groups []string) error {
+	modelName = strings.TrimSpace(modelName)
+	if channelId <= 0 || modelName == "" {
+		return nil
+	}
+	channel, err := model.GetChannelById(channelId, true)
+	if err != nil {
+		return err
+	}
+	disabled := GetAutoDisabledChannelModelAbilities(channel)
+	disabled[modelName] = AutoDisabledModelAbilityInfo{
+		Reason:     reason,
+		StatusTime: common.GetTimestamp(),
+		Groups:     groups,
+	}
+	info := channel.GetOtherInfo()
+	info[autoDisabledModelAbilitiesInfoKey] = disabled
+	channel.SetOtherInfo(info)
+	return channel.SaveWithoutKey()
+}
+
+func ClearAutoDisabledChannelModelAbility(channelId int, modelName string) error {
+	modelName = strings.TrimSpace(modelName)
+	if channelId <= 0 || modelName == "" {
+		return nil
+	}
+	channel, err := model.GetChannelById(channelId, true)
+	if err != nil {
+		return err
+	}
+	disabled := GetAutoDisabledChannelModelAbilities(channel)
+	if len(disabled) == 0 {
+		return nil
+	}
+	delete(disabled, modelName)
+	info := channel.GetOtherInfo()
+	if len(disabled) == 0 {
+		delete(info, autoDisabledModelAbilitiesInfoKey)
+	} else {
+		info[autoDisabledModelAbilitiesInfoKey] = disabled
+	}
+	channel.SetOtherInfo(info)
+	return channel.SaveWithoutKey()
 }
 
 func isUpstreamTokenPoolExhausted(lowerMessage string) bool {

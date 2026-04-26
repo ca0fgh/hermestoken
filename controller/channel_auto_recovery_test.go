@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,4 +36,24 @@ func TestShouldWaitAutoDisabledChannelRecoveryCooldown(t *testing.T) {
 	require.False(t, shouldWaitAutoDisabledChannelRecoveryCooldown(enabledChannel, now, cooldown))
 
 	require.False(t, shouldWaitAutoDisabledChannelRecoveryCooldown(recentlyDisabled, now, 0))
+}
+
+func TestShouldWaitAutoDisabledModelAbilityRecoveryCooldown(t *testing.T) {
+	now := int64(1777135200)
+	cooldown := 30 * time.Minute
+
+	recentlyDisabled := service.AutoDisabledModelAbilityInfo{
+		StatusTime: now - int64((29 * time.Minute).Seconds()),
+	}
+	require.True(t, shouldWaitAutoDisabledModelAbilityRecoveryCooldown(recentlyDisabled, now, cooldown))
+
+	cooldownElapsed := service.AutoDisabledModelAbilityInfo{
+		StatusTime: now - int64((31 * time.Minute).Seconds()),
+	}
+	require.False(t, shouldWaitAutoDisabledModelAbilityRecoveryCooldown(cooldownElapsed, now, cooldown))
+
+	unknownDisableTime := service.AutoDisabledModelAbilityInfo{}
+	require.False(t, shouldWaitAutoDisabledModelAbilityRecoveryCooldown(unknownDisableTime, now, cooldown))
+
+	require.False(t, shouldWaitAutoDisabledModelAbilityRecoveryCooldown(recentlyDisabled, now, 0))
 }

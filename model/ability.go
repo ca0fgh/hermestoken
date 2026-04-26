@@ -280,14 +280,32 @@ func UpdateAbilityStatus(channelId int, status bool) error {
 }
 
 func UpdateAbilityStatusByChannelModel(channelId int, modelName string, status bool) error {
+	return UpdateAbilityStatusByChannelModelGroups(channelId, modelName, nil, status)
+}
+
+func UpdateAbilityStatusByChannelModelGroups(channelId int, modelName string, groups []string, status bool) error {
 	modelName = strings.TrimSpace(modelName)
 	if channelId <= 0 || modelName == "" {
 		return nil
 	}
-	return DB.Model(&Ability{}).
-		Where("channel_id = ? AND model = ?", channelId, modelName).
-		Select("enabled").
-		Update("enabled", status).Error
+	query := DB.Model(&Ability{}).Where("channel_id = ? AND model = ?", channelId, modelName)
+	normalizedGroups := make([]string, 0, len(groups))
+	seenGroups := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		if _, ok := seenGroups[group]; ok {
+			continue
+		}
+		seenGroups[group] = struct{}{}
+		normalizedGroups = append(normalizedGroups, group)
+	}
+	if len(normalizedGroups) > 0 {
+		query = query.Where(commonGroupCol+" IN ?", normalizedGroups)
+	}
+	return query.Select("enabled").Update("enabled", status).Error
 }
 
 func UpdateAbilityStatusByTag(tag string, status bool) error {
