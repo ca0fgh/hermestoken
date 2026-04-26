@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 const (
@@ -144,4 +145,109 @@ func cryptoRefCol(column string) string {
 		return fmt.Sprintf("\"%s\"", column)
 	}
 	return fmt.Sprintf("`%s`", column)
+}
+
+type CreateCryptoTopUpOrderInput struct {
+	UserID                int
+	Network               string
+	Amount                int64
+	ReceiveAddress        string
+	TokenContract         string
+	TokenDecimals         int
+	RequiredConfirmations int
+	ExpireMinutes         int
+	SuffixMax             int
+	Now                   time.Time
+	SuffixGenerator       func(max int) int
+}
+
+func CreateCryptoTopUpOrder(input CreateCryptoTopUpOrderInput) (*CryptoPaymentOrder, error) {
+	if input.UserID <= 0 || input.Amount <= 0 || input.TokenDecimals < 6 || strings.TrimSpace(input.ReceiveAddress) == "" || strings.TrimSpace(input.TokenContract) == "" {
+		return nil, ErrCryptoInvalidAmount
+	}
+	if input.ExpireMinutes <= 0 {
+		input.ExpireMinutes = 10
+	}
+	if input.RequiredConfirmations <= 0 {
+		input.RequiredConfirmations = 20
+	}
+	if input.SuffixMax <= 0 || input.SuffixMax > 9999 {
+		input.SuffixMax = 9999
+	}
+	if input.Now.IsZero() {
+		input.Now = time.Now()
+	}
+	if input.SuffixGenerator == nil {
+		input.SuffixGenerator = func(max int) int {
+			return common.GetRandomInt(max) + 1
+		}
+	}
+
+	var created CryptoPaymentOrder
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		for attempt := 0; attempt < 20; attempt++ {
+			suffix := input.SuffixGenerator(input.SuffixMax)
+			payAmount, payBaseUnits, amountErr := CryptoPayAmountFromSuffix(decimal.NewFromInt(input.Amount), input.TokenDecimals, suffix)
+			if amountErr != nil {
+				return amountErr
+			}
+
+			var count int64
+			if err := tx.Model(&CryptoPaymentOrder{}).
+				Where("network = ? AND receive_address = ? AND pay_amount_base_units = ? AND expires_at >= ? AND status IN ?",
+					NormalizeCryptoNetwork(input.Network), strings.TrimSpace(input.ReceiveAddress), payBaseUnits, input.Now.Unix(), []string{CryptoPaymentStatusPending, CryptoPaymentStatusDetected, CryptoPaymentStatusConfirmed}).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				continue
+			}
+
+			tradeNo := fmt.Sprintf("CRYPTO-%d-%d-%s", input.UserID, input.Now.UnixMilli(), common.GetRandomString(6))
+			payMoney, parseErr := decimal.NewFromString(payAmount)
+			if parseErr != nil {
+				return parseErr
+			}
+			topUp := &TopUp{
+				UserId:        input.UserID,
+				Amount:        input.Amount,
+				Money:         payMoney.InexactFloat64(),
+				TradeNo:       tradeNo,
+				PaymentMethod: PaymentMethodCryptoUSDT,
+				Currency:      CryptoTokenUSDT,
+				CreateTime:    input.Now.Unix(),
+				Status:        common.TopUpStatusPending,
+			}
+			if err := tx.Create(topUp).Error; err != nil {
+				return err
+			}
+
+			created = CryptoPaymentOrder{
+				TopUpId:               topUp.Id,
+				TradeNo:               tradeNo,
+				UserId:                input.UserID,
+				Network:               NormalizeCryptoNetwork(input.Network),
+				TokenSymbol:           CryptoTokenUSDT,
+				TokenContract:         strings.TrimSpace(input.TokenContract),
+				TokenDecimals:         input.TokenDecimals,
+				ReceiveAddress:        strings.TrimSpace(input.ReceiveAddress),
+				BaseAmount:            decimal.NewFromInt(input.Amount).StringFixed(6),
+				PayAmount:             payAmount,
+				PayAmountBaseUnits:    payBaseUnits,
+				UniqueSuffix:          suffix,
+				ExpiresAt:             input.Now.Add(time.Duration(input.ExpireMinutes) * time.Minute).Unix(),
+				RequiredConfirmations: input.RequiredConfirmations,
+				Status:                CryptoPaymentStatusPending,
+				MatchedLogIndex:       -1,
+				CreateTime:            input.Now.Unix(),
+				UpdateTime:            input.Now.Unix(),
+			}
+			return tx.Create(&created).Error
+		}
+		return ErrCryptoAmountCollision
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &created, nil
 }

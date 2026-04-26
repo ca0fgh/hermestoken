@@ -54,3 +54,66 @@ func TestCryptoTablesAutoMigrate(t *testing.T) {
 	require.True(t, DB.Migrator().HasTable(&CryptoPaymentTransaction{}))
 	require.True(t, DB.Migrator().HasTable(&CryptoScannerState{}))
 }
+
+func TestCreateCryptoTopUpOrderCreatesTopUpAndCryptoOrder(t *testing.T) {
+	truncateTables(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+	insertUserForPaymentGuardTest(t, 701, 0)
+
+	input := CreateCryptoTopUpOrderInput{
+		UserID:                701,
+		Network:               CryptoNetworkTronTRC20,
+		Amount:                10,
+		ReceiveAddress:        "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z",
+		TokenContract:         "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+		TokenDecimals:         6,
+		RequiredConfirmations: 20,
+		ExpireMinutes:         10,
+		SuffixMax:             9999,
+		Now:                   time.Unix(1000, 0),
+		SuffixGenerator: func(max int) int {
+			return 3721
+		},
+	}
+
+	order, err := CreateCryptoTopUpOrder(input)
+	require.NoError(t, err)
+	assert.Equal(t, "10.003721", order.PayAmount)
+	assert.Equal(t, "10003721", order.PayAmountBaseUnits)
+	assert.Equal(t, CryptoPaymentStatusPending, order.Status)
+	assert.Equal(t, int64(1600), order.ExpiresAt)
+
+	topUp := GetTopUpByTradeNo(order.TradeNo)
+	require.NotNil(t, topUp)
+	assert.Equal(t, PaymentMethodCryptoUSDT, topUp.PaymentMethod)
+	assert.Equal(t, "USDT", topUp.Currency)
+	assert.Equal(t, int64(10), topUp.Amount)
+	assert.Equal(t, 10.003721, topUp.Money)
+}
+
+func TestCreateCryptoTopUpOrderRejectsActiveAmountCollision(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 702, 0)
+
+	input := CreateCryptoTopUpOrderInput{
+		UserID:                702,
+		Network:               CryptoNetworkTronTRC20,
+		Amount:                10,
+		ReceiveAddress:        "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z",
+		TokenContract:         "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+		TokenDecimals:         6,
+		RequiredConfirmations: 20,
+		ExpireMinutes:         10,
+		SuffixMax:             9999,
+		Now:                   time.Unix(1000, 0),
+		SuffixGenerator: func(max int) int {
+			return 3721
+		},
+	}
+	_, err := CreateCryptoTopUpOrder(input)
+	require.NoError(t, err)
+	_, err = CreateCryptoTopUpOrder(input)
+	require.ErrorIs(t, err, ErrCryptoAmountCollision)
+}
