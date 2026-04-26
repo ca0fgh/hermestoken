@@ -91,6 +91,9 @@ const RechargeCard = ({
   enableWaffoTopUp,
   waffoTopUp,
   waffoPayMethods,
+  enableCryptoTopUp,
+  cryptoNetworks,
+  createCryptoTopUpOrder,
   subscriptionLoading = false,
   subscriptionPlans = [],
   billingPreference,
@@ -234,13 +237,17 @@ const RechargeCard = ({
       ) : enableOnlineTopUp ||
         enableStripeTopUp ||
         enableCreemTopUp ||
-        enableWaffoTopUp ? (
+        enableWaffoTopUp ||
+        enableCryptoTopUp ? (
         <Form
           getFormApi={(api) => (onlineFormApiRef.current = api)}
           initValues={{ topUpCount: topUpCount }}
         >
           <div className='space-y-6'>
-            {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+            {(enableOnlineTopUp ||
+              enableStripeTopUp ||
+              enableWaffoTopUp ||
+              enableCryptoTopUp) && (
               <Row gutter={12}>
                 <Col xs={24} sm={24} md={24} lg={10} xl={10}>
                   <Form.InputNumber
@@ -249,7 +256,8 @@ const RechargeCard = ({
                     disabled={
                       !enableOnlineTopUp &&
                       !enableStripeTopUp &&
-                      !enableWaffoTopUp
+                      !enableWaffoTopUp &&
+                      !enableCryptoTopUp
                     }
                     placeholder={
                       t('充值数量，最低 ') + renderQuotaWithAmount(minTopUp)
@@ -374,7 +382,10 @@ const RechargeCard = ({
               </Row>
             )}
 
-            {(enableOnlineTopUp || enableStripeTopUp || enableWaffoTopUp) && (
+            {(enableOnlineTopUp ||
+              enableStripeTopUp ||
+              enableWaffoTopUp ||
+              enableCryptoTopUp) && (
               <Form.Slot
                 label={
                   <div className='flex items-center gap-2'>
@@ -533,6 +544,33 @@ const RechargeCard = ({
                         className='!rounded-lg !px-4 !py-2'
                       >
                         {method.name}
+                      </Button>
+                    ))}
+                  </Space>
+                </Form.Slot>
+              )}
+
+            {enableCryptoTopUp &&
+              cryptoNetworks &&
+              cryptoNetworks.length > 0 && (
+                <Form.Slot label={t('USDT 充值')}>
+                  <Space wrap>
+                    {cryptoNetworks.map((network) => (
+                      <Button
+                        key={network.network}
+                        theme='outline'
+                        type='tertiary'
+                        onClick={() => createCryptoTopUpOrder(network.network)}
+                        loading={paymentLoading}
+                        icon={
+                          <CreditCard
+                            size={18}
+                            color='var(--semi-color-text-2)'
+                          />
+                        }
+                        className='!rounded-lg !px-4 !py-2'
+                      >
+                        {network.display_name} USDT
                       </Button>
                     ))}
                   </Space>

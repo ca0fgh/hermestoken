@@ -44,6 +44,7 @@ import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import WithdrawalApplyModal from './modals/WithdrawalApplyModal';
 import WithdrawalHistoryModal from './modals/WithdrawalHistoryModal';
+import CryptoPaymentModal from './modals/CryptoPaymentModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -80,6 +81,10 @@ const TopUp = () => {
   const [enableWaffoTopUp, setEnableWaffoTopUp] = useState(false);
   const [waffoPayMethods, setWaffoPayMethods] = useState([]);
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
+  const [enableCryptoTopUp, setEnableCryptoTopUp] = useState(false);
+  const [cryptoNetworks, setCryptoNetworks] = useState([]);
+  const [cryptoOrder, setCryptoOrder] = useState(null);
+  const [cryptoModalOpen, setCryptoModalOpen] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -367,6 +372,30 @@ const TopUp = () => {
     }
   };
 
+  const createCryptoTopUpOrder = async (network) => {
+    if (topUpCount < minTopUp) {
+      showError(t('充值数量不能小于') + minTopUp);
+      return;
+    }
+    try {
+      setPaymentLoading(true);
+      const res = await API.post('/api/user/crypto/topup/order', {
+        network,
+        amount: parseInt(topUpCount),
+      });
+      if (res.data?.success) {
+        setCryptoOrder(res.data.data);
+        setCryptoModalOpen(true);
+      } else {
+        showError(res.data?.data || res.data?.message || t('支付请求失败'));
+      }
+    } catch (error) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const processCreemCallback = (data) => {
     // 与 Stripe 保持一致的实现方式
     window.open(data.checkout_url, '_blank');
@@ -532,6 +561,8 @@ const TopUp = () => {
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
           setWaffoMinTopUp(data.waffo_min_topup || 1);
+          setEnableCryptoTopUp(data.enable_crypto_usdt_topup || false);
+          setCryptoNetworks(data.crypto_networks || []);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -743,6 +774,41 @@ const TopUp = () => {
   }, []);
 
   useEffect(() => {
+    if (!cryptoModalOpen || !cryptoOrder?.trade_no) return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await API.get(
+          `/api/user/crypto/topup/order/${cryptoOrder.trade_no}`,
+        );
+        if (res.data?.success) {
+          const nextOrder = res.data.data;
+          setCryptoOrder(nextOrder);
+          if (nextOrder.status === 'success') {
+            showSuccess(t('充值成功'));
+            getUserQuota().then();
+          }
+          if (
+            [
+              'success',
+              'expired',
+              'failed',
+              'underpaid',
+              'overpaid',
+              'late_paid',
+              'ambiguous',
+            ].includes(nextOrder.status)
+          ) {
+            clearInterval(timer);
+          }
+        }
+      } catch (error) {
+        // Polling failures are retried by the next interval.
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [cryptoModalOpen, cryptoOrder?.trade_no, t]);
+
+  useEffect(() => {
     if (statusState?.status) {
       // const minTopUpValue = statusState.status.min_topup || 1;
       // setMinTopUp(minTopUpValue);
@@ -761,6 +827,10 @@ const TopUp = () => {
   const getAmount = async (value) => {
     if (value === undefined) {
       value = topUpCount;
+    }
+    if (!enableOnlineTopUp && enableCryptoTopUp) {
+      setAmount(parseFloat(value) || 0);
+      return;
     }
     setAmountLoading(true);
     try {
@@ -925,6 +995,13 @@ const TopUp = () => {
         config={withdrawalConfig}
       />
 
+      <CryptoPaymentModal
+        t={t}
+        open={cryptoModalOpen}
+        order={cryptoOrder}
+        onCancel={() => setCryptoModalOpen(false)}
+      />
+
       {/* Creem 充值确认模态框 */}
       <Modal
         title={t('确定要充值 $')}
@@ -967,6 +1044,9 @@ const TopUp = () => {
             enableWaffoTopUp={enableWaffoTopUp}
             waffoTopUp={waffoTopUp}
             waffoPayMethods={waffoPayMethods}
+            enableCryptoTopUp={enableCryptoTopUp}
+            cryptoNetworks={cryptoNetworks}
+            createCryptoTopUpOrder={createCryptoTopUpOrder}
             presetAmounts={presetAmounts}
             selectedPreset={selectedPreset}
             selectPresetAmount={selectPresetAmount}
