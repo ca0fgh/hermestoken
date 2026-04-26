@@ -32,6 +32,8 @@ func BuildConfiguredScanners() []NetworkScanner {
 		switch network.Network {
 		case model.CryptoNetworkBSCERC20:
 			scanners = append(scanners, NewBSCScanner(network))
+		case model.CryptoNetworkTronTRC20:
+			scanners = append(scanners, NewTronScanner(network))
 		}
 	}
 	return scanners
