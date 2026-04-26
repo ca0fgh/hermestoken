@@ -149,6 +149,49 @@ func AdminListCryptoTransactions(c *gin.Context) {
 	common.ApiSuccess(c, pageInfo)
 }
 
+type adminCompleteCryptoTopUpRequest struct {
+	Network         string `json:"network"`
+	TxHash          string `json:"tx_hash"`
+	LogIndex        int    `json:"log_index"`
+	ToAddress       string `json:"to_address"`
+	TokenContract   string `json:"token_contract"`
+	AmountBaseUnits string `json:"amount_base_units"`
+	Confirmations   int64  `json:"confirmations"`
+	Reason          string `json:"reason"`
+}
+
 func AdminCompleteCryptoTopUp(c *gin.Context) {
-	common.ApiErrorMsg(c, "链上证据不完整")
+	tradeNo := strings.TrimSpace(c.Param("trade_no"))
+	var req adminCompleteCryptoTopUpRequest
+	if err := c.ShouldBindJSON(&req); err != nil || tradeNo == "" || strings.TrimSpace(req.TxHash) == "" || strings.TrimSpace(req.Reason) == "" {
+		common.ApiErrorMsg(c, "链上证据不完整")
+		return
+	}
+	order := model.GetCryptoPaymentOrderByTradeNo(tradeNo)
+	if order == nil {
+		common.ApiErrorMsg(c, "订单不存在")
+		return
+	}
+	err := model.CompleteCryptoTopUp(tradeNo, model.CryptoTxEvidence{
+		Network:         req.Network,
+		TxHash:          req.TxHash,
+		LogIndex:        req.LogIndex,
+		ToAddress:       req.ToAddress,
+		TokenContract:   req.TokenContract,
+		AmountBaseUnits: req.AmountBaseUnits,
+		Confirmations:   req.Confirmations,
+		RawPayload:      common.GetJsonString(req),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.RecordLogWithAdminInfo(order.UserId, model.LogTypeTopup, "管理员USDT补单成功，订单: "+tradeNo+"，原因: "+req.Reason, map[string]interface{}{
+		"admin_id": c.GetInt("id"),
+		"ip":       c.ClientIP(),
+		"network":  req.Network,
+		"tx_hash":  req.TxHash,
+		"reason":   req.Reason,
+	})
+	common.ApiSuccess(c, nil)
 }
