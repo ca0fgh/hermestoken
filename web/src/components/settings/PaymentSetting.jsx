@@ -29,6 +29,7 @@ import SettingsPaymentGatewayStripe from '../../pages/Setting/Payment/SettingsPa
 import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPaymentGatewayCreem';
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import SettingsPaymentGatewayWaffoPancake from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffoPancake';
+import SettingsPaymentGatewayCrypto from '../../pages/Setting/Payment/SettingsPaymentGatewayCrypto';
 import SettingsWithdrawal from '../../pages/Setting/Payment/SettingsWithdrawal';
 
 const PaymentSetting = () => {
@@ -65,6 +66,21 @@ const PaymentSetting = () => {
     WaffoPancakeCurrency: 'USD',
     WaffoPancakeUnitPrice: 1.0,
     WaffoPancakeMinTopUp: 1,
+    CryptoPaymentEnabled: false,
+    CryptoScannerEnabled: true,
+    CryptoOrderExpireMinutes: 10,
+    CryptoUniqueSuffixMax: 9999,
+    CryptoTronEnabled: false,
+    CryptoTronReceiveAddress: '',
+    CryptoTronUSDTContract: 'TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj',
+    CryptoTronRPCURL: '',
+    CryptoTronAPIKey: '',
+    CryptoTronConfirmations: 20,
+    CryptoBSCEnabled: false,
+    CryptoBSCReceiveAddress: '',
+    CryptoBSCUSDTContract: '0x55d398326f99059fF775485246999027B3197955',
+    CryptoBSCRPCURL: '',
+    CryptoBSCConfirmations: 15,
   });
 
   let [loading, setLoading] = useState(false);
@@ -202,14 +218,17 @@ const PaymentSetting = () => {
                 hideSectionTitle
               />
             </Tabs.TabPane>
-            <Tabs.TabPane
-              tab={t('Waffo Pancake 设置')}
-              itemKey='waffo-pancake'
-            >
+            <Tabs.TabPane tab={t('Waffo Pancake 设置')} itemKey='waffo-pancake'>
               <SettingsPaymentGatewayWaffoPancake
                 options={inputs}
                 refresh={onRefresh}
                 hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('USDT 设置')} itemKey='crypto'>
+              <SettingsPaymentGatewayCrypto
+                options={inputs}
+                refresh={onRefresh}
               />
             </Tabs.TabPane>
           </Tabs>
