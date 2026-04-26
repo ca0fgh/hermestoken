@@ -18,7 +18,7 @@ This plan implements Phase 1 from `docs/superpowers/specs/2026-04-26-usdt-crypto
 - frontend user payment modal, polling, and admin crypto settings
 - basic admin order/transaction visibility and secure admin completion
 
-This plan does not implement USDC, HD wallets, automatic refund, automatic sweeping, or additional chains.
+This plan does not implement USDC, Polygon, HD wallets, automatic refund, automatic sweeping, or additional chains.
 
 ## File Map
 
@@ -149,8 +149,6 @@ import (
 )
 
 const (
-	PaymentMethodCryptoUSDT = "crypto_usdt"
-
 	CryptoNetworkTronTRC20 = "tron_trc20"
 	CryptoNetworkBSCERC20  = "bsc_erc20"
 
@@ -430,7 +428,11 @@ func TestGetCryptoPaymentNetworksHidesIncompleteNetworks(t *testing.T) {
 		"CryptoBSCReceiveAddress":  "",
 		"CryptoBSCUSDTContract":    "0x55d398326f99059fF775485246999027B3197955",
 	}
-	t.Cleanup(func() { common.OptionMap = original })
+	LoadCryptoPaymentSettingsFromOptionMap()
+	t.Cleanup(func() {
+		common.OptionMap = original
+		LoadCryptoPaymentSettingsFromOptionMap()
+	})
 
 	networks := GetEnabledCryptoPaymentNetworks()
 	assert.Len(t, networks, 1)
@@ -915,28 +917,65 @@ package controller
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func setupCryptoControllerTest(t *testing.T) {
 	t.Helper()
-	model.TruncateTablesForTest(t)
-	model.InsertUserForTest(t, 801, 0, "default")
+	gin.SetMode(gin.TestMode)
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+	model.InitColumnMetadata()
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	model.LOG_DB = db
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.TopUp{},
+		&model.Log{},
+		&model.CryptoPaymentOrder{},
+		&model.CryptoPaymentTransaction{},
+		&model.CryptoScannerState{},
+	))
+	require.NoError(t, db.Create(&model.User{
+		Id:       801,
+		Username: "crypto_controller_user",
+		Password: "password123",
+		Status:   common.UserStatusEnabled,
+		Quota:    0,
+		Group:    "default",
+	}).Error)
+
 	setting.CryptoPaymentEnabled = true
 	setting.CryptoTronEnabled = true
 	setting.CryptoTronReceiveAddress = "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z"
 	setting.CryptoTronUSDTContract = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj"
 	setting.CryptoTronConfirmations = 20
 	setting.CryptoOrderExpireMinutes = 10
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+	})
 }
 
 func TestGetCryptoTopUpConfig(t *testing.T) {
@@ -982,16 +1021,44 @@ func TestCreateCryptoTopUpOrderRejectsDisabledNetwork(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "不可用")
 }
+
+func TestGetCryptoTopUpOrderExpiresPendingOrder(t *testing.T) {
+	setupCryptoControllerTest(t)
+	order, err := model.CreateCryptoTopUpOrder(model.CreateCryptoTopUpOrderInput{
+		UserID:                801,
+		Network:               model.CryptoNetworkTronTRC20,
+		Amount:                10,
+		ReceiveAddress:        setting.CryptoTronReceiveAddress,
+		TokenContract:         setting.CryptoTronUSDTContract,
+		TokenDecimals:         6,
+		RequiredConfirmations: 20,
+		ExpireMinutes:         10,
+		SuffixMax:             9999,
+	})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.CryptoPaymentOrder{}).Where("id = ?", order.Id).Update("expires_at", int64(1)).Error)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("id", 801)
+	c.Params = gin.Params{{Key: "trade_no", Value: order.TradeNo}}
+
+	GetCryptoTopUpOrder(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "expired")
+}
 ```
 
-If shared test helpers do not exist, add exported helpers in `model/topup_crypto_test.go` or convert the test to use local seeding in controller package. Keep helpers small and scoped to tests.
+Keep controller test DB setup local to the controller package so it does not depend on unexported model test helpers.
+
 
 - [ ] **Step 2: Run controller tests to verify failure**
 
 Run:
 
 ```bash
-go test ./controller -run 'TestGetCryptoTopUpConfig|TestCreateCryptoTopUpOrder' -count=1
+go test ./controller -run 'TestGetCryptoTopUpConfig|TestCreateCryptoTopUpOrder|TestGetCryptoTopUpOrder' -count=1
 ```
 
 Expected: FAIL with undefined crypto controller functions.
@@ -1006,6 +1073,7 @@ package controller
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -1070,6 +1138,12 @@ func GetCryptoTopUpOrder(c *gin.Context) {
 		common.ApiErrorMsg(c, "订单不存在")
 		return
 	}
+	var err error
+	order, err = model.ExpireCryptoPaymentOrderIfNeeded(order, time.Now())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	common.ApiSuccess(c, cryptoOrderResponse(order))
 }
 
@@ -1123,6 +1197,18 @@ func GetCryptoOrderConfirmations(orderID int) int64 {
 	}
 	return tx.Confirmations
 }
+
+func ExpireCryptoPaymentOrderIfNeeded(order *CryptoPaymentOrder, now time.Time) (*CryptoPaymentOrder, error) {
+	if order == nil || order.Status != CryptoPaymentStatusPending || !order.IsExpired(now) {
+		return order, nil
+	}
+	order.Status = CryptoPaymentStatusExpired
+	order.UpdateTime = now.Unix()
+	if err := DB.Save(order).Error; err != nil {
+		return nil, err
+	}
+	return order, nil
+}
 ```
 
 - [ ] **Step 4: Register routes and top-up info**
@@ -1147,7 +1233,7 @@ In `controller/topup.go`, add to `GetTopUpInfo` data:
 Run:
 
 ```bash
-go test ./controller -run 'TestGetCryptoTopUpConfig|TestCreateCryptoTopUpOrder' -count=1
+go test ./controller -run 'TestGetCryptoTopUpConfig|TestCreateCryptoTopUpOrder|TestGetCryptoTopUpOrder' -count=1
 ```
 
 Expected: PASS.
@@ -1213,6 +1299,42 @@ func TestCompleteCryptoTopUpRejectsAmountMismatch(t *testing.T) {
 	})
 	require.ErrorIs(t, err, ErrCryptoTransactionMismatch)
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 902))
+}
+
+func TestCompleteCryptoTopUpRejectsReusedTransaction(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 903, 0)
+	insertUserForPaymentGuardTest(t, 904, 0)
+	firstOrder := seedCryptoOrderForCompletion(t, 903, 10, "10003721")
+	secondOrder := seedCryptoOrderForCompletion(t, 904, 10, "10003721")
+	require.NoError(t, DB.Create(&CryptoPaymentTransaction{
+		Network:         firstOrder.Network,
+		TxHash:          "0xreused",
+		LogIndex:        0,
+		ToAddress:       firstOrder.ReceiveAddress,
+		TokenContract:   firstOrder.TokenContract,
+		TokenSymbol:     CryptoTokenUSDT,
+		TokenDecimals:   firstOrder.TokenDecimals,
+		Amount:          firstOrder.PayAmount,
+		AmountBaseUnits: firstOrder.PayAmountBaseUnits,
+		Confirmations:   20,
+		Status:          CryptoTransactionStatusConfirmed,
+		MatchedOrderId:  firstOrder.Id,
+		CreateTime:      time.Now().Unix(),
+		UpdateTime:      time.Now().Unix(),
+	}).Error)
+
+	err := CompleteCryptoTopUp(secondOrder.TradeNo, CryptoTxEvidence{
+		Network:         secondOrder.Network,
+		TxHash:          "0xreused",
+		LogIndex:        0,
+		ToAddress:       secondOrder.ReceiveAddress,
+		TokenContract:   secondOrder.TokenContract,
+		AmountBaseUnits: secondOrder.PayAmountBaseUnits,
+		Confirmations:   int64(secondOrder.RequiredConfirmations),
+	})
+	require.ErrorIs(t, err, ErrCryptoTransactionMismatch)
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 904))
 }
 ```
 
@@ -1350,8 +1472,25 @@ func CompleteCryptoTopUp(tradeNo string, evidence CryptoTxEvidence) error {
 			CreateTime:      now,
 			UpdateTime:      now,
 		}
-		if err := tx.Where("network = ? AND tx_hash = ? AND log_index = ?", txRecord.Network, txRecord.TxHash, txRecord.LogIndex).FirstOrCreate(&txRecord).Error; err != nil {
-			return err
+		var existingTx CryptoPaymentTransaction
+		findErr := tx.Where("network = ? AND tx_hash = ? AND log_index = ?", txRecord.Network, txRecord.TxHash, txRecord.LogIndex).First(&existingTx).Error
+		if findErr == nil {
+			if existingTx.MatchedOrderId != 0 && existingTx.MatchedOrderId != order.Id {
+				return ErrCryptoTransactionMismatch
+			}
+			existingTx.MatchedOrderId = order.Id
+			existingTx.Status = CryptoTransactionStatusConfirmed
+			existingTx.Confirmations = evidence.Confirmations
+			existingTx.UpdateTime = now
+			if err := tx.Save(&existingTx).Error; err != nil {
+				return err
+			}
+		} else if errors.Is(findErr, gorm.ErrRecordNotFound) {
+			if err := tx.Create(&txRecord).Error; err != nil {
+				return err
+			}
+		} else {
+			return findErr
 		}
 
 		topUp.Status = common.TopUpStatusSuccess
@@ -1748,6 +1887,8 @@ package crypto_payment
 import (
 	"context"
 	"time"
+
+	"github.com/go-redis/redis/v8"
 )
 
 type LockStore interface {
@@ -1760,6 +1901,22 @@ type ScannerLock struct {
 	key   string
 	owner string
 	ttl   time.Duration
+}
+
+type redisLockStore struct {
+	client *redis.Client
+}
+
+func NewRedisLockStore(client *redis.Client) LockStore {
+	return &redisLockStore{client: client}
+}
+
+func (s *redisLockStore) SetNX(ctx context.Context, key string, value string, ttl time.Duration) (bool, error) {
+	return s.client.SetNX(ctx, key, value, ttl).Result()
+}
+
+func (s *redisLockStore) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
+	return s.client.Eval(ctx, script, keys, args...).Result()
 }
 
 func NewScannerLock(store LockStore, key string, owner string, ttl time.Duration) *ScannerLock {
@@ -1845,16 +2002,22 @@ func runScannerLoop(ctx context.Context, scanner NetworkScanner, owner string) {
 		common.SysLog("crypto scanner paused because Redis is not enabled")
 		return
 	}
-	lock := NewScannerLock(common.RDB, "crypto:scanner:"+scanner.Network(), owner, 30*time.Second)
+	lock := NewScannerLock(NewRedisLockStore(common.RDB), "crypto:scanner:"+scanner.Network(), owner, 30*time.Second)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+	ownsLock := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			acquired, err := lock.Acquire(ctx)
-			if err != nil || !acquired {
+			var err error
+			if ownsLock {
+				ownsLock, err = lock.Renew(ctx)
+			} else {
+				ownsLock, err = lock.Acquire(ctx)
+			}
+			if err != nil || !ownsLock {
 				continue
 			}
 			if err := scanner.ScanOnce(ctx); err != nil {
@@ -2808,6 +2971,11 @@ func AdminCompleteCryptoTopUp(c *gin.Context) {
 		common.ApiErrorMsg(c, "链上证据不完整")
 		return
 	}
+	order := model.GetCryptoPaymentOrderByTradeNo(tradeNo)
+	if order == nil {
+		common.ApiErrorMsg(c, "订单不存在")
+		return
+	}
 	err := model.CompleteCryptoTopUp(tradeNo, model.CryptoTxEvidence{
 		Network:         req.Network,
 		TxHash:          req.TxHash,
@@ -2822,6 +2990,13 @@ func AdminCompleteCryptoTopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.RecordLogWithAdminInfo(order.UserId, model.LogTypeTopup, "管理员USDT补单成功，订单: "+tradeNo+"，原因: "+req.Reason, map[string]interface{}{
+		"admin_id": c.GetInt("id"),
+		"ip":       c.ClientIP(),
+		"network":  req.Network,
+		"tx_hash":  req.TxHash,
+		"reason":   req.Reason,
+	})
 	common.ApiSuccess(c, nil)
 }
 ```
