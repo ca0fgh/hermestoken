@@ -72,7 +72,13 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 		return true
 	}
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
-	return search
+	if search {
+		return true
+	}
+
+	// Once a channel has been selected, any non-skip error means the channel call
+	// did not succeed. Treat it as unavailable so auto-ban can take it out of use.
+	return true
 }
 
 func ShouldDisableChannelModelAbility(err *types.NewAPIError) bool {

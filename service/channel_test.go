@@ -95,6 +95,45 @@ func TestShouldDisableChannel_UpstreamNoAvailableToken(t *testing.T) {
 	}
 }
 
+func TestShouldDisableChannel_AnyNonSkipChannelFailure(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	previousKeywords := append([]string(nil), operation_setting.AutomaticDisableKeywords...)
+	previousStatusCodes := append([]operation_setting.StatusCodeRange(nil), operation_setting.AutomaticDisableStatusCodeRanges...)
+	common.AutomaticDisableChannelEnabled = true
+	operation_setting.AutomaticDisableKeywords = []string{"unrelated upstream failure"}
+	operation_setting.AutomaticDisableStatusCodeRanges = []operation_setting.StatusCodeRange{{Start: 401, End: 401}}
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previous
+		operation_setting.AutomaticDisableKeywords = previousKeywords
+		operation_setting.AutomaticDisableStatusCodeRanges = previousStatusCodes
+	})
+
+	err := types.NewOpenAIError(
+		errors.New("upstream returned service unavailable"),
+		types.ErrorCodeBadResponseStatusCode,
+		http.StatusServiceUnavailable,
+	)
+
+	require.True(t, ShouldDisableChannel(err))
+}
+
+func TestShouldDisableChannel_SkipRetryFailureDoesNotDisable(t *testing.T) {
+	previous := common.AutomaticDisableChannelEnabled
+	common.AutomaticDisableChannelEnabled = true
+	t.Cleanup(func() {
+		common.AutomaticDisableChannelEnabled = previous
+	})
+
+	err := types.NewOpenAIError(
+		errors.New("local request conversion failed"),
+		types.ErrorCodeConvertRequestFailed,
+		http.StatusBadRequest,
+		types.ErrOptionWithSkipRetry(),
+	)
+
+	require.False(t, ShouldDisableChannel(err))
+}
+
 func TestShouldDisableChannelModelAbility_UpstreamDistributorNoAvailableModel(t *testing.T) {
 	previous := common.AutomaticDisableChannelEnabled
 	common.AutomaticDisableChannelEnabled = true
