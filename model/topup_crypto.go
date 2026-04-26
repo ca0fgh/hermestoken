@@ -251,3 +251,37 @@ func CreateCryptoTopUpOrder(input CreateCryptoTopUpOrderInput) (*CryptoPaymentOr
 	}
 	return &created, nil
 }
+
+func GetCryptoPaymentOrderByTradeNo(tradeNo string) *CryptoPaymentOrder {
+	if strings.TrimSpace(tradeNo) == "" {
+		return nil
+	}
+	var order CryptoPaymentOrder
+	if err := DB.Where("trade_no = ?", strings.TrimSpace(tradeNo)).First(&order).Error; err != nil {
+		return nil
+	}
+	return &order
+}
+
+func GetCryptoOrderConfirmations(orderID int) int64 {
+	if orderID <= 0 {
+		return 0
+	}
+	var tx CryptoPaymentTransaction
+	if err := DB.Where("matched_order_id = ?", orderID).Order("id desc").First(&tx).Error; err != nil {
+		return 0
+	}
+	return tx.Confirmations
+}
+
+func ExpireCryptoPaymentOrderIfNeeded(order *CryptoPaymentOrder, now time.Time) (*CryptoPaymentOrder, error) {
+	if order == nil || order.Status != CryptoPaymentStatusPending || !order.IsExpired(now) {
+		return order, nil
+	}
+	order.Status = CryptoPaymentStatusExpired
+	order.UpdateTime = now.Unix()
+	if err := DB.Save(order).Error; err != nil {
+		return nil, err
+	}
+	return order, nil
+}

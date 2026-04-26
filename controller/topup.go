@@ -101,6 +101,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_creem_topup":         enableCreem,
 		"enable_waffo_topup":         enableWaffo,
 		"enable_waffo_pancake_topup": enableWaffoPancake,
+		"enable_crypto_usdt_topup":   setting.CryptoPaymentEnabled && len(setting.GetEnabledCryptoPaymentNetworks()) > 0,
+		"crypto_networks":            setting.GetEnabledCryptoPaymentNetworks(),
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
