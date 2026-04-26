@@ -94,3 +94,26 @@ func TestLegacySubscriptionReferralOptionsAreNotExposedThroughOptionMap(t *testi
 		t.Fatal("legacy SubscriptionReferralGroupRates should not be exposed through OptionMap")
 	}
 }
+
+func TestLegacyMonitorAutoTestOptionsAreNotExposedThroughOptionMap(t *testing.T) {
+	originalMap := common.OptionMap
+	defer func() {
+		common.OptionMap = originalMap
+	}()
+
+	common.OptionMap = make(map[string]string)
+
+	if err := updateOptionMap("monitor_setting.auto_test_channel_enabled", "true"); err != nil {
+		t.Fatalf("updateOptionMap(auto_test_enabled) returned error: %v", err)
+	}
+	if _, exists := common.OptionMap["monitor_setting.auto_test_channel_enabled"]; exists {
+		t.Fatal("legacy monitor auto test enabled option should not be exposed through OptionMap")
+	}
+
+	if err := updateOptionMap("monitor_setting.auto_test_channel_minutes", "1"); err != nil {
+		t.Fatalf("updateOptionMap(auto_test_minutes) returned error: %v", err)
+	}
+	if _, exists := common.OptionMap["monitor_setting.auto_test_channel_minutes"]; exists {
+		t.Fatal("legacy monitor auto test minutes option should not be exposed through OptionMap")
+	}
+}

@@ -140,6 +140,13 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	if model.IsDeprecatedOptionKey(option.Key) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "该配置项已停用",
+		})
+		return
+	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {

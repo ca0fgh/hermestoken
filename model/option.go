@@ -30,6 +30,18 @@ func IsDeprecatedSubscriptionReferralOptionKey(key string) bool {
 	}
 }
 
+func IsDeprecatedOptionKey(key string) bool {
+	if IsDeprecatedSubscriptionReferralOptionKey(key) {
+		return true
+	}
+	switch key {
+	case "monitor_setting.auto_test_channel_enabled", "monitor_setting.auto_test_channel_minutes":
+		return true
+	default:
+		return false
+	}
+}
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
@@ -274,7 +286,7 @@ func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
 
-	if IsDeprecatedSubscriptionReferralOptionKey(key) {
+	if IsDeprecatedOptionKey(key) {
 		delete(common.OptionMap, key)
 		return nil
 	}
