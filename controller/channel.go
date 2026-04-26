@@ -865,8 +865,9 @@ func EditTagChannels(c *gin.Context) {
 }
 
 type ChannelBatch struct {
-	Ids []int   `json:"ids"`
-	Tag *string `json:"tag"`
+	Ids     []int   `json:"ids"`
+	Tag     *string `json:"tag"`
+	AutoBan *int    `json:"auto_ban"`
 }
 
 func DeleteChannelBatch(c *gin.Context) {
@@ -880,6 +881,30 @@ func DeleteChannelBatch(c *gin.Context) {
 		return
 	}
 	err = model.BatchDeleteChannels(channelBatch.Ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.InitChannelCache()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    len(channelBatch.Ids),
+	})
+	return
+}
+
+func BatchSetChannelAutoBan(c *gin.Context) {
+	channelBatch := ChannelBatch{}
+	err := c.ShouldBindJSON(&channelBatch)
+	if err != nil || len(channelBatch.Ids) == 0 || channelBatch.AutoBan == nil || (*channelBatch.AutoBan != 0 && *channelBatch.AutoBan != 1) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "参数错误",
+		})
+		return
+	}
+	err = model.BatchSetChannelAutoBan(channelBatch.Ids, *channelBatch.AutoBan)
 	if err != nil {
 		common.ApiError(c, err)
 		return

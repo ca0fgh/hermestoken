@@ -20,7 +20,30 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	tokenName := c.GetString("token_name")
 	logContent := fmt.Sprintf("操作 %s", info.Action)
 	// 支持任务仅按次计费
-	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+	if info.PriceData.TaskModelPricingApplied {
+		parts := []string{}
+		if info.PriceData.TaskPerRequestPrice > 0 {
+			parts = append(parts, fmt.Sprintf("per_request: %.2f", info.PriceData.TaskPerRequestPrice))
+		}
+		if info.PriceData.TaskPerSecondPrice > 0 {
+			parts = append(parts, fmt.Sprintf("per_second: %.2f", info.PriceData.TaskPerSecondPrice))
+		}
+		if seconds, ok := info.PriceData.OtherRatios["seconds"]; ok {
+			parts = append(parts, fmt.Sprintf("seconds: %.2f", seconds))
+		}
+		billingLabel := "任务专用计费"
+		if info.PriceData.TaskPerRequestPrice > 0 && info.PriceData.TaskPerSecondPrice > 0 {
+			billingLabel = "按次+按秒计费"
+		} else if info.PriceData.TaskPerSecondPrice > 0 {
+			billingLabel = "按秒计费"
+		} else if info.PriceData.TaskPerRequestPrice > 0 {
+			billingLabel = "按次计费"
+		}
+		logContent = fmt.Sprintf("%s，%s", logContent, billingLabel)
+		if len(parts) > 0 {
+			logContent = fmt.Sprintf("%s，计算参数：%s", logContent, strings.Join(parts, ", "))
+		}
+	} else if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
 		logContent = fmt.Sprintf("%s，按次计费", logContent)
 	} else {
 		if len(info.PriceData.OtherRatios) > 0 {
@@ -39,6 +62,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	other["is_task"] = true
 	other["request_path"] = c.Request.URL.Path
 	other["model_price"] = info.PriceData.ModelPrice
+	if info.PriceData.TaskModelPricingApplied {
+		other["task_model_pricing"] = true
+		other["per_request"] = info.PriceData.TaskPerRequestPrice
+		other["per_second"] = info.PriceData.TaskPerSecondPrice
+	}
 	if info.PriceData.ModelRatio > 0 {
 		other["model_ratio"] = info.PriceData.ModelRatio
 	}
@@ -121,6 +149,11 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 	other := make(map[string]interface{})
 	if bc := task.PrivateData.BillingContext; bc != nil {
 		other["model_price"] = bc.ModelPrice
+		if bc.TaskPerRequest > 0 || bc.TaskPerSecond > 0 {
+			other["task_model_pricing"] = true
+			other["per_request"] = bc.TaskPerRequest
+			other["per_second"] = bc.TaskPerSecond
+		}
 		if bc.ModelRatio > 0 {
 			other["model_ratio"] = bc.ModelRatio
 		}

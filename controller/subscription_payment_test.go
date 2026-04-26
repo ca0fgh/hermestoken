@@ -117,6 +117,7 @@ func withSubscriptionEpaySettings(t *testing.T) {
 
 	originalPayMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	originalServerAddress := system_setting.ServerAddress
+	originalPrice := operation_setting.Price
 
 	operation_setting.PayMethods = []map[string]string{
 		{
@@ -124,10 +125,12 @@ func withSubscriptionEpaySettings(t *testing.T) {
 			"type": "alipay",
 		},
 	}
+	operation_setting.Price = 6.85
 	system_setting.ServerAddress = "https://example.com"
 
 	t.Cleanup(func() {
 		operation_setting.PayMethods = originalPayMethods
+		operation_setting.Price = originalPrice
 		system_setting.ServerAddress = originalServerAddress
 	})
 }
@@ -314,7 +317,7 @@ func TestSubscriptionRequestCreemPayPassesQuantityAndStoresAggregateTotal(t *tes
 	}
 }
 
-func TestSubscriptionRequestEpayPassesQuantityAndStoresAggregateTotal(t *testing.T) {
+func TestSubscriptionRequestEpayConvertsUsdTotalToGatewayAmount(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	seedSubscriptionPaymentUser(t, db, 1, "epay@example.com", "epay_user", "")
 	plan := seedSubscriptionPlan(t, db, "epay-plan")
@@ -362,8 +365,8 @@ func TestSubscriptionRequestEpayPassesQuantityAndStoresAggregateTotal(t *testing
 	if captured.Type != "alipay" {
 		t.Fatalf("expected payment method alipay, got %q", captured.Type)
 	}
-	if captured.Money != "30.75" {
-		t.Fatalf("expected aggregated money 30.75, got %q", captured.Money)
+	if captured.Money != "210.64" {
+		t.Fatalf("expected converted gateway money 210.64, got %q", captured.Money)
 	}
 
 	var responseData map[string]string
@@ -380,6 +383,10 @@ func TestSubscriptionRequestEpayPassesQuantityAndStoresAggregateTotal(t *testing
 		t.Fatalf("failed to load created subscription order: %v", err)
 	}
 	assertFloatEquals(t, order.Money, 30.75)
+	assertFloatEquals(t, order.PaymentMoney, 210.64)
+	if order.PaymentCurrency != "CNY" {
+		t.Fatalf("expected payment currency CNY, got %q", order.PaymentCurrency)
+	}
 	if order.Quantity != 3 {
 		t.Fatalf("expected order quantity 3, got %d", order.Quantity)
 	}
@@ -570,5 +577,77 @@ func TestSubscriptionEpayNotifyRejectsAmountMismatch(t *testing.T) {
 	}
 	if reloaded.Status != common.TopUpStatusPending {
 		t.Fatalf("expected subscription order to remain pending, got %s", reloaded.Status)
+	}
+}
+
+func TestSubscriptionEpayNotifyAcceptsConvertedGatewayAmount(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "subscription-epay-converted@example.com", "subscription_epay_converted", "")
+	plan := seedSubscriptionPlan(t, db, "subscription-epay-converted-plan")
+	order := &model.SubscriptionOrder{
+		UserId:          user.Id,
+		PlanId:          plan.Id,
+		Money:           30.75,
+		PaymentMoney:    210.64,
+		PaymentCurrency: "CNY",
+		TradeNo:         "trade-epay-converted",
+		PaymentMethod:   "alipay",
+		Status:          common.TopUpStatusPending,
+		CreateTime:      1,
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatalf("failed to create subscription order: %v", err)
+	}
+
+	originalClientProvider := subscriptionEpayClientProvider
+	subscriptionEpayClientProvider = func() *epay.Client { return &epay.Client{} }
+	t.Cleanup(func() {
+		subscriptionEpayClientProvider = originalClientProvider
+	})
+
+	body := url.Values{}
+	body.Set("trade_no", "x")
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/epay/notify", strings.NewReader(body.Encode()))
+	ctx.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	originalVerify := subscriptionEpayVerify
+	subscriptionEpayVerify = func(_ *epay.Client, _ map[string]string) (*epay.VerifyRes, error) {
+		return &epay.VerifyRes{
+			ServiceTradeNo: order.TradeNo,
+			TradeStatus:    epay.StatusTradeSuccess,
+			VerifyStatus:   true,
+			Type:           "alipay",
+			Money:          "210.64",
+		}, nil
+	}
+	t.Cleanup(func() {
+		subscriptionEpayVerify = originalVerify
+	})
+
+	SubscriptionEpayNotify(ctx)
+
+	if recorder.Body.String() != "success" {
+		t.Fatalf("expected success body, got %q", recorder.Body.String())
+	}
+
+	var reloaded model.SubscriptionOrder
+	if err := db.Where("trade_no = ?", order.TradeNo).First(&reloaded).Error; err != nil {
+		t.Fatalf("failed to reload subscription order: %v", err)
+	}
+	if reloaded.Status != common.TopUpStatusSuccess {
+		t.Fatalf("expected subscription order to be success, got %s", reloaded.Status)
+	}
+	assertFloatEquals(t, reloaded.Money, 30.75)
+	assertFloatEquals(t, reloaded.PaymentMoney, 210.64)
+
+	var topUp model.TopUp
+	if err := db.Where("trade_no = ?", order.TradeNo).First(&topUp).Error; err != nil {
+		t.Fatalf("failed to load subscription topup row: %v", err)
+	}
+	assertFloatEquals(t, topUp.Money, 210.64)
+	if topUp.Currency != "CNY" {
+		t.Fatalf("expected topup currency CNY, got %q", topUp.Currency)
 	}
 }

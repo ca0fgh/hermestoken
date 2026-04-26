@@ -175,13 +175,15 @@ export default function ModelPricingEditor({
         title: t('计费方式'),
         dataIndex: 'billingMode',
         key: 'billingMode',
-        render: (_, record) => (
-          <Tag color={record.billingMode === 'per-request' ? 'teal' : 'violet'}>
-            {record.billingMode === 'per-request'
-              ? t('按次计费')
-              : t('按量计费')}
-          </Tag>
-        ),
+        render: (_, record) => {
+          const modeMap = {
+            'per-token': { color: 'violet', label: t('按量计费') },
+            'per-request': { color: 'teal', label: t('按次计费') },
+            'per-second': { color: 'cyan', label: t('按秒计费') },
+          };
+          const mode = modeMap[record.billingMode] || modeMap['per-token'];
+          return <Tag color={mode.color}>{mode.label}</Tag>;
+        },
       },
       {
         title: t('价格摘要'),
@@ -357,9 +359,11 @@ export default function ModelPricingEditor({
             headerExtraContent={
               selectedModel ? (
                 <Tag color='blue'>
-                  {selectedModel.billingMode === 'per-request'
-                    ? t('按次计费')
-                    : t('按量计费')}
+                  {{
+                    'per-token': t('按量计费'),
+                    'per-request': t('按次计费'),
+                    'per-second': t('按秒计费'),
+                  }[selectedModel.billingMode] || t('按量计费')}
                 </Tag>
               ) : null
             }
@@ -386,6 +390,7 @@ export default function ModelPricingEditor({
                   >
                     <Radio value='per-token'>{t('按量计费')}</Radio>
                     <Radio value='per-request'>{t('按次计费')}</Radio>
+                    <Radio value='per-second'>{t('按秒计费')}</Radio>
                   </RadioGroup>
                   <div className='mt-2 text-xs text-gray-500'>
                     {t(
@@ -412,16 +417,35 @@ export default function ModelPricingEditor({
                 ) : null}
 
                 {selectedModel.billingMode === 'per-request' ? (
-                  <PriceInput
-                    label={t('固定价格')}
-                    value={selectedModel.fixedPrice}
-                    placeholder={t('输入每次调用价格')}
-                    suffix={t('$/次')}
-                    onChange={(value) =>
-                      handleNumericFieldChange('fixedPrice', value)
-                    }
-                    extraText={t('适合 MJ / 任务类等按次收费模型。')}
-                  />
+                  <>
+                    <PriceInput
+                      label={t('固定价格')}
+                      value={selectedModel.fixedPrice}
+                      placeholder={t('输入每次调用固定价格')}
+                      suffix={t('$/次')}
+                      onChange={(value) =>
+                        handleNumericFieldChange('fixedPrice', value)
+                      }
+                      extraText={t(
+                        '每次请求只扣这个固定价格，不再乘 seconds。',
+                      )}
+                    />
+                  </>
+                ) : selectedModel.billingMode === 'per-second' ? (
+                  <>
+                    <PriceInput
+                      label={t('每秒价格')}
+                      value={selectedModel.perSecondPrice}
+                      placeholder={t('输入每秒价格')}
+                      suffix={t('$/秒')}
+                      onChange={(value) =>
+                        handleNumericFieldChange('perSecondPrice', value)
+                      }
+                      extraText={t(
+                        '每次请求按 seconds 乘以这个价格，不叠加固定启动价。',
+                      )}
+                    />
+                  </>
                 ) : (
                   <>
                     <Card

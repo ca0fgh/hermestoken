@@ -51,6 +51,7 @@ var (
 type SubscriptionPaymentVerification struct {
 	PaymentMethod string
 	PaidMoney     string
+	PaidCurrency  string
 	ProductID     string
 }
 
@@ -223,11 +224,13 @@ func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
 
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
-	Id       int     `json:"id"`
-	UserId   int     `json:"user_id" gorm:"index"`
-	PlanId   int     `json:"plan_id" gorm:"index"`
-	Money    float64 `json:"money"`
-	Quantity int     `json:"quantity" gorm:"type:int;not null;default:1"`
+	Id              int     `json:"id"`
+	UserId          int     `json:"user_id" gorm:"index"`
+	PlanId          int     `json:"plan_id" gorm:"index"`
+	Money           float64 `json:"money"`
+	PaymentMoney    float64 `json:"payment_money" gorm:"default:0"`
+	PaymentCurrency string  `json:"payment_currency" gorm:"type:varchar(16);not null;default:''"`
+	Quantity        int     `json:"quantity" gorm:"type:int;not null;default:1"`
 
 	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -248,6 +251,45 @@ func (o *SubscriptionOrder) Insert() error {
 
 func (o *SubscriptionOrder) Update() error {
 	return DB.Save(o).Error
+}
+
+func (o *SubscriptionOrder) ExpectedPaymentMoney() float64 {
+	if o == nil {
+		return 0
+	}
+	if o.PaymentMoney > 0 {
+		return o.PaymentMoney
+	}
+	return o.Money
+}
+
+func (o *SubscriptionOrder) ExpectedPaymentCurrency() string {
+	if o == nil {
+		return ""
+	}
+	return strings.TrimSpace(strings.ToUpper(o.PaymentCurrency))
+}
+
+func UpdateSubscriptionOrderPaymentAmount(tradeNo string, paymentMoney float64, paymentCurrency string) error {
+	if strings.TrimSpace(tradeNo) == "" {
+		return errors.New("tradeNo is empty")
+	}
+	if paymentMoney <= 0 {
+		return errors.New("payment money must be positive")
+	}
+	result := DB.Model(&SubscriptionOrder{}).
+		Where("trade_no = ? AND status = ?", tradeNo, common.TopUpStatusPending).
+		Updates(map[string]interface{}{
+			"payment_money":    paymentMoney,
+			"payment_currency": strings.TrimSpace(strings.ToUpper(paymentCurrency)),
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrSubscriptionOrderNotFound
+	}
+	return nil
 }
 
 func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
@@ -818,13 +860,20 @@ func validateSubscriptionOrderPayment(order *SubscriptionOrder, plan *Subscripti
 		return ErrSubscriptionOrderPaymentMethodMismatch
 	}
 	if verification.PaidMoney != "" {
-		expectedMoney := decimal.NewFromFloat(order.Money).Round(2)
+		expectedMoney := decimal.NewFromFloat(order.ExpectedPaymentMoney()).Round(2)
 		actualMoney, err := decimal.NewFromString(verification.PaidMoney)
 		if err != nil {
 			return err
 		}
 		if !expectedMoney.Equal(actualMoney.Round(2)) {
 			return ErrSubscriptionOrderAmountMismatch
+		}
+	}
+	if verification.PaidCurrency != "" {
+		expectedCurrency := order.ExpectedPaymentCurrency()
+		actualCurrency := strings.TrimSpace(strings.ToUpper(verification.PaidCurrency))
+		if expectedCurrency != "" && actualCurrency != "" && expectedCurrency != actualCurrency {
+			return ErrSubscriptionOrderPaymentMethodMismatch
 		}
 	}
 	if verification.ProductID != "" {
@@ -902,7 +951,7 @@ func CompleteSubscriptionOrderWithValidation(tradeNo string, verification *Subsc
 		}
 		logUserId = order.UserId
 		logPlanTitle = plan.Title
-		logMoney = order.Money
+		logMoney = order.ExpectedPaymentMoney()
 		logPaymentMethod = order.PaymentMethod
 		return nil
 	})
@@ -930,9 +979,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 			topup = TopUp{
 				UserId:        order.UserId,
 				Amount:        0,
-				Money:         order.Money,
+				Money:         order.ExpectedPaymentMoney(),
 				TradeNo:       order.TradeNo,
 				PaymentMethod: order.PaymentMethod,
+				Currency:      order.ExpectedPaymentCurrency(),
 				CreateTime:    order.CreateTime,
 				CompleteTime:  now,
 				Status:        common.TopUpStatusSuccess,
@@ -941,7 +991,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 		}
 		return err
 	}
-	topup.Money = order.Money
+	topup.Money = order.ExpectedPaymentMoney()
+	if order.ExpectedPaymentCurrency() != "" {
+		topup.Currency = order.ExpectedPaymentCurrency()
+	}
 	if topup.PaymentMethod == "" {
 		topup.PaymentMethod = order.PaymentMethod
 	}

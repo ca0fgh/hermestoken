@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"github.com/shopspring/decimal"
 )
 
 var subscriptionEpayClientProvider = GetEpayClient
@@ -90,11 +91,22 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 	total := getSubscriptionOrderTotal(plan.PriceAmount, quantity)
+	paymentTotal := getSubscriptionEpayPaymentTotal(total)
+	if paymentTotal < 0.01 {
+		_ = model.ExpireSubscriptionOrder(tradeNo)
+		common.ApiErrorMsg(c, "支付金额过低")
+		return
+	}
+	if err := model.UpdateSubscriptionOrderPaymentAmount(tradeNo, paymentTotal, "CNY"); err != nil {
+		_ = model.ExpireSubscriptionOrder(tradeNo)
+		common.ApiErrorMsg(c, "创建订单失败")
+		return
+	}
 	uri, params, err := subscriptionEpayPurchase(client, &epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(total, 'f', 2, 64),
+		Money:          strconv.FormatFloat(paymentTotal, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
@@ -133,12 +145,12 @@ func SubscriptionEpayNotify(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
+	client := subscriptionEpayClientProvider()
 	if client == nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	verifyInfo, err := client.Verify(params)
+	verifyInfo, err := subscriptionEpayVerify(client, params)
 	if err != nil || !verifyInfo.VerifyStatus {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
@@ -204,4 +216,11 @@ func SubscriptionEpayReturn(c *gin.Context) {
 
 func subscriptionResultURL(status string) string {
 	return topUpResultURL(status)
+}
+
+func getSubscriptionEpayPaymentTotal(baseTotal float64) float64 {
+	return decimal.NewFromFloat(baseTotal).
+		Mul(decimal.NewFromFloat(operation_setting.Price)).
+		Round(2).
+		InexactFloat64()
 }

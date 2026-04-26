@@ -58,16 +58,19 @@ func createPendingSubscriptionOrder(
 			stockReserved = quantity
 		}
 
+		orderTotal := getSubscriptionOrderTotal(lockedPlan.PriceAmount, quantity)
 		order := &model.SubscriptionOrder{
-			UserId:        userId,
-			PlanId:        lockedPlan.Id,
-			Money:         getSubscriptionOrderTotal(lockedPlan.PriceAmount, quantity),
-			Quantity:      quantity,
-			TradeNo:       tradeNo,
-			PaymentMethod: paymentMethod,
-			CreateTime:    time.Now().Unix(),
-			Status:        "pending",
-			StockReserved: stockReserved,
+			UserId:          userId,
+			PlanId:          lockedPlan.Id,
+			Money:           orderTotal,
+			PaymentMoney:    orderTotal,
+			PaymentCurrency: lockedPlan.Currency,
+			Quantity:        quantity,
+			TradeNo:         tradeNo,
+			PaymentMethod:   paymentMethod,
+			CreateTime:      time.Now().Unix(),
+			Status:          "pending",
+			StockReserved:   stockReserved,
 		}
 		if err := tx.Create(order).Error; err != nil {
 			return err

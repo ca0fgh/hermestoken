@@ -28,6 +28,8 @@ const EMPTY_MODEL = {
   name: '',
   billingMode: 'per-token',
   fixedPrice: '',
+  perSecondPrice: '',
+  includeOtherRatios: true,
   inputPrice: '',
   completionPrice: '',
   lockedCompletionRatio: '',
@@ -117,6 +119,27 @@ const normalizeCompletionRatioMeta = (rawMeta) => {
 };
 
 const buildModelState = (name, sourceMaps) => {
+  const taskPricing =
+    sourceMaps.TaskModelPricing?.[name] &&
+    typeof sourceMaps.TaskModelPricing[name] === 'object' &&
+    !Array.isArray(sourceMaps.TaskModelPricing[name])
+      ? sourceMaps.TaskModelPricing[name]
+      : null;
+  const taskHasPerRequest =
+    taskPricing &&
+    Object.prototype.hasOwnProperty.call(taskPricing, 'per_request');
+  const taskHasPerSecond =
+    taskPricing &&
+    Object.prototype.hasOwnProperty.call(taskPricing, 'per_second');
+  const taskPerRequest = taskHasPerRequest
+    ? toNumericString(taskPricing.per_request)
+    : '';
+  const taskPerSecond = taskHasPerSecond
+    ? toNumericString(taskPricing.per_second)
+    : '';
+  const taskPerSecondNumber = toNumberOrNull(taskPerSecond);
+  const isTaskPerSecond =
+    taskPerSecondNumber !== null && taskPerSecondNumber > 0;
   const modelRatio = toNumericString(sourceMaps.ModelRatio[name]);
   const completionRatio = toNumericString(sourceMaps.CompletionRatio[name]);
   const completionRatioMeta = normalizeCompletionRatioMeta(
@@ -129,7 +152,11 @@ const buildModelState = (name, sourceMaps) => {
   const audioCompletionRatio = toNumericString(
     sourceMaps.AudioCompletionRatio[name],
   );
-  const fixedPrice = toNumericString(sourceMaps.ModelPrice[name]);
+  const fixedPrice = taskPricing
+    ? isTaskPerSecond
+      ? ''
+      : taskPerRequest
+    : toNumericString(sourceMaps.ModelPrice[name]);
   const inputPrice = ratioToBasePrice(modelRatio);
   const inputPriceNumber = toNumberOrNull(inputPrice);
   const audioInputPrice =
@@ -140,8 +167,14 @@ const buildModelState = (name, sourceMaps) => {
   return {
     ...EMPTY_MODEL,
     name,
-    billingMode: hasValue(fixedPrice) ? 'per-request' : 'per-token',
+    billingMode: isTaskPerSecond
+      ? 'per-second'
+      : hasValue(fixedPrice)
+        ? 'per-request'
+        : 'per-token',
     fixedPrice,
+    perSecondPrice: isTaskPerSecond ? taskPerSecond : '',
+    includeOtherRatios: taskPricing?.include_other_ratios !== false,
     inputPrice,
     completionRatioLocked: completionRatioMeta.locked,
     lockedCompletionRatio: completionRatioMeta.ratio,
@@ -188,7 +221,7 @@ const buildModelState = (name, sourceMaps) => {
       audioCompletionRatio,
     },
     hasConflict:
-      hasValue(fixedPrice) &&
+      (hasValue(fixedPrice) || hasValue(taskPerSecond)) &&
       [
         modelRatio,
         completionRatio,
@@ -202,7 +235,9 @@ const buildModelState = (name, sourceMaps) => {
 };
 
 export const isBasePricingUnset = (model) =>
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  !hasValue(model.fixedPrice) &&
+  !hasValue(model.perSecondPrice) &&
+  !hasValue(model.inputPrice);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -221,7 +256,9 @@ export const getModelWarnings = (model, t) => {
 
   if (model.hasConflict) {
     warnings.push(
-      t('当前模型同时存在按次价格和倍率配置，保存时会按当前计费方式覆盖。'),
+      t(
+        '当前模型同时存在固定/按秒价格和倍率配置，保存时会按当前计费方式覆盖。',
+      ),
     );
   }
 
@@ -263,6 +300,10 @@ export const getModelWarnings = (model, t) => {
 };
 
 export const buildSummaryText = (model, t) => {
+  if (model.billingMode === 'per-second' && hasValue(model.perSecondPrice)) {
+    return `${t('按秒')} $${model.perSecondPrice} / ${t('秒')}`;
+  }
+
   if (model.billingMode === 'per-request' && hasValue(model.fixedPrice)) {
     return `${t('按次')} $${model.fixedPrice} / ${t('次')}`;
   }
@@ -297,6 +338,7 @@ export const buildOptionalFieldToggles = (model) => ({
 const serializeModel = (model, t) => {
   const result = {
     ModelPrice: null,
+    TaskModelPricing: null,
     ModelRatio: null,
     CompletionRatio: null,
     CacheRatio: null,
@@ -307,8 +349,27 @@ const serializeModel = (model, t) => {
   };
 
   if (model.billingMode === 'per-request') {
-    if (hasValue(model.fixedPrice)) {
-      result.ModelPrice = toNormalizedNumber(model.fixedPrice);
+    const fixedPrice = toNumberOrNull(model.fixedPrice);
+    if (fixedPrice !== null) {
+      result.ModelPrice = toNormalizedNumber(fixedPrice);
+      result.TaskModelPricing = {
+        per_request: fixedPrice,
+        per_second: 0,
+        include_other_ratios: false,
+      };
+    }
+    return result;
+  }
+
+  if (model.billingMode === 'per-second') {
+    const perSecondPrice = toNumberOrNull(model.perSecondPrice);
+    if (perSecondPrice !== null) {
+      result.ModelPrice = toNormalizedNumber(perSecondPrice);
+      result.TaskModelPricing = {
+        per_request: 0,
+        per_second: perSecondPrice,
+        include_other_ratios: false,
+      };
     }
     return result;
   }
@@ -416,11 +477,41 @@ export const buildPreviewRows = (model, t) => {
   if (!model) return [];
 
   if (model.billingMode === 'per-request') {
+    const fixedPrice = toNumberOrNull(model.fixedPrice);
     return [
       {
         key: 'ModelPrice',
         label: 'ModelPrice',
         value: hasValue(model.fixedPrice) ? model.fixedPrice : t('空'),
+      },
+      {
+        key: 'TaskModelPricing',
+        label: 'TaskModelPricing',
+        value: JSON.stringify({
+          per_request: fixedPrice || 0,
+          per_second: 0,
+          include_other_ratios: false,
+        }),
+      },
+    ];
+  }
+
+  if (model.billingMode === 'per-second') {
+    const perSecondPrice = toNumberOrNull(model.perSecondPrice);
+    return [
+      {
+        key: 'ModelPrice',
+        label: 'ModelPrice',
+        value: hasValue(model.perSecondPrice) ? model.perSecondPrice : t('空'),
+      },
+      {
+        key: 'TaskModelPricing',
+        label: 'TaskModelPricing',
+        value: JSON.stringify({
+          per_request: 0,
+          per_second: perSecondPrice || 0,
+          include_other_ratios: false,
+        }),
       },
     ];
   }
@@ -563,6 +654,7 @@ export function useModelPricingEditorState({
   useEffect(() => {
     const sourceMaps = {
       ModelPrice: parseOptionJSON(options.ModelPrice),
+      TaskModelPricing: parseOptionJSON(options.TaskModelPricing),
       ModelRatio: parseOptionJSON(options.ModelRatio),
       CompletionRatio: parseOptionJSON(options.CompletionRatio),
       CompletionRatioMeta: parseOptionJSON(options.CompletionRatioMeta),
@@ -576,6 +668,7 @@ export function useModelPricingEditorState({
     const names = new Set([
       ...candidateModelNames,
       ...Object.keys(sourceMaps.ModelPrice),
+      ...Object.keys(sourceMaps.TaskModelPricing),
       ...Object.keys(sourceMaps.ModelRatio),
       ...Object.keys(sourceMaps.CompletionRatio),
       ...Object.keys(sourceMaps.CompletionRatioMeta),
@@ -793,11 +886,21 @@ export function useModelPricingEditorState({
     });
   };
 
+  const handleBooleanFieldChange = (field, value) => {
+    if (!selectedModel) return;
+    upsertModel(selectedModel.name, (model) => ({
+      ...model,
+      [field]: value,
+    }));
+  };
+
   const handleBillingModeChange = (value) => {
     if (!selectedModel) return;
     upsertModel(selectedModel.name, (model) => ({
       ...model,
       billingMode: value,
+      fixedPrice: value === 'per-second' ? '' : model.fixedPrice,
+      perSecondPrice: value === 'per-request' ? '' : model.perSecondPrice,
     }));
   };
 
@@ -866,6 +969,8 @@ export function useModelPricingEditorState({
           ...model,
           billingMode: selectedModel.billingMode,
           fixedPrice: selectedModel.fixedPrice,
+          perSecondPrice: selectedModel.perSecondPrice,
+          includeOtherRatios: selectedModel.includeOtherRatios,
           inputPrice: selectedModel.inputPrice,
           completionPrice: selectedModel.completionPrice,
           cachePrice: selectedModel.cachePrice,
@@ -925,6 +1030,7 @@ export function useModelPricingEditorState({
     try {
       const output = {
         ModelPrice: {},
+        TaskModelPricing: {},
         ModelRatio: {},
         CompletionRatio: {},
         CacheRatio: {},
@@ -988,6 +1094,7 @@ export function useModelPricingEditorState({
     isOptionalFieldEnabled,
     handleOptionalFieldToggle,
     handleNumericFieldChange,
+    handleBooleanFieldChange,
     handleBillingModeChange,
     handleSubmit,
     addModel,

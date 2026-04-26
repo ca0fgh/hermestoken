@@ -20,6 +20,11 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Modal, Typography, Input, InputNumber } from '@douyinfe/semi-ui';
 import { CreditCard } from 'lucide-react';
+import {
+  displayAmountToQuota,
+  getCurrencyConfig,
+  quotaToDisplayAmount,
+} from '../../../helpers/quota';
 
 const TransferModal = ({
   t,
@@ -31,7 +36,21 @@ const TransferModal = ({
   getQuotaPerUnit,
   transferAmount,
   setTransferAmount,
+  transferSubmitting,
 }) => {
+  const toDisplayAmount = (quota) => {
+    const amount = Number(quotaToDisplayAmount(quota || 0));
+    return Number.isFinite(amount) ? Number(amount.toFixed(6)) : 0;
+  };
+  const minTransferDisplayAmount = toDisplayAmount(getQuotaPerUnit());
+  const maxTransferDisplayAmount = toDisplayAmount(
+    userState?.user?.aff_quota || 0,
+  );
+  const transferDisplayAmount = toDisplayAmount(transferAmount);
+  const currencyConfig = getCurrencyConfig();
+  const transferStep = currencyConfig.type === 'TOKENS' ? 1 : 0.01;
+  const transferPrecision = currencyConfig.type === 'TOKENS' ? 0 : 6;
+
   return (
     <Modal
       title={
@@ -45,6 +64,7 @@ const TransferModal = ({
       onCancel={handleTransferCancel}
       maskClosable={false}
       centered
+      confirmLoading={transferSubmitting}
     >
       <div className='space-y-4'>
         <div>
@@ -62,10 +82,13 @@ const TransferModal = ({
             {t('划转额度')} · {t('最低') + renderQuota(getQuotaPerUnit())}
           </Typography.Text>
           <InputNumber
-            min={getQuotaPerUnit()}
-            max={userState?.user?.aff_quota || 0}
-            value={transferAmount}
-            onChange={(value) => setTransferAmount(value)}
+            min={minTransferDisplayAmount}
+            max={maxTransferDisplayAmount}
+            value={transferDisplayAmount}
+            onChange={(value) => setTransferAmount(displayAmountToQuota(value))}
+            step={transferStep}
+            precision={transferPrecision}
+            disabled={transferSubmitting}
             className='w-full !rounded-lg'
           />
         </div>

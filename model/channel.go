@@ -969,6 +969,10 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 	return tx.Commit().Error
 }
 
+func BatchSetChannelAutoBan(ids []int, autoBan int) error {
+	return DB.Model(&Channel{}).Where("id in (?)", ids).Update("auto_ban", autoBan).Error
+}
+
 // CountAllChannels returns total channels in DB
 func CountAllChannels() (int64, error) {
 	var total int64

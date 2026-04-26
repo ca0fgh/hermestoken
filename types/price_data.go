@@ -25,6 +25,11 @@ type PriceData struct {
 	Quota                int // 按次计费的最终额度（MJ / Task）
 	QuotaToPreConsume    int // 按量计费的预消耗额度
 	GroupRatioInfo       GroupRatioInfo
+	// TaskModelPricingApplied means Quota came from the task-specific mixed
+	// pricing formula instead of the legacy "base price * ratios" path.
+	TaskModelPricingApplied bool
+	TaskPerRequestPrice     float64
+	TaskPerSecondPrice      float64
 }
 
 func (p *PriceData) AddOtherRatio(key string, ratio float64) {

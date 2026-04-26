@@ -115,6 +115,8 @@ type TaskBillingContext struct {
 	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
 	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
+	TaskPerRequest  float64            `json:"task_per_request,omitempty"`  // 任务计费：每次固定价
+	TaskPerSecond   float64            `json:"task_per_second,omitempty"`   // 任务计费：每秒价格
 }
 
 // GetUpstreamTaskID 获取上游真实 task ID（用于与 provider 通信）

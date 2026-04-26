@@ -216,6 +216,49 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (types
 	return priceData, nil
 }
 
+// ApplyTaskModelPricing applies task-specific request/second pricing:
+//
+//	final quota = (per_request + per_second * seconds) * group_ratio * other_ratios
+//
+// The "seconds" ratio is consumed as a duration input rather than multiplied
+// again. Non-time ratios (for example resolution/size) are included by default
+// unless the pricing config opts out with include_other_ratios=false.
+func ApplyTaskModelPricing(modelName string, priceData *types.PriceData) bool {
+	if priceData == nil {
+		return false
+	}
+	pricing, ok := ratio_setting.GetTaskModelPricing(modelName)
+	if !ok {
+		return false
+	}
+
+	seconds := 1.0
+	if priceData.OtherRatios != nil {
+		if v, ok := priceData.OtherRatios["seconds"]; ok && v > 0 {
+			seconds = v
+		} else if v, ok := priceData.OtherRatios["duration"]; ok && v > 0 {
+			seconds = v
+		}
+	}
+
+	amount := pricing.PerRequest + pricing.PerSecond*seconds
+	multiplier := priceData.GroupRatioInfo.GroupRatio
+	if pricing.ShouldIncludeOtherRatios() && priceData.OtherRatios != nil {
+		for key, ratio := range priceData.OtherRatios {
+			if ratio <= 0 || key == "seconds" || key == "duration" {
+				continue
+			}
+			multiplier *= ratio
+		}
+	}
+
+	priceData.Quota = int(amount * common.QuotaPerUnit * multiplier)
+	priceData.TaskModelPricingApplied = true
+	priceData.TaskPerRequestPrice = pricing.PerRequest
+	priceData.TaskPerSecondPrice = pricing.PerSecond
+	return true
+}
+
 func ContainPriceOrRatio(modelName string) bool {
 	_, ok := ratio_setting.GetModelPrice(modelName, false)
 	if ok {

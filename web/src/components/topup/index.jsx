@@ -95,6 +95,7 @@ const TopUp = () => {
   const [affLink, setAffLink] = useState('');
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
 
   // 账单Modal状态
   const [openHistory, setOpenHistory] = useState(false);
@@ -647,20 +648,40 @@ const TopUp = () => {
 
   // 划转邀请额度
   const transfer = async () => {
-    if (transferAmount < getQuotaPerUnit()) {
+    if (transferSubmitting) {
+      return;
+    }
+
+    const numericTransferAmount = Number(transferAmount);
+    if (
+      !Number.isFinite(numericTransferAmount) ||
+      numericTransferAmount < getQuotaPerUnit()
+    ) {
       showError(t('划转金额最低为') + ' ' + renderQuota(getQuotaPerUnit()));
       return;
     }
-    const res = await API.post(`/api/user/aff_transfer`, {
-      quota: transferAmount,
-    });
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(message);
-      setOpenTransfer(false);
-      getUserQuota().then();
-    } else {
-      showError(message);
+    if (numericTransferAmount > (userState?.user?.aff_quota || 0)) {
+      showError(t('邀请额度不足'));
+      return;
+    }
+
+    setTransferSubmitting(true);
+    try {
+      const res = await API.post(`/api/user/aff_transfer`, {
+        quota: numericTransferAmount,
+      });
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(message);
+        setOpenTransfer(false);
+        await getUserQuota();
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('划转失败'));
+    } finally {
+      setTransferSubmitting(false);
     }
   };
 
@@ -795,6 +816,9 @@ const TopUp = () => {
   };
 
   const handleTransferCancel = () => {
+    if (transferSubmitting) {
+      return;
+    }
     setOpenTransfer(false);
   };
 
@@ -848,6 +872,7 @@ const TopUp = () => {
         getQuotaPerUnit={getQuotaPerUnit}
         transferAmount={transferAmount}
         setTransferAmount={setTransferAmount}
+        transferSubmitting={transferSubmitting}
       />
 
       {/* 充值确认模态框 */}

@@ -335,7 +335,7 @@ func GenerateAccessToken(c *gin.Context) {
 }
 
 type TransferAffQuotaRequest struct {
-	Quota int `json:"quota" binding:"required"`
+	Quota int `json:"quota" binding:"required,min=1"`
 }
 
 func TransferAffQuota(c *gin.Context) {

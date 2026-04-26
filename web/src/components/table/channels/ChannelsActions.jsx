@@ -31,6 +31,7 @@ import CompactModeToggle from '../../common/ui/CompactModeToggle';
 const ChannelsActions = ({
   enableBatchDelete,
   batchDeleteChannels,
+  batchSetChannelAutoBan,
   setShowBatchSetTag,
   testAllChannels,
   fixChannelsAbilities,
@@ -89,6 +90,60 @@ const ChannelsActions = ({
           >
             {t('批量设置标签')}
           </Button>
+
+          <Dropdown
+            size='small'
+            trigger='click'
+            render={
+              <Dropdown.Menu>
+                <Dropdown.Item>
+                  <Button
+                    size='small'
+                    type='tertiary'
+                    className='w-full'
+                    onClick={() => {
+                      Modal.confirm({
+                        title: t('确定？'),
+                        content: t('确定要为所选渠道开启自动禁用吗？'),
+                        onOk: () => batchSetChannelAutoBan(1),
+                        size: 'small',
+                        centered: true,
+                      });
+                    }}
+                  >
+                    {t('开启自动禁用')}
+                  </Button>
+                </Dropdown.Item>
+                <Dropdown.Item>
+                  <Button
+                    size='small'
+                    type='tertiary'
+                    className='w-full'
+                    onClick={() => {
+                      Modal.confirm({
+                        title: t('确定？'),
+                        content: t('确定要为所选渠道关闭自动禁用吗？'),
+                        onOk: () => batchSetChannelAutoBan(0),
+                        size: 'small',
+                        centered: true,
+                      });
+                    }}
+                  >
+                    {t('关闭自动禁用')}
+                  </Button>
+                </Dropdown.Item>
+              </Dropdown.Menu>
+            }
+          >
+            <Button
+              size='small'
+              disabled={!enableBatchDelete}
+              type='tertiary'
+              className='w-full md:w-auto'
+            >
+              {t('批量自动禁用')}
+            </Button>
+          </Dropdown>
 
           <Dropdown
             size='small'
