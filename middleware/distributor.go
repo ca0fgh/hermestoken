@@ -230,11 +230,6 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		c.Set("platform", string(constant.TaskPlatformSuno))
 		c.Set("relay_mode", relayMode)
 	} else if relayMode := relayconstant.Path2RelayVideo(c.Request.Method, c.Request.URL.Path); relayMode != relayconstant.RelayModeUnknown {
-		//curl https://api.openai.com/v1/videos \
-		//  -H "Authorization: Bearer $OPENAI_API_KEY" \
-		//  -F "model=sora-2" \
-		//  -F "prompt=A calico cat playing a piano on stage"
-		//	-F input_reference="@image.jpg"
 		if relayMode == relayconstant.RelayModeVideoSubmit && strings.HasSuffix(c.Request.URL.Path, "/remix") {
 			shouldSelectChannel = false
 		} else if relayMode == relayconstant.RelayModeVideoSubmit {

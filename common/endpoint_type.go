@@ -8,7 +8,6 @@ import (
 )
 
 type EndpointResolutionInput struct {
-	Method                 string
 	Path                   string
 	EndpointType           string
 	ModelName              string
@@ -17,24 +16,32 @@ type EndpointResolutionInput struct {
 }
 
 func ResolveEndpointType(input EndpointResolutionInput) constant.EndpointType {
+	endpointTypes := ResolveEndpointTypes(input)
+	if len(endpointTypes) > 0 {
+		return endpointTypes[0]
+	}
+	return constant.EndpointTypeOpenAI
+}
+
+func ResolveEndpointTypes(input EndpointResolutionInput) []constant.EndpointType {
 	if endpointType, ok := ResolveEndpointTypeFromPath(input.Path); ok {
-		return endpointType
+		return []constant.EndpointType{endpointType}
 	}
 
 	if endpointType := constant.EndpointType(strings.TrimSpace(input.EndpointType)); endpointType != "" {
-		return endpointType
+		return []constant.EndpointType{endpointType}
 	}
 
 	if len(input.SupportedEndpointTypes) > 0 {
-		return input.SupportedEndpointTypes[0]
+		return append([]constant.EndpointType(nil), input.SupportedEndpointTypes...)
 	}
 
 	endpointTypes := GetEndpointTypesByChannelType(input.ChannelType, input.ModelName)
 	if len(endpointTypes) > 0 {
-		return endpointTypes[0]
+		return endpointTypes
 	}
 
-	return constant.EndpointTypeOpenAI
+	return []constant.EndpointType{constant.EndpointTypeOpenAI}
 }
 
 func ResolveEndpointTypeFromPath(path string) (constant.EndpointType, bool) {
@@ -44,37 +51,46 @@ func ResolveEndpointTypeFromPath(path string) (constant.EndpointType, bool) {
 	}
 
 	switch {
-	case strings.HasPrefix(path, "/v1/responses/compact"):
+	case endpointPathHasPrefix(path, "/v1/responses/compact"):
 		return constant.EndpointTypeOpenAIResponseCompact, true
-	case strings.HasPrefix(path, "/v1/responses"):
+	case endpointPathHasPrefix(path, "/v1/responses"):
 		return constant.EndpointTypeOpenAIResponse, true
-	case strings.HasPrefix(path, "/v1/images/generations"),
-		strings.HasPrefix(path, "/v1/images/edits"):
+	case endpointPathHasPrefix(path, "/v1/images/generations"),
+		endpointPathHasPrefix(path, "/v1/images/edits"):
 		return constant.EndpointTypeImageGeneration, true
-	case strings.HasPrefix(path, "/v1/videos"),
-		strings.HasPrefix(path, "/v1/video/generations"),
-		strings.HasPrefix(path, "/kling/v1/videos"),
+	case endpointPathHasPrefix(path, "/v1/videos"),
+		endpointPathHasPrefix(path, "/v1/video/generations"),
+		endpointPathHasPrefix(path, "/kling/v1/videos"),
 		strings.HasSuffix(path, "/mj/submit/video"):
 		return constant.EndpointTypeOpenAIVideo, true
-	case strings.HasPrefix(path, "/v1/embeddings"),
+	case endpointPathHasPrefix(path, "/v1/embeddings"),
 		strings.HasSuffix(path, "/embeddings"):
 		return constant.EndpointTypeEmbeddings, true
-	case strings.HasPrefix(path, "/v1/rerank"),
+	case endpointPathHasPrefix(path, "/v1/rerank"),
 		path == "/rerank",
 		strings.HasSuffix(path, "/rerank"):
 		return constant.EndpointTypeJinaRerank, true
-	case strings.HasPrefix(path, "/v1/messages"):
+	case endpointPathHasPrefix(path, "/v1/messages"):
 		return constant.EndpointTypeAnthropic, true
-	case strings.HasPrefix(path, "/v1beta/models"),
-		strings.HasPrefix(path, "/v1/models"):
+	case endpointPathHasPrefix(path, "/v1beta/models"),
+		endpointPathHasPrefix(path, "/v1/models"):
 		return constant.EndpointTypeGemini, true
-	case strings.HasPrefix(path, "/v1/chat/completions"),
-		strings.HasPrefix(path, "/pg/chat/completions"),
-		strings.HasPrefix(path, "/v1/completions"):
+	case endpointPathHasPrefix(path, "/v1/chat/completions"),
+		endpointPathHasPrefix(path, "/pg/chat/completions"),
+		endpointPathHasPrefix(path, "/v1/completions"):
 		return constant.EndpointTypeOpenAI, true
 	}
 
 	return "", false
+}
+
+func ShouldApplyResponseTimeDisableThreshold(input EndpointResolutionInput) bool {
+	for _, endpointType := range ResolveEndpointTypes(input) {
+		if !ShouldApplyResponseTimeDisableThresholdForEndpoint(endpointType) {
+			return false
+		}
+	}
+	return true
 }
 
 func ShouldApplyResponseTimeDisableThresholdForEndpoint(endpointType constant.EndpointType) bool {
@@ -101,6 +117,10 @@ func normalizeEndpointPath(path string) string {
 		path = "/" + path
 	}
 	return path
+}
+
+func endpointPathHasPrefix(path, prefix string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
 // GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）

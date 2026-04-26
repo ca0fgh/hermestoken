@@ -27,3 +27,10 @@ func TestPath2RelayVideoModeUsesMethodWhenAvailable(t *testing.T) {
 	require.Equal(t, RelayModeVideoFetchByID, Path2RelayVideo(http.MethodGet, "/v1/videos/video_123"))
 	require.Equal(t, RelayModeUnknown, Path2RelayVideo(http.MethodDelete, "/v1/videos/video_123"))
 }
+
+func TestPath2RelayVideoDoesNotMatchSimilarPrefixes(t *testing.T) {
+	require.Equal(t, RelayModeUnknown, Path2RelayMode("/v1/videos-old"))
+	require.Equal(t, RelayModeUnknown, Path2RelayMode("/v1/video/generations-old"))
+	require.Equal(t, RelayModeUnknown, Path2RelayMode("/kling/v1/videos-old/text2video"))
+	require.Equal(t, RelayModeUnknown, Path2RelayVideo(http.MethodPost, "/v1/videos-old"))
+}

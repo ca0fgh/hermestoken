@@ -41,6 +41,7 @@ type testResult struct {
 	context     *gin.Context
 	localErr    error
 	newAPIError *types.NewAPIError
+	skipped     bool
 }
 
 const (
@@ -56,8 +57,10 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return forcedEndpoint
 	}
 
-	if resolvedEndpoint := resolveChannelTestEndpointType(channel, modelName, ""); resolvedEndpoint == constant.EndpointTypeImageGeneration {
-		return string(resolvedEndpoint)
+	for _, resolvedEndpoint := range resolveChannelTestEndpointTypes(channel, modelName, "") {
+		if resolvedEndpoint == constant.EndpointTypeImageGeneration {
+			return string(resolvedEndpoint)
+		}
 	}
 
 	return ""
@@ -77,18 +80,31 @@ func forcedChannelTestEndpoint(channel *model.Channel, modelName, endpointType s
 	return ""
 }
 
-func resolveChannelTestEndpointType(channel *model.Channel, modelName, endpointType string) constant.EndpointType {
+func resolveChannelTestEndpointInput(channel *model.Channel, modelName, endpointType string) common.EndpointResolutionInput {
 	channelType := 0
 	if channel != nil {
 		channelType = channel.Type
 	}
 
-	return common.ResolveEndpointType(common.EndpointResolutionInput{
+	return common.EndpointResolutionInput{
 		EndpointType:           forcedChannelTestEndpoint(channel, modelName, endpointType),
 		ModelName:              modelName,
 		ChannelType:            channelType,
 		SupportedEndpointTypes: model.GetModelSupportEndpointTypes(modelName),
-	})
+	}
+}
+
+func resolveChannelTestEndpointTypes(channel *model.Channel, modelName, endpointType string) []constant.EndpointType {
+	return common.ResolveEndpointTypes(resolveChannelTestEndpointInput(channel, modelName, endpointType))
+}
+
+func channelTestEndpointTypesContain(channel *model.Channel, modelName, endpointType string, expected constant.EndpointType) bool {
+	for _, resolvedEndpoint := range resolveChannelTestEndpointTypes(channel, modelName, endpointType) {
+		if resolvedEndpoint == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveChannelTestModel(channel *model.Channel, testModel string) string {
@@ -114,8 +130,7 @@ func shouldApplyResponseTimeDisableThreshold(channel *model.Channel, modelName s
 	if len(endpointType) > 0 {
 		requestedEndpoint = endpointType[0]
 	}
-	resolvedEndpoint := resolveChannelTestEndpointType(channel, modelName, requestedEndpoint)
-	return common.ShouldApplyResponseTimeDisableThresholdForEndpoint(resolvedEndpoint)
+	return common.ShouldApplyResponseTimeDisableThreshold(resolveChannelTestEndpointInput(channel, modelName, requestedEndpoint))
 }
 
 func orderChannelTestGroups(groups []string) []string {
@@ -237,6 +252,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		channelTypeName := constant.GetChannelTypeName(channel.Type)
 		return testResult{
 			localErr: fmt.Errorf("%s channel test is not supported", channelTypeName),
+			skipped:  true,
 		}
 	}
 	w := httptest.NewRecorder()
@@ -245,9 +261,15 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	testModel = resolveChannelTestModel(channel, testModel)
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
-	if endpointType == string(constant.EndpointTypeOpenAIVideo) {
+	if endpointType == string(constant.EndpointTypeOpenAIVideo) ||
+		(endpointType == "" && channelTestEndpointTypesContain(channel, testModel, "", constant.EndpointTypeOpenAIVideo)) {
+		unsupportedEndpointType := endpointType
+		if unsupportedEndpointType == "" {
+			unsupportedEndpointType = string(constant.EndpointTypeOpenAIVideo)
+		}
 		return testResult{
-			localErr: fmt.Errorf("%s channel test is not supported by synchronous channel testing", endpointType),
+			localErr: fmt.Errorf("%s channel test is not supported by synchronous channel testing", unsupportedEndpointType),
+			skipped:  true,
 		}
 	}
 
@@ -1031,6 +1053,9 @@ func recoverAutoDisabledChannelModelAbilities(channel *model.Channel, notify boo
 			continue
 		}
 		result := testChannel(channel, modelName, "", false)
+		if result.skipped {
+			continue
+		}
 		if result.newAPIError == nil {
 			service.EnableChannelModelAbility(channel.Id, modelName, channel.Name)
 			continue
@@ -1085,6 +1110,10 @@ func testAllChannels(notify bool) error {
 			result := testChannel(channel, "", "", false)
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
+			if result.skipped {
+				time.Sleep(common.RequestInterval)
+				continue
+			}
 
 			shouldBanChannel := false
 			newAPIError := result.newAPIError

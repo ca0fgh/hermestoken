@@ -102,46 +102,14 @@ func Path2RelayVideo(method, path string) int {
 	}
 	method = strings.ToUpper(strings.TrimSpace(method))
 
-	if strings.HasPrefix(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
+	if isVideoSubmitPath(path) {
 		if method == "" || method == http.MethodPost {
 			return RelayModeVideoSubmit
 		}
 		return RelayModeUnknown
 	}
 
-	if path == "/v1/videos" {
-		if method == "" || method == http.MethodPost {
-			return RelayModeVideoSubmit
-		}
-		return RelayModeUnknown
-	}
-	if strings.HasPrefix(path, "/v1/videos/") {
-		if method == "" || method == http.MethodGet {
-			return RelayModeVideoFetchByID
-		}
-		return RelayModeUnknown
-	}
-
-	if path == "/v1/video/generations" {
-		if method == "" || method == http.MethodPost {
-			return RelayModeVideoSubmit
-		}
-		return RelayModeUnknown
-	}
-	if strings.HasPrefix(path, "/v1/video/generations/") {
-		if method == "" || method == http.MethodGet {
-			return RelayModeVideoFetchByID
-		}
-		return RelayModeUnknown
-	}
-
-	if path == "/kling/v1/videos/text2video" || path == "/kling/v1/videos/image2video" {
-		if method == "" || method == http.MethodPost {
-			return RelayModeVideoSubmit
-		}
-		return RelayModeUnknown
-	}
-	if strings.HasPrefix(path, "/kling/v1/videos/text2video/") || strings.HasPrefix(path, "/kling/v1/videos/image2video/") {
+	if isVideoFetchPath(path) {
 		if method == "" || method == http.MethodGet {
 			return RelayModeVideoFetchByID
 		}
@@ -149,6 +117,34 @@ func Path2RelayVideo(method, path string) int {
 	}
 
 	return RelayModeUnknown
+}
+
+func isVideoSubmitPath(path string) bool {
+	if strings.HasPrefix(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
+		return true
+	}
+	if path == "/v1/videos" || path == "/v1/video/generations" {
+		return true
+	}
+	if path == "/kling/v1/videos/text2video" || path == "/kling/v1/videos/image2video" {
+		return true
+	}
+	return false
+}
+
+func isVideoFetchPath(path string) bool {
+	if strings.HasPrefix(path, "/v1/videos/") && !strings.HasSuffix(path, "/remix") {
+		return true
+	}
+	if strings.HasPrefix(path, "/v1/video/generations/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/kling/v1/videos/text2video/") ||
+		strings.HasPrefix(path, "/kling/v1/videos/image2video/") {
+		return true
+	}
+
+	return false
 }
 
 func Path2RelayModeMidjourney(path string) int {

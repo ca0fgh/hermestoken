@@ -105,3 +105,19 @@ func TestShouldApplyResponseTimeDisableThresholdSkipsMediaGenerationEndpoints(t 
 	require.True(t, shouldApplyResponseTimeDisableThreshold(channel, "gpt-4o-mini"))
 	require.True(t, shouldApplyResponseTimeDisableThreshold(&model.Channel{Type: constant.ChannelTypeGemini}, "gemini-2.5-pro"))
 }
+
+func TestTestChannelSkipsOpenAIVideoWithoutSynchronousProbe(t *testing.T) {
+	result := testChannel(&model.Channel{Type: constant.ChannelTypeOpenAI}, "veo_3_1", "", false)
+
+	require.True(t, result.skipped)
+	require.Nil(t, result.newAPIError)
+	require.ErrorContains(t, result.localErr, string(constant.EndpointTypeOpenAIVideo))
+}
+
+func TestTestChannelSkipsUnsupportedTaskChannelTypes(t *testing.T) {
+	result := testChannel(&model.Channel{Type: constant.ChannelTypeKling}, "kling-v2-master", "", false)
+
+	require.True(t, result.skipped)
+	require.Nil(t, result.newAPIError)
+	require.ErrorContains(t, result.localErr, "channel test is not supported")
+}
