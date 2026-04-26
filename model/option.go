@@ -148,6 +148,21 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeCurrency"] = setting.WaffoPancakeCurrency
 	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
+	common.OptionMap["CryptoPaymentEnabled"] = "false"
+	common.OptionMap["CryptoTronEnabled"] = "false"
+	common.OptionMap["CryptoTronReceiveAddress"] = ""
+	common.OptionMap["CryptoTronUSDTContract"] = setting.CryptoTronUSDTContract
+	common.OptionMap["CryptoTronRPCURL"] = ""
+	common.OptionMap["CryptoTronAPIKey"] = ""
+	common.OptionMap["CryptoTronConfirmations"] = strconv.Itoa(setting.CryptoTronConfirmations)
+	common.OptionMap["CryptoBSCEnabled"] = "false"
+	common.OptionMap["CryptoBSCReceiveAddress"] = ""
+	common.OptionMap["CryptoBSCUSDTContract"] = setting.CryptoBSCUSDTContract
+	common.OptionMap["CryptoBSCRPCURL"] = ""
+	common.OptionMap["CryptoBSCConfirmations"] = strconv.Itoa(setting.CryptoBSCConfirmations)
+	common.OptionMap["CryptoOrderExpireMinutes"] = strconv.Itoa(setting.CryptoOrderExpireMinutes)
+	common.OptionMap["CryptoUniqueSuffixMax"] = strconv.Itoa(setting.CryptoUniqueSuffixMax)
+	common.OptionMap["CryptoScannerEnabled"] = strconv.FormatBool(setting.CryptoScannerEnabled)
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -221,6 +236,7 @@ func InitOptionMap() {
 
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
+	setting.LoadCryptoPaymentSettingsFromOptionMap()
 	ensureDefaultOptionRecords()
 }
 
@@ -507,6 +523,36 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "CryptoPaymentEnabled":
+		setting.CryptoPaymentEnabled = value == "true"
+	case "CryptoTronEnabled":
+		setting.CryptoTronEnabled = value == "true"
+	case "CryptoTronReceiveAddress":
+		setting.CryptoTronReceiveAddress = value
+	case "CryptoTronUSDTContract":
+		setting.CryptoTronUSDTContract = value
+	case "CryptoTronRPCURL":
+		setting.CryptoTronRPCURL = value
+	case "CryptoTronAPIKey":
+		setting.CryptoTronAPIKey = value
+	case "CryptoTronConfirmations":
+		setting.CryptoTronConfirmations, _ = strconv.Atoi(value)
+	case "CryptoBSCEnabled":
+		setting.CryptoBSCEnabled = value == "true"
+	case "CryptoBSCReceiveAddress":
+		setting.CryptoBSCReceiveAddress = value
+	case "CryptoBSCUSDTContract":
+		setting.CryptoBSCUSDTContract = value
+	case "CryptoBSCRPCURL":
+		setting.CryptoBSCRPCURL = value
+	case "CryptoBSCConfirmations":
+		setting.CryptoBSCConfirmations, _ = strconv.Atoi(value)
+	case "CryptoOrderExpireMinutes":
+		setting.CryptoOrderExpireMinutes, _ = strconv.Atoi(value)
+	case "CryptoUniqueSuffixMax":
+		setting.CryptoUniqueSuffixMax, _ = strconv.Atoi(value)
+	case "CryptoScannerEnabled":
+		setting.CryptoScannerEnabled = value == "true"
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":
