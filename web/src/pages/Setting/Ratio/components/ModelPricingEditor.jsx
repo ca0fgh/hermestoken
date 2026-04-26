@@ -53,6 +53,13 @@ import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 
 const { Text } = Typography;
 const EMPTY_CANDIDATE_MODEL_NAMES = [];
+const previewValueStyle = {
+  display: 'block',
+  minWidth: 0,
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  whiteSpace: 'pre-wrap',
+};
 
 const PriceInput = ({
   label,
@@ -745,14 +752,15 @@ export default function ModelPricingEditor({
                   <div
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'minmax(140px, 180px) 1fr',
+                      gridTemplateColumns:
+                        'minmax(120px, 180px) minmax(0, 1fr)',
                       gap: 8,
                     }}
                   >
                     {previewRows.map((row) => (
                       <React.Fragment key={row.key}>
                         <Text strong>{row.label}</Text>
-                        <Text>{row.value}</Text>
+                        <Text style={previewValueStyle}>{row.value}</Text>
                       </React.Fragment>
                     ))}
                   </div>

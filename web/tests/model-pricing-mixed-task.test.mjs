@@ -33,3 +33,9 @@ test('model pricing editor exposes separate per-request and per-second modes', (
   assert.doesNotMatch(editorSource, /叠加分辨率\/尺寸等其它倍率/);
   assert.doesNotMatch(editorSource, /按次\+按秒/);
 });
+
+test('model pricing preview wraps long backend JSON values', () => {
+  assert.match(editorSource, /overflowWrap: 'anywhere'/);
+  assert.match(editorSource, /wordBreak: 'break-word'/);
+  assert.match(editorSource, /minWidth: 0/);
+});
