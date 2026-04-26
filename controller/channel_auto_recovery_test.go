@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/stretchr/testify/require"
@@ -56,4 +57,33 @@ func TestShouldWaitAutoDisabledModelAbilityRecoveryCooldown(t *testing.T) {
 	require.False(t, shouldWaitAutoDisabledModelAbilityRecoveryCooldown(unknownDisableTime, now, cooldown))
 
 	require.False(t, shouldWaitAutoDisabledModelAbilityRecoveryCooldown(recentlyDisabled, now, 0))
+}
+
+func TestResolveChannelTestModel(t *testing.T) {
+	configured := " configured-model "
+	channel := &model.Channel{
+		TestModel: &configured,
+		Models:    "first-model,second-model",
+	}
+
+	require.Equal(t, "explicit-model", resolveChannelTestModel(channel, " explicit-model "))
+	require.Equal(t, "configured-model", resolveChannelTestModel(channel, ""))
+
+	channel.TestModel = nil
+	require.Equal(t, "first-model", resolveChannelTestModel(channel, ""))
+
+	channel.Models = ""
+	require.Equal(t, "gpt-4o-mini", resolveChannelTestModel(channel, ""))
+}
+
+func TestShouldApplyResponseTimeDisableThresholdSkipsOpenAICompatibleVideoModels(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeOpenAI}
+
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "veo_3_1"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "veo_3_1-4K"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "sora-2"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "grok-imagine-video"))
+
+	require.True(t, shouldApplyResponseTimeDisableThreshold(channel, "gpt-4o-mini"))
+	require.True(t, shouldApplyResponseTimeDisableThreshold(&model.Channel{Type: constant.ChannelTypeGemini}, "gemini-2.5-pro"))
 }

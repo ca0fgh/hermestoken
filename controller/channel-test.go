@@ -64,6 +64,45 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	return normalized
 }
 
+func resolveChannelTestModel(channel *model.Channel, testModel string) string {
+	testModel = strings.TrimSpace(testModel)
+	if testModel != "" {
+		return testModel
+	}
+	if channel == nil {
+		return "gpt-4o-mini"
+	}
+	if channel.TestModel != nil && strings.TrimSpace(*channel.TestModel) != "" {
+		return strings.TrimSpace(*channel.TestModel)
+	}
+	models := channel.GetModels()
+	if len(models) > 0 && strings.TrimSpace(models[0]) != "" {
+		return strings.TrimSpace(models[0])
+	}
+	return "gpt-4o-mini"
+}
+
+func isOpenAICompatibleVideoModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	if modelName == "" {
+		return false
+	}
+	return strings.HasPrefix(modelName, "veo") ||
+		strings.HasPrefix(modelName, "sora-") ||
+		strings.HasPrefix(modelName, "grok-imagine") ||
+		strings.Contains(modelName, "video")
+}
+
+func shouldApplyResponseTimeDisableThreshold(channel *model.Channel, modelName string) bool {
+	if channel == nil {
+		return true
+	}
+	if channel.Type == constant.ChannelTypeSora {
+		return false
+	}
+	return !isOpenAICompatibleVideoModel(modelName)
+}
+
 func orderChannelTestGroups(groups []string) []string {
 	seen := make(map[string]struct{}, len(groups))
 	ordered := make([]string, 0, len(groups))
@@ -188,20 +227,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 
-	testModel = strings.TrimSpace(testModel)
-	if testModel == "" {
-		if channel.TestModel != nil && *channel.TestModel != "" {
-			testModel = strings.TrimSpace(*channel.TestModel)
-		} else {
-			models := channel.GetModels()
-			if len(models) > 0 {
-				testModel = strings.TrimSpace(models[0])
-			}
-			if testModel == "" {
-				testModel = "gpt-4o-mini"
-			}
-		}
-	}
+	testModel = resolveChannelTestModel(channel, testModel)
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
 
@@ -1034,6 +1060,7 @@ func testAllChannels(notify bool) error {
 				continue
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
+			testModel := resolveChannelTestModel(channel, "")
 			tik := time.Now()
 			result := testChannel(channel, "", "", false)
 			tok := time.Now()
@@ -1047,7 +1074,7 @@ func testAllChannels(notify bool) error {
 			}
 
 			// 当错误检查通过，才检查响应时间
-			if common.AutomaticDisableChannelEnabled && !shouldBanChannel {
+			if common.AutomaticDisableChannelEnabled && !shouldBanChannel && shouldApplyResponseTimeDisableThreshold(channel, testModel) {
 				if milliseconds > disableThreshold {
 					err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
 					newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
