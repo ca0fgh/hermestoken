@@ -76,13 +76,31 @@ func TestResolveChannelTestModel(t *testing.T) {
 	require.Equal(t, "gpt-4o-mini", resolveChannelTestModel(channel, ""))
 }
 
-func TestShouldApplyResponseTimeDisableThresholdSkipsOpenAICompatibleVideoModels(t *testing.T) {
+func TestNormalizeChannelTestEndpointSelectsSupportedMediaEndpoint(t *testing.T) {
 	channel := &model.Channel{Type: constant.ChannelTypeOpenAI}
 
+	require.Equal(t, string(constant.EndpointTypeImageGeneration), normalizeChannelTestEndpoint(channel, "qwen-image-plus", ""))
+	require.Equal(t, string(constant.EndpointTypeImageGeneration), normalizeChannelTestEndpoint(channel, "openai/gpt-image-2", ""))
+	require.Equal(t, "", normalizeChannelTestEndpoint(channel, "veo_3_1", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(channel, "veo_3_1", string(constant.EndpointTypeOpenAIVideo)))
+}
+
+func TestShouldApplyResponseTimeDisableThresholdSkipsMediaGenerationEndpoints(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeOpenAI}
+
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "qwen-image-plus"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "openai/gpt-image-2"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "imagen-4.0-generate-preview-06-06"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "seedream-4-0"))
 	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "veo_3_1"))
 	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "veo_3_1-4K"))
 	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "sora-2"))
 	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "grok-imagine-video"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "kling-v2-master"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "wan2.5-t2v"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(&model.Channel{Type: constant.ChannelTypeSora}, "sora-2"))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "gpt-4o-mini", string(constant.EndpointTypeImageGeneration)))
+	require.False(t, shouldApplyResponseTimeDisableThreshold(channel, "gpt-4o-mini", string(constant.EndpointTypeOpenAIVideo)))
 
 	require.True(t, shouldApplyResponseTimeDisableThreshold(channel, "gpt-4o-mini"))
 	require.True(t, shouldApplyResponseTimeDisableThreshold(&model.Channel{Type: constant.ChannelTypeGemini}, "gemini-2.5-pro"))

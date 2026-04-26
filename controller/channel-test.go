@@ -51,9 +51,24 @@ const (
 )
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
-	normalized := strings.TrimSpace(endpointType)
-	if normalized != "" {
-		return normalized
+	forcedEndpoint := forcedChannelTestEndpoint(channel, modelName, endpointType)
+	if forcedEndpoint != "" {
+		return forcedEndpoint
+	}
+
+	for _, resolvedEndpoint := range resolveChannelTestEndpointTypes(channel, modelName, "") {
+		if resolvedEndpoint == constant.EndpointTypeImageGeneration {
+			return string(resolvedEndpoint)
+		}
+	}
+
+	return ""
+}
+
+func forcedChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
+	endpointType = strings.TrimSpace(endpointType)
+	if endpointType != "" {
+		return endpointType
 	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
@@ -61,7 +76,23 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if channel != nil && channel.Type == constant.ChannelTypeCodex {
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
-	return normalized
+	return ""
+}
+
+func resolveChannelTestEndpointTypes(channel *model.Channel, modelName, endpointType string) []constant.EndpointType {
+	if forcedEndpoint := forcedChannelTestEndpoint(channel, modelName, endpointType); forcedEndpoint != "" {
+		return []constant.EndpointType{constant.EndpointType(forcedEndpoint)}
+	}
+
+	if supportedEndpoints := model.GetModelSupportEndpointTypes(modelName); len(supportedEndpoints) > 0 {
+		return supportedEndpoints
+	}
+
+	if channel != nil {
+		return common.GetEndpointTypesByChannelType(channel.Type, modelName)
+	}
+
+	return common.GetEndpointTypesByChannelType(0, modelName)
 }
 
 func resolveChannelTestModel(channel *model.Channel, testModel string) string {
@@ -82,25 +113,18 @@ func resolveChannelTestModel(channel *model.Channel, testModel string) string {
 	return "gpt-4o-mini"
 }
 
-func isOpenAICompatibleVideoModel(modelName string) bool {
-	modelName = strings.ToLower(strings.TrimSpace(modelName))
-	if modelName == "" {
-		return false
+func shouldApplyResponseTimeDisableThreshold(channel *model.Channel, modelName string, endpointType ...string) bool {
+	requestedEndpoint := ""
+	if len(endpointType) > 0 {
+		requestedEndpoint = endpointType[0]
 	}
-	return strings.HasPrefix(modelName, "veo") ||
-		strings.HasPrefix(modelName, "sora-") ||
-		strings.HasPrefix(modelName, "grok-imagine") ||
-		strings.Contains(modelName, "video")
-}
-
-func shouldApplyResponseTimeDisableThreshold(channel *model.Channel, modelName string) bool {
-	if channel == nil {
-		return true
+	for _, resolvedEndpoint := range resolveChannelTestEndpointTypes(channel, modelName, requestedEndpoint) {
+		switch resolvedEndpoint {
+		case constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAIVideo:
+			return false
+		}
 	}
-	if channel.Type == constant.ChannelTypeSora {
-		return false
-	}
-	return !isOpenAICompatibleVideoModel(modelName)
+	return true
 }
 
 func orderChannelTestGroups(groups []string) []string {
@@ -230,6 +254,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	testModel = resolveChannelTestModel(channel, testModel)
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	if endpointType == string(constant.EndpointTypeOpenAIVideo) {
+		return testResult{
+			localErr: fmt.Errorf("%s channel test is not supported by synchronous channel testing", endpointType),
+		}
+	}
 
 	requestPath := "/v1/chat/completions"
 

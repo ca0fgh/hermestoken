@@ -10,12 +10,29 @@ var (
 		"o4-mini-deep-research",
 	}
 	ImageGenerationModels = []string{
-		"dall-e-3",
-		"dall-e-2",
-		"gpt-image-1",
+		"dall-e-",
+		"gpt-image-",
 		"prefix:imagen-",
+		"qwen-image",
+		"image-preview",
+		"image-edit",
+		"seedream",
 		"flux-",
 		"flux.1-",
+	}
+	VideoGenerationModels = []string{
+		"prefix:veo",
+		"sora-",
+		"grok-imagine",
+		"kling",
+		"hailuo",
+		"wan2",
+		"vidu",
+		"cogvideo",
+		"seedance",
+		"runway",
+		"pika",
+		"video",
 	}
 	OpenAITextModels = []string{
 		"gpt-",
@@ -36,22 +53,40 @@ func IsOpenAIResponseOnlyModel(modelName string) bool {
 }
 
 func IsImageGenerationModel(modelName string) bool {
-	modelName = strings.ToLower(modelName)
-	for _, m := range ImageGenerationModels {
-		if strings.Contains(modelName, m) {
-			return true
-		}
-		if strings.HasPrefix(m, "prefix:") && strings.HasPrefix(modelName, strings.TrimPrefix(m, "prefix:")) {
-			return true
-		}
-	}
-	return false
+	return matchesModelNameRules(modelName, ImageGenerationModels)
+}
+
+func IsVideoGenerationModel(modelName string) bool {
+	return matchesModelNameRules(modelName, VideoGenerationModels)
 }
 
 func IsOpenAITextModel(modelName string) bool {
 	modelName = strings.ToLower(modelName)
 	for _, m := range OpenAITextModels {
 		if strings.Contains(modelName, m) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesModelNameRules(modelName string, rules []string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	if modelName == "" {
+		return false
+	}
+	for _, rule := range rules {
+		rule = strings.ToLower(strings.TrimSpace(rule))
+		if rule == "" {
+			continue
+		}
+		if strings.HasPrefix(rule, "prefix:") {
+			if strings.HasPrefix(modelName, strings.TrimPrefix(rule, "prefix:")) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(modelName, rule) {
 			return true
 		}
 	}
