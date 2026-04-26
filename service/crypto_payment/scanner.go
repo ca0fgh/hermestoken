@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 )
 
@@ -26,7 +27,14 @@ func StartCryptoPaymentScanners() {
 }
 
 func BuildConfiguredScanners() []NetworkScanner {
-	return nil
+	scanners := make([]NetworkScanner, 0, 2)
+	for _, network := range setting.GetEnabledCryptoPaymentNetworks() {
+		switch network.Network {
+		case model.CryptoNetworkBSCERC20:
+			scanners = append(scanners, NewBSCScanner(network))
+		}
+	}
+	return scanners
 }
 
 func runScannerLoop(ctx context.Context, scanner NetworkScanner, owner string) {
