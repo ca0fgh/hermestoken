@@ -56,10 +56,8 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return forcedEndpoint
 	}
 
-	for _, resolvedEndpoint := range resolveChannelTestEndpointTypes(channel, modelName, "") {
-		if resolvedEndpoint == constant.EndpointTypeImageGeneration {
-			return string(resolvedEndpoint)
-		}
+	if resolvedEndpoint := resolveChannelTestEndpointType(channel, modelName, ""); resolvedEndpoint == constant.EndpointTypeImageGeneration {
+		return string(resolvedEndpoint)
 	}
 
 	return ""
@@ -79,20 +77,18 @@ func forcedChannelTestEndpoint(channel *model.Channel, modelName, endpointType s
 	return ""
 }
 
-func resolveChannelTestEndpointTypes(channel *model.Channel, modelName, endpointType string) []constant.EndpointType {
-	if forcedEndpoint := forcedChannelTestEndpoint(channel, modelName, endpointType); forcedEndpoint != "" {
-		return []constant.EndpointType{constant.EndpointType(forcedEndpoint)}
-	}
-
-	if supportedEndpoints := model.GetModelSupportEndpointTypes(modelName); len(supportedEndpoints) > 0 {
-		return supportedEndpoints
-	}
-
+func resolveChannelTestEndpointType(channel *model.Channel, modelName, endpointType string) constant.EndpointType {
+	channelType := 0
 	if channel != nil {
-		return common.GetEndpointTypesByChannelType(channel.Type, modelName)
+		channelType = channel.Type
 	}
 
-	return common.GetEndpointTypesByChannelType(0, modelName)
+	return common.ResolveEndpointType(common.EndpointResolutionInput{
+		EndpointType:           forcedChannelTestEndpoint(channel, modelName, endpointType),
+		ModelName:              modelName,
+		ChannelType:            channelType,
+		SupportedEndpointTypes: model.GetModelSupportEndpointTypes(modelName),
+	})
 }
 
 func resolveChannelTestModel(channel *model.Channel, testModel string) string {
@@ -118,13 +114,8 @@ func shouldApplyResponseTimeDisableThreshold(channel *model.Channel, modelName s
 	if len(endpointType) > 0 {
 		requestedEndpoint = endpointType[0]
 	}
-	for _, resolvedEndpoint := range resolveChannelTestEndpointTypes(channel, modelName, requestedEndpoint) {
-		switch resolvedEndpoint {
-		case constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAIVideo:
-			return false
-		}
-	}
-	return true
+	resolvedEndpoint := resolveChannelTestEndpointType(channel, modelName, requestedEndpoint)
+	return common.ShouldApplyResponseTimeDisableThresholdForEndpoint(resolvedEndpoint)
 }
 
 func orderChannelTestGroups(groups []string) []string {

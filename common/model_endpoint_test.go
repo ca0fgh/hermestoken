@@ -71,3 +71,69 @@ func TestDefaultOpenAIVideoEndpointInfo(t *testing.T) {
 	require.Equal(t, "/v1/videos", info.Path)
 	require.Equal(t, "POST", info.Method)
 }
+
+func TestResolveEndpointTypePrefersRequestPath(t *testing.T) {
+	cases := []struct {
+		name     string
+		path     string
+		expected constant.EndpointType
+	}{
+		{name: "chat completions", path: "/v1/chat/completions", expected: constant.EndpointTypeOpenAI},
+		{name: "responses compact", path: "/v1/responses/compact", expected: constant.EndpointTypeOpenAIResponseCompact},
+		{name: "responses", path: "/v1/responses", expected: constant.EndpointTypeOpenAIResponse},
+		{name: "image generations", path: "/v1/images/generations", expected: constant.EndpointTypeImageGeneration},
+		{name: "image edits", path: "/v1/images/edits", expected: constant.EndpointTypeImageGeneration},
+		{name: "openai videos", path: "/v1/videos", expected: constant.EndpointTypeOpenAIVideo},
+		{name: "openai video fetch", path: "/v1/videos/task_123", expected: constant.EndpointTypeOpenAIVideo},
+		{name: "generic video generations", path: "/v1/video/generations", expected: constant.EndpointTypeOpenAIVideo},
+		{name: "kling videos", path: "/kling/v1/videos/text2video", expected: constant.EndpointTypeOpenAIVideo},
+		{name: "embeddings", path: "/v1/embeddings", expected: constant.EndpointTypeEmbeddings},
+		{name: "rerank", path: "/v1/rerank", expected: constant.EndpointTypeJinaRerank},
+		{name: "gemini", path: "/v1beta/models/gemini-2.5-pro:generateContent", expected: constant.EndpointTypeGemini},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, ResolveEndpointType(EndpointResolutionInput{
+				Path:         tc.path,
+				EndpointType: string(constant.EndpointTypeOpenAI),
+				ModelName:    "gpt-4o-mini",
+				ChannelType:  constant.ChannelTypeOpenAI,
+			}))
+		})
+	}
+}
+
+func TestResolveEndpointTypeFallsBackWithoutRequestPath(t *testing.T) {
+	require.Equal(t, constant.EndpointTypeOpenAIVideo, ResolveEndpointType(EndpointResolutionInput{
+		EndpointType: string(constant.EndpointTypeOpenAIVideo),
+		ModelName:    "gpt-4o-mini",
+		ChannelType:  constant.ChannelTypeOpenAI,
+	}))
+
+	require.Equal(t, constant.EndpointTypeImageGeneration, ResolveEndpointType(EndpointResolutionInput{
+		ModelName:              "unknown-model",
+		ChannelType:            constant.ChannelTypeOpenAI,
+		SupportedEndpointTypes: []constant.EndpointType{constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAI},
+	}))
+
+	require.Equal(t, constant.EndpointTypeOpenAIVideo, ResolveEndpointType(EndpointResolutionInput{
+		ModelName:   "veo_3_1",
+		ChannelType: constant.ChannelTypeOpenAI,
+	}))
+
+	require.Equal(t, constant.EndpointTypeOpenAI, ResolveEndpointType(EndpointResolutionInput{
+		ModelName:   "gpt-4o-mini",
+		ChannelType: constant.ChannelTypeOpenAI,
+	}))
+}
+
+func TestShouldApplyResponseTimeDisableThresholdForEndpoint(t *testing.T) {
+	require.False(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeImageGeneration))
+	require.False(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeOpenAIVideo))
+
+	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeOpenAI))
+	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeOpenAIResponse))
+	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeEmbeddings))
+	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeJinaRerank))
+}

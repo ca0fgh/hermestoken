@@ -88,10 +88,67 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeRealtime
 	} else if strings.HasPrefix(path, "/v1beta/models") || strings.HasPrefix(path, "/v1/models") {
 		relayMode = RelayModeGemini
+	} else if videoMode := Path2RelayVideo("", path); videoMode != RelayModeUnknown {
+		relayMode = videoMode
 	} else if strings.HasPrefix(path, "/mj") {
 		relayMode = Path2RelayModeMidjourney(path)
 	}
 	return relayMode
+}
+
+func Path2RelayVideo(method, path string) int {
+	if idx := strings.Index(path, "?"); idx >= 0 {
+		path = path[:idx]
+	}
+	method = strings.ToUpper(strings.TrimSpace(method))
+
+	if strings.HasPrefix(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
+		if method == "" || method == http.MethodPost {
+			return RelayModeVideoSubmit
+		}
+		return RelayModeUnknown
+	}
+
+	if path == "/v1/videos" {
+		if method == "" || method == http.MethodPost {
+			return RelayModeVideoSubmit
+		}
+		return RelayModeUnknown
+	}
+	if strings.HasPrefix(path, "/v1/videos/") {
+		if method == "" || method == http.MethodGet {
+			return RelayModeVideoFetchByID
+		}
+		return RelayModeUnknown
+	}
+
+	if path == "/v1/video/generations" {
+		if method == "" || method == http.MethodPost {
+			return RelayModeVideoSubmit
+		}
+		return RelayModeUnknown
+	}
+	if strings.HasPrefix(path, "/v1/video/generations/") {
+		if method == "" || method == http.MethodGet {
+			return RelayModeVideoFetchByID
+		}
+		return RelayModeUnknown
+	}
+
+	if path == "/kling/v1/videos/text2video" || path == "/kling/v1/videos/image2video" {
+		if method == "" || method == http.MethodPost {
+			return RelayModeVideoSubmit
+		}
+		return RelayModeUnknown
+	}
+	if strings.HasPrefix(path, "/kling/v1/videos/text2video/") || strings.HasPrefix(path, "/kling/v1/videos/image2video/") {
+		if method == "" || method == http.MethodGet {
+			return RelayModeVideoFetchByID
+		}
+		return RelayModeUnknown
+	}
+
+	return RelayModeUnknown
 }
 
 func Path2RelayModeMidjourney(path string) int {
