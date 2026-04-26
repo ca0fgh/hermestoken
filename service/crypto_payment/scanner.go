@@ -65,6 +65,9 @@ func runScannerLoop(ctx context.Context, scanner NetworkScanner, owner string) {
 			if err := scanner.ScanOnce(ctx); err != nil {
 				common.SysLog("crypto scanner error: " + err.Error())
 			}
+			if _, err := model.CompleteReadyCryptoOrders(scanner.Network()); err != nil {
+				common.SysLog("crypto completion error: " + err.Error())
+			}
 			_, _ = lock.Renew(ctx)
 		}
 	}

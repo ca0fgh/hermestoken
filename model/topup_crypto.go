@@ -566,3 +566,38 @@ func UpsertCryptoScannerState(network string, lastScannedBlock int64, lastFinali
 	}
 	return DB.Save(&state).Error
 }
+
+func CompleteReadyCryptoOrders(network string) (int, error) {
+	var orders []CryptoPaymentOrder
+	if err := DB.Where("network = ? AND status IN ? AND matched_tx_hash <> ''", NormalizeCryptoNetwork(network), []string{CryptoPaymentStatusDetected, CryptoPaymentStatusConfirmed}).Find(&orders).Error; err != nil {
+		return 0, err
+	}
+	completed := 0
+	for _, order := range orders {
+		var tx CryptoPaymentTransaction
+		if err := DB.Where("network = ? AND tx_hash = ? AND log_index = ? AND matched_order_id = ?", order.Network, order.MatchedTxHash, order.MatchedLogIndex, order.Id).First(&tx).Error; err != nil {
+			continue
+		}
+		if tx.Confirmations < int64(order.RequiredConfirmations) {
+			continue
+		}
+		evidence := CryptoTxEvidence{
+			Network:         tx.Network,
+			TxHash:          tx.TxHash,
+			LogIndex:        tx.LogIndex,
+			BlockNumber:     tx.BlockNumber,
+			BlockTimestamp:  tx.BlockTimestamp,
+			FromAddress:     tx.FromAddress,
+			ToAddress:       tx.ToAddress,
+			TokenContract:   tx.TokenContract,
+			AmountBaseUnits: tx.AmountBaseUnits,
+			Confirmations:   tx.Confirmations,
+			RawPayload:      tx.RawPayload,
+		}
+		if err := CompleteCryptoTopUp(order.TradeNo, evidence); err != nil {
+			return completed, err
+		}
+		completed++
+	}
+	return completed, nil
+}

@@ -297,3 +297,38 @@ func TestCryptoScannerStateUpsert(t *testing.T) {
 	assert.EqualValues(t, 100, state.LastScannedBlock)
 	assert.EqualValues(t, 85, state.LastFinalizedBlock)
 }
+
+func TestCompleteReadyCryptoOrders(t *testing.T) {
+	truncateTables(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+	insertUserForPaymentGuardTest(t, 1101, 0)
+	order := seedCryptoOrderForCompletion(t, 1101, 10, "10003721")
+	order.Status = CryptoPaymentStatusDetected
+	order.MatchedTxHash = "0xready"
+	order.MatchedLogIndex = 0
+	require.NoError(t, DB.Save(order).Error)
+	require.NoError(t, DB.Create(&CryptoPaymentTransaction{
+		Network:         order.Network,
+		TxHash:          "0xready",
+		LogIndex:        0,
+		BlockNumber:     100,
+		ToAddress:       order.ReceiveAddress,
+		TokenContract:   order.TokenContract,
+		TokenSymbol:     CryptoTokenUSDT,
+		TokenDecimals:   order.TokenDecimals,
+		Amount:          order.PayAmount,
+		AmountBaseUnits: order.PayAmountBaseUnits,
+		Confirmations:   20,
+		Status:          CryptoTransactionStatusConfirmed,
+		MatchedOrderId:  order.Id,
+		CreateTime:      time.Now().Unix(),
+		UpdateTime:      time.Now().Unix(),
+	}).Error)
+
+	completed, err := CompleteReadyCryptoOrders(order.Network)
+	require.NoError(t, err)
+	assert.Equal(t, 1, completed)
+	assert.Equal(t, 5000000, getUserQuotaForPaymentGuardTest(t, 1101))
+}
