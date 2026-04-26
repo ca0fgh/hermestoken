@@ -117,3 +117,120 @@ func TestCreateCryptoTopUpOrderRejectsActiveAmountCollision(t *testing.T) {
 	_, err = CreateCryptoTopUpOrder(input)
 	require.ErrorIs(t, err, ErrCryptoAmountCollision)
 }
+
+func TestCompleteCryptoTopUpCreditsQuotaOnce(t *testing.T) {
+	truncateTables(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+	insertUserForPaymentGuardTest(t, 901, 0)
+	order := seedCryptoOrderForCompletion(t, 901, 10, "10003721")
+	evidence := CryptoTxEvidence{
+		Network:         order.Network,
+		TxHash:          "0xcomplete1",
+		LogIndex:        0,
+		ToAddress:       order.ReceiveAddress,
+		TokenContract:   order.TokenContract,
+		AmountBaseUnits: order.PayAmountBaseUnits,
+		Confirmations:   int64(order.RequiredConfirmations),
+		BlockNumber:     100,
+		BlockTimestamp:  time.Now().Unix(),
+		FromAddress:     "sender",
+		RawPayload:      `{"ok":true}`,
+	}
+
+	require.NoError(t, CompleteCryptoTopUp(order.TradeNo, evidence))
+	require.NoError(t, CompleteCryptoTopUp(order.TradeNo, evidence))
+	assert.Equal(t, 5000000, getUserQuotaForPaymentGuardTest(t, 901))
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
+}
+
+func TestCompleteCryptoTopUpRejectsAmountMismatch(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 902, 0)
+	order := seedCryptoOrderForCompletion(t, 902, 10, "10003721")
+	err := CompleteCryptoTopUp(order.TradeNo, CryptoTxEvidence{
+		Network:         order.Network,
+		TxHash:          "0xmismatch",
+		LogIndex:        0,
+		ToAddress:       order.ReceiveAddress,
+		TokenContract:   order.TokenContract,
+		AmountBaseUnits: "10000000",
+		Confirmations:   int64(order.RequiredConfirmations),
+	})
+	require.ErrorIs(t, err, ErrCryptoTransactionMismatch)
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 902))
+}
+
+func TestCompleteCryptoTopUpRejectsReusedTransaction(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 903, 0)
+	insertUserForPaymentGuardTest(t, 904, 0)
+	firstOrder := seedCryptoOrderForCompletion(t, 903, 10, "10003721")
+	secondOrder := seedCryptoOrderForCompletion(t, 904, 10, "10003721")
+	require.NoError(t, DB.Create(&CryptoPaymentTransaction{
+		Network:         firstOrder.Network,
+		TxHash:          "0xreused",
+		LogIndex:        0,
+		ToAddress:       firstOrder.ReceiveAddress,
+		TokenContract:   firstOrder.TokenContract,
+		TokenSymbol:     CryptoTokenUSDT,
+		TokenDecimals:   firstOrder.TokenDecimals,
+		Amount:          firstOrder.PayAmount,
+		AmountBaseUnits: firstOrder.PayAmountBaseUnits,
+		Confirmations:   20,
+		Status:          CryptoTransactionStatusConfirmed,
+		MatchedOrderId:  firstOrder.Id,
+		CreateTime:      time.Now().Unix(),
+		UpdateTime:      time.Now().Unix(),
+	}).Error)
+
+	err := CompleteCryptoTopUp(secondOrder.TradeNo, CryptoTxEvidence{
+		Network:         secondOrder.Network,
+		TxHash:          "0xreused",
+		LogIndex:        0,
+		ToAddress:       secondOrder.ReceiveAddress,
+		TokenContract:   secondOrder.TokenContract,
+		AmountBaseUnits: secondOrder.PayAmountBaseUnits,
+		Confirmations:   int64(secondOrder.RequiredConfirmations),
+	})
+	require.ErrorIs(t, err, ErrCryptoTransactionMismatch)
+	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 904))
+}
+
+func seedCryptoOrderForCompletion(t *testing.T, userID int, amount int64, payUnits string) *CryptoPaymentOrder {
+	t.Helper()
+	topUp := &TopUp{
+		UserId:        userID,
+		Amount:        amount,
+		Money:         10.003721,
+		TradeNo:       "crypto-complete-" + time.Now().Format("150405.000000000"),
+		PaymentMethod: PaymentMethodCryptoUSDT,
+		Currency:      CryptoTokenUSDT,
+		Status:        common.TopUpStatusPending,
+		CreateTime:    time.Now().Unix(),
+	}
+	require.NoError(t, DB.Create(topUp).Error)
+	order := &CryptoPaymentOrder{
+		TopUpId:               topUp.Id,
+		TradeNo:               topUp.TradeNo,
+		UserId:                userID,
+		Network:               CryptoNetworkTronTRC20,
+		TokenSymbol:           CryptoTokenUSDT,
+		TokenContract:         "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+		TokenDecimals:         6,
+		ReceiveAddress:        "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z",
+		BaseAmount:            "10.000000",
+		PayAmount:             "10.003721",
+		PayAmountBaseUnits:    payUnits,
+		UniqueSuffix:          3721,
+		ExpiresAt:             time.Now().Add(10 * time.Minute).Unix(),
+		RequiredConfirmations: 20,
+		Status:                CryptoPaymentStatusConfirmed,
+		MatchedLogIndex:       -1,
+		CreateTime:            time.Now().Unix(),
+		UpdateTime:            time.Now().Unix(),
+	}
+	require.NoError(t, DB.Create(order).Error)
+	return order
+}

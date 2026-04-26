@@ -285,3 +285,144 @@ func ExpireCryptoPaymentOrderIfNeeded(order *CryptoPaymentOrder, now time.Time) 
 	}
 	return order, nil
 }
+
+type CryptoTxEvidence struct {
+	Network         string
+	TxHash          string
+	LogIndex        int
+	BlockNumber     int64
+	BlockTimestamp  int64
+	FromAddress     string
+	ToAddress       string
+	TokenContract   string
+	AmountBaseUnits string
+	Confirmations   int64
+	RawPayload      string
+}
+
+func CompleteCryptoTopUp(tradeNo string, evidence CryptoTxEvidence) error {
+	if strings.TrimSpace(tradeNo) == "" {
+		return ErrCryptoOrderNotFound
+	}
+	var quotaToAdd int64
+	var completedOrder CryptoPaymentOrder
+	var completedTopUp TopUp
+	now := cryptoNow()
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var order CryptoPaymentOrder
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(cryptoRefCol("trade_no")+" = ?", tradeNo).First(&order).Error; err != nil {
+			return ErrCryptoOrderNotFound
+		}
+		if order.Status == CryptoPaymentStatusSuccess {
+			completedOrder = order
+			return nil
+		}
+		if evidence.Confirmations < int64(order.RequiredConfirmations) {
+			return ErrCryptoOrderStatusInvalid
+		}
+		if !cryptoEvidenceMatchesOrder(&order, evidence) {
+			return ErrCryptoTransactionMismatch
+		}
+
+		var topUp TopUp
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", order.TopUpId).First(&topUp).Error; err != nil {
+			return err
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			order.Status = CryptoPaymentStatusSuccess
+			order.CompletedAt = now
+			order.UpdateTime = now
+			return tx.Save(&order).Error
+		}
+		if topUp.Status != common.TopUpStatusPending || topUp.PaymentMethod != PaymentMethodCryptoUSDT {
+			return ErrTopUpStatusInvalid
+		}
+
+		quotaToAdd = quotaFromStandardTopUpAmount(topUp.Amount)
+		if quotaToAdd <= 0 {
+			return ErrCryptoInvalidAmount
+		}
+
+		txRecord := CryptoPaymentTransaction{
+			Network:         order.Network,
+			TxHash:          evidence.TxHash,
+			LogIndex:        evidence.LogIndex,
+			BlockNumber:     evidence.BlockNumber,
+			BlockTimestamp:  evidence.BlockTimestamp,
+			FromAddress:     evidence.FromAddress,
+			ToAddress:       evidence.ToAddress,
+			TokenContract:   evidence.TokenContract,
+			TokenSymbol:     CryptoTokenUSDT,
+			TokenDecimals:   order.TokenDecimals,
+			Amount:          order.PayAmount,
+			AmountBaseUnits: evidence.AmountBaseUnits,
+			Confirmations:   evidence.Confirmations,
+			Status:          CryptoTransactionStatusConfirmed,
+			MatchedOrderId:  order.Id,
+			RawPayload:      evidence.RawPayload,
+			CreateTime:      now,
+			UpdateTime:      now,
+		}
+		var existingTx CryptoPaymentTransaction
+		findErr := tx.Where("network = ? AND tx_hash = ? AND log_index = ?", txRecord.Network, txRecord.TxHash, txRecord.LogIndex).First(&existingTx).Error
+		if findErr == nil {
+			if existingTx.MatchedOrderId != 0 && existingTx.MatchedOrderId != order.Id {
+				return ErrCryptoTransactionMismatch
+			}
+			existingTx.MatchedOrderId = order.Id
+			existingTx.Status = CryptoTransactionStatusConfirmed
+			existingTx.Confirmations = evidence.Confirmations
+			existingTx.UpdateTime = now
+			if err := tx.Save(&existingTx).Error; err != nil {
+				return err
+			}
+		} else if errors.Is(findErr, gorm.ErrRecordNotFound) {
+			if err := tx.Create(&txRecord).Error; err != nil {
+				return err
+			}
+		} else {
+			return findErr
+		}
+
+		topUp.Status = common.TopUpStatusSuccess
+		topUp.CompleteTime = now
+		if err := tx.Save(&topUp).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
+			return err
+		}
+		order.Status = CryptoPaymentStatusSuccess
+		order.MatchedTxHash = evidence.TxHash
+		order.MatchedLogIndex = evidence.LogIndex
+		order.ConfirmedAt = now
+		order.CompletedAt = now
+		order.UpdateTime = now
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		completedOrder = order
+		completedTopUp = topUp
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if quotaToAdd > 0 {
+		RecordLog(completedTopUp.UserId, LogTypeTopup, fmt.Sprintf("USDT充值成功，网络: %s，充值额度: %v，支付金额: %s USDT", completedOrder.Network, quotaToAdd, completedOrder.PayAmount))
+	}
+	return nil
+}
+
+func cryptoEvidenceMatchesOrder(order *CryptoPaymentOrder, evidence CryptoTxEvidence) bool {
+	if order == nil {
+		return false
+	}
+	return NormalizeCryptoNetwork(evidence.Network) == order.Network &&
+		strings.EqualFold(strings.TrimSpace(evidence.TokenContract), strings.TrimSpace(order.TokenContract)) &&
+		strings.EqualFold(strings.TrimSpace(evidence.ToAddress), strings.TrimSpace(order.ReceiveAddress)) &&
+		strings.TrimSpace(evidence.AmountBaseUnits) == order.PayAmountBaseUnits &&
+		strings.TrimSpace(evidence.TxHash) != "" &&
+		evidence.LogIndex >= 0
+}

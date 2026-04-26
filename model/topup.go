@@ -380,6 +380,9 @@ func ManualCompleteTopUp(tradeNo string, callerIP ...string) error {
 		if topUp.Status != common.TopUpStatusPending {
 			return errors.New("订单状态不是待支付，无法补单")
 		}
+		if topUp.PaymentMethod == PaymentMethodCryptoUSDT {
+			return errors.New("USDT 充值订单必须通过链上交易证据补单")
+		}
 
 		// 计算应充值额度：
 		// - Creem 订单：Amount 直接表示充值额度
