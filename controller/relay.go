@@ -398,6 +398,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		tokenName := c.GetString("token_name")
 		tokenId := c.GetInt("token_id")
 		userGroup := c.GetString("group")
+		channelTestLogGroup := c.GetString(contextKeyChannelTestLogGroup)
+		if channelTestLogGroup != "" {
+			userGroup = channelTestLogGroup
+		}
 		channelId := c.GetInt("channel_id")
 		other := make(map[string]interface{})
 		if c.Request != nil && c.Request.URL != nil {
@@ -418,6 +422,9 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
+		if c.GetBool(contextKeyChannelTest) {
+			addChannelTestLogInfo(other, c.GetStringSlice(contextKeyChannelTestGroups), c.GetString("group"))
+		}
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
 		if startTime.IsZero() {
 			startTime = time.Now()

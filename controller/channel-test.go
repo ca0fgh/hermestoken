@@ -43,6 +43,13 @@ type testResult struct {
 	newAPIError *types.NewAPIError
 }
 
+const (
+	channelTestTokenName          = "模型测试"
+	contextKeyChannelTest         = "channel_test"
+	contextKeyChannelTestGroups   = "channel_test_groups"
+	contextKeyChannelTestLogGroup = "channel_test_log_group"
+)
+
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
@@ -139,15 +146,26 @@ func addChannelTestLogInfo(other map[string]interface{}, testGroups []string, us
 	if other == nil {
 		return
 	}
-	other["channel_test"] = true
+	other[contextKeyChannelTest] = true
 	if len(testGroups) == 0 {
 		return
 	}
-	other["channel_test_groups"] = testGroups
+	other[contextKeyChannelTestGroups] = testGroups
 	if adminInfo, ok := other["admin_info"].(map[string]interface{}); ok {
-		adminInfo["channel_test_groups"] = testGroups
+		adminInfo[contextKeyChannelTestGroups] = testGroups
 		adminInfo["channel_test_using_group"] = usingGroup
 	}
+}
+
+func setChannelTestLogContext(c *gin.Context, testGroups []string, logGroup string) {
+	if c == nil {
+		return
+	}
+	c.Set("token_name", channelTestTokenName)
+	c.Set("token_id", 0)
+	c.Set(contextKeyChannelTest, true)
+	c.Set(contextKeyChannelTestGroups, append([]string(nil), testGroups...))
+	c.Set(contextKeyChannelTestLogGroup, logGroup)
 }
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
@@ -230,6 +248,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 	channelTestGroups := resolveChannelTestGroups(channel, testModel)
 	channelTestLogGroup := strings.Join(channelTestGroups, ",")
+	setChannelTestLogContext(c, channelTestGroups, channelTestLogGroup)
 
 	c.Request = &http.Request{
 		Method: "POST",
@@ -342,6 +361,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if len(mappedChannelTestGroups) > 0 && strings.Join(mappedChannelTestGroups, ",") != channelTestLogGroup {
 		channelTestGroups = orderChannelTestGroups(append(channelTestGroups, mappedChannelTestGroups...))
 		channelTestLogGroup = strings.Join(channelTestGroups, ",")
+		setChannelTestLogContext(c, channelTestGroups, channelTestLogGroup)
 	}
 	// 更新请求中的模型名称
 	request.SetModelName(testModel)
@@ -597,7 +617,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
 		ModelName:        testModel,
-		TokenName:        "模型测试",
+		TokenName:        channelTestTokenName,
 		Quota:            quota,
 		Content:          "模型测试",
 		TokenId:          0,

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 )
 
 func TestChannelTestRecordsConsumeLog(t *testing.T) {
@@ -100,5 +102,124 @@ func TestChannelTestRecordsConsumeLog(t *testing.T) {
 	}
 	if logEntry.Group != "default,cc-opus-福利渠道" {
 		t.Fatalf("expected consume log group to use channel test groups, got %q", logEntry.Group)
+	}
+}
+
+func TestChannelTestErrorLogUsesTestTokenAndGroups(t *testing.T) {
+	db := setupChannelControllerTestDB(t)
+	withChannelGroupRatios(t, `{"default":1,"veo-福利渠道":1,"cc-opus-福利渠道":1}`)
+
+	if err := db.AutoMigrate(&model.User{}, &model.Log{}); err != nil {
+		t.Fatalf("failed to migrate channel test error log tables: %v", err)
+	}
+
+	originalLogConsumeEnabled := common.LogConsumeEnabled
+	originalDataExportEnabled := common.DataExportEnabled
+	originalErrorLogEnabled := constant.ErrorLogEnabled
+	originalAutomaticDisableChannelEnabled := common.AutomaticDisableChannelEnabled
+	common.LogConsumeEnabled = true
+	common.DataExportEnabled = false
+	constant.ErrorLogEnabled = true
+	common.AutomaticDisableChannelEnabled = false
+	service.InitHttpClient()
+	t.Cleanup(func() {
+		common.LogConsumeEnabled = originalLogConsumeEnabled
+		common.DataExportEnabled = originalDataExportEnabled
+		constant.ErrorLogEnabled = originalErrorLogEnabled
+		common.AutomaticDisableChannelEnabled = originalAutomaticDisableChannelEnabled
+	})
+
+	user := &model.User{
+		Id:       1,
+		Username: "ca0fgh",
+		Password: "password123",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "veo-福利渠道",
+	}
+	user.SetSetting(dto.UserSetting{AcceptUnsetRatioModel: true})
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create channel-test user: %v", err)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-test",
+			"object":"chat.completion",
+			"created":1710000000,
+			"model":"claude-opus-4-6",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3}
+		}`))
+	}))
+	defer upstream.Close()
+
+	channel := &model.Channel{
+		Id:       99,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      "sk-test",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "test-openai-channel",
+		BaseURL:  common.GetPointer(upstream.URL),
+		Models:   "claude-opus-4-6",
+		Group:    "default,cc-opus-福利渠道",
+		Priority: common.GetPointer(int64(0)),
+		Weight:   common.GetPointer(uint(0)),
+	}
+	if err := channel.AddAbilities(db); err != nil {
+		t.Fatalf("failed to add channel abilities: %v", err)
+	}
+
+	result := testChannel(channel, "claude-opus-4-6", "", false)
+	if result.localErr != nil {
+		t.Fatalf("testChannel returned local error: %v", result.localErr)
+	}
+	if result.newAPIError != nil {
+		t.Fatalf("testChannel returned api error: %v", result.newAPIError)
+	}
+
+	apiErr := types.NewOpenAIError(
+		fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", 7.89, 5.00),
+		types.ErrorCodeChannelResponseTimeExceeded,
+		http.StatusRequestTimeout,
+	)
+	processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, false, "", true), apiErr)
+
+	var logEntry model.Log
+	if err := db.Where("type = ?", model.LogTypeError).
+		Order("id desc").
+		First(&logEntry).Error; err != nil {
+		t.Fatalf("expected channel test error log: %v", err)
+	}
+	if logEntry.TokenName != channelTestTokenName {
+		t.Fatalf("expected error log token_name=%q, got %q", channelTestTokenName, logEntry.TokenName)
+	}
+	if logEntry.Group != "default,cc-opus-福利渠道" {
+		t.Fatalf("expected error log group to use channel test groups, got %q", logEntry.Group)
+	}
+
+	var other struct {
+		ChannelTest       bool     `json:"channel_test"`
+		ChannelTestGroups []string `json:"channel_test_groups"`
+		AdminInfo         struct {
+			ChannelTestGroups     []string `json:"channel_test_groups"`
+			ChannelTestUsingGroup string   `json:"channel_test_using_group"`
+		} `json:"admin_info"`
+	}
+	if err := common.Unmarshal([]byte(logEntry.Other), &other); err != nil {
+		t.Fatalf("failed to unmarshal error log other: %v", err)
+	}
+	if !other.ChannelTest {
+		t.Fatalf("expected error log other.channel_test=true, got false")
+	}
+	if got := fmt.Sprint(other.ChannelTestGroups); got != "[default cc-opus-福利渠道]" {
+		t.Fatalf("expected error log channel_test_groups, got %s", got)
+	}
+	if got := fmt.Sprint(other.AdminInfo.ChannelTestGroups); got != "[default cc-opus-福利渠道]" {
+		t.Fatalf("expected error log admin_info.channel_test_groups, got %s", got)
+	}
+	if other.AdminInfo.ChannelTestUsingGroup != "default" {
+		t.Fatalf("expected error log channel_test_using_group=default, got %q", other.AdminInfo.ChannelTestUsingGroup)
 	}
 }
