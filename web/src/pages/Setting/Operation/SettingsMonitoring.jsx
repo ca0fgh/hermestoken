@@ -44,6 +44,7 @@ export default function SettingsMonitoring(props) {
       '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
     'monitor_setting.auto_test_channel_enabled': false,
     'monitor_setting.auto_test_channel_minutes': 10,
+    'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes': 30,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
@@ -160,6 +161,28 @@ export default function SettingsMonitoring(props) {
                       ...inputs,
                       'monitor_setting.auto_test_channel_minutes':
                         parseInt(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('自动禁用恢复冷却时间')}
+                  step={1}
+                  min={0}
+                  suffix={t('分钟')}
+                  extraText={t(
+                    '自动禁用通道后，等待冷却时间结束再探活，探活成功后自动启用',
+                  )}
+                  placeholder={''}
+                  field={
+                    'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes'
+                  }
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes':
+                        parseFloat(value),
                     })
                   }
                 />

@@ -8,14 +8,16 @@ import (
 )
 
 type MonitorSetting struct {
-	AutoTestChannelEnabled bool    `json:"auto_test_channel_enabled"`
-	AutoTestChannelMinutes float64 `json:"auto_test_channel_minutes"`
+	AutoTestChannelEnabled                     bool    `json:"auto_test_channel_enabled"`
+	AutoTestChannelMinutes                     float64 `json:"auto_test_channel_minutes"`
+	AutoDisabledChannelRecoveryCooldownMinutes float64 `json:"auto_disabled_channel_recovery_cooldown_minutes"`
 }
 
 // 默认配置
 var monitorSetting = MonitorSetting{
-	AutoTestChannelEnabled: false,
-	AutoTestChannelMinutes: 10,
+	AutoTestChannelEnabled:                     false,
+	AutoTestChannelMinutes:                     10,
+	AutoDisabledChannelRecoveryCooldownMinutes: 30,
 }
 
 func init() {
@@ -29,6 +31,12 @@ func GetMonitorSetting() *MonitorSetting {
 		if err == nil && frequency > 0 {
 			monitorSetting.AutoTestChannelEnabled = true
 			monitorSetting.AutoTestChannelMinutes = float64(frequency)
+		}
+	}
+	if os.Getenv("CHANNEL_RECOVERY_COOLDOWN_MINUTES") != "" {
+		cooldownMinutes, err := strconv.ParseFloat(os.Getenv("CHANNEL_RECOVERY_COOLDOWN_MINUTES"), 64)
+		if err == nil && cooldownMinutes >= 0 {
+			monitorSetting.AutoDisabledChannelRecoveryCooldownMinutes = cooldownMinutes
 		}
 	}
 	return &monitorSetting

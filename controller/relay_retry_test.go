@@ -21,6 +21,14 @@ func newRetryTestContext() *gin.Context {
 	return c
 }
 
+func TestFormatRetryChannels(t *testing.T) {
+	t.Parallel()
+
+	require.Equal(t, "", formatRetryChannels(nil))
+	require.Equal(t, "", formatRetryChannels([]string{"17"}))
+	require.Equal(t, "17->9", formatRetryChannels([]string{"17", "9"}))
+}
+
 func TestShouldRetry_SelectedChannelRetriesAnyUpstreamErrorWithinBudget(t *testing.T) {
 	t.Parallel()
 

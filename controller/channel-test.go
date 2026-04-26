@@ -895,6 +895,55 @@ func TestChannel(c *gin.Context) {
 var testAllChannelsLock sync.Mutex
 var testAllChannelsRunning bool = false
 
+func autoDisabledChannelRecoveryCooldown() time.Duration {
+	cooldownMinutes := operation_setting.GetMonitorSetting().AutoDisabledChannelRecoveryCooldownMinutes
+	if cooldownMinutes <= 0 {
+		return 0
+	}
+	return time.Duration(cooldownMinutes * float64(time.Minute))
+}
+
+func channelStatusTime(channel *model.Channel) int64 {
+	if channel == nil {
+		return 0
+	}
+	statusTime, ok := channel.GetOtherInfo()["status_time"]
+	if !ok {
+		return 0
+	}
+	switch value := statusTime.(type) {
+	case float64:
+		return int64(value)
+	case int64:
+		return value
+	case int:
+		return int64(value)
+	case int32:
+		return int64(value)
+	case uint64:
+		return int64(value)
+	case uint:
+		return int64(value)
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err == nil {
+			return parsed
+		}
+	}
+	return 0
+}
+
+func shouldWaitAutoDisabledChannelRecoveryCooldown(channel *model.Channel, now int64, cooldown time.Duration) bool {
+	if channel == nil || channel.Status != common.ChannelStatusAutoDisabled || cooldown <= 0 {
+		return false
+	}
+	disabledAt := channelStatusTime(channel)
+	if disabledAt <= 0 {
+		return false
+	}
+	return now-disabledAt < int64(cooldown.Seconds())
+}
+
 func testAllChannels(notify bool) error {
 
 	testAllChannelsLock.Lock()
@@ -922,6 +971,9 @@ func testAllChannels(notify bool) error {
 
 		for _, channel := range channels {
 			if channel.Status == common.ChannelStatusManuallyDisabled {
+				continue
+			}
+			if !notify && shouldWaitAutoDisabledChannelRecoveryCooldown(channel, common.GetTimestamp(), autoDisabledChannelRecoveryCooldown()) {
 				continue
 			}
 			isChannelEnabled := channel.Status == common.ChannelStatusEnabled

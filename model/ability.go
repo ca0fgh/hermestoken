@@ -279,6 +279,17 @@ func UpdateAbilityStatus(channelId int, status bool) error {
 	return DB.Model(&Ability{}).Where("channel_id = ?", channelId).Select("enabled").Update("enabled", status).Error
 }
 
+func UpdateAbilityStatusByChannelModel(channelId int, modelName string, status bool) error {
+	modelName = strings.TrimSpace(modelName)
+	if channelId <= 0 || modelName == "" {
+		return nil
+	}
+	return DB.Model(&Ability{}).
+		Where("channel_id = ? AND model = ?", channelId, modelName).
+		Select("enabled").
+		Update("enabled", status).Error
+}
+
 func UpdateAbilityStatusByTag(tag string, status bool) error {
 	return DB.Model(&Ability{}).Where("tag = ?", tag).Select("enabled").Update("enabled", status).Error
 }

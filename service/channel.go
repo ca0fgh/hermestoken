@@ -60,8 +60,40 @@ func ShouldDisableChannel(err *types.NewAPIError) bool {
 	}
 
 	lowerMessage := strings.ToLower(err.Error())
+	if isUpstreamTokenPoolExhausted(lowerMessage) {
+		return true
+	}
 	search, _ := AcSearch(lowerMessage, operation_setting.AutomaticDisableKeywords, true)
 	return search
+}
+
+func ShouldDisableChannelModelAbility(err *types.NewAPIError) bool {
+	if !common.AutomaticDisableChannelEnabled || err == nil {
+		return false
+	}
+	lowerMessage := strings.ToLower(err.Error())
+	return strings.Contains(lowerMessage, "distributor") &&
+		(strings.Contains(lowerMessage, "no available channel for model") ||
+			strings.Contains(lowerMessage, "无可用渠道"))
+}
+
+func DisableChannelModelAbility(channelError types.ChannelError, modelName string, reason string) {
+	modelName = strings.TrimSpace(modelName)
+	if channelError.ChannelId <= 0 || modelName == "" {
+		return
+	}
+	common.SysLog(fmt.Sprintf("通道「%s」（#%d）模型 %s 不可用，准备禁用该模型能力，原因：%s", channelError.ChannelName, channelError.ChannelId, modelName, reason))
+	if err := model.UpdateAbilityStatusByChannelModel(channelError.ChannelId, modelName, false); err != nil {
+		common.SysLog(fmt.Sprintf("failed to disable channel model ability: channel_id=%d, model=%s, error=%v", channelError.ChannelId, modelName, err))
+		return
+	}
+	model.CacheDisableChannelModel(channelError.ChannelId, modelName)
+}
+
+func isUpstreamTokenPoolExhausted(lowerMessage string) bool {
+	normalized := strings.ReplaceAll(lowerMessage, " ", "")
+	return strings.Contains(normalized, "没有可用token") ||
+		strings.Contains(lowerMessage, "no available token")
 }
 
 func ShouldEnableChannel(newAPIError *types.NewAPIError, status int) bool {

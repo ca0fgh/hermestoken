@@ -74,6 +74,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError *types.NewAPIError
 		ws          *websocket.Conn
 	)
+	defer logRetryChannels(c)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
@@ -237,11 +238,6 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
-	useChannel := c.GetStringSlice("use_channel")
-	if len(useChannel) > 1 {
-		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
-		logger.LogInfo(c, retryLogStr)
-	}
 }
 
 var upgrader = websocket.Upgrader{
@@ -255,6 +251,33 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
 	c.Set("use_channel", useChannel)
+}
+
+func formatRetryChannels(useChannel []string) string {
+	if len(useChannel) <= 1 {
+		return ""
+	}
+	channels := make([]string, 0, len(useChannel))
+	for _, channel := range useChannel {
+		channel = strings.TrimSpace(channel)
+		if channel == "" {
+			continue
+		}
+		channels = append(channels, channel)
+	}
+	if len(channels) <= 1 {
+		return ""
+	}
+	return strings.Join(channels, "->")
+}
+
+func logRetryChannels(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	if retryChain := formatRetryChannels(c.GetStringSlice("use_channel")); retryChain != "" {
+		logger.LogInfo(c, fmt.Sprintf("重试：%s", retryChain))
+	}
 }
 
 func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
@@ -359,6 +382,10 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
+	modelName := c.GetString("original_model")
+	if service.ShouldDisableChannelModelAbility(err) && channelError.AutoBan {
+		service.DisableChannelModelAbility(channelError, modelName, err.ErrorWithStatusCode())
+	}
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
 		gopool.Go(func() {
 			service.DisableChannel(channelError, err.ErrorWithStatusCode())
@@ -369,7 +396,6 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		// 保存错误日志到mysql中
 		userId := c.GetInt("id")
 		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
 		tokenId := c.GetInt("token_id")
 		userGroup := c.GetString("group")
 		channelId := c.GetInt("channel_id")
@@ -568,11 +594,7 @@ func RelayTask(c *gin.Context) {
 		}
 	}
 
-	useChannel := c.GetStringSlice("use_channel")
-	if len(useChannel) > 1 {
-		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
-		logger.LogInfo(c, retryLogStr)
-	}
+	logRetryChannels(c)
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {

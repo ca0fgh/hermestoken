@@ -13,6 +13,10 @@ var AutomaticDisableKeywords = []string{
 	"The security token included in the request is invalid",
 	"Operation not allowed",
 	"Your account is not authorized",
+	"没有可用token",
+	"没有可用 token",
+	"no available token",
+	"no available tokens",
 }
 
 func AutomaticDisableKeywordsToString() string {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,30 +33,33 @@ func InitChannelCache() {
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
 	}
-	var abilities []*Ability
-	DB.Find(&abilities)
-	groups := make(map[string]bool)
-	for _, ability := range abilities {
-		groups[ability.Group] = true
-	}
 	newGroup2model2channels := make(map[string]map[string][]int)
-	for group := range groups {
-		newGroup2model2channels[group] = make(map[string][]int)
-	}
-	for _, channel := range channels {
-		if channel.Status != common.ChannelStatusEnabled {
-			continue // skip disabled channels
+
+	var abilities []*Ability
+	DB.Where("enabled = ?", true).Find(&abilities)
+	seenAbility := make(map[string]struct{}, len(abilities))
+	for _, ability := range abilities {
+		if ability == nil {
+			continue
 		}
-		groups := channel.GetGroups()
-		for _, group := range groups {
-			models := channel.GetModels()
-			for _, model := range models {
-				if _, ok := newGroup2model2channels[group][model]; !ok {
-					newGroup2model2channels[group][model] = make([]int, 0)
-				}
-				newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], channel.Id)
-			}
+		channel, ok := newChannelId2channel[ability.ChannelId]
+		if !ok || channel == nil || channel.Status != common.ChannelStatusEnabled {
+			continue
 		}
+		group := strings.TrimSpace(ability.Group)
+		model := strings.TrimSpace(ability.Model)
+		if group == "" || model == "" {
+			continue
+		}
+		key := fmt.Sprintf("%s|%s|%d", group, model, ability.ChannelId)
+		if _, ok := seenAbility[key]; ok {
+			continue
+		}
+		seenAbility[key] = struct{}{}
+		if _, ok := newGroup2model2channels[group]; !ok {
+			newGroup2model2channels[group] = make(map[string][]int)
+		}
+		newGroup2model2channels[group][model] = append(newGroup2model2channels[group][model], ability.ChannelId)
 	}
 
 	// sort by priority
@@ -489,6 +493,37 @@ func CacheUpdateChannelStatus(id int, status int) {
 					}
 				}
 			}
+		}
+	}
+}
+
+func CacheDisableChannelModel(channelID int, modelName string) {
+	if !common.MemoryCacheEnabled || channelID <= 0 {
+		return
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		return
+	}
+
+	channelSyncLock.Lock()
+	defer channelSyncLock.Unlock()
+
+	for group, model2channels := range group2model2channels {
+		channels := model2channels[modelName]
+		if len(channels) == 0 {
+			continue
+		}
+		filtered := channels[:0]
+		for _, id := range channels {
+			if id != channelID {
+				filtered = append(filtered, id)
+			}
+		}
+		if len(filtered) == 0 {
+			delete(group2model2channels[group], modelName)
+		} else {
+			group2model2channels[group][modelName] = filtered
 		}
 	}
 }
