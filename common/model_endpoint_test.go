@@ -155,33 +155,3 @@ func TestResolveEndpointTypeFallsBackWithoutRequestPath(t *testing.T) {
 		ChannelType: constant.ChannelTypeOpenAI,
 	}))
 }
-
-func TestShouldApplyResponseTimeDisableThresholdForEndpoint(t *testing.T) {
-	require.False(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeImageGeneration))
-	require.False(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeOpenAIVideo))
-
-	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeOpenAI))
-	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeOpenAIResponse))
-	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeEmbeddings))
-	require.True(t, ShouldApplyResponseTimeDisableThresholdForEndpoint(constant.EndpointTypeJinaRerank))
-}
-
-func TestShouldApplyResponseTimeDisableThresholdChecksAllResolvedEndpoints(t *testing.T) {
-	require.False(t, ShouldApplyResponseTimeDisableThreshold(EndpointResolutionInput{
-		ModelName:              "custom-image-model",
-		ChannelType:            constant.ChannelTypeOpenAI,
-		SupportedEndpointTypes: []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeImageGeneration},
-	}))
-
-	require.False(t, ShouldApplyResponseTimeDisableThreshold(EndpointResolutionInput{
-		ModelName:              "custom-video-model",
-		ChannelType:            constant.ChannelTypeOpenAI,
-		SupportedEndpointTypes: []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIVideo},
-	}))
-
-	require.True(t, ShouldApplyResponseTimeDisableThreshold(EndpointResolutionInput{
-		ModelName:              "custom-text-model",
-		ChannelType:            constant.ChannelTypeOpenAI,
-		SupportedEndpointTypes: []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse},
-	}))
-}

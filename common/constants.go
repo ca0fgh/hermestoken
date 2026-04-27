@@ -106,9 +106,6 @@ var QuotaForInviter = 0
 var QuotaForInvitee = 0
 var SubscriptionReferralEnabled = false
 var SubscriptionReferralGlobalRateBps = 0 // legacy fallback when no group-specific subscription referral rates are configured
-var ChannelDisableThreshold = 5.0
-var AutomaticDisableChannelEnabled = false
-var AutomaticEnableChannelEnabled = false
 var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 
@@ -213,7 +210,7 @@ const (
 	ChannelStatusUnknown          = 0
 	ChannelStatusEnabled          = 1 // don't use 0, 0 is the default value!
 	ChannelStatusManuallyDisabled = 2 // also don't use 0
-	ChannelStatusAutoDisabled     = 3
+	ChannelStatusDisabled         = 3 // legacy disabled status retained for historical data
 )
 
 const (

@@ -197,7 +197,7 @@ const ChannelSelectorModal = forwardRef(
         case 3:
           statusTag = (
             <Tag color='yellow' shape='circle'>
-              {t('自动禁用')}
+              {t('已禁用')}
             </Tag>
           );
           break;

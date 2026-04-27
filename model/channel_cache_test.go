@@ -91,36 +91,3 @@ func TestInitChannelCacheUsesEnabledAbilities(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, disabled)
 }
-
-func TestCacheDisableChannelModelRemovesOnlyThatModel(t *testing.T) {
-	setupChannelCacheTestDB(t)
-
-	priority := int64(2)
-	weight := uint(0)
-	baseURL := "https://cache-disable-test.example.com"
-	channel := &Channel{
-		Id:       1002,
-		Name:     "cache-disable-test",
-		Type:     14,
-		Key:      "sk-cache-disable-test",
-		Status:   common.ChannelStatusEnabled,
-		BaseURL:  &baseURL,
-		Group:    "default",
-		Models:   "kept-model,removed-model",
-		Priority: &priority,
-		Weight:   &weight,
-	}
-	require.NoError(t, channel.Insert())
-	InitChannelCache()
-
-	CacheDisableChannelModel(channel.Id, "removed-model")
-
-	kept, err := GetRandomSatisfiedChannel("default", "kept-model", 0)
-	require.NoError(t, err)
-	require.NotNil(t, kept)
-	require.Equal(t, channel.Id, kept.Id)
-
-	removed, err := GetRandomSatisfiedChannel("default", "removed-model", 0)
-	require.NoError(t, err)
-	require.Nil(t, removed)
-}

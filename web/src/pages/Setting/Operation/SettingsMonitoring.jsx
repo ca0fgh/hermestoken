@@ -34,21 +34,12 @@ export default function SettingsMonitoring(props) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
-    ChannelDisableThreshold: '',
     QuotaRemindThreshold: '',
-    AutomaticDisableChannelEnabled: false,
-    AutomaticEnableChannelEnabled: false,
-    AutomaticDisableKeywords: '',
-    AutomaticDisableStatusCodes: '401',
     AutomaticRetryStatusCodes:
       '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
-    'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes': 30,
   });
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
-  const parsedAutoDisableStatusCodes = parseHttpStatusCodeRules(
-    inputs.AutomaticDisableStatusCodes || '',
-  );
   const parsedAutoRetryStatusCodes = parseHttpStatusCodeRules(
     inputs.AutomaticRetryStatusCodes || '',
   );
@@ -56,14 +47,6 @@ export default function SettingsMonitoring(props) {
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
     if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
-    if (!parsedAutoDisableStatusCodes.ok) {
-      const details =
-        parsedAutoDisableStatusCodes.invalidTokens &&
-        parsedAutoDisableStatusCodes.invalidTokens.length > 0
-          ? `: ${parsedAutoDisableStatusCodes.invalidTokens.join(', ')}`
-          : '';
-      return showError(`${t('自动禁用状态码格式不正确')}${details}`);
-    }
     if (!parsedAutoRetryStatusCodes.ok) {
       const details =
         parsedAutoRetryStatusCodes.invalidTokens &&
@@ -78,7 +61,6 @@ export default function SettingsMonitoring(props) {
         value = String(inputs[item.key]);
       } else {
         const normalizedMap = {
-          AutomaticDisableStatusCodes: parsedAutoDisableStatusCodes.normalized,
           AutomaticRetryStatusCodes: parsedAutoRetryStatusCodes.normalized,
         };
         value = normalizedMap[item.key] ?? inputs[item.key];
@@ -132,49 +114,6 @@ export default function SettingsMonitoring(props) {
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
-                  label={t('自动禁用恢复冷却时间')}
-                  step={1}
-                  min={0}
-                  suffix={t('分钟')}
-                  extraText={t(
-                    '自动禁用通道后，等待冷却时间结束再探活，探活成功后自动启用',
-                  )}
-                  placeholder={''}
-                  field={
-                    'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes'
-                  }
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes':
-                        parseFloat(value),
-                    })
-                  }
-                />
-              </Col>
-            </Row>
-            <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.InputNumber
-                  label={t('测试所有渠道的最长响应时间')}
-                  step={1}
-                  min={0}
-                  suffix={t('秒')}
-                  extraText={t(
-                    '当运行通道全部测试时，超过此时间将自动禁用通道',
-                  )}
-                  placeholder={''}
-                  field={'ChannelDisableThreshold'}
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      ChannelDisableThreshold: String(value),
-                    })
-                  }
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.InputNumber
                   label={t('额度提醒阈值')}
                   step={1}
                   min={0}
@@ -192,52 +131,7 @@ export default function SettingsMonitoring(props) {
               </Col>
             </Row>
             <Row gutter={16}>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'AutomaticDisableChannelEnabled'}
-                  label={t('失败时自动禁用通道')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) => {
-                    setInputs({
-                      ...inputs,
-                      AutomaticDisableChannelEnabled: value,
-                    });
-                  }}
-                />
-              </Col>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-                <Form.Switch
-                  field={'AutomaticEnableChannelEnabled'}
-                  label={t('成功时自动启用通道')}
-                  size='default'
-                  checkedText='｜'
-                  uncheckedText='〇'
-                  onChange={(value) =>
-                    setInputs({
-                      ...inputs,
-                      AutomaticEnableChannelEnabled: value,
-                    })
-                  }
-                />
-              </Col>
-            </Row>
-            <Row gutter={16}>
               <Col xs={24} sm={16}>
-                <HttpStatusCodeRulesInput
-                  label={t('自动禁用状态码')}
-                  placeholder={t('例如：401, 403, 429, 500-599')}
-                  extraText={t(
-                    '支持填写单个状态码或范围（含首尾），使用逗号分隔',
-                  )}
-                  field={'AutomaticDisableStatusCodes'}
-                  onChange={(value) =>
-                    setInputs({ ...inputs, AutomaticDisableStatusCodes: value })
-                  }
-                  parsed={parsedAutoDisableStatusCodes}
-                  invalidText={t('自动禁用状态码格式不正确')}
-                />
                 <HttpStatusCodeRulesInput
                   label={t('自动重试状态码')}
                   placeholder={t('例如：401, 403, 429, 500-599')}
@@ -250,18 +144,6 @@ export default function SettingsMonitoring(props) {
                   }
                   parsed={parsedAutoRetryStatusCodes}
                   invalidText={t('自动重试状态码格式不正确')}
-                />
-                <Form.TextArea
-                  label={t('自动禁用关键词')}
-                  placeholder={t('一行一个，不区分大小写')}
-                  extraText={t(
-                    '当上游通道返回错误中包含这些关键词时（不区分大小写），自动禁用通道',
-                  )}
-                  field={'AutomaticDisableKeywords'}
-                  autosize={{ minRows: 6, maxRows: 12 }}
-                  onChange={(value) =>
-                    setInputs({ ...inputs, AutomaticDisableKeywords: value })
-                  }
                 />
               </Col>
             </Row>

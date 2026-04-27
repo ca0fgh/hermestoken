@@ -26,7 +26,6 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -123,14 +122,6 @@ func resolveChannelTestModel(channel *model.Channel, testModel string) string {
 		return strings.TrimSpace(models[0])
 	}
 	return "gpt-4o-mini"
-}
-
-func shouldApplyResponseTimeDisableThreshold(channel *model.Channel, modelName string, endpointType ...string) bool {
-	requestedEndpoint := ""
-	if len(endpointType) > 0 {
-		requestedEndpoint = endpointType[0]
-	}
-	return common.ShouldApplyResponseTimeDisableThreshold(resolveChannelTestEndpointInput(channel, modelName, requestedEndpoint))
 }
 
 func orderChannelTestGroups(groups []string) []string {
@@ -983,93 +974,6 @@ func TestChannel(c *gin.Context) {
 var testAllChannelsLock sync.Mutex
 var testAllChannelsRunning bool = false
 
-func autoDisabledChannelRecoveryCooldown() time.Duration {
-	cooldownMinutes := operation_setting.GetMonitorSetting().AutoDisabledChannelRecoveryCooldownMinutes
-	if cooldownMinutes <= 0 {
-		return 0
-	}
-	return time.Duration(cooldownMinutes * float64(time.Minute))
-}
-
-func channelStatusTime(channel *model.Channel) int64 {
-	if channel == nil {
-		return 0
-	}
-	statusTime, ok := channel.GetOtherInfo()["status_time"]
-	if !ok {
-		return 0
-	}
-	switch value := statusTime.(type) {
-	case float64:
-		return int64(value)
-	case int64:
-		return value
-	case int:
-		return int64(value)
-	case int32:
-		return int64(value)
-	case uint64:
-		return int64(value)
-	case uint:
-		return int64(value)
-	case string:
-		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-		if err == nil {
-			return parsed
-		}
-	}
-	return 0
-}
-
-func shouldWaitAutoDisabledChannelRecoveryCooldown(channel *model.Channel, now int64, cooldown time.Duration) bool {
-	if channel == nil || channel.Status != common.ChannelStatusAutoDisabled || cooldown <= 0 {
-		return false
-	}
-	disabledAt := channelStatusTime(channel)
-	if disabledAt <= 0 {
-		return false
-	}
-	return now-disabledAt < int64(cooldown.Seconds())
-}
-
-func shouldWaitAutoDisabledModelAbilityRecoveryCooldown(disabledInfo service.AutoDisabledModelAbilityInfo, now int64, cooldown time.Duration) bool {
-	if cooldown <= 0 || disabledInfo.StatusTime <= 0 {
-		return false
-	}
-	return now-disabledInfo.StatusTime < int64(cooldown.Seconds())
-}
-
-func recoverAutoDisabledChannelModelAbilities(channel *model.Channel, notify bool, now int64, cooldown time.Duration) {
-	if channel == nil || !common.AutomaticEnableChannelEnabled {
-		return
-	}
-	disabledModels := service.GetAutoDisabledChannelModelAbilities(channel)
-	for modelName, disabledInfo := range disabledModels {
-		modelName = strings.TrimSpace(modelName)
-		if modelName == "" {
-			continue
-		}
-		if !notify && shouldWaitAutoDisabledModelAbilityRecoveryCooldown(disabledInfo, now, cooldown) {
-			continue
-		}
-		result := testChannel(channel, modelName, "", false)
-		if result.skipped {
-			continue
-		}
-		if result.newAPIError == nil {
-			service.EnableChannelModelAbility(channel.Id, modelName, channel.Name)
-			continue
-		}
-		if service.ShouldDisableChannelModelAbility(result.newAPIError) && channel.GetAutoBan() {
-			service.DisableChannelModelAbility(
-				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				modelName,
-				result.newAPIError.ErrorWithStatusCode(),
-			)
-		}
-	}
-}
-
 func testAllChannels(notify bool) error {
 
 	testAllChannelsLock.Lock()
@@ -1083,10 +987,6 @@ func testAllChannels(notify bool) error {
 	if getChannelErr != nil {
 		return getChannelErr
 	}
-	var disableThreshold = int64(common.ChannelDisableThreshold * 1000)
-	if disableThreshold == 0 {
-		disableThreshold = 10000000 // a impossible value
-	}
 	gopool.Go(func() {
 		// 使用 defer 确保无论如何都会重置运行状态，防止死锁
 		defer func() {
@@ -1095,17 +995,10 @@ func testAllChannels(notify bool) error {
 			testAllChannelsLock.Unlock()
 		}()
 
-		cooldown := autoDisabledChannelRecoveryCooldown()
 		for _, channel := range channels {
 			if channel.Status == common.ChannelStatusManuallyDisabled {
 				continue
 			}
-			now := common.GetTimestamp()
-			if !notify && shouldWaitAutoDisabledChannelRecoveryCooldown(channel, now, cooldown) {
-				continue
-			}
-			isChannelEnabled := channel.Status == common.ChannelStatusEnabled
-			testModel := resolveChannelTestModel(channel, "")
 			tik := time.Now()
 			result := testChannel(channel, "", "", false)
 			tok := time.Now()
@@ -1113,35 +1006,6 @@ func testAllChannels(notify bool) error {
 			if result.skipped {
 				time.Sleep(common.RequestInterval)
 				continue
-			}
-
-			shouldBanChannel := false
-			newAPIError := result.newAPIError
-			// request error disables the channel
-			if newAPIError != nil {
-				shouldBanChannel = service.ShouldDisableChannel(result.newAPIError)
-			}
-
-			// 当错误检查通过，才检查响应时间
-			if common.AutomaticDisableChannelEnabled && !shouldBanChannel && shouldApplyResponseTimeDisableThreshold(channel, testModel) {
-				if milliseconds > disableThreshold {
-					err := fmt.Errorf("响应时间 %.2fs 超过阈值 %.2fs", float64(milliseconds)/1000.0, float64(disableThreshold)/1000.0)
-					newAPIError = types.NewOpenAIError(err, types.ErrorCodeChannelResponseTimeExceeded, http.StatusRequestTimeout)
-					shouldBanChannel = true
-				}
-			}
-
-			// disable channel
-			if isChannelEnabled && shouldBanChannel && channel.GetAutoBan() {
-				processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-			}
-
-			// enable channel
-			if !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
-				service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
-			}
-			if newAPIError == nil {
-				recoverAutoDisabledChannelModelAbilities(channel, notify, now, cooldown)
 			}
 
 			channel.UpdateResponseTime(milliseconds)

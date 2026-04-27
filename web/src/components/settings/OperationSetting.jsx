@@ -67,15 +67,9 @@ const OperationSetting = () => {
     LogConsumeEnabled: false,
 
     /* 监控设置 */
-    ChannelDisableThreshold: 0,
     QuotaRemindThreshold: 0,
-    AutomaticDisableChannelEnabled: false,
-    AutomaticEnableChannelEnabled: false,
-    AutomaticDisableKeywords: '',
-    AutomaticDisableStatusCodes: '401',
     AutomaticRetryStatusCodes:
       '100-199,300-399,401-407,409-499,500-503,505-523,525-599',
-    'monitor_setting.auto_disabled_channel_recovery_cooldown_minutes': 30,
 
     /* 签到设置 */
     'checkin_setting.enabled': false,

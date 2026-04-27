@@ -184,7 +184,6 @@ const EditChannelModal = (props) => {
     param_override: '',
     status_code_mapping: '',
     models: [],
-    auto_ban: 1,
     test_model: '',
     groups: ['default'],
     priority: 0,
@@ -221,7 +220,6 @@ const EditChannelModal = (props) => {
   const [batch, setBatch] = useState(false);
   const [multiToSingle, setMultiToSingle] = useState(false);
   const [multiKeyMode, setMultiKeyMode] = useState('random');
-  const [autoBan, setAutoBan] = useState(true);
   const [inputs, setInputs] = useState(originInputs);
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
@@ -681,7 +679,6 @@ const EditChannelModal = (props) => {
         setInputs((prev) => ({ ...prev, vertex_files: [] }));
       }
     }
-    //setAutoBan
   };
 
   const formatJsonField = (fieldName) => {
@@ -958,11 +955,6 @@ const EditChannelModal = (props) => {
       setInputs(data);
       if (formApiRef.current) {
         formApiRef.current.setValues(data);
-      }
-      if (data.auto_ban === 0) {
-        setAutoBan(false);
-      } else {
-        setAutoBan(true);
       }
       // 同步企业账户状态
       setIsEnterpriseAccount(data.is_enterprise_account || false);
@@ -1837,7 +1829,6 @@ const EditChannelModal = (props) => {
     delete localInputs.upstream_model_update_ignored_models;
 
     let res;
-    localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
     localInputs.models = localInputs.models.join(',');
     localInputs.group = (localInputs.groups || []).join(',');
 
@@ -3922,19 +3913,6 @@ const EditChannelModal = (props) => {
                         extraText={t(
                           '键为请求中的模型名称，值为要替换的模型名称',
                         )}
-                      />
-
-                      {/* Auto Ban - Core Config */}
-                      <Form.Switch
-                        field='auto_ban'
-                        label={t('是否自动禁用')}
-                        checkedText={t('开')}
-                        uncheckedText={t('关')}
-                        onChange={(value) => setAutoBan(value)}
-                        extraText={t(
-                          '仅当自动禁用开启时有效，关闭后不会自动禁用该渠道',
-                        )}
-                        initValue={autoBan}
                       />
 
                       {/* Test Model - Core Config */}

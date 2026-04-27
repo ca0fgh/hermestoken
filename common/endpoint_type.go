@@ -84,24 +84,6 @@ func ResolveEndpointTypeFromPath(path string) (constant.EndpointType, bool) {
 	return "", false
 }
 
-func ShouldApplyResponseTimeDisableThreshold(input EndpointResolutionInput) bool {
-	for _, endpointType := range ResolveEndpointTypes(input) {
-		if !ShouldApplyResponseTimeDisableThresholdForEndpoint(endpointType) {
-			return false
-		}
-	}
-	return true
-}
-
-func ShouldApplyResponseTimeDisableThresholdForEndpoint(endpointType constant.EndpointType) bool {
-	switch endpointType {
-	case constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAIVideo:
-		return false
-	default:
-		return true
-	}
-}
-
 func normalizeEndpointPath(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {

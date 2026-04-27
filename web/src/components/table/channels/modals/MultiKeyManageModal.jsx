@@ -66,10 +66,10 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
   // Statistics states
   const [enabledCount, setEnabledCount] = useState(0);
   const [manualDisabledCount, setManualDisabledCount] = useState(0);
-  const [autoDisabledCount, setAutoDisabledCount] = useState(0);
+  const [statusDisabledCount, setStatusDisabledCount] = useState(0);
 
   // Filter states
-  const [statusFilter, setStatusFilter] = useState(null); // null=all, 1=enabled, 2=manual_disabled, 3=auto_disabled
+  const [statusFilter, setStatusFilter] = useState(null); // null=all, 1=enabled, 2/3=disabled
 
   // Load key status data
   const loadKeyStatus = async (
@@ -106,7 +106,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
         // Update statistics (these are always the overall statistics)
         setEnabledCount(data.enabled_count || 0);
         setManualDisabledCount(data.manual_disabled_count || 0);
-        setAutoDisabledCount(data.auto_disabled_count || 0);
+        setStatusDisabledCount(data.disabled_count || 0);
       } else {
         showError(res.data.message);
       }
@@ -311,7 +311,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       setTotalPages(0);
       setEnabledCount(0);
       setManualDisabledCount(0);
-      setAutoDisabledCount(0);
+      setStatusDisabledCount(0);
       setStatusFilter(null); // Reset filter
     }
   }, [visible]);
@@ -321,8 +321,8 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
     total > 0 ? Math.round((enabledCount / total) * 100) : 0;
   const manualDisabledPercent =
     total > 0 ? Math.round((manualDisabledCount / total) * 100) : 0;
-  const autoDisabledPercent =
-    total > 0 ? Math.round((autoDisabledCount / total) * 100) : 0;
+  const statusDisabledPercent =
+    total > 0 ? Math.round((statusDisabledCount / total) * 100) : 0;
 
   // 取消饼图：不再需要图表数据与配置
 
@@ -344,7 +344,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
       case 3:
         return (
           <Tag color='orange' shape='circle' size='small'>
-            {t('自动禁用')}
+            {t('已禁用')}
           </Tag>
         );
       default:
@@ -569,13 +569,13 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
               >
                 <div className='flex items-center gap-2 mb-2'>
                   <Badge dot type='warning' />
-                  <Text type='tertiary'>{t('自动禁用')}</Text>
+                  <Text type='tertiary'>{t('已禁用')}</Text>
                 </div>
                 <div className='flex items-end gap-2 mb-2'>
                   <Text
                     style={{ fontSize: 18, fontWeight: 700, color: '#f59e0b' }}
                   >
-                    {autoDisabledCount}
+                    {statusDisabledCount}
                   </Text>
                   <Text
                     style={{ fontSize: 18, color: 'var(--semi-color-text-2)' }}
@@ -584,7 +584,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                   </Text>
                 </div>
                 <Progress
-                  percent={autoDisabledPercent}
+                  percent={statusDisabledPercent}
                   showInfo={false}
                   size='small'
                   stroke='#f59e0b'
@@ -621,7 +621,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                               {t('手动禁用')}
                             </Select.Option>
                             <Select.Option value={3}>
-                              {t('自动禁用')}
+                              {t('已禁用')}
                             </Select.Option>
                           </Select>
                         </Col>
@@ -640,7 +640,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                         >
                           {t('刷新')}
                         </Button>
-                        {manualDisabledCount + autoDisabledCount > 0 && (
+                        {manualDisabledCount + statusDisabledCount > 0 && (
                           <Popconfirm
                             title={t('确定要启用所有密钥吗？')}
                             onConfirm={handleEnableAll}
@@ -672,10 +672,8 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                           </Popconfirm>
                         )}
                         <Popconfirm
-                          title={t('确定要删除所有已自动禁用的密钥吗？')}
-                          content={t(
-                            '此操作不可撤销，将永久删除已自动禁用的密钥',
-                          )}
+                          title={t('确定要删除所有已禁用的密钥吗？')}
+                          content={t('此操作不可撤销，将永久删除已禁用的密钥')}
                           onConfirm={handleDeleteDisabledKeys}
                           okType={'danger'}
                           position={'topRight'}
@@ -685,7 +683,7 @@ const MultiKeyManageModal = ({ visible, onCancel, channel, onRefresh }) => {
                             type='warning'
                             loading={operationLoading.delete_disabled}
                           >
-                            {t('删除自动禁用密钥')}
+                            {t('删除禁用密钥')}
                           </Button>
                         </Popconfirm>
                       </Space>

@@ -41,7 +41,6 @@ type Channel struct {
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
-	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
 	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
@@ -252,13 +251,6 @@ func (channel *Channel) GetTag() string {
 
 func (channel *Channel) SetTag(tag string) {
 	channel.Tag = &tag
-}
-
-func (channel *Channel) GetAutoBan() bool {
-	if channel.AutoBan == nil {
-		return false
-	}
-	return *channel.AutoBan == 1
 }
 
 func (channel *Channel) Save() error {
@@ -611,9 +603,9 @@ func handlerMultiKeyUpdate(channel *Channel, usingKey string, status int, reason
 			channel.ChannelInfo.MultiKeyDisabledTime[keyIndex] = common.GetTimestamp()
 		}
 		if len(channel.ChannelInfo.MultiKeyStatusList) >= channel.ChannelInfo.MultiKeySize {
-			channel.Status = common.ChannelStatusAutoDisabled
+			channel.Status = status
 			info := channel.GetOtherInfo()
-			info["status_reason"] = "All keys are disabled"
+			info["status_reason"] = reason
 			info["status_time"] = common.GetTimestamp()
 			channel.SetOtherInfo(info)
 		}
@@ -786,7 +778,7 @@ func DeleteChannelByStatus(status int64) (int64, error) {
 }
 
 func DeleteDisabledChannel() (int64, error) {
-	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
+	result := DB.Where("status = ? or status = ?", common.ChannelStatusDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
 	return result.RowsAffected, result.Error
 }
 
@@ -967,10 +959,6 @@ func BatchSetChannelTag(ids []int, tag *string) error {
 
 	// 提交事务
 	return tx.Commit().Error
-}
-
-func BatchSetChannelAutoBan(ids []int, autoBan int) error {
-	return DB.Model(&Channel{}).Where("id in (?)", ids).Update("auto_ban", autoBan).Error
 }
 
 // CountAllChannels returns total channels in DB

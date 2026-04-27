@@ -497,37 +497,6 @@ func CacheUpdateChannelStatus(id int, status int) {
 	}
 }
 
-func CacheDisableChannelModel(channelID int, modelName string) {
-	if !common.MemoryCacheEnabled || channelID <= 0 {
-		return
-	}
-	modelName = strings.TrimSpace(modelName)
-	if modelName == "" {
-		return
-	}
-
-	channelSyncLock.Lock()
-	defer channelSyncLock.Unlock()
-
-	for group, model2channels := range group2model2channels {
-		channels := model2channels[modelName]
-		if len(channels) == 0 {
-			continue
-		}
-		filtered := channels[:0]
-		for _, id := range channels {
-			if id != channelID {
-				filtered = append(filtered, id)
-			}
-		}
-		if len(filtered) == 0 {
-			delete(group2model2channels[group], modelName)
-		} else {
-			group2model2channels[group][modelName] = filtered
-		}
-	}
-}
-
 func CacheUpdateChannel(channel *Channel) {
 	if !common.MemoryCacheEnabled {
 		return

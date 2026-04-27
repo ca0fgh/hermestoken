@@ -95,7 +95,7 @@ func TestLegacySubscriptionReferralOptionsAreNotExposedThroughOptionMap(t *testi
 	}
 }
 
-func TestLegacyMonitorAutoTestOptionsAreNotExposedThroughOptionMap(t *testing.T) {
+func TestLegacyChannelAutomationOptionsAreNotExposedThroughOptionMap(t *testing.T) {
 	originalMap := common.OptionMap
 	defer func() {
 		common.OptionMap = originalMap
@@ -103,17 +103,21 @@ func TestLegacyMonitorAutoTestOptionsAreNotExposedThroughOptionMap(t *testing.T)
 
 	common.OptionMap = make(map[string]string)
 
-	if err := updateOptionMap("monitor_setting.auto_test_channel_enabled", "true"); err != nil {
-		t.Fatalf("updateOptionMap(auto_test_enabled) returned error: %v", err)
-	}
-	if _, exists := common.OptionMap["monitor_setting.auto_test_channel_enabled"]; exists {
-		t.Fatal("legacy monitor auto test enabled option should not be exposed through OptionMap")
-	}
-
-	if err := updateOptionMap("monitor_setting.auto_test_channel_minutes", "1"); err != nil {
-		t.Fatalf("updateOptionMap(auto_test_minutes) returned error: %v", err)
-	}
-	if _, exists := common.OptionMap["monitor_setting.auto_test_channel_minutes"]; exists {
-		t.Fatal("legacy monitor auto test minutes option should not be exposed through OptionMap")
+	for _, key := range []string{
+		"AutomaticDisableChannelEnabled",
+		"AutomaticEnableChannelEnabled",
+		"ChannelDisableThreshold",
+		"AutomaticDisableKeywords",
+		"AutomaticDisableStatusCodes",
+		"monitor_setting.auto_disabled_channel_recovery_cooldown_minutes",
+		"monitor_setting.auto_test_channel_enabled",
+		"monitor_setting.auto_test_channel_minutes",
+	} {
+		if err := updateOptionMap(key, "true"); err != nil {
+			t.Fatalf("updateOptionMap(%s) returned error: %v", key, err)
+		}
+		if _, exists := common.OptionMap[key]; exists {
+			t.Fatalf("legacy channel automation option %q should not be exposed through OptionMap", key)
+		}
 	}
 }

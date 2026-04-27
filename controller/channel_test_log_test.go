@@ -116,17 +116,14 @@ func TestChannelTestErrorLogUsesTestTokenAndGroups(t *testing.T) {
 	originalLogConsumeEnabled := common.LogConsumeEnabled
 	originalDataExportEnabled := common.DataExportEnabled
 	originalErrorLogEnabled := constant.ErrorLogEnabled
-	originalAutomaticDisableChannelEnabled := common.AutomaticDisableChannelEnabled
 	common.LogConsumeEnabled = true
 	common.DataExportEnabled = false
 	constant.ErrorLogEnabled = true
-	common.AutomaticDisableChannelEnabled = false
 	service.InitHttpClient()
 	t.Cleanup(func() {
 		common.LogConsumeEnabled = originalLogConsumeEnabled
 		common.DataExportEnabled = originalDataExportEnabled
 		constant.ErrorLogEnabled = originalErrorLogEnabled
-		common.AutomaticDisableChannelEnabled = originalAutomaticDisableChannelEnabled
 	})
 
 	user := &model.User{
@@ -184,7 +181,7 @@ func TestChannelTestErrorLogUsesTestTokenAndGroups(t *testing.T) {
 		types.ErrorCodeChannelResponseTimeExceeded,
 		http.StatusRequestTimeout,
 	)
-	processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, false, "", true), apiErr)
+	processChannelError(result.context, channel.Id, apiErr)
 
 	var logEntry model.Log
 	if err := db.Where("type = ?", model.LogTypeError).

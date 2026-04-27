@@ -865,9 +865,8 @@ func EditTagChannels(c *gin.Context) {
 }
 
 type ChannelBatch struct {
-	Ids     []int   `json:"ids"`
-	Tag     *string `json:"tag"`
-	AutoBan *int    `json:"auto_ban"`
+	Ids []int   `json:"ids"`
+	Tag *string `json:"tag"`
 }
 
 func DeleteChannelBatch(c *gin.Context) {
@@ -881,30 +880,6 @@ func DeleteChannelBatch(c *gin.Context) {
 		return
 	}
 	err = model.BatchDeleteChannels(channelBatch.Ids)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	model.InitChannelCache()
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"data":    len(channelBatch.Ids),
-	})
-	return
-}
-
-func BatchSetChannelAutoBan(c *gin.Context) {
-	channelBatch := ChannelBatch{}
-	err := c.ShouldBindJSON(&channelBatch)
-	if err != nil || len(channelBatch.Ids) == 0 || channelBatch.AutoBan == nil || (*channelBatch.AutoBan != 0 && *channelBatch.AutoBan != 1) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "参数错误",
-		})
-		return
-	}
-	err = model.BatchSetChannelAutoBan(channelBatch.Ids, *channelBatch.AutoBan)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -1303,7 +1278,7 @@ type MultiKeyManageRequest struct {
 	KeyIndex  *int   `json:"key_index,omitempty"` // for disable_key, enable_key, and delete_key actions
 	Page      int    `json:"page,omitempty"`      // for get_key_status pagination
 	PageSize  int    `json:"page_size,omitempty"` // for get_key_status pagination
-	Status    *int   `json:"status,omitempty"`    // for get_key_status filtering: 1=enabled, 2=manual_disabled, 3=auto_disabled, nil=all
+	Status    *int   `json:"status,omitempty"`    // for get_key_status filtering: 1=enabled, 2=manual_disabled, 3=disabled, nil=all
 }
 
 // MultiKeyStatusResponse represents the response for key status query
@@ -1316,7 +1291,7 @@ type MultiKeyStatusResponse struct {
 	// Statistics
 	EnabledCount        int `json:"enabled_count"`
 	ManualDisabledCount int `json:"manual_disabled_count"`
-	AutoDisabledCount   int `json:"auto_disabled_count"`
+	DisabledCount       int `json:"disabled_count"`
 }
 
 type KeyStatus struct {
@@ -1372,7 +1347,7 @@ func ManageMultiKeys(c *gin.Context) {
 		}
 
 		// Statistics for all keys (unchanged by filtering)
-		var enabledCount, manualDisabledCount, autoDisabledCount int
+		var enabledCount, manualDisabledCount, disabledCount int
 
 		// Build all key status data first
 		var allKeyStatusList []KeyStatus
@@ -1394,7 +1369,7 @@ func ManageMultiKeys(c *gin.Context) {
 			case 2:
 				manualDisabledCount++
 			case 3:
-				autoDisabledCount++
+				disabledCount++
 			}
 
 			if status != 1 {
@@ -1467,7 +1442,7 @@ func ManageMultiKeys(c *gin.Context) {
 				TotalPages:          totalPages,
 				EnabledCount:        enabledCount,        // Overall statistics
 				ManualDisabledCount: manualDisabledCount, // Overall statistics
-				AutoDisabledCount:   autoDisabledCount,   // Overall statistics
+				DisabledCount:       disabledCount,       // Overall statistics
 			},
 		})
 		return
@@ -1725,12 +1700,12 @@ func ManageMultiKeys(c *gin.Context) {
 				}
 			}
 
-			// 只删除自动禁用（status == 3）的密钥，保留启用（status == 1）和手动禁用（status == 2）的密钥
+			// 只删除历史禁用状态（status == 3）的密钥，保留启用（status == 1）和手动禁用（status == 2）的密钥
 			if status == 3 {
 				deletedCount++
 			} else {
 				remainingKeys = append(remainingKeys, key)
-				// 保留非自动禁用密钥的状态信息，重新索引
+				// 保留非目标删除状态密钥的状态信息，重新索引
 				if status != 1 {
 					newStatusList[newIndex] = status
 					if channel.ChannelInfo.MultiKeyDisabledTime != nil {
@@ -1751,7 +1726,7 @@ func ManageMultiKeys(c *gin.Context) {
 		if deletedCount == 0 {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "没有需要删除的自动禁用密钥",
+				"message": "没有需要删除的禁用密钥",
 			})
 			return
 		}
@@ -1772,7 +1747,7 @@ func ManageMultiKeys(c *gin.Context) {
 		model.InitChannelCache()
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
-			"message": fmt.Sprintf("已删除 %d 个自动禁用的密钥", deletedCount),
+			"message": fmt.Sprintf("已删除 %d 个禁用密钥", deletedCount),
 			"data":    deletedCount,
 		})
 		return

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -88,107 +87,6 @@ func TestValidateChannelRejectsUnknownGroup(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "未配置") {
 		t.Fatalf("expected unknown-group error, got %v", err)
-	}
-}
-
-func TestBatchSetChannelAutoBanUpdatesSelectedChannels(t *testing.T) {
-	db := setupChannelControllerTestDB(t)
-	autoBanOn := 1
-	autoBanOff := 0
-	channels := []model.Channel{
-		{Id: 1, Name: "auto-ban-off-1", Key: "sk-1", Status: common.ChannelStatusEnabled, Group: "default", Models: "gpt-4o", AutoBan: &autoBanOff},
-		{Id: 2, Name: "auto-ban-on-2", Key: "sk-2", Status: common.ChannelStatusEnabled, Group: "default", Models: "gpt-4o", AutoBan: &autoBanOn},
-		{Id: 3, Name: "auto-ban-off-3", Key: "sk-3", Status: common.ChannelStatusEnabled, Group: "default", Models: "gpt-4o", AutoBan: &autoBanOff},
-	}
-	if err := db.Create(&channels).Error; err != nil {
-		t.Fatalf("failed to seed channels: %v", err)
-	}
-
-	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/channel/batch/auto_ban", map[string]any{
-		"ids":      []int{1, 3},
-		"auto_ban": 1,
-	}, 1)
-
-	BatchSetChannelAutoBan(ctx)
-
-	response := decodeAPIResponse(t, recorder)
-	if !response.Success {
-		t.Fatalf("expected batch auto-ban enable success, got %q", response.Message)
-	}
-	var updatedCount int
-	if err := json.Unmarshal(response.Data, &updatedCount); err != nil {
-		t.Fatalf("failed to decode response data: %v", err)
-	}
-	if updatedCount != 2 {
-		t.Fatalf("expected response data 2, got %d", updatedCount)
-	}
-
-	var reloaded []model.Channel
-	if err := db.Order("id").Find(&reloaded).Error; err != nil {
-		t.Fatalf("failed to reload channels: %v", err)
-	}
-	for _, channel := range reloaded {
-		if channel.AutoBan == nil {
-			t.Fatalf("channel %d auto_ban should not be nil", channel.Id)
-		}
-	}
-	if *reloaded[0].AutoBan != 1 || *reloaded[1].AutoBan != 1 || *reloaded[2].AutoBan != 1 {
-		t.Fatalf("expected selected channels enabled and untouched channel still enabled, got %d,%d,%d", *reloaded[0].AutoBan, *reloaded[1].AutoBan, *reloaded[2].AutoBan)
-	}
-
-	ctx, recorder = newAuthenticatedContext(t, http.MethodPost, "/api/channel/batch/auto_ban", map[string]any{
-		"ids":      []int{1, 2},
-		"auto_ban": 0,
-	}, 1)
-
-	BatchSetChannelAutoBan(ctx)
-
-	response = decodeAPIResponse(t, recorder)
-	if !response.Success {
-		t.Fatalf("expected batch auto-ban disable success, got %q", response.Message)
-	}
-	reloaded = nil
-	if err := db.Order("id").Find(&reloaded).Error; err != nil {
-		t.Fatalf("failed to reload channels after disable: %v", err)
-	}
-	if *reloaded[0].AutoBan != 0 || *reloaded[1].AutoBan != 0 || *reloaded[2].AutoBan != 1 {
-		t.Fatalf("expected selected channels disabled and unselected channel unchanged, got %d,%d,%d", *reloaded[0].AutoBan, *reloaded[1].AutoBan, *reloaded[2].AutoBan)
-	}
-}
-
-func TestBatchSetChannelAutoBanRejectsInvalidInput(t *testing.T) {
-	setupChannelControllerTestDB(t)
-
-	for _, tt := range []struct {
-		name string
-		body map[string]any
-	}{
-		{
-			name: "empty ids",
-			body: map[string]any{"ids": []int{}, "auto_ban": 1},
-		},
-		{
-			name: "missing auto ban",
-			body: map[string]any{"ids": []int{1}},
-		},
-		{
-			name: "invalid auto ban",
-			body: map[string]any{"ids": []int{1}, "auto_ban": 2},
-		},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/channel/batch/auto_ban", tt.body, 1)
-
-			BatchSetChannelAutoBan(ctx)
-
-			response := decodeAPIResponse(t, recorder)
-			if response.Success {
-				t.Fatalf("expected invalid input to fail, got body %s", recorder.Body.String())
-			}
-			if response.Message != "参数错误" {
-				t.Fatalf("expected 参数错误, got %q", response.Message)
-			}
-		})
 	}
 }
 

@@ -29,7 +29,7 @@ var (
 )
 
 func shouldAutoRefreshCodexChannelStatus(status int) bool {
-	return status == common.ChannelStatusEnabled || status == common.ChannelStatusAutoDisabled
+	return status == common.ChannelStatusEnabled || status == common.ChannelStatusDisabled
 }
 
 func StartCodexCredentialAutoRefreshTask() {
@@ -72,7 +72,7 @@ func runCodexCredentialAutoRefreshOnce() {
 			Where("type = ? AND (status = ? OR status = ?)",
 				constant.ChannelTypeCodex,
 				common.ChannelStatusEnabled,
-				common.ChannelStatusAutoDisabled,
+				common.ChannelStatusDisabled,
 			).
 			Order("id asc").
 			Limit(codexCredentialRefreshBatchSize).

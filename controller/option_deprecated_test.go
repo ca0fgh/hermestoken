@@ -5,8 +5,14 @@ import (
 	"testing"
 )
 
-func TestUpdateOptionRejectsDeprecatedMonitorAutoTestOptions(t *testing.T) {
+func TestUpdateOptionRejectsDeprecatedChannelAutomationOptions(t *testing.T) {
 	for _, key := range []string{
+		"AutomaticDisableChannelEnabled",
+		"AutomaticEnableChannelEnabled",
+		"ChannelDisableThreshold",
+		"AutomaticDisableKeywords",
+		"AutomaticDisableStatusCodes",
+		"monitor_setting.auto_disabled_channel_recovery_cooldown_minutes",
 		"monitor_setting.auto_test_channel_enabled",
 		"monitor_setting.auto_test_channel_minutes",
 	} {

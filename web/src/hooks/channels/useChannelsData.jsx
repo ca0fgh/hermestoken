@@ -719,35 +719,6 @@ export const useChannelsData = () => {
     setLoading(false);
   };
 
-  const batchSetChannelAutoBan = async (autoBan) => {
-    if (selectedChannels.length === 0) {
-      showError(t('请先选择要设置自动禁用的渠道！'));
-      return;
-    }
-    if (autoBan !== 0 && autoBan !== 1) {
-      showError(t('参数错误'));
-      return;
-    }
-    setLoading(true);
-    const ids = selectedChannels.map((channel) => channel.id);
-    const res = await API.post('/api/channel/batch/auto_ban', {
-      ids,
-      auto_ban: autoBan,
-    });
-    const { success, message, data } = res.data;
-    if (success) {
-      const successMessage =
-        autoBan === 1
-          ? t('已为 ${data} 个渠道开启自动禁用！')
-          : t('已为 ${data} 个渠道关闭自动禁用！');
-      showSuccess(successMessage.replace('${data}', data));
-      await refresh();
-    } else {
-      showError(message);
-    }
-    setLoading(false);
-  };
-
   // Channel operations
   const testAllChannels = async () => {
     const res = await API.get(`/api/channel/test`);
@@ -1258,7 +1229,6 @@ export const useChannelsData = () => {
     handleRow,
     batchSetChannelTag,
     batchDeleteChannels,
-    batchSetChannelAutoBan,
     testAllChannels,
     deleteAllDisabledChannels,
     updateAllChannelsBalance,
