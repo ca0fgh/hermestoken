@@ -53,7 +53,7 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 		UserId: user.Id,
 		Type:   model.LogTypeConsume,
 		Quota:  900,
-		Other:  `{"billing_source":"subscription"}`,
+		Other:  `{"billing_source": "subscription"}`,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed subscription consume log: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 		UserId: user.Id,
 		Type:   model.LogTypeRefund,
 		Quota:  500,
-		Other:  `{"billing_source":"subscription"}`,
+		Other:  `{"billing_source": "subscription"}`,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed subscription refund log: %v", err)
 	}

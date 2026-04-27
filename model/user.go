@@ -389,6 +389,7 @@ func HydrateWalletQuotaUsage(users []*User) error {
 		return nil
 	}
 
+	subscriptionBillingPattern := `%"billing_source"%subscription%`
 	var summaries []userWalletQuotaUsageSummary
 	err := LOG_DB.Model(&Log{}).
 		Select(`
@@ -398,7 +399,7 @@ func HydrateWalletQuotaUsage(users []*User) error {
 				WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN -quota
 				ELSE 0
 			END), 0) AS wallet_amount_used
-		`, LogTypeConsume, `%"billing_source":"subscription"%`, LogTypeRefund, `%"billing_source":"subscription"%`).
+		`, LogTypeConsume, subscriptionBillingPattern, LogTypeRefund, subscriptionBillingPattern).
 		Where("user_id IN ? AND type IN ?", userIDs, []int{LogTypeConsume, LogTypeRefund}).
 		Group("user_id").
 		Scan(&summaries).Error
