@@ -48,10 +48,18 @@ func TestHydrateActiveSubscriptionQuotaSeparatesWalletAndSubscription(t *testing
 	if err := db.Create(&Log{
 		UserId: user.Id,
 		Type:   LogTypeConsume,
-		Quota:  300,
+		Quota:  400,
 		Other:  `{}`,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed wallet consume log: %v", err)
+	}
+	if err := db.Create(&Log{
+		UserId: user.Id,
+		Type:   LogTypeRefund,
+		Quota:  100,
+		Other:  `{}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed wallet refund log: %v", err)
 	}
 	if err := db.Create(&Log{
 		UserId: user.Id,
@@ -60,6 +68,14 @@ func TestHydrateActiveSubscriptionQuotaSeparatesWalletAndSubscription(t *testing
 		Other:  `{"billing_source":"subscription"}`,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed subscription consume log: %v", err)
+	}
+	if err := db.Create(&Log{
+		UserId: user.Id,
+		Type:   LogTypeRefund,
+		Quota:  500,
+		Other:  `{"billing_source":"subscription"}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed subscription refund log: %v", err)
 	}
 
 	users := []*User{user}

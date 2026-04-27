@@ -36,10 +36,18 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 	if err := db.Create(&model.Log{
 		UserId: user.Id,
 		Type:   model.LogTypeConsume,
-		Quota:  300,
+		Quota:  400,
 		Other:  `{}`,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed wallet consume log: %v", err)
+	}
+	if err := db.Create(&model.Log{
+		UserId: user.Id,
+		Type:   model.LogTypeRefund,
+		Quota:  100,
+		Other:  `{}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed wallet refund log: %v", err)
 	}
 	if err := db.Create(&model.Log{
 		UserId: user.Id,
@@ -48,6 +56,14 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 		Other:  `{"billing_source":"subscription"}`,
 	}).Error; err != nil {
 		t.Fatalf("failed to seed subscription consume log: %v", err)
+	}
+	if err := db.Create(&model.Log{
+		UserId: user.Id,
+		Type:   model.LogTypeRefund,
+		Quota:  500,
+		Other:  `{"billing_source":"subscription"}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed subscription refund log: %v", err)
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/?p=1&page_size=10", nil, user.Id)

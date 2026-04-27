@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,11 +180,67 @@ func getLastLog(t *testing.T) *model.Log {
 	return &log
 }
 
+func decodeLogOther(t *testing.T, log *model.Log) map[string]interface{} {
+	t.Helper()
+	var other map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(log.Other), &other))
+	return other
+}
+
 func countLogs(t *testing.T) int64 {
 	t.Helper()
 	var count int64
 	model.LOG_DB.Model(&model.Log{}).Count(&count)
 	return count
+}
+
+func TestLogTaskConsumptionRecordsBillingSource(t *testing.T) {
+	truncate(t)
+	gin.SetMode(gin.TestMode)
+
+	const userID, channelID, tokenID, subID = 60, 60, 60, 6
+	const quota = 347826
+
+	seedUser(t, userID, 1000000)
+	seedChannel(t, channelID)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
+	ctx.Set("token_name", "task-token")
+
+	LogTaskConsumption(ctx, &relaycommon.RelayInfo{
+		UserId:          userID,
+		TokenId:         tokenID,
+		OriginModelName: "veo_3_1",
+		UsingGroup:      "default",
+		BillingSource:   BillingSourceSubscription,
+		SubscriptionId:  subID,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId: channelID,
+		},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{
+			Action: "textGenerate",
+		},
+		PriceData: types.PriceData{
+			Quota:      quota,
+			ModelPrice: 0.6,
+			GroupRatioInfo: types.GroupRatioInfo{
+				GroupRatio: 1,
+			},
+		},
+	})
+
+	log := getLastLog(t)
+	require.NotNil(t, log)
+	assert.Equal(t, model.LogTypeConsume, log.Type)
+	assert.Equal(t, quota, log.Quota)
+
+	other := decodeLogOther(t, log)
+	assert.Equal(t, true, other["is_task"])
+	assert.Equal(t, BillingSourceSubscription, other["billing_source"])
+	assert.Equal(t, float64(subID), other["subscription_id"])
+	assert.Equal(t, "/v1/video/generations", other["request_path"])
 }
 
 // ===========================================================================
@@ -246,6 +305,11 @@ func TestRefundTaskQuota_Subscription(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+
+	other := decodeLogOther(t, log)
+	assert.Equal(t, BillingSourceSubscription, other["billing_source"])
+	assert.Equal(t, float64(subID), other["subscription_id"])
+	assert.Equal(t, float64(0), other["wallet_quota_deducted"])
 }
 
 func TestRefundTaskQuota_ZeroQuota(t *testing.T) {

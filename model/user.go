@@ -394,11 +394,12 @@ func HydrateWalletQuotaUsage(users []*User) error {
 		Select(`
 			user_id,
 			COALESCE(SUM(CASE
-				WHEN quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN quota
+				WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN quota
+				WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN -quota
 				ELSE 0
 			END), 0) AS wallet_amount_used
-		`, `%"billing_source":"subscription"%`).
-		Where("user_id IN ? AND type = ?", userIDs, LogTypeConsume).
+		`, LogTypeConsume, `%"billing_source":"subscription"%`, LogTypeRefund, `%"billing_source":"subscription"%`).
+		Where("user_id IN ? AND type IN ?", userIDs, []int{LogTypeConsume, LogTypeRefund}).
 		Group("user_id").
 		Scan(&summaries).Error
 	if err != nil {
