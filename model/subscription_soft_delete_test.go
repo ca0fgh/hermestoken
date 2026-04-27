@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -37,6 +38,56 @@ func TestGetSubscriptionPlanInfoByUserSubscriptionIdReturnsDeletedPlanTitle(t *t
 	}
 	if info.PlanTitle != plan.Title {
 		t.Fatalf("expected deleted plan title %q, got %q", plan.Title, info.PlanTitle)
+	}
+}
+
+func TestGetAllUserSubscriptionsIncludesDeletedPlanTitle(t *testing.T) {
+	db := setupSubscriptionReferralSettlementDB(t)
+	plan := seedReferralPlan(t, db, 12.5)
+
+	subscription := &UserSubscription{
+		UserId:      1,
+		PlanId:      plan.Id,
+		AmountTotal: 1000,
+		StartTime:   1,
+		EndTime:     common.GetTimestamp() + 3600,
+		Status:      "active",
+		Source:      "admin",
+	}
+	if err := db.Create(subscription).Error; err != nil {
+		t.Fatalf("failed to create user subscription: %v", err)
+	}
+	if err := db.Delete(&SubscriptionPlan{}, plan.Id).Error; err != nil {
+		t.Fatalf("failed to soft delete plan: %v", err)
+	}
+	InvalidateSubscriptionPlanCache(plan.Id)
+
+	summaries, err := GetAllUserSubscriptions(subscription.UserId)
+	if err != nil {
+		t.Fatalf("GetAllUserSubscriptions() error = %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 subscription summary, got %d", len(summaries))
+	}
+
+	payload, err := json.Marshal(summaries[0])
+	if err != nil {
+		t.Fatalf("failed to marshal subscription summary: %v", err)
+	}
+	var decoded struct {
+		Plan *struct {
+			Id    int    `json:"id"`
+			Title string `json:"title"`
+		} `json:"plan"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("failed to decode subscription summary: %v", err)
+	}
+	if decoded.Plan == nil {
+		t.Fatalf("expected subscription summary to include plan info, got %s", payload)
+	}
+	if decoded.Plan.Id != plan.Id || decoded.Plan.Title != plan.Title {
+		t.Fatalf("expected plan %d %q, got %+v", plan.Id, plan.Title, decoded.Plan)
 	}
 }
 

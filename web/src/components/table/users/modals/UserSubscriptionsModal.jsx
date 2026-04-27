@@ -262,7 +262,9 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
           const sub = record?.subscription;
           const planId = sub?.plan_id;
           const title =
-            planTitleMap.get(planId) || (planId ? `#${planId}` : '-');
+            record?.plan?.title ||
+            planTitleMap.get(planId) ||
+            (planId ? `#${planId}` : '-');
           return (
             <div className='min-w-0'>
               <div className='font-medium truncate'>{title}</div>
