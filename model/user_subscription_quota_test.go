@@ -13,7 +13,7 @@ func TestHydrateActiveSubscriptionQuotaSeparatesWalletAndSubscription(t *testing
 
 	user := seedReferralUser(t, db, "quota-summary-user", 0, dto.UserSetting{})
 	user.Quota = 300
-	user.UsedQuota = 700
+	user.UsedQuota = 1200
 	if err := db.Save(user).Error; err != nil {
 		t.Fatalf("failed to seed wallet quota: %v", err)
 	}
@@ -45,14 +45,36 @@ func TestHydrateActiveSubscriptionQuotaSeparatesWalletAndSubscription(t *testing
 	}).Error; err != nil {
 		t.Fatalf("failed to seed expired subscription: %v", err)
 	}
+	if err := db.Create(&Log{
+		UserId: user.Id,
+		Type:   LogTypeConsume,
+		Quota:  300,
+		Other:  `{}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed wallet consume log: %v", err)
+	}
+	if err := db.Create(&Log{
+		UserId: user.Id,
+		Type:   LogTypeConsume,
+		Quota:  900,
+		Other:  `{"billing_source":"subscription"}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed subscription consume log: %v", err)
+	}
 
 	users := []*User{user}
 	if err := HydrateActiveSubscriptionQuota(users); err != nil {
 		t.Fatalf("hydrate subscription quota: %v", err)
 	}
+	if err := HydrateWalletQuotaUsage(users); err != nil {
+		t.Fatalf("hydrate wallet quota usage: %v", err)
+	}
 
-	if user.Quota != 300 || user.UsedQuota != 700 {
+	if user.Quota != 300 || user.UsedQuota != 1200 {
 		t.Fatalf("wallet quota mutated: quota=%d used=%d", user.Quota, user.UsedQuota)
+	}
+	if user.WalletAmountUsed != 300 {
+		t.Fatalf("wallet amount used = %d, want 300", user.WalletAmountUsed)
 	}
 	if user.SubscriptionAmountTotal != 1000 {
 		t.Fatalf("subscription total = %d, want 1000", user.SubscriptionAmountTotal)

@@ -15,7 +15,7 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 
 	user := seedSubscriptionReferralControllerUser(t, "quota-list-user", 0, dto.UserSetting{})
 	user.Quota = 300
-	user.UsedQuota = 700
+	user.UsedQuota = 1200
 	if err := db.Save(user).Error; err != nil {
 		t.Fatalf("failed to seed wallet quota: %v", err)
 	}
@@ -33,6 +33,22 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("failed to seed active subscription: %v", err)
 	}
+	if err := db.Create(&model.Log{
+		UserId: user.Id,
+		Type:   model.LogTypeConsume,
+		Quota:  300,
+		Other:  `{}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed wallet consume log: %v", err)
+	}
+	if err := db.Create(&model.Log{
+		UserId: user.Id,
+		Type:   model.LogTypeConsume,
+		Quota:  900,
+		Other:  `{"billing_source":"subscription"}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed subscription consume log: %v", err)
+	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/?p=1&page_size=10", nil, user.Id)
 	GetAllUsers(ctx)
@@ -47,6 +63,7 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 			Id                         int   `json:"id"`
 			Quota                      int   `json:"quota"`
 			UsedQuota                  int   `json:"used_quota"`
+			WalletAmountUsed           int64 `json:"wallet_amount_used"`
 			SubscriptionAmountTotal    int64 `json:"subscription_amount_total"`
 			SubscriptionAmountUsed     int64 `json:"subscription_amount_used"`
 			SubscriptionQuotaUnlimited bool  `json:"subscription_quota_unlimited"`
@@ -59,8 +76,11 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 		t.Fatalf("items length = %d, want 1", len(page.Items))
 	}
 	item := page.Items[0]
-	if item.Quota != 300 || item.UsedQuota != 700 {
-		t.Fatalf("wallet fields = quota:%d used:%d, want 300/700", item.Quota, item.UsedQuota)
+	if item.Quota != 300 || item.UsedQuota != 1200 {
+		t.Fatalf("wallet fields = quota:%d used:%d, want 300/1200", item.Quota, item.UsedQuota)
+	}
+	if item.WalletAmountUsed != 300 {
+		t.Fatalf("wallet amount used = %d, want 300", item.WalletAmountUsed)
 	}
 	if item.SubscriptionAmountTotal != 1000 || item.SubscriptionAmountUsed != 250 {
 		t.Fatalf("subscription fields = used:%d total:%d, want 250/1000", item.SubscriptionAmountUsed, item.SubscriptionAmountTotal)

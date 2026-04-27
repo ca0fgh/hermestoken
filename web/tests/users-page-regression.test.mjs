@@ -15,3 +15,13 @@ test('UsersTable keeps activePage in scope when wiring DeleteUserModal', () => {
   );
   assert.match(source, /<DeleteUserModal[\s\S]*activePage=\{activePage\}/);
 });
+
+test('user quota column uses wallet-specific usage instead of global used quota', () => {
+  const source = readSource('components/table/users/UsersColumnDefs.jsx');
+
+  assert.match(source, /record\.wallet_amount_used/);
+  assert.doesNotMatch(
+    source,
+    /const\s+walletUsed\s*=\s*parseInt\(record\.used_quota\)/,
+  );
+});

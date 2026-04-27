@@ -180,7 +180,7 @@ const QuotaUsageRow = ({
 // Render separate quota usage column
 const renderQuotaUsage = (text, record, t) => {
   const { Paragraph } = Typography;
-  const walletUsed = parseInt(record.used_quota) || 0;
+  const walletUsed = parseInt(record.wallet_amount_used) || 0;
   const walletRemain = parseInt(record.quota) || 0;
   const walletTotal = walletUsed + walletRemain;
   const walletPercent =

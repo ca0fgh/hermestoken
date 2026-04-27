@@ -46,6 +46,7 @@ type User struct {
 	AffQuota                   int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
 	AffHistoryQuota            int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
 	InviterId                  int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	WalletAmountUsed           int64          `json:"wallet_amount_used" gorm:"-"`
 	SubscriptionAmountTotal    int64          `json:"subscription_amount_total" gorm:"-"`
 	SubscriptionAmountUsed     int64          `json:"subscription_amount_used" gorm:"-"`
 	SubscriptionQuotaUnlimited bool           `json:"subscription_quota_unlimited" gorm:"-"`
@@ -308,6 +309,11 @@ type userSubscriptionQuotaSummary struct {
 	UnlimitedRows int64
 }
 
+type userWalletQuotaUsageSummary struct {
+	UserId           int
+	WalletAmountUsed int64
+}
+
 func HydrateActiveSubscriptionQuota(users []*User) error {
 	if len(users) == 0 {
 		return nil
@@ -357,6 +363,61 @@ func HydrateActiveSubscriptionQuota(users []*User) error {
 		user.SubscriptionAmountTotal = summary.AmountTotal
 		user.SubscriptionAmountUsed = summary.AmountUsed
 		user.SubscriptionQuotaUnlimited = summary.UnlimitedRows > 0
+	}
+	return nil
+}
+
+func HydrateWalletQuotaUsage(users []*User) error {
+	if len(users) == 0 {
+		return nil
+	}
+
+	userIDs := make([]int, 0, len(users))
+	userByID := make(map[int]*User, len(users))
+	for _, user := range users {
+		if user == nil || user.Id <= 0 {
+			continue
+		}
+		user.WalletAmountUsed = 0
+		if _, ok := userByID[user.Id]; ok {
+			continue
+		}
+		userByID[user.Id] = user
+		userIDs = append(userIDs, user.Id)
+	}
+	if len(userIDs) == 0 || LOG_DB == nil {
+		return nil
+	}
+
+	var summaries []userWalletQuotaUsageSummary
+	err := LOG_DB.Model(&Log{}).
+		Select(`
+			user_id,
+			COALESCE(SUM(CASE
+				WHEN quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN quota
+				ELSE 0
+			END), 0) AS wallet_amount_used
+		`, `%"billing_source":"subscription"%`).
+		Where("user_id IN ? AND type = ?", userIDs, LogTypeConsume).
+		Group("user_id").
+		Scan(&summaries).Error
+	if err != nil {
+		return err
+	}
+
+	for _, summary := range summaries {
+		user, ok := userByID[summary.UserId]
+		if !ok {
+			continue
+		}
+		amountUsed := summary.WalletAmountUsed
+		if amountUsed < 0 {
+			amountUsed = 0
+		}
+		if user.UsedQuota >= 0 && amountUsed > int64(user.UsedQuota) {
+			amountUsed = int64(user.UsedQuota)
+		}
+		user.WalletAmountUsed = amountUsed
 	}
 	return nil
 }

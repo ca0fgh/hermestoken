@@ -16,6 +16,19 @@ import prod
 
 
 class ProdLauncherTests(unittest.TestCase):
+    class _FakeHTTPResponse:
+        def __init__(self, content: bytes):
+            self.content = content
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback):
+            return False
+
+        def read(self):
+            return self.content
+
     def test_prod_compose_uses_parent_postgres_volume_for_latest_image(self):
         repo_root = Path(__file__).resolve().parents[2]
         compose_file = repo_root / "docker-compose.prod.yml"
@@ -380,6 +393,61 @@ class ProdLauncherTests(unittest.TestCase):
         which.assert_called_once_with("nginx")
         self.assertIn("skipped nginx site config sync", stdout.getvalue())
 
+    def test_verify_public_frontend_dist_accepts_matching_public_assets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dist_dir = Path(temp_dir)
+            asset_dir = dist_dir / "assets"
+            asset_dir.mkdir()
+            index_content = b'<script type="module" src="/assets/index-abc123.js"></script>'
+            asset_content = b"console.log('fresh build');"
+            (dist_dir / "index.html").write_bytes(index_content)
+            (asset_dir / "index-abc123.js").write_bytes(asset_content)
+
+            responses = {
+                "https://hermestoken.top/index.html": index_content,
+                "https://hermestoken.top/assets/index-abc123.js": asset_content,
+            }
+
+            def fake_urlopen(request, timeout):
+                self.assertEqual(timeout, prod.DEFAULT_PUBLIC_FRONTEND_TIMEOUT_SECONDS)
+                return self._FakeHTTPResponse(responses[request.full_url])
+
+            stdout = io.StringIO()
+            with mock.patch("prod.urlopen", side_effect=fake_urlopen):
+                prod.verify_public_frontend_dist(
+                    public_url="https://hermestoken.top",
+                    dist_dir=dist_dir,
+                    output=stdout,
+                )
+
+        self.assertIn("Public frontend assets match host dist", stdout.getvalue())
+
+    def test_verify_public_frontend_dist_rejects_mismatched_public_asset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dist_dir = Path(temp_dir)
+            asset_dir = dist_dir / "assets"
+            asset_dir.mkdir()
+            index_content = b'<script type="module" src="/assets/index-abc123.js"></script>'
+            (dist_dir / "index.html").write_bytes(index_content)
+            (asset_dir / "index-abc123.js").write_bytes(b"console.log('fresh build');")
+
+            responses = {
+                "https://hermestoken.top/index.html": index_content,
+                "https://hermestoken.top/assets/index-abc123.js": b"console.log('old build');",
+            }
+
+            def fake_urlopen(request, timeout):
+                return self._FakeHTTPResponse(responses[request.full_url])
+
+            with mock.patch("prod.urlopen", side_effect=fake_urlopen):
+                with self.assertRaises(launcher_common.LauncherError) as context:
+                    prod.verify_public_frontend_dist(
+                        public_url="https://hermestoken.top",
+                        dist_dir=dist_dir,
+                    )
+
+        self.assertIn("does not match", str(context.exception))
+
     @mock.patch("prod.poll_http_until_healthy")
     @mock.patch("prod.deploy_cloudflare_static_assets")
     @mock.patch("prod.remove_legacy_compose_containers")
@@ -599,6 +667,7 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("Updated ServerAddress to: https://hermestoken.top", stdout.getvalue())
 
     @mock.patch("prod.load_env_file", return_value={"APP_PORT": "3000"})
+    @mock.patch("prod.verify_public_frontend_dist")
     @mock.patch("prod.sync_nginx_site_config")
     @mock.patch("prod.set_public_url")
     @mock.patch("prod.run_stack")
@@ -607,6 +676,7 @@ class ProdLauncherTests(unittest.TestCase):
         run_stack,
         set_public_url,
         sync_nginx_site_config,
+        verify_public_frontend_dist,
         load_env_file,
     ):
         stderr = io.StringIO()
@@ -644,6 +714,11 @@ class ProdLauncherTests(unittest.TestCase):
             env_values={"APP_PORT": "3000"},
             output=stdout,
             frontend_dist_path=prod.REPO_ROOT / "web" / "dist",
+        )
+        verify_public_frontend_dist.assert_called_once_with(
+            public_url="https://hermestoken.top",
+            dist_dir=prod.REPO_ROOT / "web" / "dist",
+            output=stdout,
         )
 
     @mock.patch(
