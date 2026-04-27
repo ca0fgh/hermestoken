@@ -453,3 +453,62 @@ func UpsertReferralTemplateBindingBundleForUser(userID int, referralType string,
 	})
 	return savedBindings, nil
 }
+
+func syncReferralTemplateBundleBindingsForExistingUsersTx(tx *gorm.DB, retainedTemplateIDs []int, bundleRows []ReferralTemplate, operatorID int) error {
+	if tx == nil {
+		return errors.New("transaction is required")
+	}
+
+	normalizedTemplateIDs := normalizeBindingIDs(retainedTemplateIDs)
+	if len(normalizedTemplateIDs) == 0 || len(bundleRows) == 0 {
+		return nil
+	}
+
+	owners := make([]struct {
+		UserId       int    `gorm:"column:user_id"`
+		ReferralType string `gorm:"column:referral_type"`
+	}, 0)
+	if err := tx.Model(&ReferralTemplateBinding{}).
+		Select("DISTINCT user_id, referral_type").
+		Where("template_id IN ?", normalizedTemplateIDs).
+		Scan(&owners).Error; err != nil {
+		return err
+	}
+
+	for _, owner := range owners {
+		if owner.UserId <= 0 {
+			continue
+		}
+		for _, row := range bundleRows {
+			if row.Id <= 0 {
+				continue
+			}
+			binding := ReferralTemplateBinding{
+				UserId:       owner.UserId,
+				ReferralType: strings.TrimSpace(owner.ReferralType),
+				TemplateId:   row.Id,
+				CreatedBy:    operatorID,
+				UpdatedBy:    operatorID,
+			}
+			if err := binding.validateWithTemplateID(tx); err != nil {
+				return err
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{
+					{Name: "user_id"},
+					{Name: "referral_type"},
+					{Name: "group"},
+				},
+				DoUpdates: clause.Assignments(map[string]interface{}{
+					"template_id": binding.TemplateId,
+					"updated_by":  binding.UpdatedBy,
+					"updated_at":  common.GetTimestamp(),
+				}),
+			}).Create(&binding).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}

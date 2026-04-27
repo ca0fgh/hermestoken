@@ -537,6 +537,74 @@ func TestAdminUpdateReferralTemplateBundleRemovesStaleBindings(t *testing.T) {
 	}
 }
 
+func TestAdminUpdateReferralTemplateBundleAddsNewGroupBindingsForExistingUsers(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	rows, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
+		ReferralType:           model.ReferralTypeSubscription,
+		Groups:                 []string{"cc-opus"},
+		Name:                   "binding-expand-update",
+		LevelType:              model.ReferralLevelTypeTeam,
+		Enabled:                true,
+		TeamCapBps:             5900,
+		InviteeShareDefaultBps: 0,
+	}, 1)
+	if err != nil {
+		t.Fatalf("failed to seed bundle: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("seeded rows length = %d, want 1", len(rows))
+	}
+
+	user := seedSubscriptionReferralControllerUser(t, "binding-expand-update-user", 0, dto.UserSetting{})
+	if _, err := model.UpsertReferralTemplateBinding(&model.ReferralTemplateBinding{
+		UserId:     user.Id,
+		TemplateId: rows[0].Id,
+		CreatedBy:  1,
+		UpdatedBy:  1,
+	}); err != nil {
+		t.Fatalf("failed to create binding: %v", err)
+	}
+
+	body := map[string]interface{}{
+		"referral_type":             model.ReferralTypeSubscription,
+		"groups":                    []string{"cc-opus", "gpt-image-2"},
+		"name":                      "binding-expand-update",
+		"level_type":                model.ReferralLevelTypeTeam,
+		"enabled":                   true,
+		"team_cap_bps":              5900,
+		"invitee_share_default_bps": 0,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/templates/"+strconv.Itoa(rows[0].Id), body, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(rows[0].Id)}}
+	AdminUpdateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	gptImageView, err := model.GetReferralTemplateBindingViewByUserAndScope(user.Id, model.ReferralTypeSubscription, "gpt-image-2")
+	if err != nil {
+		t.Fatalf("failed to reload new group binding view: %v", err)
+	}
+	if gptImageView == nil {
+		t.Fatal("expected existing bundle user to receive new group binding")
+	}
+	if gptImageView.Template.Name != "binding-expand-update" {
+		t.Fatalf("template name = %q, want binding-expand-update", gptImageView.Template.Name)
+	}
+
+	views, err := model.ListReferralTemplateBindingsByUser(user.Id, model.ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingsByUser() error = %v", err)
+	}
+	if len(views) != 2 {
+		t.Fatalf("binding view count = %d, want 2", len(views))
+	}
+}
+
 func TestAdminDeleteReferralTemplateBundlePromotedFromLegacyRowRemovesAllRows(t *testing.T) {
 	for _, tc := range []struct {
 		name      string

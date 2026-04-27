@@ -385,6 +385,7 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 		trimmedReferralType := strings.TrimSpace(input.ReferralType)
 		trimmedName := strings.TrimSpace(input.Name)
 		trimmedLevelType := strings.TrimSpace(input.LevelType)
+		retainedTemplateIDs := make([]int, 0, len(groups))
 		for _, group := range groups {
 			row, exists := currentByGroup[group]
 			if !exists {
@@ -392,6 +393,8 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 					BundleKey: bundleKey,
 					CreatedBy: operatorID,
 				}
+			} else if row.Id > 0 {
+				retainedTemplateIDs = append(retainedTemplateIDs, row.Id)
 			}
 			row.BundleKey = bundleKey
 			row.ReferralType = trimmedReferralType
@@ -430,6 +433,9 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 			if err := tx.Delete(&ReferralTemplate{}, staleIDs).Error; err != nil {
 				return err
 			}
+		}
+		if err := syncReferralTemplateBundleBindingsForExistingUsersTx(tx, retainedTemplateIDs, rows, operatorID); err != nil {
+			return err
 		}
 		return nil
 	})
