@@ -35,7 +35,7 @@ import {
 } from '@douyinfe/semi-illustrations';
 import { API, showError, showSuccess } from '../../../../helpers';
 import { createUnifiedPaginationProps } from '../../../../helpers/utils';
-import { convertUSDToCurrency } from '../../../../helpers/render';
+import { convertUSDToCurrency, renderQuota } from '../../../../helpers/render';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
 import CardTable from '../../../common/ui/CardTable';
 
@@ -298,7 +298,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         },
       },
       {
-        title: t('总额度'),
+        title: t('订阅额度'),
         key: 'total',
         width: 120,
         render: (_, record) => {
@@ -307,7 +307,9 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
           const used = Number(sub?.amount_used || 0);
           return (
             <Text type={total > 0 ? 'secondary' : 'tertiary'}>
-              {total > 0 ? `${used}/${total}` : t('不限')}
+              {total > 0
+                ? `${renderQuota(used)} / ${renderQuota(total)}`
+                : `${renderQuota(used)} / ${t('不限')}`}
             </Text>
           );
         },

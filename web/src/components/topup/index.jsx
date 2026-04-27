@@ -1002,6 +1002,7 @@ const TopUp = () => {
             activeSubscriptions={activeSubscriptions}
             allSubscriptions={allSubscriptions}
             reloadSubscriptionSelf={getSubscriptionSelf}
+            reloadUserQuota={getUserQuota}
             withdrawalSection={
               <WithdrawalCard
                 t={t}

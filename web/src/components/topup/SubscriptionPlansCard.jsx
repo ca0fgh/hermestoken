@@ -44,7 +44,11 @@ const { Text } = Typography;
 // 过滤易支付方式
 function getEpayMethods(payMethods = []) {
   return (payMethods || []).filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem',
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      m.type !== 'wallet',
   );
 }
 
@@ -78,6 +82,8 @@ const SubscriptionPlansCard = ({
   activeSubscriptions = [],
   allSubscriptions = [],
   reloadSubscriptionSelf,
+  reloadUserQuota,
+  userState,
   withCard = true,
 }) => {
   const [open, setOpen] = useState(false);
@@ -92,7 +98,9 @@ const SubscriptionPlansCard = ({
   const openBuy = (p) => {
     setSelectedPlan(p);
     setPurchaseQuantity(1);
-    setSelectedEpayMethod(epayMethods?.[0]?.type || '');
+    setSelectedEpayMethod(
+      userState?.user ? 'wallet' : epayMethods?.[0]?.type || '',
+    );
     setOpen(true);
   };
 
@@ -190,6 +198,10 @@ const SubscriptionPlansCard = ({
       showError(t('请选择支付方式'));
       return;
     }
+    if (selectedEpayMethod === 'wallet') {
+      await payWallet();
+      return;
+    }
     const purchaseCount = getPurchaseQuantity();
     if (purchaseCount < 1) {
       showError(t('购买数量需至少为 1'));
@@ -206,6 +218,36 @@ const SubscriptionPlansCard = ({
         submitEpayForm({ url: res.data.url, params: res.data.data });
         showSuccess(t('已发起支付'));
         closeBuy();
+      } else {
+        const errorMsg =
+          typeof res.data?.data === 'string'
+            ? res.data.data
+            : res.data?.message || t('支付失败');
+        showError(errorMsg);
+      }
+    } catch (e) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const payWallet = async () => {
+    const purchaseCount = getPurchaseQuantity();
+    if (purchaseCount < 1) {
+      showError(t('购买数量需至少为 1'));
+      return;
+    }
+    setPaying(true);
+    try {
+      const res = await API.post('/api/subscription/wallet/pay', {
+        plan_id: selectedPlan.plan.id,
+        quantity: purchaseCount,
+      });
+      if (res.data?.message === 'success') {
+        showSuccess(t('支付成功'));
+        closeBuy();
+        await Promise.all([reloadSubscriptionSelf?.(), reloadUserQuota?.()]);
       } else {
         const errorMsg =
           typeof res.data?.data === 'string'
@@ -723,6 +765,7 @@ const SubscriptionPlansCard = ({
         onPayStripe={payStripe}
         onPayCreem={payCreem}
         onPayEpay={payEpay}
+        userState={userState}
       />
     </>
   );

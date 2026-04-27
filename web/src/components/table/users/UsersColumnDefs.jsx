@@ -31,6 +31,13 @@ import {
 import { IconMore } from '@douyinfe/semi-icons';
 import { renderGroup, renderNumber, renderQuota } from '../../../helpers';
 
+const getProgressColor = (pct) => {
+  if (pct === 100) return 'var(--semi-color-success)';
+  if (pct <= 10) return 'var(--semi-color-danger)';
+  if (pct <= 30) return 'var(--semi-color-warning)';
+  return undefined;
+};
+
 /**
  * Render user role
  */
@@ -133,39 +140,123 @@ const renderStatistics = (text, record, showEnableDisableModal, t) => {
   );
 };
 
+const QuotaUsageRow = ({
+  label,
+  remainText,
+  totalText,
+  percent,
+  ariaLabel,
+}) => {
+  const amountText = `${remainText} / ${totalText}`;
+
+  return (
+    <div
+      className='w-full rounded-md border px-2 py-1.5'
+      style={{
+        backgroundColor: 'var(--semi-color-bg-0)',
+        borderColor: 'var(--semi-color-border)',
+      }}
+    >
+      <div className='mb-1 flex items-center justify-between gap-2 text-xs leading-4'>
+        <span className='shrink-0 text-gray-500'>{label}</span>
+        <span
+          className='min-w-0 truncate whitespace-nowrap font-medium text-gray-900'
+          title={amountText}
+        >
+          {amountText}
+        </span>
+      </div>
+      <Progress
+        percent={percent}
+        stroke={getProgressColor(percent)}
+        showInfo={false}
+        aria-label={ariaLabel}
+        style={{ width: '100%', margin: 0 }}
+      />
+    </div>
+  );
+};
+
 // Render separate quota usage column
 const renderQuotaUsage = (text, record, t) => {
   const { Paragraph } = Typography;
-  const used = parseInt(record.used_quota) || 0;
-  const remain = parseInt(record.quota) || 0;
-  const total = used + remain;
-  const percent = total > 0 ? (remain / total) * 100 : 0;
+  const walletUsed = parseInt(record.used_quota) || 0;
+  const walletRemain = parseInt(record.quota) || 0;
+  const walletTotal = walletUsed + walletRemain;
+  const walletPercent =
+    walletTotal > 0 ? (walletRemain / walletTotal) * 100 : 0;
+  const subscriptionUsed = parseInt(record.subscription_amount_used) || 0;
+  const subscriptionTotal = parseInt(record.subscription_amount_total) || 0;
+  const subscriptionUnlimited = Boolean(record.subscription_quota_unlimited);
+  const subscriptionRemain = subscriptionUnlimited
+    ? 0
+    : Math.max(subscriptionTotal - subscriptionUsed, 0);
+  const subscriptionPercent = subscriptionUnlimited
+    ? 100
+    : subscriptionTotal > 0
+      ? (subscriptionRemain / subscriptionTotal) * 100
+      : 0;
+  const subscriptionTotalText = subscriptionUnlimited
+    ? t('不限')
+    : renderQuota(subscriptionTotal);
+  const subscriptionRemainText = subscriptionUnlimited
+    ? t('不限')
+    : renderQuota(subscriptionRemain);
+
   const popoverContent = (
     <div className='text-xs p-2'>
-      <Paragraph copyable={{ content: renderQuota(used) }}>
-        {t('已用额度')}: {renderQuota(used)}
+      <Paragraph copyable={{ content: renderQuota(walletUsed) }}>
+        {t('钱包已用额度')}: {renderQuota(walletUsed)}
       </Paragraph>
-      <Paragraph copyable={{ content: renderQuota(remain) }}>
-        {t('剩余额度')}: {renderQuota(remain)} ({percent.toFixed(0)}%)
+      <Paragraph copyable={{ content: renderQuota(walletRemain) }}>
+        {t('钱包剩余额度')}: {renderQuota(walletRemain)} (
+        {walletPercent.toFixed(0)}%)
       </Paragraph>
-      <Paragraph copyable={{ content: renderQuota(total) }}>
-        {t('总额度')}: {renderQuota(total)}
+      <Paragraph copyable={{ content: renderQuota(walletTotal) }}>
+        {t('钱包总额度')}: {renderQuota(walletTotal)}
+      </Paragraph>
+      <Paragraph copyable={{ content: renderQuota(subscriptionUsed) }}>
+        {t('订阅已用额度')}: {renderQuota(subscriptionUsed)}
+      </Paragraph>
+      <Paragraph
+        copyable={{
+          content: subscriptionUnlimited
+            ? t('不限')
+            : renderQuota(subscriptionRemain),
+        }}
+      >
+        {t('订阅剩余额度')}: {subscriptionRemainText} (
+        {subscriptionPercent.toFixed(0)}%)
+      </Paragraph>
+      <Paragraph
+        copyable={{
+          content: subscriptionUnlimited
+            ? t('不限')
+            : renderQuota(subscriptionTotal),
+        }}
+      >
+        {t('订阅总额度')}: {subscriptionTotalText}
       </Paragraph>
     </div>
   );
   return (
     <Popover content={popoverContent} position='top'>
-      <Tag color='white' shape='circle'>
-        <div className='flex flex-col items-end'>
-          <span className='text-xs leading-none'>{`${renderQuota(remain)} / ${renderQuota(total)}`}</span>
-          <Progress
-            percent={percent}
-            aria-label='quota usage'
-            format={() => `${percent.toFixed(0)}%`}
-            style={{ width: '100%', marginTop: '1px', marginBottom: 0 }}
-          />
-        </div>
-      </Tag>
+      <div className='flex w-[210px] max-w-full flex-col gap-1.5'>
+        <QuotaUsageRow
+          label={t('钱包')}
+          remainText={renderQuota(walletRemain)}
+          totalText={renderQuota(walletTotal)}
+          percent={walletPercent}
+          ariaLabel='wallet quota usage'
+        />
+        <QuotaUsageRow
+          label={t('订阅')}
+          remainText={subscriptionRemainText}
+          totalText={subscriptionTotalText}
+          percent={subscriptionPercent}
+          ariaLabel='subscription quota usage'
+        />
+      </div>
     </Popover>
   );
 };
@@ -193,25 +284,19 @@ const renderInviteInfo = (text, record, t) => {
   );
 };
 
-/**
- * Render operations column
- */
-const renderOperations = (
-  text,
+const UserOperations = ({
   record,
-  {
-    setEditingUser,
-    setShowEditUser,
-    showPromoteModal,
-    showDemoteModal,
-    showEnableDisableModal,
-    showDeleteModal,
-    showResetPasskeyModal,
-    showResetTwoFAModal,
-    showUserSubscriptionsModal,
-    t,
-  },
-) => {
+  setEditingUser,
+  setShowEditUser,
+  showPromoteModal,
+  showDemoteModal,
+  showEnableDisableModal,
+  showDeleteModal,
+  showResetPasskeyModal,
+  showResetTwoFAModal,
+  showUserSubscriptionsModal,
+  t,
+}) => {
   if (record.DeletedAt !== null) {
     return <></>;
   }
@@ -288,12 +373,51 @@ const renderOperations = (
       >
         {t('降级')}
       </Button>
-      <Dropdown menu={moreMenu} trigger='click' position='bottomRight'>
+      <Dropdown
+        menu={moreMenu}
+        trigger='click'
+        position='bottomRight'
+        clickToHide
+      >
         <Button type='tertiary' size='small' icon={<IconMore />} />
       </Dropdown>
     </Space>
   );
 };
+
+/**
+ * Render operations column
+ */
+const renderOperations = (
+  text,
+  record,
+  {
+    setEditingUser,
+    setShowEditUser,
+    showPromoteModal,
+    showDemoteModal,
+    showEnableDisableModal,
+    showDeleteModal,
+    showResetPasskeyModal,
+    showResetTwoFAModal,
+    showUserSubscriptionsModal,
+    t,
+  },
+) => (
+  <UserOperations
+    record={record}
+    setEditingUser={setEditingUser}
+    setShowEditUser={setShowEditUser}
+    showPromoteModal={showPromoteModal}
+    showDemoteModal={showDemoteModal}
+    showEnableDisableModal={showEnableDisableModal}
+    showDeleteModal={showDeleteModal}
+    showResetPasskeyModal={showResetPasskeyModal}
+    showResetTwoFAModal={showResetTwoFAModal}
+    showUserSubscriptionsModal={showUserSubscriptionsModal}
+    t={t}
+  />
+);
 
 /**
  * Get users table column definitions
@@ -327,8 +451,9 @@ export const getUsersColumns = ({
         renderStatistics(text, record, showEnableDisableModal, t),
     },
     {
-      title: t('剩余额度/总额度'),
+      title: t('钱包/订阅额度'),
       key: 'quota_usage',
+      width: 240,
       render: (text, record) => renderQuotaUsage(text, record, t),
     },
     {

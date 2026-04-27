@@ -35,10 +35,7 @@ import {
 import { Coins } from 'lucide-react';
 import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
-import {
-  createUnifiedPaginationProps,
-  isAdmin,
-} from '../../../helpers/utils';
+import { createUnifiedPaginationProps, isAdmin } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 const { Text } = Typography;
 
@@ -57,6 +54,21 @@ const PAYMENT_METHOD_MAP = {
   waffo: 'Waffo',
   alipay: '支付宝',
   wxpay: '微信',
+};
+
+const CURRENCY_SYMBOL_MAP = {
+  CNY: '¥',
+  USD: '$',
+  EUR: '€',
+};
+
+const renderMoneyByCurrency = (money, currency) => {
+  const value = Number(money || 0);
+  const normalizedCurrency = String(currency || 'USD').toUpperCase();
+  const symbol = CURRENCY_SYMBOL_MAP[normalizedCurrency];
+  const amount = Number.isFinite(value) ? value.toFixed(2) : '0.00';
+
+  return symbol ? `${symbol}${amount}` : `${amount} ${normalizedCurrency}`;
 };
 
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
@@ -210,7 +222,11 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
         title: t('支付金额'),
         dataIndex: 'money',
         key: 'money',
-        render: (money) => <Text type='danger'>¥{money.toFixed(2)}</Text>,
+        render: (money, record) => (
+          <Text type='danger'>
+            {renderMoneyByCurrency(money, record?.currency)}
+          </Text>
+        ),
       },
       {
         title: t('状态'),

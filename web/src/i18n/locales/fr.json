@@ -3751,5 +3751,15 @@
   "确认删除该模板组及其覆盖的所有分组模板吗？": "Voulez-vous vraiment supprimer ce lot de modèles ainsi que tous les modèles de groupe qu'il couvre ?",
   "删除禁用密钥": "Supprimer les clés désactivées",
   "确定要删除所有已禁用的密钥吗？": "Êtes-vous sûr de vouloir supprimer toutes les clés désactivées ?",
-  "此操作不可撤销，将永久删除已禁用的密钥": "Cette opération ne peut pas être annulée et toutes les clés désactivées seront définitivement supprimées."
+  "此操作不可撤销，将永久删除已禁用的密钥": "Cette opération ne peut pas être annulée et toutes les clés désactivées seront définitivement supprimées.",
+  "钱包/订阅额度": "Quota portefeuille/abonnement",
+  "钱包": "Portefeuille",
+  "钱包已用额度": "Quota portefeuille utilisé",
+  "钱包剩余额度": "Quota portefeuille restant",
+  "钱包总额度": "Quota portefeuille total",
+  "订阅额度": "Quota d'abonnement",
+  "订阅已用额度": "Quota d'abonnement utilisé",
+  "订阅剩余额度": "Quota d'abonnement restant",
+  "订阅总额度": "Quota d'abonnement total",
+  "不限": "Illimité"
 }

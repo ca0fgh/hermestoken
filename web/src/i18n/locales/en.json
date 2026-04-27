@@ -3795,5 +3795,14 @@
   "确认删除该模板组及其覆盖的所有分组模板吗？": "Are you sure you want to delete this template bundle and every group template it covers?",
   "删除禁用密钥": "Delete disabled keys",
   "确定要删除所有已禁用的密钥吗？": "Are you sure you want to delete all disabled keys?",
-  "此操作不可撤销，将永久删除已禁用的密钥": "This operation cannot be undone, and all disabled keys will be permanently deleted."
+  "此操作不可撤销，将永久删除已禁用的密钥": "This operation cannot be undone, and all disabled keys will be permanently deleted.",
+  "钱包/订阅额度": "Wallet/Subscription quota",
+  "钱包": "Wallet",
+  "钱包已用额度": "Wallet used quota",
+  "钱包剩余额度": "Wallet remaining quota",
+  "钱包总额度": "Wallet total quota",
+  "订阅额度": "Subscription quota",
+  "订阅已用额度": "Subscription used quota",
+  "订阅剩余额度": "Subscription remaining quota",
+  "订阅总额度": "Subscription total quota"
 }

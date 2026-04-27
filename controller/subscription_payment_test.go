@@ -403,6 +403,154 @@ func TestSubscriptionRequestEpayConvertsUsdTotalToGatewayAmount(t *testing.T) {
 	}
 }
 
+func TestSubscriptionRequestWalletPayDeductsBalanceAndCreatesSubscriptions(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	user := seedSubscriptionPaymentUser(t, db, 1, "wallet@example.com", "wallet_user", "")
+	user.Quota = 1000
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to seed user quota: %v", err)
+	}
+	plan := seedSubscriptionPlan(t, db, "wallet-plan")
+	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
+		"price_amount": 3.5,
+		"stock_total":  10,
+	})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/wallet/pay", map[string]interface{}{
+		"plan_id":  plan.Id,
+		"quantity": 2,
+	}, user.Id)
+
+	SubscriptionRequestWalletPay(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected http status 200, got %d", recorder.Code)
+	}
+	response := decodeSubscriptionPaymentResponse(t, recorder.Body.Bytes())
+	if response.Message != "success" {
+		t.Fatalf("expected success message, got %s body=%s", response.Message, recorder.Body.String())
+	}
+
+	var responseData struct {
+		TradeNo       string `json:"trade_no"`
+		BalanceQuota  int    `json:"balance_quota"`
+		DeductedQuota int    `json:"deducted_quota"`
+	}
+	if err := common.Unmarshal(response.Data, &responseData); err != nil {
+		t.Fatalf("failed to decode wallet response data: %v", err)
+	}
+	if responseData.TradeNo == "" {
+		t.Fatal("expected wallet response to include trade_no")
+	}
+	if responseData.DeductedQuota != 700 || responseData.BalanceQuota != 300 {
+		t.Fatalf("unexpected wallet response quotas: %+v", responseData)
+	}
+
+	var reloadedUser model.User
+	if err := db.First(&reloadedUser, user.Id).Error; err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if reloadedUser.Quota != 300 {
+		t.Fatalf("expected user quota 300 after wallet purchase, got %d", reloadedUser.Quota)
+	}
+
+	var order model.SubscriptionOrder
+	if err := db.Where("trade_no = ?", responseData.TradeNo).First(&order).Error; err != nil {
+		t.Fatalf("failed to load wallet subscription order: %v", err)
+	}
+	if order.Status != common.TopUpStatusSuccess {
+		t.Fatalf("expected subscription order success, got %s", order.Status)
+	}
+	if order.PaymentMethod != model.PaymentMethodWallet {
+		t.Fatalf("expected wallet payment method, got %q", order.PaymentMethod)
+	}
+	assertFloatEquals(t, order.Money, 7.0)
+	if order.Quantity != 2 {
+		t.Fatalf("expected order quantity 2, got %d", order.Quantity)
+	}
+
+	var subCount int64
+	if err := db.Model(&model.UserSubscription{}).Where("user_id = ? AND plan_id = ?", user.Id, plan.Id).Count(&subCount).Error; err != nil {
+		t.Fatalf("failed to count user subscriptions: %v", err)
+	}
+	if subCount != 2 {
+		t.Fatalf("expected 2 user subscriptions, got %d", subCount)
+	}
+
+	var updatedPlan model.SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&updatedPlan).Error; err != nil {
+		t.Fatalf("failed to reload subscription plan: %v", err)
+	}
+	if updatedPlan.StockSold != 2 || updatedPlan.StockLocked != 0 {
+		t.Fatalf("expected stock sold=2 locked=0, got sold=%d locked=%d", updatedPlan.StockSold, updatedPlan.StockLocked)
+	}
+}
+
+func TestSubscriptionRequestWalletPayRejectsInsufficientBalanceWithoutSideEffects(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	user := seedSubscriptionPaymentUser(t, db, 1, "wallet-low@example.com", "wallet_low_user", "")
+	user.Quota = 100
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to seed user quota: %v", err)
+	}
+	plan := seedSubscriptionPlan(t, db, "wallet-low-plan")
+	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
+		"price_amount": 5.0,
+		"stock_total":  10,
+	})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/wallet/pay", map[string]interface{}{
+		"plan_id":  plan.Id,
+		"quantity": 1,
+	}, user.Id)
+
+	SubscriptionRequestWalletPay(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected http status 200, got %d", recorder.Code)
+	}
+	response := decodeSubscriptionPaymentResponse(t, recorder.Body.Bytes())
+	if response.Message != model.ErrSubscriptionWalletInsufficientBalance.Error() {
+		t.Fatalf("expected insufficient balance message, got %s body=%s", response.Message, recorder.Body.String())
+	}
+
+	var reloadedUser model.User
+	if err := db.First(&reloadedUser, user.Id).Error; err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if reloadedUser.Quota != 100 {
+		t.Fatalf("expected user quota to stay 100, got %d", reloadedUser.Quota)
+	}
+
+	var orderCount int64
+	if err := db.Model(&model.SubscriptionOrder{}).Count(&orderCount).Error; err != nil {
+		t.Fatalf("failed to count subscription orders: %v", err)
+	}
+	if orderCount != 0 {
+		t.Fatalf("expected no subscription order, found %d", orderCount)
+	}
+
+	var updatedPlan model.SubscriptionPlan
+	if err := db.Where("id = ?", plan.Id).First(&updatedPlan).Error; err != nil {
+		t.Fatalf("failed to reload subscription plan: %v", err)
+	}
+	if updatedPlan.StockSold != 0 || updatedPlan.StockLocked != 0 {
+		t.Fatalf("expected untouched stock, got sold=%d locked=%d", updatedPlan.StockSold, updatedPlan.StockLocked)
+	}
+}
+
 func TestSubscriptionResultURLUsesHistoryQueryForNonFailureStates(t *testing.T) {
 	previous := system_setting.ServerAddress
 	system_setting.ServerAddress = "https://pay-local.hermestoken.top"

@@ -46,6 +46,8 @@ var (
 	ErrSubscriptionPlanStockTooSmall          = errors.New("库存不能小于已锁定和已售数量")
 	ErrSubscriptionPlanStockInvariant         = errors.New("订阅库存状态不一致")
 	ErrSubscriptionPlanStockNegative          = errors.New("库存不能为负数")
+	ErrSubscriptionWalletInsufficientBalance  = errors.New("账户余额不足")
+	ErrSubscriptionWalletQuotaInvalid         = errors.New("账户余额配置错误")
 )
 
 type SubscriptionPaymentVerification struct {
@@ -53,6 +55,14 @@ type SubscriptionPaymentVerification struct {
 	PaidMoney     string
 	PaidCurrency  string
 	ProductID     string
+}
+
+type SubscriptionWalletPurchaseResult struct {
+	TradeNo       string  `json:"trade_no"`
+	Money         float64 `json:"money"`
+	Quantity      int     `json:"quantity"`
+	DeductedQuota int     `json:"deducted_quota"`
+	BalanceQuota  int     `json:"balance_quota"`
 }
 
 const (
@@ -834,6 +844,155 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		return nil, err
 	}
 	return sub, nil
+}
+
+func calculateSubscriptionOrderTotal(unitPrice float64, quantity int) float64 {
+	if quantity <= 0 {
+		return 0
+	}
+	return decimal.NewFromFloat(unitPrice).
+		Mul(decimal.NewFromInt(int64(quantity))).
+		Round(2).
+		InexactFloat64()
+}
+
+func CalculateSubscriptionWalletPaymentQuota(orderTotal float64) (int, error) {
+	if orderTotal < 0 || common.QuotaPerUnit <= 0 {
+		return 0, ErrSubscriptionWalletQuotaInvalid
+	}
+	if orderTotal == 0 {
+		return 0, nil
+	}
+	required := decimal.NewFromFloat(orderTotal).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		Round(0)
+	maxInt := int64(int(^uint(0) >> 1))
+	if required.GreaterThan(decimal.NewFromInt(maxInt)) {
+		return 0, ErrSubscriptionWalletQuotaInvalid
+	}
+	return int(required.IntPart()), nil
+}
+
+func PurchaseSubscriptionWithWallet(userId int, planId int, quantity int, tradeNo string) (*SubscriptionWalletPurchaseResult, error) {
+	if userId <= 0 || planId <= 0 || quantity <= 0 || strings.TrimSpace(tradeNo) == "" {
+		return nil, errors.New("invalid wallet subscription purchase")
+	}
+
+	var result *SubscriptionWalletPurchaseResult
+	var upgradeGroup string
+	var logPlanTitle string
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		lockedPlan, err := lockSubscriptionPlanForStockTx(tx, planId, false)
+		if err != nil {
+			return err
+		}
+		if !lockedPlan.Enabled {
+			return errors.New("套餐未启用")
+		}
+		if lockedPlan.PriceAmount < 0 {
+			return errors.New("套餐金额无效")
+		}
+		if lockedPlan.MaxPurchasePerUser > 0 {
+			var count int64
+			if err := tx.Model(&UserSubscription{}).
+				Where("user_id = ? AND plan_id = ?", userId, lockedPlan.Id).
+				Count(&count).Error; err != nil {
+				return err
+			}
+			if count+int64(quantity) > int64(lockedPlan.MaxPurchasePerUser) {
+				return errors.New("已达到该套餐购买上限")
+			}
+		}
+
+		orderTotal := calculateSubscriptionOrderTotal(lockedPlan.PriceAmount, quantity)
+		requiredQuota, err := CalculateSubscriptionWalletPaymentQuota(orderTotal)
+		if err != nil {
+			return err
+		}
+
+		var user User
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", userId).First(&user).Error; err != nil {
+			return err
+		}
+		if user.Quota < requiredQuota {
+			return ErrSubscriptionWalletInsufficientBalance
+		}
+
+		if err := consumeSubscriptionPlanStockDirectTx(tx, lockedPlan, quantity); err != nil {
+			return err
+		}
+
+		if requiredQuota > 0 {
+			updateResult := tx.Model(&User{}).
+				Where("id = ? AND quota >= ?", userId, requiredQuota).
+				Update("quota", gorm.Expr("quota - ?", requiredQuota))
+			if updateResult.Error != nil {
+				return updateResult.Error
+			}
+			if updateResult.RowsAffected == 0 {
+				return ErrSubscriptionWalletInsufficientBalance
+			}
+			user.Quota -= requiredQuota
+		}
+
+		now := common.GetTimestamp()
+		order := &SubscriptionOrder{
+			UserId:          userId,
+			PlanId:          lockedPlan.Id,
+			Money:           orderTotal,
+			PaymentMoney:    orderTotal,
+			PaymentCurrency: lockedPlan.Currency,
+			Quantity:        quantity,
+			TradeNo:         strings.TrimSpace(tradeNo),
+			PaymentMethod:   PaymentMethodWallet,
+			Status:          common.TopUpStatusSuccess,
+			CreateTime:      now,
+			CompleteTime:    now,
+			ProviderPayload: `{"payment_method":"wallet"}`,
+		}
+		if err := tx.Create(order).Error; err != nil {
+			return err
+		}
+
+		for i := 0; i < quantity; i++ {
+			if _, err := CreateUserSubscriptionFromPlanTx(tx, userId, lockedPlan, "order"); err != nil {
+				return err
+			}
+		}
+		if err := upsertSubscriptionTopUpTx(tx, order); err != nil {
+			return err
+		}
+		if err := ApplySubscriptionReferralOnOrderSuccessTx(tx, order, lockedPlan); err != nil {
+			return err
+		}
+
+		upgradeGroup = strings.TrimSpace(lockedPlan.UpgradeGroup)
+		logPlanTitle = lockedPlan.Title
+		result = &SubscriptionWalletPurchaseResult{
+			TradeNo:       order.TradeNo,
+			Money:         order.Money,
+			Quantity:      quantity,
+			DeductedQuota: requiredQuota,
+			BalanceQuota:  user.Quota,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if planId > 0 {
+		InvalidateSubscriptionPlanCache(planId)
+	}
+	if upgradeGroup != "" {
+		_ = UpdateUserGroupCache(userId, upgradeGroup)
+	}
+	if result != nil {
+		_, _ = GetUserQuota(userId, true)
+		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, result.Money, PaymentMethodWallet)
+		RecordLog(userId, LogTypeTopup, msg)
+	}
+	return result, nil
 }
 
 // CompleteSubscriptionOrder completes a pending order and optionally enforces

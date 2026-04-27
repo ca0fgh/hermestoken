@@ -4296,5 +4296,15 @@
   "确认删除该模板组及其覆盖的所有分组模板吗？": "Bạn có chắc muốn xóa gói mẫu này cùng toàn bộ các mẫu theo nhóm mà nó đang bao phủ không?",
   "删除禁用密钥": "Xóa khóa đã vô hiệu hóa",
   "确定要删除所有已禁用的密钥吗？": "Bạn có chắc chắn muốn xóa tất cả khóa đã vô hiệu hóa không?",
-  "此操作不可撤销，将永久删除已禁用的密钥": "Thao tác này không thể hoàn tác và tất cả khóa đã vô hiệu hóa sẽ bị xóa vĩnh viễn."
+  "此操作不可撤销，将永久删除已禁用的密钥": "Thao tác này không thể hoàn tác và tất cả khóa đã vô hiệu hóa sẽ bị xóa vĩnh viễn.",
+  "钱包/订阅额度": "Hạn ngạch ví/gói thuê bao",
+  "钱包": "Ví",
+  "钱包已用额度": "Hạn ngạch ví đã dùng",
+  "钱包剩余额度": "Hạn ngạch ví còn lại",
+  "钱包总额度": "Tổng hạn ngạch ví",
+  "订阅额度": "Hạn ngạch gói thuê bao",
+  "订阅已用额度": "Hạn ngạch gói thuê bao đã dùng",
+  "订阅剩余额度": "Hạn ngạch gói thuê bao còn lại",
+  "订阅总额度": "Tổng hạn ngạch gói thuê bao",
+  "不限": "Không giới hạn"
 }

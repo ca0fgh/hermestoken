@@ -32,7 +32,7 @@ import {
 import { Crown, CalendarClock, Package } from 'lucide-react';
 import { SiStripe } from 'react-icons/si';
 import { IconCreditCard } from '@douyinfe/semi-icons';
-import { renderQuota } from '../../../helpers';
+import { getQuotaPerUnit, renderQuota } from '../../../helpers';
 import { getCurrencyConfig } from '../../../helpers/render';
 import {
   formatSubscriptionDuration,
@@ -59,6 +59,7 @@ const SubscriptionPurchaseModal = ({
   onPayStripe,
   onPayCreem,
   onPayEpay,
+  userState,
 }) => {
   const plan = selectedPlan?.plan;
   const totalAmount = Number(plan?.total_amount || 0);
@@ -71,7 +72,32 @@ const SubscriptionPurchaseModal = ({
   const hasStripe = enableStripeTopUp && !!plan?.stripe_price_id;
   const hasCreem = enableCreemTopUp && !!plan?.creem_product_id;
   const hasEpay = enableOnlineTopUp && epayMethods.length > 0;
-  const hasAnyPayment = hasStripe || hasCreem || hasEpay;
+  const hasWallet = !!userState?.user;
+  const walletBalanceQuota = Number(userState?.user?.quota || 0);
+  const quotaPerUnit = Number(getQuotaPerUnit() || 0);
+  const requiredWalletQuota =
+    quotaPerUnit > 0 ? Math.round(price * quantity * quotaPerUnit) : 0;
+  const walletBalanceInsufficient =
+    requiredWalletQuota > 0 && walletBalanceQuota < requiredWalletQuota;
+  const paymentMethodOptions = [
+    ...(hasWallet
+      ? [
+          {
+            value: 'wallet',
+            label: `${t('账户余额')} (${renderQuota(walletBalanceQuota)})`,
+          },
+        ]
+      : []),
+    ...(hasEpay
+      ? epayMethods.map((m) => ({
+          value: m.type,
+          label: m.name || m.type,
+        }))
+      : []),
+  ];
+  const hasMergedPayment = paymentMethodOptions.length > 0;
+  const hasAnyPayment = hasMergedPayment || hasStripe || hasCreem;
+  const selectedWalletPayment = selectedEpayMethod === 'wallet';
   const purchaseLimit = Number(purchaseLimitInfo?.limit || 0);
   const purchaseCount = Number(purchaseLimitInfo?.count || 0);
   const remainingPurchaseLimit =
@@ -93,6 +119,8 @@ const SubscriptionPurchaseModal = ({
   const purchaseQuantityInvalid = quantity < 1 || purchaseQuantityExceeded;
   const paymentDisabled =
     purchaseLimitReached || soldOut || purchaseQuantityInvalid;
+  const selectedPaymentDisabled =
+    selectedWalletPayment && walletBalanceInsufficient;
 
   return (
     <Modal
@@ -296,30 +324,38 @@ const SubscriptionPurchaseModal = ({
                 </div>
               )}
 
-              {/* 易支付 */}
-              {hasEpay && (
-                <div className='flex gap-2'>
-                  <Select
-                    value={selectedEpayMethod}
-                    onChange={setSelectedEpayMethod}
-                    style={{ flex: 1 }}
-                    size='default'
-                    placeholder={t('选择支付方式')}
-                    optionList={epayMethods.map((m) => ({
-                      value: m.type,
-                      label: m.name || m.type,
-                    }))}
-                    disabled={purchaseLimitReached || soldOut}
-                  />
-                  <Button
-                    theme='solid'
-                    type='primary'
-                    onClick={onPayEpay}
-                    loading={paying}
-                    disabled={!selectedEpayMethod || paymentDisabled}
-                  >
-                    {t('支付')}
-                  </Button>
+              {/* 余额 / 易支付 */}
+              {hasMergedPayment && (
+                <div className='space-y-2'>
+                  <div className='flex gap-2'>
+                    <Select
+                      value={selectedEpayMethod}
+                      onChange={setSelectedEpayMethod}
+                      style={{ flex: 1 }}
+                      size='default'
+                      placeholder={t('选择支付方式')}
+                      optionList={paymentMethodOptions}
+                      disabled={purchaseLimitReached || soldOut}
+                    />
+                    <Button
+                      theme='solid'
+                      type='primary'
+                      onClick={onPayEpay}
+                      loading={paying}
+                      disabled={
+                        !selectedEpayMethod ||
+                        paymentDisabled ||
+                        selectedPaymentDisabled
+                      }
+                    >
+                      {t('支付')}
+                    </Button>
+                  </div>
+                  {selectedWalletPayment && walletBalanceInsufficient && (
+                    <Text size='small' type='danger'>
+                      {t('账户余额不足')}
+                    </Text>
+                  )}
                 </div>
               )}
             </div>
