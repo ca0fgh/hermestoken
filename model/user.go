@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 
 	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -314,6 +315,11 @@ type userWalletQuotaUsageSummary struct {
 	WalletAmountUsed int64
 }
 
+type userWalletSubscriptionSpendSummary struct {
+	UserId                  int
+	WalletSubscriptionMoney float64
+}
+
 func HydrateActiveSubscriptionQuota(users []*User) error {
 	if len(users) == 0 {
 		return nil
@@ -385,39 +391,60 @@ func HydrateWalletQuotaUsage(users []*User) error {
 		userByID[user.Id] = user
 		userIDs = append(userIDs, user.Id)
 	}
-	if len(userIDs) == 0 || LOG_DB == nil {
+	if len(userIDs) == 0 {
 		return nil
 	}
 
-	subscriptionBillingPattern := `%"billing_source"%subscription%`
-	var summaries []userWalletQuotaUsageSummary
-	err := LOG_DB.Model(&Log{}).
-		Select(`
-			user_id,
-			COALESCE(SUM(CASE
-				WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN quota
-				WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN -quota
-				ELSE 0
-			END), 0) AS wallet_amount_used
-		`, LogTypeConsume, subscriptionBillingPattern, LogTypeRefund, subscriptionBillingPattern).
-		Where("user_id IN ? AND type IN ?", userIDs, []int{LogTypeConsume, LogTypeRefund}).
-		Group("user_id").
-		Scan(&summaries).Error
-	if err != nil {
-		return err
+	walletUsageByUserID := make(map[int]int64, len(userIDs))
+
+	if LOG_DB != nil {
+		subscriptionBillingPattern := `%"billing_source"%subscription%`
+		var summaries []userWalletQuotaUsageSummary
+		err := LOG_DB.Model(&Log{}).
+			Select(`
+				user_id,
+				COALESCE(SUM(CASE
+					WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN quota
+					WHEN type = ? AND quota > 0 AND COALESCE(other, '') NOT LIKE ? THEN -quota
+					ELSE 0
+				END), 0) AS wallet_amount_used
+			`, LogTypeConsume, subscriptionBillingPattern, LogTypeRefund, subscriptionBillingPattern).
+			Where("user_id IN ? AND type IN ?", userIDs, []int{LogTypeConsume, LogTypeRefund}).
+			Group("user_id").
+			Scan(&summaries).Error
+		if err != nil {
+			return err
+		}
+		for _, summary := range summaries {
+			walletUsageByUserID[summary.UserId] += summary.WalletAmountUsed
+		}
 	}
 
-	for _, summary := range summaries {
-		user, ok := userByID[summary.UserId]
-		if !ok {
-			continue
+	if DB != nil && common.QuotaPerUnit > 0 {
+		var walletSubscriptionSummaries []userWalletSubscriptionSpendSummary
+		err := DB.Model(&SubscriptionOrder{}).
+			Select("user_id, COALESCE(SUM(CASE WHEN payment_money > 0 THEN payment_money ELSE money END), 0) AS wallet_subscription_money").
+			Where("user_id IN ? AND payment_method = ? AND status = ?", userIDs, PaymentMethodWallet, common.TopUpStatusSuccess).
+			Where("(CASE WHEN payment_money > 0 THEN payment_money ELSE money END) > 0").
+			Group("user_id").
+			Scan(&walletSubscriptionSummaries).Error
+		if err != nil {
+			return err
 		}
-		amountUsed := summary.WalletAmountUsed
+		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		for _, summary := range walletSubscriptionSummaries {
+			spentQuota := decimal.NewFromFloat(summary.WalletSubscriptionMoney).
+				Mul(quotaPerUnit).
+				Round(0).
+				IntPart()
+			walletUsageByUserID[summary.UserId] += spentQuota
+		}
+	}
+
+	for _, user := range userByID {
+		amountUsed := walletUsageByUserID[user.Id]
 		if amountUsed < 0 {
 			amountUsed = 0
-		}
-		if user.UsedQuota >= 0 && amountUsed > int64(user.UsedQuota) {
-			amountUsed = int64(user.UsedQuota)
 		}
 		user.WalletAmountUsed = amountUsed
 	}

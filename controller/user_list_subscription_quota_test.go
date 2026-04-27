@@ -65,6 +65,61 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("failed to seed subscription refund log: %v", err)
 	}
+	if err := db.Create(&model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         2.00,
+		PaymentMoney:  2.00,
+		TradeNo:       "wallet-success-order",
+		PaymentMethod: model.PaymentMethodWallet,
+		Status:        common.TopUpStatusSuccess,
+		CreateTime:    now - 50,
+		CompleteTime:  now - 40,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed wallet subscription order: %v", err)
+	}
+	if err := db.Create(&model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         99.00,
+		PaymentMoney:  1.50,
+		TradeNo:       "wallet-payment-money-order",
+		PaymentMethod: model.PaymentMethodWallet,
+		Status:        common.TopUpStatusSuccess,
+		CreateTime:    now - 45,
+		CompleteTime:  now - 35,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed payment-money wallet subscription order: %v", err)
+	}
+	if err := db.Create(&model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         9.00,
+		PaymentMoney:  9.00,
+		TradeNo:       "wallet-pending-order",
+		PaymentMethod: model.PaymentMethodWallet,
+		Status:        common.TopUpStatusPending,
+		CreateTime:    now - 30,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed pending wallet subscription order: %v", err)
+	}
+	if err := db.Create(&model.SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        plan.Id,
+		Money:         8.00,
+		PaymentMoney:  8.00,
+		TradeNo:       "stripe-success-order",
+		PaymentMethod: model.PaymentMethodStripe,
+		Status:        common.TopUpStatusSuccess,
+		CreateTime:    now - 20,
+		CompleteTime:  now - 10,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed non-wallet subscription order: %v", err)
+	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/?p=1&page_size=10", nil, user.Id)
 	GetAllUsers(ctx)
@@ -95,8 +150,9 @@ func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {
 	if item.Quota != 300 || item.UsedQuota != 1200 {
 		t.Fatalf("wallet fields = quota:%d used:%d, want 300/1200", item.Quota, item.UsedQuota)
 	}
-	if item.WalletAmountUsed != 300 {
-		t.Fatalf("wallet amount used = %d, want 300", item.WalletAmountUsed)
+	expectedWalletUsed := int64(300) + int64(3.50*common.QuotaPerUnit)
+	if item.WalletAmountUsed != expectedWalletUsed {
+		t.Fatalf("wallet amount used = %d, want %d", item.WalletAmountUsed, expectedWalletUsed)
 	}
 	if item.SubscriptionAmountTotal != 1000 || item.SubscriptionAmountUsed != 250 {
 		t.Fatalf("subscription fields = used:%d total:%d, want 250/1000", item.SubscriptionAmountUsed, item.SubscriptionAmountTotal)

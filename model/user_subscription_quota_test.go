@@ -77,6 +77,61 @@ func TestHydrateActiveSubscriptionQuotaSeparatesWalletAndSubscription(t *testing
 	}).Error; err != nil {
 		t.Fatalf("failed to seed subscription refund log: %v", err)
 	}
+	if err := db.Create(&SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        activePlan.Id,
+		Money:         2.00,
+		PaymentMoney:  2.00,
+		TradeNo:       "wallet-success-order",
+		PaymentMethod: PaymentMethodWallet,
+		Status:        common.TopUpStatusSuccess,
+		CreateTime:    now - 50,
+		CompleteTime:  now - 40,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed wallet subscription order: %v", err)
+	}
+	if err := db.Create(&SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        activePlan.Id,
+		Money:         99.00,
+		PaymentMoney:  1.50,
+		TradeNo:       "wallet-payment-money-order",
+		PaymentMethod: PaymentMethodWallet,
+		Status:        common.TopUpStatusSuccess,
+		CreateTime:    now - 45,
+		CompleteTime:  now - 35,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed payment-money wallet subscription order: %v", err)
+	}
+	if err := db.Create(&SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        activePlan.Id,
+		Money:         9.00,
+		PaymentMoney:  9.00,
+		TradeNo:       "wallet-pending-order",
+		PaymentMethod: PaymentMethodWallet,
+		Status:        common.TopUpStatusPending,
+		CreateTime:    now - 30,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed pending wallet subscription order: %v", err)
+	}
+	if err := db.Create(&SubscriptionOrder{
+		UserId:        user.Id,
+		PlanId:        activePlan.Id,
+		Money:         8.00,
+		PaymentMoney:  8.00,
+		TradeNo:       "stripe-success-order",
+		PaymentMethod: PaymentMethodStripe,
+		Status:        common.TopUpStatusSuccess,
+		CreateTime:    now - 20,
+		CompleteTime:  now - 10,
+		Quantity:      1,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed non-wallet subscription order: %v", err)
+	}
 
 	users := []*User{user}
 	if err := HydrateActiveSubscriptionQuota(users); err != nil {
@@ -89,8 +144,9 @@ func TestHydrateActiveSubscriptionQuotaSeparatesWalletAndSubscription(t *testing
 	if user.Quota != 300 || user.UsedQuota != 1200 {
 		t.Fatalf("wallet quota mutated: quota=%d used=%d", user.Quota, user.UsedQuota)
 	}
-	if user.WalletAmountUsed != 300 {
-		t.Fatalf("wallet amount used = %d, want 300", user.WalletAmountUsed)
+	expectedWalletUsed := int64(300) + int64(3.50*common.QuotaPerUnit)
+	if user.WalletAmountUsed != expectedWalletUsed {
+		t.Fatalf("wallet amount used = %d, want %d", user.WalletAmountUsed, expectedWalletUsed)
 	}
 	if user.SubscriptionAmountTotal != 1000 {
 		t.Fatalf("subscription total = %d, want 1000", user.SubscriptionAmountTotal)
