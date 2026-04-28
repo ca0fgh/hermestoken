@@ -22,7 +22,7 @@ var (
 type TopUp struct {
 	Id                int     `json:"id"`
 	UserId            int     `json:"user_id" gorm:"index"`
-	Amount            int64   `json:"amount"`
+	Amount            float64 `json:"amount" gorm:"type:decimal(18,6);not null;default:0"`
 	Money             float64 `json:"money"`
 	TradeNo           string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod     string  `json:"payment_method" gorm:"type:varchar(50)"`
@@ -80,8 +80,8 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
-func quotaFromStandardTopUpAmount(amount int64) int64 {
-	return decimal.NewFromInt(amount).
+func quotaFromStandardTopUpAmount(amount float64) int64 {
+	return decimal.NewFromFloat(amount).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
 		IntPart()
 }
@@ -493,7 +493,7 @@ func RechargeCreem(referenceId string, customerEmail string, args ...string) (er
 		}
 
 		// Creem 直接使用 Amount 作为充值额度（整数）
-		quota = topUp.Amount
+		quota = int64(topUp.Amount)
 
 		// 构建更新字段，优先使用邮箱，如果邮箱为空则使用用户名
 		updateFields := map[string]interface{}{

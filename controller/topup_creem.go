@@ -118,8 +118,8 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	// 先创建订单记录，使用产品配置的金额和充值额度
 	topUp := &model.TopUp{
 		UserId:            id,
-		Amount:            selectedProduct.Quota, // 充值额度
-		Money:             selectedProduct.Price, // 支付金额
+		Amount:            float64(selectedProduct.Quota), // 充值额度
+		Money:             selectedProduct.Price,          // 支付金额
 		TradeNo:           referenceId,
 		PaymentMethod:     PaymentMethodCreem,
 		Currency:          strings.ToUpper(selectedProduct.Currency),
@@ -394,8 +394,8 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 		return
 	}
 
-	log.Printf("Creem充值成功 - 订单号: %s, 充值额度: %d, 支付金额: %.2f",
-		referenceId, topUp.Amount, topUp.Money)
+	log.Printf("Creem充值成功 - 订单号: %s, 充值额度: %s, 支付金额: %.2f",
+		referenceId, formatTopUpAmount(topUp.Amount), topUp.Money)
 	c.Status(http.StatusOK)
 }
 

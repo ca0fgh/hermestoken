@@ -20,6 +20,7 @@ const loadHelpers = () => import(`${helperUrl}?t=${Date.now()}`);
 test('wallet topup page loads withdrawal config and renders withdrawal entry', () => {
   const source = readSource('src/components/topup/index.jsx');
   const rechargeCardSource = readSource('src/components/topup/RechargeCard.jsx');
+  const helperSource = readSource('src/helpers/withdrawal.js');
   const withdrawalModalSource = readSource(
     'src/components/topup/modals/WithdrawalApplyModal.jsx',
   );
@@ -29,6 +30,8 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(source, /WithdrawalHistoryModal/);
   assert.match(source, /submitWithdrawal/);
   assert.match(source, /支付宝姓名不能为空/);
+  assert.match(source, /USDT 收款地址不能为空/);
+  assert.match(source, /channel:\s*withdrawalChannel/);
   assert.match(source, /withdrawalPreview\?\.isValid/);
   assert.match(source, /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/);
   assert.match(source, /withdrawalSection=\{/);
@@ -36,6 +39,10 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(rechargeCardSource, /withdrawalSection = null/);
   assert.match(rechargeCardSource, /{withdrawalSection}/);
   assert.match(withdrawalModalSource, /preview\?\.isValid/);
+  assert.match(withdrawalModalSource, /提现方式/);
+  assert.match(withdrawalModalSource, /USDT 网络/);
+  assert.match(withdrawalModalSource, /USDT 收款地址/);
+  assert.match(helperSource, /Polygon PoS/);
   assert.match(withdrawalModalSource, /规则说明/);
   assert.match(withdrawalModalSource, /命中规则/);
   assert.match(

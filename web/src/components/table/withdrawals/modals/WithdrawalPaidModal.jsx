@@ -57,7 +57,7 @@ const WithdrawalPaidModal = ({ visible, onCancel, onSubmit, record, t }) => {
         <Input
           value={payReceiptNo}
           onChange={setPayReceiptNo}
-          placeholder={t('回执号 / 支付宝流水号（可选）')}
+          placeholder={t('回执号 / 支付流水号 / TX Hash（可选）')}
         />
         <Input
           value={payReceiptUrl}

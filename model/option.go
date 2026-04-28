@@ -107,8 +107,8 @@ func InitOptionMap() {
 	common.OptionMap["EpayEnabled"] = "true"
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
-	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
-	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
+	common.OptionMap["MinTopUp"] = strconv.FormatFloat(operation_setting.MinTopUp, 'f', -1, 64)
+	common.OptionMap["StripeMinTopUp"] = strconv.FormatFloat(setting.StripeMinTopUp, 'f', -1, 64)
 	common.OptionMap["StripeEnabled"] = "true"
 	common.OptionMap["StripeApiSecret"] = setting.StripeApiSecret
 	common.OptionMap["StripeWebhookSecret"] = setting.StripeWebhookSecret
@@ -160,6 +160,16 @@ func InitOptionMap() {
 	common.OptionMap["CryptoBSCUSDTContract"] = setting.CryptoBSCUSDTContract
 	common.OptionMap["CryptoBSCRPCURL"] = ""
 	common.OptionMap["CryptoBSCConfirmations"] = strconv.Itoa(setting.CryptoBSCConfirmations)
+	common.OptionMap["CryptoPolygonEnabled"] = "false"
+	common.OptionMap["CryptoPolygonReceiveAddress"] = ""
+	common.OptionMap["CryptoPolygonUSDTContract"] = setting.CryptoPolygonUSDTContract
+	common.OptionMap["CryptoPolygonRPCURL"] = ""
+	common.OptionMap["CryptoPolygonConfirmations"] = strconv.Itoa(setting.CryptoPolygonConfirmations)
+	common.OptionMap["CryptoSolanaEnabled"] = "false"
+	common.OptionMap["CryptoSolanaReceiveAddress"] = ""
+	common.OptionMap["CryptoSolanaUSDTMint"] = setting.CryptoSolanaUSDTMint
+	common.OptionMap["CryptoSolanaRPCURL"] = ""
+	common.OptionMap["CryptoSolanaConfirmations"] = strconv.Itoa(setting.CryptoSolanaConfirmations)
 	common.OptionMap["CryptoOrderExpireMinutes"] = strconv.Itoa(setting.CryptoOrderExpireMinutes)
 	common.OptionMap["CryptoUniqueSuffixMax"] = strconv.Itoa(setting.CryptoUniqueSuffixMax)
 	common.OptionMap["CryptoScannerEnabled"] = strconv.FormatBool(setting.CryptoScannerEnabled)
@@ -448,7 +458,7 @@ func updateOptionMap(key string, value string) (err error) {
 	case "USDExchangeRate":
 		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
 	case "MinTopUp":
-		operation_setting.MinTopUp, _ = strconv.Atoi(value)
+		operation_setting.MinTopUp, _ = strconv.ParseFloat(value, 64)
 	case "StripeApiSecret":
 		setting.StripeApiSecret = value
 	case "StripeWebhookSecret":
@@ -458,7 +468,7 @@ func updateOptionMap(key string, value string) (err error) {
 	case "StripeUnitPrice":
 		setting.StripeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "StripeMinTopUp":
-		setting.StripeMinTopUp, _ = strconv.Atoi(value)
+		setting.StripeMinTopUp, _ = strconv.ParseFloat(value, 64)
 	case "StripePromotionCodesEnabled":
 		setting.StripePromotionCodesEnabled = value == "true"
 	case "CreemApiKey":
@@ -547,6 +557,26 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.CryptoBSCRPCURL = value
 	case "CryptoBSCConfirmations":
 		setting.CryptoBSCConfirmations, _ = strconv.Atoi(value)
+	case "CryptoPolygonEnabled":
+		setting.CryptoPolygonEnabled = value == "true"
+	case "CryptoPolygonReceiveAddress":
+		setting.CryptoPolygonReceiveAddress = value
+	case "CryptoPolygonUSDTContract":
+		setting.CryptoPolygonUSDTContract = value
+	case "CryptoPolygonRPCURL":
+		setting.CryptoPolygonRPCURL = value
+	case "CryptoPolygonConfirmations":
+		setting.CryptoPolygonConfirmations, _ = strconv.Atoi(value)
+	case "CryptoSolanaEnabled":
+		setting.CryptoSolanaEnabled = value == "true"
+	case "CryptoSolanaReceiveAddress":
+		setting.CryptoSolanaReceiveAddress = value
+	case "CryptoSolanaUSDTMint":
+		setting.CryptoSolanaUSDTMint = value
+	case "CryptoSolanaRPCURL":
+		setting.CryptoSolanaRPCURL = value
+	case "CryptoSolanaConfirmations":
+		setting.CryptoSolanaConfirmations, _ = strconv.Atoi(value)
 	case "CryptoOrderExpireMinutes":
 		setting.CryptoOrderExpireMinutes, _ = strconv.Atoi(value)
 	case "CryptoUniqueSuffixMax":

@@ -254,6 +254,8 @@ func InitLogDB() (err error) {
 func migrateDB() error {
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
+	// Migrate top-up amount from integer to decimal so cent-level recharges can be stored safely.
+	migrateTopUpAmountToDecimal()
 	// Migrate model_limits column from varchar to text for existing tables
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
@@ -309,6 +311,54 @@ func migrateDB() error {
 		}
 	}
 	return nil
+}
+
+// migrateTopUpAmountToDecimal migrates historical integer top-up amounts to decimal.
+// Existing integer values keep the same numeric value; new cent-level amounts can
+// then be inserted on PostgreSQL/MySQL without relying on implicit casts.
+func migrateTopUpAmountToDecimal() {
+	if common.UsingSQLite {
+		return
+	}
+
+	tableName := "top_ups"
+	columnName := "amount"
+	if !DB.Migrator().HasTable(tableName) || !DB.Migrator().HasColumn(&TopUp{}, columnName) {
+		return
+	}
+
+	var alterSQL string
+	if common.UsingPostgreSQL {
+		var dataType string
+		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
+			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
+			tableName, columnName).Scan(&dataType).Error; err != nil {
+			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+		} else if dataType == "numeric" {
+			return
+		}
+		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE decimal(18,6) USING %s::decimal(18,6)`,
+			tableName, columnName, columnName)
+	} else if common.UsingMySQL {
+		var columnType string
+		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
+				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
+			tableName, columnName).Scan(&columnType).Error; err != nil {
+			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+		} else if strings.HasPrefix(strings.ToLower(columnType), "decimal") {
+			return
+		}
+		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s decimal(18,6) NOT NULL DEFAULT 0",
+			tableName, columnName)
+	}
+
+	if alterSQL != "" {
+		if err := DB.Exec(alterSQL).Error; err != nil {
+			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
+		} else {
+			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(18,6)", tableName, columnName))
+		}
+	}
 }
 
 func migrateDBFast() error {
@@ -414,6 +464,24 @@ func migrateReferralRuntimeTables() error {
 	}
 	if err := ensureReferralTemplateSchema(); err != nil {
 		return fmt.Errorf("failed to ensure referral template schema: %v", err)
+	}
+	if err := ensureUserWithdrawalSchema(); err != nil {
+		return fmt.Errorf("failed to ensure user withdrawal schema: %v", err)
+	}
+	return nil
+}
+
+func ensureUserWithdrawalSchema() error {
+	if !DB.Migrator().HasTable(&UserWithdrawal{}) {
+		return nil
+	}
+	for _, column := range []string{"USDTNetwork", "USDTAddress"} {
+		if DB.Migrator().HasColumn(&UserWithdrawal{}, column) {
+			continue
+		}
+		if err := DB.Migrator().AddColumn(&UserWithdrawal{}, column); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -429,10 +429,61 @@ export const getWithdrawalCurrencySymbol = (currency, fallback = '¥') => {
   }
 };
 
+export const WITHDRAWAL_USDT_NETWORK_OPTIONS = [
+  { label: 'BSC USDT', value: 'bsc_erc20' },
+  { label: 'TRON TRC-20', value: 'tron_trc20' },
+  { label: 'Polygon PoS', value: 'polygon_pos' },
+  { label: 'Solana', value: 'solana' },
+];
+
 export const maskAlipayAccount = (account) => {
   const value = String(account || '').trim();
   if (value.length <= 6) return value;
   return `${value.slice(0, 3)}***${value.slice(-3)}`;
+};
+
+export const maskWithdrawalAccount = (account) => {
+  const value = String(account || '').trim();
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-6)}`;
+};
+
+export const getWithdrawalChannelLabel = (channel, t) => {
+  switch (String(channel || 'alipay').toLowerCase()) {
+    case 'usdt':
+      return resolveWithdrawalCopy(t, 'USDT');
+    case 'alipay':
+    default:
+      return resolveWithdrawalCopy(t, '支付宝');
+  }
+};
+
+export const getWithdrawalUSDTNetworkLabel = (network) => {
+  const matched = WITHDRAWAL_USDT_NETWORK_OPTIONS.find(
+    (option) => option.value === String(network || '').toLowerCase(),
+  );
+  return matched?.label || String(network || '--');
+};
+
+export const getWithdrawalPayoutAccount = (record) => {
+  if (String(record?.channel || 'alipay').toLowerCase() === 'usdt') {
+    return String(record?.usdt_address || '').trim();
+  }
+  return String(record?.alipay_account || '').trim();
+};
+
+export const getWithdrawalPayoutNote = (record, t) => {
+  if (String(record?.channel || 'alipay').toLowerCase() === 'usdt') {
+    return getWithdrawalUSDTNetworkLabel(record?.usdt_network);
+  }
+  return String(record?.alipay_real_name || '').trim() || resolveWithdrawalCopy(t, '--');
+};
+
+export const maskWithdrawalPayoutAccount = (record) => {
+  if (String(record?.channel || 'alipay').toLowerCase() === 'usdt') {
+    return maskWithdrawalAccount(record?.usdt_address);
+  }
+  return maskAlipayAccount(record?.alipay_account);
 };
 
 export const getWithdrawalStatusMeta = (status, t) => {

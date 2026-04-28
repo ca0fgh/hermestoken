@@ -45,6 +45,7 @@ import TopupHistoryModal from './modals/TopupHistoryModal';
 import WithdrawalApplyModal from './modals/WithdrawalApplyModal';
 import WithdrawalHistoryModal from './modals/WithdrawalHistoryModal';
 import CryptoPaymentModal from './modals/CryptoPaymentModal';
+import { formatTopUpPaymentAmount } from './topupAmount';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -54,6 +55,7 @@ const TopUp = () => {
 
   const [redemptionCode, setRedemptionCode] = useState('');
   const [amount, setAmount] = useState(0.0);
+  const [amountCurrency, setAmountCurrency] = useState('CNY');
   const [minTopUp, setMinTopUp] = useState(statusState?.status?.min_topup || 1);
   const [topUpCount, setTopUpCount] = useState(
     statusState?.status?.min_topup || 1,
@@ -109,8 +111,12 @@ const TopUp = () => {
   const [openWithdrawalHistory, setOpenWithdrawalHistory] = useState(false);
   const [withdrawalSubmitting, setWithdrawalSubmitting] = useState(false);
   const [withdrawalAmount, setWithdrawalAmount] = useState(0);
+  const [withdrawalChannel, setWithdrawalChannel] = useState('alipay');
   const [withdrawalAlipayAccount, setWithdrawalAlipayAccount] = useState('');
   const [withdrawalAlipayRealName, setWithdrawalAlipayRealName] = useState('');
+  const [withdrawalUSDTNetwork, setWithdrawalUSDTNetwork] =
+    useState('bsc_erc20');
+  const [withdrawalUSDTAddress, setWithdrawalUSDTAddress] = useState('');
 
   // 订阅相关
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
@@ -245,13 +251,13 @@ const TopUp = () => {
       if (payWay === 'stripe') {
         // Stripe 支付请求
         res = await API.post('/api/user/stripe/pay', {
-          amount: parseInt(topUpCount),
+          amount: Number(topUpCount),
           payment_method: 'stripe',
         });
       } else {
         // 普通支付请求
         res = await API.post('/api/user/pay', {
-          amount: parseInt(topUpCount),
+          amount: Number(topUpCount),
           payment_method: payWay,
         });
       }
@@ -349,7 +355,7 @@ const TopUp = () => {
       }
       setPaymentLoading(true);
       const requestBody = {
-        amount: parseInt(topUpCount),
+        amount: Number(topUpCount),
       };
       if (payMethodIndex != null) {
         requestBody.pay_method_index = payMethodIndex;
@@ -381,7 +387,7 @@ const TopUp = () => {
       setPaymentLoading(true);
       const res = await API.post('/api/user/crypto/topup/order', {
         network,
-        amount: parseInt(topUpCount),
+        amount: Number(topUpCount),
       });
       if (res.data?.success) {
         setCryptoOrder(res.data.data);
@@ -623,8 +629,11 @@ const TopUp = () => {
       return;
     }
     setWithdrawalAmount(withdrawalConfig?.minAmount || 0);
+    setWithdrawalChannel('alipay');
     setWithdrawalAlipayAccount('');
     setWithdrawalAlipayRealName('');
+    setWithdrawalUSDTNetwork('bsc_erc20');
+    setWithdrawalUSDTAddress('');
     setOpenWithdrawalApply(true);
   };
 
@@ -646,21 +655,36 @@ const TopUp = () => {
       );
       return;
     }
-    if (!withdrawalAlipayAccount.trim()) {
-      showError(t('支付宝账号不能为空'));
-      return;
-    }
-    if (!withdrawalAlipayRealName.trim()) {
-      showError(t('支付宝姓名不能为空'));
-      return;
+    const withdrawalPayload = {
+      amount: Number(withdrawalAmount),
+      channel: withdrawalChannel,
+    };
+    if (withdrawalChannel === 'usdt') {
+      if (!withdrawalUSDTNetwork) {
+        showError(t('USDT 网络不能为空'));
+        return;
+      }
+      if (!withdrawalUSDTAddress.trim()) {
+        showError(t('USDT 收款地址不能为空'));
+        return;
+      }
+      withdrawalPayload.usdt_network = withdrawalUSDTNetwork;
+      withdrawalPayload.usdt_address = withdrawalUSDTAddress.trim();
+    } else {
+      if (!withdrawalAlipayAccount.trim()) {
+        showError(t('支付宝账号不能为空'));
+        return;
+      }
+      if (!withdrawalAlipayRealName.trim()) {
+        showError(t('支付宝姓名不能为空'));
+        return;
+      }
+      withdrawalPayload.alipay_account = withdrawalAlipayAccount.trim();
+      withdrawalPayload.alipay_real_name = withdrawalAlipayRealName.trim();
     }
     setWithdrawalSubmitting(true);
     try {
-      const res = await API.post('/api/user/withdrawals', {
-        amount: Number(withdrawalAmount),
-        alipay_account: withdrawalAlipayAccount.trim(),
-        alipay_real_name: withdrawalAlipayRealName.trim(),
-      });
+      const res = await API.post('/api/user/withdrawals', withdrawalPayload);
       const { success, message } = res.data;
       if (success) {
         showSuccess(t('提现申请已提交'));
@@ -731,6 +755,7 @@ const TopUp = () => {
 
     if (payStatus === 'success') {
       showSuccess(t('支付成功，充值记录已更新'));
+      getUserQuota().then();
     } else if (payStatus === 'pending') {
       showInfo(t('支付结果确认中，请稍后刷新账单记录'));
     } else {
@@ -743,6 +768,7 @@ const TopUp = () => {
 
   useEffect(() => {
     if (searchParams.get('show_history') === 'true') {
+      getUserQuota().then();
       setOpenHistory(true);
       searchParams.delete('show_history');
       setSearchParams(searchParams, { replace: true });
@@ -821,7 +847,7 @@ const TopUp = () => {
   }, [statusState?.status]);
 
   const renderAmount = () => {
-    return amount + ' ' + t('元');
+    return formatTopUpPaymentAmount(amount, amountCurrency, t);
   };
 
   const getAmount = async (value) => {
@@ -830,6 +856,7 @@ const TopUp = () => {
     }
     if (!enableOnlineTopUp && enableCryptoTopUp) {
       setAmount(parseFloat(value) || 0);
+      setAmountCurrency('USD');
       return;
     }
     setAmountLoading(true);
@@ -841,8 +868,10 @@ const TopUp = () => {
         const { message, data } = res.data;
         if (message === 'success') {
           setAmount(parseFloat(data));
+          setAmountCurrency('CNY');
         } else {
           setAmount(0);
+          setAmountCurrency('CNY');
           Toast.error({ content: '错误：' + data, id: 'getAmount' });
         }
       } else {
@@ -867,8 +896,10 @@ const TopUp = () => {
         const { message, data } = res.data;
         if (message === 'success') {
           setAmount(parseFloat(data));
+          setAmountCurrency('USD');
         } else {
           setAmount(0);
+          setAmountCurrency('USD');
           Toast.error({ content: '错误：' + data, id: 'getAmount' });
         }
       } else {
@@ -893,11 +924,17 @@ const TopUp = () => {
   };
 
   const handleOpenHistory = () => {
+    getUserQuota().then();
     setOpenHistory(true);
   };
 
   const handleHistoryCancel = () => {
     setOpenHistory(false);
+  };
+
+  const handleCryptoPaymentCancel = () => {
+    setCryptoModalOpen(false);
+    getUserQuota().then();
   };
 
   const handleCreemCancel = () => {
@@ -914,6 +951,7 @@ const TopUp = () => {
     const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
     const discountedAmount = preset.value * priceRatio * discount;
     setAmount(discountedAmount);
+    setAmountCurrency('CNY');
   };
 
   // 格式化大数字显示
@@ -925,7 +963,7 @@ const TopUp = () => {
   const generatePresetAmounts = (minAmount) => {
     const multipliers = [1, 5, 10, 30, 50, 100, 300, 500];
     return multipliers.map((multiplier) => ({
-      value: minAmount * multiplier,
+      value: Number((minAmount * multiplier).toFixed(2)),
     }));
   };
 
@@ -978,10 +1016,16 @@ const TopUp = () => {
         config={withdrawalConfig}
         amount={withdrawalAmount}
         setAmount={setWithdrawalAmount}
+        withdrawalChannel={withdrawalChannel}
+        setWithdrawalChannel={setWithdrawalChannel}
         alipayAccount={withdrawalAlipayAccount}
         setAlipayAccount={setWithdrawalAlipayAccount}
         alipayRealName={withdrawalAlipayRealName}
         setAlipayRealName={setWithdrawalAlipayRealName}
+        usdtNetwork={withdrawalUSDTNetwork}
+        setUSDTNetwork={setWithdrawalUSDTNetwork}
+        usdtAddress={withdrawalUSDTAddress}
+        setUSDTAddress={setWithdrawalUSDTAddress}
         preview={calculateWithdrawalPreview(
           withdrawalAmount,
           withdrawalConfig?.feeRules || [],
@@ -999,7 +1043,7 @@ const TopUp = () => {
         t={t}
         open={cryptoModalOpen}
         order={cryptoOrder}
-        onCancel={() => setCryptoModalOpen(false)}
+        onCancel={handleCryptoPaymentCancel}
       />
 
       {/* Creem 充值确认模态框 */}

@@ -11,8 +11,11 @@ import (
 
 type createUserWithdrawalRequest struct {
 	Amount         float64 `json:"amount"`
+	Channel        string  `json:"channel"`
 	AlipayAccount  string  `json:"alipay_account"`
 	AlipayRealName string  `json:"alipay_real_name"`
+	USDTNetwork    string  `json:"usdt_network"`
+	USDTAddress    string  `json:"usdt_address"`
 }
 
 type approveUserWithdrawalRequest struct {
@@ -48,28 +51,62 @@ func CreateUserWithdrawal(c *gin.Context) {
 
 	req.AlipayAccount = strings.TrimSpace(req.AlipayAccount)
 	req.AlipayRealName = strings.TrimSpace(req.AlipayRealName)
-	if req.AlipayAccount == "" {
-		common.ApiErrorMsg(c, "支付宝账号不能为空")
-		return
-	}
-	if req.AlipayRealName == "" {
-		common.ApiErrorMsg(c, "支付宝姓名不能为空")
-		return
-	}
-	if len(req.AlipayAccount) > 128 {
-		common.ApiErrorMsg(c, "支付宝账号过长")
-		return
-	}
-	if len(req.AlipayRealName) > 64 {
-		common.ApiErrorMsg(c, "支付宝姓名过长")
+	req.USDTNetwork = model.NormalizeWithdrawalUSDTNetwork(req.USDTNetwork)
+	req.USDTAddress = strings.TrimSpace(req.USDTAddress)
+	channel := model.NormalizeWithdrawalChannel(req.Channel)
+
+	switch channel {
+	case model.WithdrawalChannelAlipay:
+		if req.AlipayAccount == "" {
+			common.ApiErrorMsg(c, "支付宝账号不能为空")
+			return
+		}
+		if req.AlipayRealName == "" {
+			common.ApiErrorMsg(c, "支付宝姓名不能为空")
+			return
+		}
+		if len(req.AlipayAccount) > 128 {
+			common.ApiErrorMsg(c, "支付宝账号过长")
+			return
+		}
+		if len(req.AlipayRealName) > 64 {
+			common.ApiErrorMsg(c, "支付宝姓名过长")
+			return
+		}
+	case model.WithdrawalChannelUSDT:
+		if req.USDTNetwork == "" {
+			common.ApiErrorMsg(c, "USDT 网络不能为空")
+			return
+		}
+		if !model.IsSupportedUSDTWithdrawalNetwork(req.USDTNetwork) {
+			common.ApiErrorMsg(c, "无效的 USDT 网络")
+			return
+		}
+		if req.USDTAddress == "" {
+			common.ApiErrorMsg(c, "USDT 收款地址不能为空")
+			return
+		}
+		if len(req.USDTAddress) > 128 {
+			common.ApiErrorMsg(c, "USDT 收款地址过长")
+			return
+		}
+		if !model.IsValidUSDTWithdrawalAddress(req.USDTNetwork, req.USDTAddress) {
+			common.ApiErrorMsg(c, "USDT 收款地址无效")
+			return
+		}
+	default:
+		common.ApiErrorMsg(c, "无效的提现方式")
 		return
 	}
 
 	order, err := model.CreateUserWithdrawal(&model.CreateUserWithdrawalParams{
 		UserID:         c.GetInt("id"),
+		Channel:        channel,
 		Amount:         req.Amount,
 		AlipayAccount:  req.AlipayAccount,
 		AlipayRealName: req.AlipayRealName,
+		USDTNetwork:    req.USDTNetwork,
+		USDTAddress:    req.USDTAddress,
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())

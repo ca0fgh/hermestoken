@@ -33,3 +33,4 @@ export * from './passkey';
 export * from './statusCodeRules';
 export * from './inviteRebate';
 export * from './withdrawal';
+export * from './paymentCrypto';

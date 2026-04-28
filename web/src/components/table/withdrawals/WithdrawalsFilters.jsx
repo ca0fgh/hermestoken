@@ -33,7 +33,7 @@ const WithdrawalsFilters = ({ t, filters, setFilters, onSearch, loading }) => {
       <Input
         value={filters.keyword}
         onChange={(value) => updateField('keyword', value)}
-        placeholder={`${t('搜索提现单号 / 用户名 / 支付宝账号')} / ${t('用户 ID')}`}
+        placeholder={`${t('搜索提现单号 / 用户名 / 支付宝账号 / USDT地址')} / ${t('用户 ID')}`}
       />
       <Select
         value={filters.status}

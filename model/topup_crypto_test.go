@@ -24,10 +24,17 @@ func TestCryptoPayAmountFromSuffix_BSCUnitsWith18Decimals(t *testing.T) {
 	assert.Equal(t, "10003721000000000000", units)
 }
 
+func TestCryptoPayAmountFromSuffixSupportsSixDigitSuffix(t *testing.T) {
+	pay, units, err := CryptoPayAmountFromSuffix(decimal.NewFromInt(10), 6, 999999)
+	require.NoError(t, err)
+	assert.Equal(t, "10.999999", pay)
+	assert.Equal(t, "10999999", units)
+}
+
 func TestCryptoPayAmountFromSuffixRejectsInvalidSuffix(t *testing.T) {
 	_, _, err := CryptoPayAmountFromSuffix(decimal.NewFromInt(10), 6, 0)
 	require.Error(t, err)
-	_, _, err = CryptoPayAmountFromSuffix(decimal.NewFromInt(10), 6, 10000)
+	_, _, err = CryptoPayAmountFromSuffix(decimal.NewFromInt(10), 6, 1000000)
 	require.Error(t, err)
 }
 
@@ -89,8 +96,35 @@ func TestCreateCryptoTopUpOrderCreatesTopUpAndCryptoOrder(t *testing.T) {
 	require.NotNil(t, topUp)
 	assert.Equal(t, PaymentMethodCryptoUSDT, topUp.PaymentMethod)
 	assert.Equal(t, "USDT", topUp.Currency)
-	assert.Equal(t, int64(10), topUp.Amount)
+	assert.Equal(t, 10.0, topUp.Amount)
 	assert.Equal(t, 10.003721, topUp.Money)
+}
+
+func TestCreateCryptoTopUpOrderClampsSuffixMaxToSixDigits(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 703, 0)
+
+	input := CreateCryptoTopUpOrderInput{
+		UserID:                703,
+		Network:               CryptoNetworkTronTRC20,
+		Amount:                10,
+		ReceiveAddress:        "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z",
+		TokenContract:         "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+		TokenDecimals:         6,
+		RequiredConfirmations: 20,
+		ExpireMinutes:         10,
+		SuffixMax:             10000000,
+		Now:                   time.Unix(1000, 0),
+		SuffixGenerator: func(max int) int {
+			require.Equal(t, 999999, max)
+			return max
+		},
+	}
+
+	order, err := CreateCryptoTopUpOrder(input)
+	require.NoError(t, err)
+	assert.Equal(t, 999999, order.UniqueSuffix)
+	assert.Equal(t, "10.999999", order.PayAmount)
 }
 
 func TestCreateCryptoTopUpOrderRejectsActiveAmountCollision(t *testing.T) {
@@ -202,7 +236,7 @@ func seedCryptoOrderForCompletion(t *testing.T, userID int, amount int64, payUni
 	t.Helper()
 	topUp := &TopUp{
 		UserId:        userID,
-		Amount:        amount,
+		Amount:        float64(amount),
 		Money:         10.003721,
 		TradeNo:       "crypto-complete-" + time.Now().Format("150405.000000000"),
 		PaymentMethod: PaymentMethodCryptoUSDT,

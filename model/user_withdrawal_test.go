@@ -65,6 +65,71 @@ func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
 	}
 }
 
+func TestCreateUserWithdrawalSupportsUSDTChannel(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-model-usdt-user", 100000)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	order, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
+		UserID:      user.Id,
+		Channel:     WithdrawalChannelUSDT,
+		Amount:      100,
+		USDTNetwork: CryptoNetworkPolygonPOS,
+		USDTAddress: "0x2222222222222222222222222222222222222222",
+	})
+	if err != nil {
+		t.Fatalf("CreateUserWithdrawal returned error: %v", err)
+	}
+
+	if order.Channel != WithdrawalChannelUSDT {
+		t.Fatalf("channel = %s, want usdt", order.Channel)
+	}
+	if order.USDTNetwork != CryptoNetworkPolygonPOS {
+		t.Fatalf("usdt_network = %s, want polygon_pos", order.USDTNetwork)
+	}
+	if order.USDTAddress != "0x2222222222222222222222222222222222222222" {
+		t.Fatalf("usdt_address = %s", order.USDTAddress)
+	}
+	if order.AlipayAccount != "" || order.AlipayRealName != "" {
+		t.Fatalf("expected alipay fields to stay empty for USDT withdrawal")
+	}
+}
+
+func TestCreateUserWithdrawalRejectsInvalidUSDTAddress(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-model-usdt-invalid-user", 100000)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	_, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
+		UserID:      user.Id,
+		Channel:     WithdrawalChannelUSDT,
+		Amount:      100,
+		USDTNetwork: CryptoNetworkTronTRC20,
+		USDTAddress: "0x2222222222222222222222222222222222222222",
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "usdt address") {
+		t.Fatalf("CreateUserWithdrawal error = %v, want invalid USDT address validation", err)
+	}
+}
+
 func TestRejectApprovedWithdrawalReturnsFrozenQuota(t *testing.T) {
 	db := setupWithdrawalModelDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit

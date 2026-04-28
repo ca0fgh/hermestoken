@@ -34,7 +34,7 @@ var stripeCheckoutLinkGenerator = genStripeLink
 // StripePayRequest represents a payment request for Stripe checkout.
 type StripePayRequest struct {
 	// Amount is the quantity of units to purchase.
-	Amount int64 `json:"amount"`
+	Amount float64 `json:"amount"`
 	// PaymentMethod specifies the payment method (e.g., "stripe").
 	PaymentMethod string `json:"payment_method"`
 	// SuccessURL is the optional custom URL to redirect after successful payment.
@@ -50,7 +50,7 @@ type StripeAdaptor struct {
 
 func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 	if req.Amount < getStripeMinTopup() {
-		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup())})
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %s", formatTopUpAmount(getStripeMinTopup()))})
 		return
 	}
 	id := c.GetInt("id")
@@ -60,7 +60,7 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	payMoney := getStripePayMoney(float64(req.Amount), group)
-	if payMoney <= 0.01 {
+	if payMoney < 0.01 {
 		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
@@ -73,7 +73,7 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	if req.Amount < getStripeMinTopup() {
-		c.JSON(200, gin.H{"message": fmt.Sprintf("充值数量不能小于 %d", getStripeMinTopup()), "data": 10})
+		c.JSON(200, gin.H{"message": fmt.Sprintf("充值数量不能小于 %s", formatTopUpAmount(getStripeMinTopup())), "data": 10})
 		return
 	}
 	if req.Amount > 10000 {
@@ -106,15 +106,15 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 		return
 	}
 	payMoney := getStripePayMoney(float64(req.Amount), user.Group)
-	if payMoney <= 0.01 {
+	if payMoney < 0.01 {
 		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
 	amount := req.Amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		amount = int64(decimal.NewFromInt(req.Amount).
+		amount = decimal.NewFromFloat(req.Amount).
 			Div(decimal.NewFromFloat(common.QuotaPerUnit)).
-			IntPart())
+			InexactFloat64()
 	}
 	if amount <= 0 {
 		c.JSON(200, gin.H{"message": "error", "data": "充值数量无效"})
@@ -329,7 +329,7 @@ func sessionExpired(event stripe.Event) error {
 //   - cancelURL: custom URL to redirect when payment is canceled (empty for default)
 //
 // Returns the checkout session URL or an error if the session creation fails.
-func genStripeLink(referenceId string, customerId string, email string, amount int64, payMoney float64, successURL string, cancelURL string) (string, error) {
+func genStripeLink(referenceId string, customerId string, email string, amount float64, payMoney float64, successURL string, cancelURL string) (string, error) {
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
 		return "", fmt.Errorf("无效的Stripe API密钥")
 	}
@@ -357,7 +357,7 @@ func genStripeLink(referenceId string, customerId string, email string, amount i
 				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
 					Currency: stripe.String("usd"),
 					ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
-						Name: stripe.String(fmt.Sprintf("Account top up %d", amount)),
+						Name: stripe.String(fmt.Sprintf("Account top up %s", formatTopUpAmount(amount))),
 					},
 					UnitAmount: stripe.Int64(unitAmount),
 				},
@@ -407,10 +407,10 @@ func getStripePayMoney(amount float64, group string) float64 {
 	return payMoney
 }
 
-func getStripeMinTopup() int64 {
+func getStripeMinTopup() float64 {
 	minTopup := setting.StripeMinTopUp
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		minTopup = minTopup * int(common.QuotaPerUnit)
+		minTopup = minTopup * common.QuotaPerUnit
 	}
-	return int64(minTopup)
+	return minTopup
 }

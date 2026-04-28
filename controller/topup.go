@@ -50,7 +50,7 @@ func GetTopUpInfo(c *gin.Context) {
 				"name":      "Stripe",
 				"type":      "stripe",
 				"color":     "rgba(var(--semi-purple-5), 1)",
-				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
+				"min_topup": strconv.FormatFloat(setting.StripeMinTopUp, 'f', -1, 64),
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
@@ -122,12 +122,12 @@ func GetTopUpInfo(c *gin.Context) {
 }
 
 type EpayRequest struct {
-	Amount        int64  `json:"amount"`
-	PaymentMethod string `json:"payment_method"`
+	Amount        float64 `json:"amount"`
+	PaymentMethod string  `json:"payment_method"`
 }
 
 type AmountRequest struct {
-	Amount int64 `json:"amount"`
+	Amount float64 `json:"amount"`
 }
 
 var nonEpayPaymentMethodsForCallback = []string{
@@ -155,8 +155,12 @@ func GetEpayClient() *epay.Client {
 	return withUrl
 }
 
-func getPayMoney(amount int64, group string) float64 {
-	dAmount := decimal.NewFromInt(amount)
+func formatTopUpAmount(amount float64) string {
+	return strconv.FormatFloat(amount, 'f', -1, 64)
+}
+
+func getPayMoney(amount float64, group string) float64 {
+	dAmount := decimal.NewFromFloat(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
@@ -185,14 +189,14 @@ func getPayMoney(amount int64, group string) float64 {
 	return payMoney.InexactFloat64()
 }
 
-func getMinTopup() int64 {
+func getMinTopup() float64 {
 	minTopup := operation_setting.MinTopUp
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dMinTopup := decimal.NewFromInt(int64(minTopup))
+		dMinTopup := decimal.NewFromFloat(minTopup)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())
+		minTopup = dMinTopup.Mul(dQuotaPerUnit).InexactFloat64()
 	}
-	return int64(minTopup)
+	return minTopup
 }
 
 func RequestEpay(c *gin.Context) {
@@ -207,7 +211,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	if req.Amount < getMinTopup() {
-		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %s", formatTopUpAmount(getMinTopup()))})
 		return
 	}
 
@@ -241,7 +245,7 @@ func RequestEpay(c *gin.Context) {
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
-		Name:           fmt.Sprintf("TUC%d", req.Amount),
+		Name:           fmt.Sprintf("TUC%s", formatTopUpAmount(req.Amount)),
 		Money:          strconv.FormatFloat(payMoney, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
@@ -253,9 +257,9 @@ func RequestEpay(c *gin.Context) {
 	}
 	amount := req.Amount
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dAmount := decimal.NewFromInt(int64(amount))
+		dAmount := decimal.NewFromFloat(amount)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		amount = dAmount.Div(dQuotaPerUnit).IntPart()
+		amount = dAmount.Div(dQuotaPerUnit).InexactFloat64()
 	}
 	topUp := &model.TopUp{
 		UserId:        id,
@@ -461,7 +465,7 @@ func completeEpayTopUp(tradeNo string, paidType string, paidMoney string) error 
 		return err
 	}
 
-	dAmount := decimal.NewFromInt(int64(topUp.Amount))
+	dAmount := decimal.NewFromFloat(topUp.Amount)
 	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 	quotaToAdd := int(dAmount.Mul(dQuotaPerUnit).IntPart())
 	if err := model.IncreaseUserQuota(topUp.UserId, quotaToAdd, true); err != nil {
@@ -523,7 +527,7 @@ func RequestAmount(c *gin.Context) {
 	}
 
 	if req.Amount < getMinTopup() {
-		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		c.JSON(200, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %s", formatTopUpAmount(getMinTopup()))})
 		return
 	}
 	id := c.GetInt("id")
@@ -533,7 +537,7 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
-	if payMoney <= 0.01 {
+	if payMoney < 0.01 {
 		c.JSON(200, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}

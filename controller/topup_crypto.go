@@ -12,8 +12,8 @@ import (
 )
 
 type cryptoTopUpOrderRequest struct {
-	Network string `json:"network"`
-	Amount  int64  `json:"amount"`
+	Network string  `json:"network"`
+	Amount  float64 `json:"amount"`
 }
 
 func GetCryptoTopUpConfig(c *gin.Context) {

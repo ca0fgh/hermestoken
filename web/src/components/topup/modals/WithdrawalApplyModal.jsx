@@ -18,9 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Modal, Typography, Input, InputNumber, Tag } from '@douyinfe/semi-ui';
+import { Modal, Typography, Input, InputNumber, Select, Tag } from '@douyinfe/semi-ui';
 import { HandCoins } from 'lucide-react';
 import {
+  WITHDRAWAL_USDT_NETWORK_OPTIONS,
   buildWithdrawalFeeRuleDescriptions,
   describeWithdrawalFeeRuleForUser,
   formatWithdrawalAmount,
@@ -37,13 +38,28 @@ const WithdrawalApplyModal = ({
   config,
   amount,
   setAmount,
+  withdrawalChannel,
+  setWithdrawalChannel,
   alipayAccount,
   setAlipayAccount,
   alipayRealName,
   setAlipayRealName,
+  usdtNetwork,
+  setUSDTNetwork,
+  usdtAddress,
+  setUSDTAddress,
   preview,
 }) => {
   const symbol = config?.currencySymbol || '¥';
+  const isUSDTWithdrawal = withdrawalChannel === 'usdt';
+  const channelOptions = [
+    { label: t('支付宝'), value: 'alipay' },
+    { label: t('USDT'), value: 'usdt' },
+  ];
+  const usdtNetworkOptions = WITHDRAWAL_USDT_NETWORK_OPTIONS.map((option) => ({
+    ...option,
+    label: t(option.label),
+  }));
   const ruleDescriptionOptions = {
     currency: config?.currency,
     currencySymbol: symbol,
@@ -94,25 +110,69 @@ const WithdrawalApplyModal = ({
 
         <div>
           <Text strong className='block mb-2'>
-            {t('支付宝账号')}
+            {t('提现方式')}
           </Text>
-          <Input
-            value={alipayAccount}
-            onChange={setAlipayAccount}
-            placeholder={t('请输入支付宝账号')}
+          <Select
+            value={withdrawalChannel}
+            onChange={setWithdrawalChannel}
+            optionList={channelOptions}
+            style={{ width: '100%' }}
           />
         </div>
 
-        <div>
-          <Text strong className='block mb-2'>
-            {t('支付宝姓名')}
-          </Text>
-          <Input
-            value={alipayRealName}
-            onChange={setAlipayRealName}
-            placeholder={t('请输入支付宝姓名')}
-          />
-        </div>
+        {isUSDTWithdrawal ? (
+          <>
+            <div>
+              <Text strong className='block mb-2'>
+                {t('USDT 网络')}
+              </Text>
+              <Select
+                value={usdtNetwork}
+                onChange={setUSDTNetwork}
+                optionList={usdtNetworkOptions}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            <div>
+              <Text strong className='block mb-2'>
+                {t('USDT 收款地址')}
+              </Text>
+              <Input
+                value={usdtAddress}
+                onChange={setUSDTAddress}
+                placeholder={t('请输入 USDT 收款地址')}
+              />
+              <Text type='tertiary' size='small'>
+                {t('请确认收款地址与所选 USDT 网络一致。')}
+              </Text>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <Text strong className='block mb-2'>
+                {t('支付宝账号')}
+              </Text>
+              <Input
+                value={alipayAccount}
+                onChange={setAlipayAccount}
+                placeholder={t('请输入支付宝账号')}
+              />
+            </div>
+
+            <div>
+              <Text strong className='block mb-2'>
+                {t('支付宝姓名')}
+              </Text>
+              <Input
+                value={alipayRealName}
+                onChange={setAlipayRealName}
+                placeholder={t('请输入支付宝姓名')}
+              />
+            </div>
+          </>
+        )}
 
         <div className='rounded-xl border border-[var(--semi-color-border)] p-4 bg-[var(--semi-color-fill-0)] space-y-3'>
           <Text strong>{t('规则说明')}</Text>
@@ -166,7 +226,10 @@ const WithdrawalApplyModal = ({
         </div>
 
         <div className='text-sm text-[var(--semi-color-text-2)]'>
-          {config?.instruction || t('管理员将在线审核并线下支付宝打款')}
+          {config?.instruction ||
+            (isUSDTWithdrawal
+              ? t('管理员将在线审核并线下 USDT 打款')
+              : t('管理员将在线审核并线下支付宝打款'))}
         </div>
       </div>
     </Modal>

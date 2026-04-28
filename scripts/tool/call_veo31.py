@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Submit a VEO 3.1 video generation request through HermesToken.
 
-The API key is intentionally read from an argument or environment variable
-instead of being stored in this file.
+The submit URL is intentionally fixed to the production HermesToken endpoint.
+The API key is requested interactively by default so it is not stored in this
+file or echoed back to the terminal.
 """
 
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import mimetypes
 import os
@@ -29,9 +31,14 @@ except ImportError:  # pragma: no cover - urllib fallback is kept for bare Pytho
 DEFAULT_BASE_URL = "https://hermestoken.top"
 DEFAULT_ENDPOINT = "/v1/video/generations"
 DEFAULT_MODEL = "veo_3_1"
+MODEL_CHOICES = ("veo_3_1", "veo_3_1-4K")
 DEFAULT_SIZE = "720x1280"
+SIZE_CHOICES = ("720x1280", "1280x720")
 DEFAULT_SECONDS = 8
-DEFAULT_OUTPUT = "veo31_output.mp4"
+DEFAULT_OUTPUT = str(Path(__file__).resolve().with_name("veo31_output.mp4"))
+DEFAULT_POLL_TIMEOUT = 900.0
+DEFAULT_POLL_INTERVAL = 5.0
+DEFAULT_REQUEST_TIMEOUT = 60.0
 SUCCESS_STATUSES = {"succeeded", "success", "completed", "complete", "done", "finished"}
 FAILURE_STATUSES = {"failed", "failure", "error", "errored", "cancelled", "canceled"}
 
@@ -217,6 +224,210 @@ def load_input_reference(path: Optional[str]) -> List[FilePart]:
     return [FilePart(field_name="input_reference", path=file_path, content_type=content_type)]
 
 
+def _read_line(prompt: str, stdin: TextIO, output: TextIO) -> str:
+    print(prompt, end="", file=output, flush=True)
+    raw = stdin.readline()
+    if raw == "":
+        raise EOFError("interactive input ended unexpectedly")
+    return raw.strip()
+
+
+def prompt_text(
+    label: str,
+    *,
+    default: Optional[str] = None,
+    required: bool = False,
+    secret: bool = False,
+    stdin: TextIO = sys.stdin,
+    output: TextIO = sys.stderr,
+) -> str:
+    suffix = f" [{default}]" if default not in (None, "") else ""
+    prompt = f"{label}{suffix}: "
+    while True:
+        raw = (
+            getpass.getpass(prompt, stream=output).strip()
+            if secret
+            else _read_line(prompt, stdin, output)
+        )
+        if raw:
+            return raw
+        if default is not None:
+            return default
+        if not required:
+            return ""
+        print(f"{label}不能为空，请重新输入。", file=output)
+
+
+def prompt_option(
+    label: str,
+    choices: Sequence[str],
+    *,
+    default: str,
+    stdin: TextIO,
+    output: TextIO,
+) -> str:
+    print(f"{label}:", file=output)
+    for index, choice in enumerate(choices, start=1):
+        marker = "（默认）" if choice == default else ""
+        print(f"  {index}. {choice}{marker}", file=output)
+    default_index = choices.index(default) + 1
+    while True:
+        value = prompt_text("请选择", default=str(default_index), stdin=stdin, output=output)
+        if value.isdigit():
+            option_index = int(value)
+            if 1 <= option_index <= len(choices):
+                return choices[option_index - 1]
+        if value in choices:
+            return value
+        print(f"请输入 1-{len(choices)} 的编号，或直接输入选项值。", file=output)
+
+
+def prompt_bool(label: str, *, default: bool, stdin: TextIO, output: TextIO) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    while True:
+        value = prompt_text(f"{label} ({suffix})", default="", stdin=stdin, output=output).lower()
+        if not value:
+            return default
+        if value in {"y", "yes", "true", "1", "是"}:
+            return True
+        if value in {"n", "no", "false", "0", "否"}:
+            return False
+        print("请输入 y 或 n。", file=output)
+
+
+def prompt_positive_int(label: str, *, default: int, stdin: TextIO, output: TextIO) -> int:
+    while True:
+        value = prompt_text(label, default=str(default), stdin=stdin, output=output)
+        try:
+            parsed = int(value)
+        except ValueError:
+            print("请输入整数。", file=output)
+            continue
+        if parsed > 0:
+            return parsed
+        print("请输入大于 0 的整数。", file=output)
+
+
+def prompt_positive_float(label: str, *, default: float, stdin: TextIO, output: TextIO) -> float:
+    while True:
+        value = prompt_text(label, default=str(default), stdin=stdin, output=output)
+        try:
+            parsed = float(value)
+        except ValueError:
+            print("请输入数字。", file=output)
+            continue
+        if parsed > 0:
+            return parsed
+        print("请输入大于 0 的数字。", file=output)
+
+
+def is_interactive_stdin(stdin: TextIO) -> bool:
+    isatty = getattr(stdin, "isatty", None)
+    return bool(isatty and isatty())
+
+
+def apply_default_args(args: argparse.Namespace) -> argparse.Namespace:
+    values = {
+        **vars(args),
+        "api_key": args.api_key or os.getenv("HERMESTOKEN_API_KEY"),
+        "model": args.model or DEFAULT_MODEL,
+        "size": args.size or DEFAULT_SIZE,
+        "seconds": args.seconds if args.seconds is not None else DEFAULT_SECONDS,
+        "enable_upsample": bool(args.enable_upsample) if args.enable_upsample is not None else False,
+        "no_poll": bool(args.no_poll) if args.no_poll is not None else False,
+        "no_download": bool(args.no_download) if args.no_download is not None else False,
+        "output": args.output or DEFAULT_OUTPUT,
+        "poll_timeout": args.poll_timeout if args.poll_timeout is not None else DEFAULT_POLL_TIMEOUT,
+        "poll_interval": args.poll_interval if args.poll_interval is not None else DEFAULT_POLL_INTERVAL,
+        "request_timeout": args.request_timeout if args.request_timeout is not None else DEFAULT_REQUEST_TIMEOUT,
+        "dry_run": bool(args.dry_run) if args.dry_run is not None else False,
+    }
+    return argparse.Namespace(**values)
+
+
+def prompt_for_args(args: argparse.Namespace, *, stdin: TextIO, output: TextIO) -> argparse.Namespace:
+    values = vars(args).copy()
+    if not values.get("api_key"):
+        values["api_key"] = prompt_text("API key", required=True, secret=True, output=output)
+    if not values.get("model"):
+        values["model"] = prompt_option(
+            "模型",
+            MODEL_CHOICES,
+            default=DEFAULT_MODEL,
+            stdin=stdin,
+            output=output,
+        )
+    if not values.get("prompt"):
+        values["prompt"] = prompt_text("提示词", required=True, stdin=stdin, output=output)
+    if not values.get("size"):
+        values["size"] = prompt_option(
+            "尺寸",
+            SIZE_CHOICES,
+            default=DEFAULT_SIZE,
+            stdin=stdin,
+            output=output,
+        )
+    if values.get("seconds") is None:
+        values["seconds"] = prompt_positive_int("秒数", default=DEFAULT_SECONDS, stdin=stdin, output=output)
+    if values.get("input_reference") is None:
+        input_reference = prompt_text("参考图路径（可空）", default="", stdin=stdin, output=output)
+        values["input_reference"] = input_reference or None
+    if values.get("enable_upsample") is None:
+        values["enable_upsample"] = prompt_bool("是否启用 upsample", default=False, stdin=stdin, output=output)
+    if values.get("dry_run") is None:
+        values["dry_run"] = prompt_bool("只打印请求不发送", default=False, stdin=stdin, output=output)
+    if not values.get("dry_run"):
+        if values.get("no_poll") is None:
+            values["no_poll"] = not prompt_bool("提交后轮询直到完成", default=True, stdin=stdin, output=output)
+        if values.get("no_download") is None:
+            should_download = (
+                False
+                if values.get("no_poll")
+                else prompt_bool("完成后下载视频", default=True, stdin=stdin, output=output)
+            )
+            values["no_download"] = not should_download
+        if not values.get("no_download") and not values.get("output"):
+            values["output"] = prompt_text("下载输出路径", default=DEFAULT_OUTPUT, stdin=stdin, output=output)
+        if not values.get("no_poll") and values.get("poll_timeout") is None:
+            values["poll_timeout"] = prompt_positive_float(
+                "轮询超时秒数",
+                default=DEFAULT_POLL_TIMEOUT,
+                stdin=stdin,
+                output=output,
+            )
+        if not values.get("no_poll") and values.get("poll_interval") is None:
+            values["poll_interval"] = prompt_positive_float(
+                "轮询间隔秒数",
+                default=DEFAULT_POLL_INTERVAL,
+                stdin=stdin,
+                output=output,
+            )
+        if values.get("request_timeout") is None:
+            values["request_timeout"] = prompt_positive_float(
+                "单次请求超时秒数",
+                default=DEFAULT_REQUEST_TIMEOUT,
+                stdin=stdin,
+                output=output,
+            )
+    return apply_default_args(argparse.Namespace(**values))
+
+
+def validate_args(args: argparse.Namespace) -> Optional[str]:
+    if not args.api_key:
+        return "missing API key. Pass --api-key or run interactively."
+    if not args.prompt:
+        return "missing prompt. Pass --prompt or run interactively."
+    if args.model not in MODEL_CHOICES:
+        return f"invalid model. Use one of: {', '.join(MODEL_CHOICES)}."
+    if args.size not in SIZE_CHOICES:
+        return "invalid size. Use 720x1280 or 1280x720."
+    if args.seconds <= 0:
+        return "seconds must be greater than 0."
+    if args.poll_timeout <= 0 or args.poll_interval <= 0 or args.request_timeout <= 0:
+        return "timeouts and poll interval must be greater than 0."
+    return None
+
+
 def make_request_fields(args: argparse.Namespace) -> Dict[str, str]:
     fields = {
         "model": args.model,
@@ -309,37 +520,88 @@ def download_video(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Call VEO 3.1 through HermesToken.")
-    parser.add_argument("--api-key", default=os.getenv("HERMESTOKEN_API_KEY"), help="API key, or set HERMESTOKEN_API_KEY.")
-    parser.add_argument("--base-url", default=os.getenv("HERMESTOKEN_BASE_URL", DEFAULT_BASE_URL))
-    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Submit endpoint, e.g. /v1/video/generations or /v1/videos.")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--prompt", required=True)
-    parser.add_argument("--size", default=DEFAULT_SIZE, choices=("720x1280", "1280x720"))
-    parser.add_argument("--seconds", type=int, default=DEFAULT_SECONDS)
+    parser.add_argument("--api-key", help="API key. Omit it to enter the key interactively.")
+    parser.add_argument("--base-url", help=argparse.SUPPRESS)
+    parser.add_argument("--endpoint", help=argparse.SUPPRESS)
+    parser.add_argument("--interactive", action="store_true", help="Prompt for missing values.")
+    parser.add_argument("--non-interactive", action="store_true", help="Never prompt for missing values.")
+    parser.add_argument("--model", choices=MODEL_CHOICES)
+    parser.add_argument("--prompt")
+    parser.add_argument("--size", choices=SIZE_CHOICES)
+    parser.add_argument("--seconds", type=int)
     parser.add_argument("--input-reference", help="Optional image reference file path.")
-    parser.add_argument("--enable-upsample", action="store_true", help="Enable upsample for supported horizontal videos.")
-    parser.add_argument("--no-poll", action="store_true", help="Only submit the task and print the task id.")
-    parser.add_argument("--no-download", action="store_true", help="Do not download the finished video.")
-    parser.add_argument("--output", default=DEFAULT_OUTPUT, help="Downloaded video path.")
-    parser.add_argument("--poll-timeout", type=float, default=900.0)
-    parser.add_argument("--poll-interval", type=float, default=5.0)
-    parser.add_argument("--request-timeout", type=float, default=60.0)
-    parser.add_argument("--dry-run", action="store_true", help="Print the request shape without sending it.")
+    parser.add_argument(
+        "--enable-upsample",
+        dest="enable_upsample",
+        action="store_true",
+        help="Enable upsample for supported horizontal videos.",
+    )
+    parser.add_argument(
+        "--no-enable-upsample",
+        dest="enable_upsample",
+        action="store_false",
+        help="Disable upsample.",
+    )
+    parser.add_argument(
+        "--poll",
+        dest="no_poll",
+        action="store_false",
+        help="Poll until the task finishes.",
+    )
+    parser.add_argument(
+        "--no-poll",
+        dest="no_poll",
+        action="store_true",
+        help="Only submit the task and print the task id.",
+    )
+    parser.add_argument(
+        "--download",
+        dest="no_download",
+        action="store_false",
+        help="Download the finished video.",
+    )
+    parser.add_argument(
+        "--no-download",
+        dest="no_download",
+        action="store_true",
+        help="Do not download the finished video.",
+    )
+    parser.add_argument("--output", help="Downloaded video path.")
+    parser.add_argument("--poll-timeout", type=float)
+    parser.add_argument("--poll-interval", type=float)
+    parser.add_argument("--request-timeout", type=float)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the request shape without sending it.",
+    )
+    parser.set_defaults(enable_upsample=None, no_poll=None, no_download=None, dry_run=None)
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None, *, stdout: TextIO = sys.stdout, stderr: TextIO = sys.stderr) -> int:
+def main(
+    argv: Optional[Sequence[str]] = None,
+    *,
+    stdout: TextIO = sys.stdout,
+    stderr: TextIO = sys.stderr,
+    stdin: TextIO = sys.stdin,
+) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
     try:
-        base_url = normalize_base_url(args.base_url)
-        endpoint = normalize_endpoint(args.endpoint)
-        api_key = args.api_key or ""
-        if not api_key:
-            print("error: missing API key. Set HERMESTOKEN_API_KEY or pass --api-key.", file=stderr)
+        should_prompt = args.interactive or (
+            argv is None and not args.non_interactive and is_interactive_stdin(stdin)
+        )
+        args = prompt_for_args(args, stdin=stdin, output=stderr) if should_prompt else apply_default_args(args)
+        validation_error = validate_args(args)
+        if validation_error:
+            print(f"error: {validation_error}", file=stderr)
             return 2
 
+        base_url = DEFAULT_BASE_URL
+        endpoint = DEFAULT_ENDPOINT
+        api_key = args.api_key
         fields = make_request_fields(args)
         files = load_input_reference(args.input_reference)
         body, content_type = build_multipart_form_data(fields=fields, files=files)

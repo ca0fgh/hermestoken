@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -20,6 +21,7 @@ const (
 	UserWithdrawalStatusRejected = "rejected"
 
 	WithdrawalChannelAlipay = "alipay"
+	WithdrawalChannelUSDT   = "usdt"
 
 	WithdrawalFeeTypeFixed = "fixed"
 	WithdrawalFeeTypeRatio = "ratio"
@@ -43,6 +45,8 @@ type UserWithdrawal struct {
 	NetQuota               int     `json:"net_quota" gorm:"not null;default:0"`
 	AlipayAccount          string  `json:"alipay_account" gorm:"type:varchar(128);not null"`
 	AlipayRealName         string  `json:"alipay_real_name" gorm:"type:varchar(64);default:''"`
+	USDTNetwork            string  `json:"usdt_network" gorm:"type:varchar(32);default:''"`
+	USDTAddress            string  `json:"usdt_address" gorm:"type:varchar(128);default:''"`
 	Status                 string  `json:"status" gorm:"type:varchar(32);index;not null;default:'pending'"`
 	FeeRuleSnapshotJSON    string  `json:"fee_rule_snapshot_json" gorm:"type:text"`
 	ReviewAdminId          int     `json:"review_admin_id" gorm:"index;not null;default:0"`
@@ -61,9 +65,12 @@ type UserWithdrawal struct {
 
 type CreateUserWithdrawalParams struct {
 	UserID         int
+	Channel        string
 	Amount         float64
 	AlipayAccount  string
 	AlipayRealName string
+	USDTNetwork    string
+	USDTAddress    string
 }
 
 type WithdrawalFeeRule struct {
@@ -115,6 +122,8 @@ func (w *UserWithdrawal) normalize() {
 	w.Currency = strings.TrimSpace(w.Currency)
 	w.AlipayAccount = strings.TrimSpace(w.AlipayAccount)
 	w.AlipayRealName = strings.TrimSpace(w.AlipayRealName)
+	w.USDTNetwork = NormalizeWithdrawalUSDTNetwork(w.USDTNetwork)
+	w.USDTAddress = strings.TrimSpace(w.USDTAddress)
 	w.Status = strings.TrimSpace(w.Status)
 	w.ReviewNote = strings.TrimSpace(w.ReviewNote)
 	w.RejectionNote = strings.TrimSpace(w.RejectionNote)
@@ -134,17 +143,32 @@ func (w *UserWithdrawal) Validate() error {
 	if w.Channel == "" {
 		return errors.New("channel is required")
 	}
-	if w.Channel != WithdrawalChannelAlipay {
+	switch w.Channel {
+	case WithdrawalChannelAlipay:
+		if w.AlipayAccount == "" {
+			return errors.New("alipay account is required")
+		}
+		if w.AlipayRealName == "" {
+			return errors.New("alipay real name is required")
+		}
+	case WithdrawalChannelUSDT:
+		if w.USDTNetwork == "" {
+			return errors.New("usdt network is required")
+		}
+		if !IsSupportedUSDTWithdrawalNetwork(w.USDTNetwork) {
+			return errors.New("invalid usdt network")
+		}
+		if w.USDTAddress == "" {
+			return errors.New("usdt address is required")
+		}
+		if !IsValidUSDTWithdrawalAddress(w.USDTNetwork, w.USDTAddress) {
+			return errors.New("invalid usdt address")
+		}
+	default:
 		return errors.New("invalid withdrawal channel")
 	}
 	if w.Currency == "" {
 		return errors.New("currency is required")
-	}
-	if w.AlipayAccount == "" {
-		return errors.New("alipay account is required")
-	}
-	if w.AlipayRealName == "" {
-		return errors.New("alipay real name is required")
 	}
 	switch w.Status {
 	case UserWithdrawalStatusPending, UserWithdrawalStatusApproved, UserWithdrawalStatusPaid, UserWithdrawalStatusRejected:
@@ -158,6 +182,41 @@ func (w *UserWithdrawal) Validate() error {
 		return errors.New("invalid withdrawal quota")
 	}
 	return nil
+}
+
+func NormalizeWithdrawalChannel(channel string) string {
+	normalized := strings.ToLower(strings.TrimSpace(channel))
+	if normalized == "" {
+		return WithdrawalChannelAlipay
+	}
+	return normalized
+}
+
+func NormalizeWithdrawalUSDTNetwork(network string) string {
+	return NormalizeCryptoNetwork(network)
+}
+
+func IsSupportedUSDTWithdrawalNetwork(network string) bool {
+	switch NormalizeWithdrawalUSDTNetwork(network) {
+	case CryptoNetworkTronTRC20, CryptoNetworkBSCERC20, CryptoNetworkPolygonPOS, CryptoNetworkSolana:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsValidUSDTWithdrawalAddress(network string, address string) bool {
+	normalizedNetwork := NormalizeWithdrawalUSDTNetwork(network)
+	switch normalizedNetwork {
+	case CryptoNetworkTronTRC20:
+		return setting.IsValidTronAddress(address)
+	case CryptoNetworkBSCERC20, CryptoNetworkPolygonPOS:
+		return setting.IsValidEVMAddress(address)
+	case CryptoNetworkSolana:
+		return setting.IsValidSolanaAddress(address)
+	default:
+		return false
+	}
 }
 
 func (w *UserWithdrawal) BeforeCreate(tx *gorm.DB) error {
@@ -209,6 +268,11 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 	if params == nil {
 		return nil, errors.New("withdrawal params are required")
 	}
+	channel := NormalizeWithdrawalChannel(params.Channel)
+	usdtNetwork := NormalizeWithdrawalUSDTNetwork(params.USDTNetwork)
+	usdtAddress := strings.TrimSpace(params.USDTAddress)
+	alipayAccount := strings.TrimSpace(params.AlipayAccount)
+	alipayRealName := strings.TrimSpace(params.AlipayRealName)
 
 	setting := GetUserWithdrawalSetting()
 	if !setting.Enabled {
@@ -285,7 +349,7 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 		created = UserWithdrawal{
 			UserId:                 params.UserID,
 			TradeNo:                tradeNo,
-			Channel:                WithdrawalChannelAlipay,
+			Channel:                channel,
 			Currency:               currency.Currency,
 			ExchangeRateSnapshot:   currency.UsdToCurrencyRate,
 			AvailableQuotaSnapshot: user.Quota,
@@ -296,8 +360,10 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 			ApplyQuota:             applyQuota,
 			FeeQuota:               feeQuota,
 			NetQuota:               netQuota,
-			AlipayAccount:          strings.TrimSpace(params.AlipayAccount),
-			AlipayRealName:         strings.TrimSpace(params.AlipayRealName),
+			AlipayAccount:          alipayAccount,
+			AlipayRealName:         alipayRealName,
+			USDTNetwork:            usdtNetwork,
+			USDTAddress:            usdtAddress,
 			Status:                 UserWithdrawalStatusPending,
 			FeeRuleSnapshotJSON:    ruleSnapshotJSON,
 		}
@@ -324,7 +390,7 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 		}
 	}
 
-	RecordLog(params.UserID, LogTypeSystem, fmt.Sprintf("提交提现申请 %s，申请金额 %s，手续费 %.2f，实际到账 %.2f", created.TradeNo, logger.LogQuota(created.ApplyQuota), created.FeeAmount, created.NetAmount))
+	RecordLog(params.UserID, LogTypeSystem, fmt.Sprintf("提交提现申请 %s，渠道 %s，申请金额 %s，手续费 %.2f，实际到账 %.2f", created.TradeNo, created.Channel, logger.LogQuota(created.ApplyQuota), created.FeeAmount, created.NetAmount))
 	return &created, nil
 }
 
@@ -480,13 +546,15 @@ func ListAdminWithdrawals(filter AdminWithdrawalFilter, pageInfo *common.PageInf
 		query = query.Where("users.username LIKE ?", "%"+trimmedUsername+"%")
 	}
 	if trimmedAlipayAccount := strings.TrimSpace(filter.AlipayAccount); trimmedAlipayAccount != "" {
-		query = query.Where("user_withdrawals.alipay_account LIKE ?", "%"+trimmedAlipayAccount+"%")
+		like := "%" + trimmedAlipayAccount + "%"
+		query = query.Where("user_withdrawals.alipay_account LIKE ? OR user_withdrawals.usdt_address LIKE ?", like, like)
 	}
 	if trimmedKeyword := strings.TrimSpace(filter.Keyword); trimmedKeyword != "" {
 		like := "%" + trimmedKeyword + "%"
 		if keywordUserID, err := strconv.Atoi(trimmedKeyword); err == nil && keywordUserID > 0 {
 			query = query.Where(
-				"user_withdrawals.trade_no LIKE ? OR user_withdrawals.alipay_account LIKE ? OR users.username LIKE ? OR user_withdrawals.user_id = ?",
+				"user_withdrawals.trade_no LIKE ? OR user_withdrawals.alipay_account LIKE ? OR user_withdrawals.usdt_address LIKE ? OR users.username LIKE ? OR user_withdrawals.user_id = ?",
+				like,
 				like,
 				like,
 				like,
@@ -494,7 +562,8 @@ func ListAdminWithdrawals(filter AdminWithdrawalFilter, pageInfo *common.PageInf
 			)
 		} else {
 			query = query.Where(
-				"user_withdrawals.trade_no LIKE ? OR user_withdrawals.alipay_account LIKE ? OR users.username LIKE ?",
+				"user_withdrawals.trade_no LIKE ? OR user_withdrawals.alipay_account LIKE ? OR user_withdrawals.usdt_address LIKE ? OR users.username LIKE ?",
+				like,
 				like,
 				like,
 				like,

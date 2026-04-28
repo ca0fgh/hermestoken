@@ -31,7 +31,7 @@ import {
   Row,
   Col,
   Spin,
-  Tooltip,
+  Select,
   Tabs,
   TabPane,
 } from '@douyinfe/semi-ui';
@@ -76,7 +76,6 @@ const RechargeCard = ({
   payMethods,
   preTopUp,
   paymentLoading,
-  payWay,
   redemptionCode,
   setRedemptionCode,
   topUp,
@@ -109,11 +108,95 @@ const RechargeCard = ({
   const initialTabSetRef = useRef(false);
   const showAmountSkeleton = useMinimumLoadingTime(amountLoading);
   const [activeTab, setActiveTab] = useState('topup');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const shouldShowSubscription =
     !subscriptionLoading && subscriptionPlans.length > 0;
   const showTopupTab = quotaTopupEnabled !== false;
   const showTabbedLayout = shouldShowSubscription && showTopupTab;
   const showSubscriptionOnly = shouldShowSubscription && !showTopupTab;
+  const standardPayMethods = (payMethods || []).filter(
+    (method) => method.type !== 'waffo',
+  );
+  const showCryptoPayMethods =
+    enableCryptoTopUp && cryptoNetworks && cryptoNetworks.length > 0;
+  const showPaymentMethodSelector =
+    standardPayMethods.length > 0 || showCryptoPayMethods;
+  const topUpCountNumber = Number(topUpCount || 0);
+
+  const renderStandardPayMethodIcon = (payMethod) => {
+    if (payMethod.type === 'alipay') {
+      return <SiAlipay size={18} color='#1677FF' />;
+    }
+    if (payMethod.type === 'wxpay') {
+      return <SiWechat size={18} color='#07C160' />;
+    }
+    if (payMethod.type === 'stripe') {
+      return <SiStripe size={18} color='#635BFF' />;
+    }
+    return (
+      <CreditCard
+        size={18}
+        color={payMethod.color || 'var(--semi-color-text-2)'}
+      />
+    );
+  };
+
+  const paymentMethodOptions = [
+    ...standardPayMethods.map((payMethod) => {
+      const minTopupVal = Number(payMethod.min_topup) || 0;
+      const isStripe = payMethod.type === 'stripe';
+      const disabled =
+        (!enableOnlineTopUp && !isStripe) ||
+        (!enableStripeTopUp && isStripe) ||
+        minTopupVal > topUpCountNumber;
+      const minTopupText =
+        disabled && minTopupVal > topUpCountNumber
+          ? ` (${t('最低')} ${minTopupVal})`
+          : '';
+
+      return {
+        value: `standard:${payMethod.type}`,
+        label: (
+          <div className='flex items-center gap-2'>
+            {renderStandardPayMethodIcon(payMethod)}
+            <span>{payMethod.name}</span>
+            {minTopupText && (
+              <Text size='small' type='tertiary'>
+                {minTopupText}
+              </Text>
+            )}
+          </div>
+        ),
+        disabled,
+        payMethod,
+      };
+    }),
+    ...(showCryptoPayMethods
+      ? cryptoNetworks.map((network) => ({
+          value: `crypto:${network.network}`,
+          label: (
+            <div className='flex items-center gap-2'>
+              <CreditCard size={18} color='var(--semi-color-text-2)' />
+              <span>{network.display_name} USDT</span>
+            </div>
+          ),
+          network,
+        }))
+      : []),
+  ];
+
+  const handlePaymentMethodSelect = (value) => {
+    const option = paymentMethodOptions.find((item) => item.value === value);
+    if (!option || option.disabled || paymentLoading) return;
+
+    setSelectedPaymentMethod(value);
+    if (option.network) {
+      createCryptoTopUpOrder(option.network.network);
+    } else {
+      preTopUp(option.payMethod.type);
+    }
+    setSelectedPaymentMethod(null);
+  };
 
   useEffect(() => {
     if (initialTabSetRef.current) return;
@@ -265,25 +348,32 @@ const RechargeCard = ({
                     value={topUpCount}
                     min={minTopUp}
                     max={999999999}
-                    step={1}
-                    precision={0}
+                    step={0.01}
+                    precision={2}
                     onChange={async (value) => {
-                      if (value && value >= 1) {
-                        setTopUpCount(value);
+                      const nextValue = Number(value);
+                      const minimum = Number(minTopUp) || 0.01;
+                      if (Number.isFinite(nextValue) && nextValue >= minimum) {
+                        setTopUpCount(nextValue);
                         setSelectedPreset(null);
-                        await getAmount(value);
+                        await getAmount(nextValue);
                       }
                     }}
                     onBlur={(e) => {
-                      const value = parseInt(e.target.value);
-                      if (!value || value < 1) {
-                        setTopUpCount(1);
-                        getAmount(1);
+                      const value = parseFloat(e.target.value);
+                      const minimum = Number(minTopUp) || 0.01;
+                      if (!Number.isFinite(value) || value < minimum) {
+                        setTopUpCount(minimum);
+                        onlineFormApiRef.current?.setValue(
+                          'topUpCount',
+                          minimum,
+                        );
+                        getAmount(minimum);
                       }
                     }}
                     formatter={(value) => (value ? `${value}` : '')}
                     parser={(value) =>
-                      value ? parseInt(value.replace(/[^\d]/g, '')) : 0
+                      value ? parseFloat(value.replace(/[^\d.]/g, '')) : 0
                     }
                     extraText={
                       <Skeleton
@@ -308,77 +398,21 @@ const RechargeCard = ({
                     style={{ width: '100%' }}
                   />
                 </Col>
-                {payMethods &&
-                  payMethods.filter((m) => m.type !== 'waffo').length > 0 && (
-                    <Col xs={24} sm={24} md={24} lg={14} xl={14}>
-                      <Form.Slot label={t('选择支付方式')}>
-                        <Space wrap>
-                          {payMethods
-                            .filter((m) => m.type !== 'waffo')
-                            .map((payMethod) => {
-                              const minTopupVal =
-                                Number(payMethod.min_topup) || 0;
-                              const isStripe = payMethod.type === 'stripe';
-                              const disabled =
-                                (!enableOnlineTopUp && !isStripe) ||
-                                (!enableStripeTopUp && isStripe) ||
-                                minTopupVal > Number(topUpCount || 0);
-
-                              const buttonEl = (
-                                <Button
-                                  key={payMethod.type}
-                                  theme='outline'
-                                  type='tertiary'
-                                  onClick={() => preTopUp(payMethod.type)}
-                                  disabled={disabled}
-                                  loading={
-                                    paymentLoading && payWay === payMethod.type
-                                  }
-                                  icon={
-                                    payMethod.type === 'alipay' ? (
-                                      <SiAlipay size={18} color='#1677FF' />
-                                    ) : payMethod.type === 'wxpay' ? (
-                                      <SiWechat size={18} color='#07C160' />
-                                    ) : payMethod.type === 'stripe' ? (
-                                      <SiStripe size={18} color='#635BFF' />
-                                    ) : (
-                                      <CreditCard
-                                        size={18}
-                                        color={
-                                          payMethod.color ||
-                                          'var(--semi-color-text-2)'
-                                        }
-                                      />
-                                    )
-                                  }
-                                  className='!rounded-lg !px-4 !py-2'
-                                >
-                                  {payMethod.name}
-                                </Button>
-                              );
-
-                              return disabled &&
-                                minTopupVal > Number(topUpCount || 0) ? (
-                                <Tooltip
-                                  content={
-                                    t('此支付方式最低充值金额为') +
-                                    ' ' +
-                                    minTopupVal
-                                  }
-                                  key={payMethod.type}
-                                >
-                                  {buttonEl}
-                                </Tooltip>
-                              ) : (
-                                <React.Fragment key={payMethod.type}>
-                                  {buttonEl}
-                                </React.Fragment>
-                              );
-                            })}
-                        </Space>
-                      </Form.Slot>
-                    </Col>
-                  )}
+                {showPaymentMethodSelector && (
+                  <Col xs={24} sm={24} md={24} lg={14} xl={14}>
+                    <Form.Slot label={t('选择支付方式')}>
+                      <Select
+                        value={selectedPaymentMethod}
+                        placeholder={t('请选择支付方式')}
+                        optionList={paymentMethodOptions}
+                        onChange={handlePaymentMethodSelect}
+                        disabled={paymentLoading}
+                        renderSelectedItem={(optionNode) => optionNode.label}
+                        style={{ width: '100%' }}
+                      />
+                    </Form.Slot>
+                  </Col>
+                )}
               </Row>
             )}
 
@@ -544,33 +578,6 @@ const RechargeCard = ({
                         className='!rounded-lg !px-4 !py-2'
                       >
                         {method.name}
-                      </Button>
-                    ))}
-                  </Space>
-                </Form.Slot>
-              )}
-
-            {enableCryptoTopUp &&
-              cryptoNetworks &&
-              cryptoNetworks.length > 0 && (
-                <Form.Slot label={t('USDT 充值')}>
-                  <Space wrap>
-                    {cryptoNetworks.map((network) => (
-                      <Button
-                        key={network.network}
-                        theme='outline'
-                        type='tertiary'
-                        onClick={() => createCryptoTopUpOrder(network.network)}
-                        loading={paymentLoading}
-                        icon={
-                          <CreditCard
-                            size={18}
-                            color='var(--semi-color-text-2)'
-                          />
-                        }
-                        className='!rounded-lg !px-4 !py-2'
-                      >
-                        {network.display_name} USDT
                       </Button>
                     ))}
                   </Space>

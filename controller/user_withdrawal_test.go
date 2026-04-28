@@ -47,6 +47,55 @@ func TestUserCreateWithdrawal(t *testing.T) {
 	}
 }
 
+func TestUserCreateUSDTWithdrawal(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	if err := db.AutoMigrate(&model.UserWithdrawal{}); err != nil {
+		t.Fatalf("failed to migrate user withdrawals: %v", err)
+	}
+
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedSubscriptionReferralControllerUser(t, "withdraw-controller-usdt-user", 0, dto.UserSetting{})
+	if err := db.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", 100000).Error; err != nil {
+		t.Fatalf("failed to seed user quota: %v", err)
+	}
+	common.OptionMap[model.WithdrawalEnabledOptionKey] = "true"
+	common.OptionMap[model.WithdrawalMinAmountOptionKey] = "10"
+	common.OptionMap[model.WithdrawalInstructionOptionKey] = "manual payout"
+	common.OptionMap[model.WithdrawalFeeRulesOptionKey] = `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/user/withdrawals", map[string]any{
+		"channel":      "usdt",
+		"amount":       100,
+		"usdt_network": "solana",
+		"usdt_address": "7YttLkHDoWJYNNe7U2s1owz8FC6xk4kZqGSPdU2ovbYW",
+	}, user.Id)
+	CreateUserWithdrawal(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+	var created model.UserWithdrawal
+	if err := common.Unmarshal(response.Data, &created); err != nil {
+		t.Fatalf("failed to decode withdrawal: %v", err)
+	}
+	if created.Channel != model.WithdrawalChannelUSDT {
+		t.Fatalf("channel = %s, want usdt", created.Channel)
+	}
+	if created.USDTNetwork != model.CryptoNetworkSolana {
+		t.Fatalf("usdt_network = %s, want solana", created.USDTNetwork)
+	}
+	if created.USDTAddress == "" {
+		t.Fatal("expected usdt address to be persisted")
+	}
+}
+
 func TestAdminApproveRejectAndMarkPaidWithdrawal(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	if err := db.AutoMigrate(&model.UserWithdrawal{}); err != nil {

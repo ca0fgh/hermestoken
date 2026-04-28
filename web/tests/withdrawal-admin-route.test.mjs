@@ -30,8 +30,12 @@ test('admin withdrawal table derives amount symbol from withdrawal currency', ()
     'src/components/table/withdrawals/WithdrawalsColumnDefs.jsx',
   );
   assert.match(columnDefsSource, /getWithdrawalCurrencySymbol/);
+  assert.match(columnDefsSource, /getWithdrawalChannelLabel/);
+  assert.match(columnDefsSource, /getWithdrawalPayoutAccount/);
   assert.match(columnDefsSource, /record\?\.currency/);
-  assert.match(columnDefsSource, /支付宝姓名/);
+  assert.match(columnDefsSource, /提现方式/);
+  assert.match(columnDefsSource, /收款账号/);
+  assert.match(columnDefsSource, /收款备注/);
   assert.match(columnDefsSource, /copyable/);
   assert.doesNotMatch(columnDefsSource, /maskAlipayAccount/);
 });
@@ -42,7 +46,7 @@ test('admin withdrawal filters use a single unified keyword search', () => {
   );
   const hookSource = readSource('src/hooks/withdrawals/useWithdrawalsData.jsx');
 
-  assert.match(filtersSource, /搜索提现单号 \/ 用户名 \/ 支付宝账号/);
+  assert.match(filtersSource, /搜索提现单号 \/ 用户名 \/ 支付宝账号 \/ USDT地址/);
   assert.match(filtersSource, /用户 ID/);
   assert.doesNotMatch(filtersSource, /placeholder=\{t\('用户 ID'\)\}/);
   assert.doesNotMatch(filtersSource, /filters\.userId/);

@@ -1,12 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Form, Row, Col, Spin, Typography } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess } from '../../../helpers';
+import {
+  API,
+  buildCryptoPaymentOptionUpdates,
+  showError,
+  showSuccess,
+} from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
 
-export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
+export default function SettingsPaymentGatewayCrypto(props) {
   const { t } = useTranslation();
+  const { options, refresh } = props;
+  const sectionTitle = props.hideSectionTitle ? undefined : t('USDT 设置');
   const [loading, setLoading] = useState(false);
   const formApiRef = useRef(null);
   const [inputs, setInputs] = useState({
@@ -25,6 +32,16 @@ export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
     CryptoBSCUSDTContract: '0x55d398326f99059fF775485246999027B3197955',
     CryptoBSCRPCURL: '',
     CryptoBSCConfirmations: 15,
+    CryptoPolygonEnabled: false,
+    CryptoPolygonReceiveAddress: '',
+    CryptoPolygonUSDTContract: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+    CryptoPolygonRPCURL: '',
+    CryptoPolygonConfirmations: 128,
+    CryptoSolanaEnabled: false,
+    CryptoSolanaReceiveAddress: '',
+    CryptoSolanaUSDTMint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+    CryptoSolanaRPCURL: '',
+    CryptoSolanaConfirmations: 32,
   });
 
   useEffect(() => {
@@ -57,6 +74,28 @@ export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
         '0x55d398326f99059fF775485246999027B3197955',
       CryptoBSCRPCURL: options.CryptoBSCRPCURL || '',
       CryptoBSCConfirmations: Number(options.CryptoBSCConfirmations || 15),
+      CryptoPolygonEnabled:
+        options.CryptoPolygonEnabled === true ||
+        options.CryptoPolygonEnabled === 'true',
+      CryptoPolygonReceiveAddress: options.CryptoPolygonReceiveAddress || '',
+      CryptoPolygonUSDTContract:
+        options.CryptoPolygonUSDTContract ||
+        '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+      CryptoPolygonRPCURL: options.CryptoPolygonRPCURL || '',
+      CryptoPolygonConfirmations: Number(
+        options.CryptoPolygonConfirmations || 128,
+      ),
+      CryptoSolanaEnabled:
+        options.CryptoSolanaEnabled === true ||
+        options.CryptoSolanaEnabled === 'true',
+      CryptoSolanaReceiveAddress: options.CryptoSolanaReceiveAddress || '',
+      CryptoSolanaUSDTMint:
+        options.CryptoSolanaUSDTMint ||
+        'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+      CryptoSolanaRPCURL: options.CryptoSolanaRPCURL || '',
+      CryptoSolanaConfirmations: Number(
+        options.CryptoSolanaConfirmations || 32,
+      ),
     };
     setInputs(nextInputs);
     formApiRef.current.setValues(nextInputs);
@@ -65,14 +104,12 @@ export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
   const submit = async () => {
     setLoading(true);
     try {
-      const entries = Object.entries(inputs).filter(([key, value]) => {
-        if (key === 'CryptoTronAPIKey' && value === '') return false;
-        return value !== undefined;
-      });
-      const requests = entries.map(([key, value]) =>
+      const formValues = formApiRef.current?.getValues?.() || {};
+      const entries = buildCryptoPaymentOptionUpdates(inputs, formValues);
+      const requests = entries.map(({ key, value }) =>
         API.put('/api/option/', {
           key,
-          value: typeof value === 'boolean' ? String(value) : String(value),
+          value,
         }),
       );
       const results = await Promise.all(requests);
@@ -97,7 +134,7 @@ export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
         onValueChange={setInputs}
         getFormApi={(api) => (formApiRef.current = api)}
       >
-        <Form.Section text={t('USDT 设置')}>
+        <Form.Section text={sectionTitle}>
           <Text type='secondary'>
             {t('仅支持 USDT，用户必须严格支付系统生成的唯一金额。')}
           </Text>
@@ -128,7 +165,7 @@ export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
                 field='CryptoUniqueSuffixMax'
                 label={t('尾数上限')}
                 min={99}
-                max={9999}
+                max={999999}
                 precision={0}
               />
             </Col>
@@ -197,6 +234,73 @@ export default function SettingsPaymentGatewayCrypto({ options, refresh }) {
                 field='CryptoBSCConfirmations'
                 label={t('BSC 确认数')}
                 min={8}
+                precision={0}
+              />
+            </Col>
+          </Row>
+        </Form.Section>
+        <Form.Section text='Polygon PoS'>
+          <Row gutter={16}>
+            <Col span={6}>
+              <Form.Switch
+                field='CryptoPolygonEnabled'
+                label={t('启用 Polygon PoS')}
+              />
+            </Col>
+            <Col span={18}>
+              <Form.Input
+                field='CryptoPolygonReceiveAddress'
+                label={t('Polygon 收款地址')}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input
+                field='CryptoPolygonUSDTContract'
+                label={t('Polygon USDT 合约地址')}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input field='CryptoPolygonRPCURL' label='Polygon RPC URL' />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber
+                field='CryptoPolygonConfirmations'
+                label={t('Polygon 确认数')}
+                min={32}
+                precision={0}
+              />
+            </Col>
+          </Row>
+        </Form.Section>
+        <Form.Section text='Solana'>
+          <Row gutter={16}>
+            <Col span={6}>
+              <Form.Switch
+                field='CryptoSolanaEnabled'
+                label={t('启用 Solana')}
+              />
+            </Col>
+            <Col span={18}>
+              <Form.Input
+                field='CryptoSolanaReceiveAddress'
+                label={t('Solana 收款地址')}
+                extraText={t('建议填写收款钱包的 USDT Token Account 地址')}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input
+                field='CryptoSolanaUSDTMint'
+                label={t('Solana USDT Mint 地址')}
+              />
+            </Col>
+            <Col span={12}>
+              <Form.Input field='CryptoSolanaRPCURL' label='Solana RPC URL' />
+            </Col>
+            <Col span={12}>
+              <Form.InputNumber
+                field='CryptoSolanaConfirmations'
+                label={t('Solana 确认数')}
+                min={1}
                 precision={0}
               />
             </Col>

@@ -27,8 +27,11 @@ import {
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import {
   formatWithdrawalAmount,
+  getWithdrawalChannelLabel,
+  getWithdrawalPayoutAccount,
+  getWithdrawalPayoutNote,
   getWithdrawalStatusMeta,
-  maskAlipayAccount,
+  maskWithdrawalPayoutAccount,
 } from '../../../helpers/withdrawal';
 
 const { Text } = Typography;
@@ -76,10 +79,23 @@ const WithdrawalHistoryModal = ({ visible, onCancel, t, config }) => {
         render: (value) => <Text copyable>{value}</Text>,
       },
       {
-        title: t('支付宝账号'),
-        dataIndex: 'alipay_account',
-        key: 'alipay_account',
-        render: (value) => maskAlipayAccount(value),
+        title: t('提现方式'),
+        dataIndex: 'channel',
+        key: 'channel',
+        render: (value) => getWithdrawalChannelLabel(value, t),
+      },
+      {
+        title: t('收款账号'),
+        key: 'payout_account',
+        render: (_, record) => {
+          const account = getWithdrawalPayoutAccount(record);
+          return <Text copyable={{ content: account }}>{maskWithdrawalPayoutAccount(record) || '--'}</Text>;
+        },
+      },
+      {
+        title: t('收款备注'),
+        key: 'payout_note',
+        render: (_, record) => getWithdrawalPayoutNote(record, t),
       },
       {
         title: t('申请金额'),

@@ -12,8 +12,10 @@ import (
 )
 
 const (
-	CryptoNetworkTronTRC20 = "tron_trc20"
-	CryptoNetworkBSCERC20  = "bsc_erc20"
+	CryptoNetworkTronTRC20  = "tron_trc20"
+	CryptoNetworkBSCERC20   = "bsc_erc20"
+	CryptoNetworkPolygonPOS = "polygon_pos"
+	CryptoNetworkSolana     = "solana"
 
 	CryptoTokenUSDT = "USDT"
 
@@ -32,6 +34,9 @@ const (
 	CryptoTransactionStatusConfirmed = "confirmed"
 	CryptoTransactionStatusIgnored   = "ignored"
 	CryptoTransactionStatusOrphaned  = "orphaned"
+
+	CryptoPaymentSuffixScale = 1_000_000
+	CryptoPaymentSuffixMax   = CryptoPaymentSuffixScale - 1
 )
 
 var (
@@ -122,10 +127,10 @@ func CryptoPayAmountFromSuffix(baseAmount decimal.Decimal, tokenDecimals int, su
 	if baseAmount.LessThanOrEqual(decimal.Zero) || tokenDecimals < 6 {
 		return "", "", ErrCryptoInvalidAmount
 	}
-	if suffix < 1 || suffix > 9999 {
+	if suffix < 1 || suffix > CryptoPaymentSuffixMax {
 		return "", "", ErrCryptoInvalidSuffix
 	}
-	payAmount := baseAmount.Add(decimal.NewFromInt(int64(suffix)).Div(decimal.NewFromInt(1_000_000)))
+	payAmount := baseAmount.Add(decimal.NewFromInt(int64(suffix)).Div(decimal.NewFromInt(CryptoPaymentSuffixScale)))
 	payDisplay := payAmount.StringFixed(6)
 	unitMultiplier := decimal.NewFromInt(10).Pow(decimal.NewFromInt(int64(tokenDecimals)))
 	baseUnits := payAmount.Mul(unitMultiplier).Round(0)
@@ -150,7 +155,7 @@ func cryptoRefCol(column string) string {
 type CreateCryptoTopUpOrderInput struct {
 	UserID                int
 	Network               string
-	Amount                int64
+	Amount                float64
 	ReceiveAddress        string
 	TokenContract         string
 	TokenDecimals         int
@@ -171,8 +176,8 @@ func CreateCryptoTopUpOrder(input CreateCryptoTopUpOrderInput) (*CryptoPaymentOr
 	if input.RequiredConfirmations <= 0 {
 		input.RequiredConfirmations = 20
 	}
-	if input.SuffixMax <= 0 || input.SuffixMax > 9999 {
-		input.SuffixMax = 9999
+	if input.SuffixMax <= 0 || input.SuffixMax > CryptoPaymentSuffixMax {
+		input.SuffixMax = CryptoPaymentSuffixMax
 	}
 	if input.Now.IsZero() {
 		input.Now = time.Now()
@@ -187,7 +192,8 @@ func CreateCryptoTopUpOrder(input CreateCryptoTopUpOrderInput) (*CryptoPaymentOr
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for attempt := 0; attempt < 20; attempt++ {
 			suffix := input.SuffixGenerator(input.SuffixMax)
-			payAmount, payBaseUnits, amountErr := CryptoPayAmountFromSuffix(decimal.NewFromInt(input.Amount), input.TokenDecimals, suffix)
+			baseAmount := decimal.NewFromFloat(input.Amount)
+			payAmount, payBaseUnits, amountErr := CryptoPayAmountFromSuffix(baseAmount, input.TokenDecimals, suffix)
 			if amountErr != nil {
 				return amountErr
 			}
@@ -231,7 +237,7 @@ func CreateCryptoTopUpOrder(input CreateCryptoTopUpOrderInput) (*CryptoPaymentOr
 				TokenContract:         strings.TrimSpace(input.TokenContract),
 				TokenDecimals:         input.TokenDecimals,
 				ReceiveAddress:        strings.TrimSpace(input.ReceiveAddress),
-				BaseAmount:            decimal.NewFromInt(input.Amount).StringFixed(6),
+				BaseAmount:            baseAmount.StringFixed(6),
 				PayAmount:             payAmount,
 				PayAmountBaseUnits:    payBaseUnits,
 				UniqueSuffix:          suffix,

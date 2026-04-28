@@ -81,6 +81,16 @@ const PaymentSetting = () => {
     CryptoBSCUSDTContract: '0x55d398326f99059fF775485246999027B3197955',
     CryptoBSCRPCURL: '',
     CryptoBSCConfirmations: 15,
+    CryptoPolygonEnabled: false,
+    CryptoPolygonReceiveAddress: '',
+    CryptoPolygonUSDTContract: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+    CryptoPolygonRPCURL: '',
+    CryptoPolygonConfirmations: 128,
+    CryptoSolanaEnabled: false,
+    CryptoSolanaReceiveAddress: '',
+    CryptoSolanaUSDTMint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+    CryptoSolanaRPCURL: '',
+    CryptoSolanaConfirmations: 32,
   });
 
   let [loading, setLoading] = useState(false);
@@ -189,6 +199,9 @@ const PaymentSetting = () => {
                 refresh={onRefresh}
                 hideSectionTitle
               />
+              <div style={{ marginTop: 24 }}>
+                <SettingsWithdrawal options={inputs} refresh={onRefresh} />
+              </div>
             </Tabs.TabPane>
             <Tabs.TabPane tab={t('易支付设置')} itemKey='epay'>
               <SettingsPaymentGateway
@@ -229,12 +242,10 @@ const PaymentSetting = () => {
               <SettingsPaymentGatewayCrypto
                 options={inputs}
                 refresh={onRefresh}
+                hideSectionTitle
               />
             </Tabs.TabPane>
           </Tabs>
-        </Card>
-        <Card style={{ marginTop: '10px' }}>
-          <SettingsWithdrawal options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

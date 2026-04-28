@@ -7,8 +7,9 @@ from pathlib import Path
 from unittest import mock
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1]
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
+TOOL_DIR = SCRIPTS_DIR / "tool"
+if str(TOOL_DIR) not in sys.path:
+    sys.path.insert(0, str(TOOL_DIR))
 
 import call_veo31
 
@@ -159,6 +160,75 @@ class CallVeo31Tests(unittest.TestCase):
         self.assertNotIn("sk-secret-value", output)
         self.assertIn("Authorization: Bearer sk-...alue", output)
 
+    def test_main_dry_run_uses_fixed_url_even_when_legacy_base_url_is_passed(self):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        exit_code = call_veo31.main(
+            [
+                "--api-key",
+                "sk-secret-value",
+                "--base-url",
+                "https://example.invalid",
+                "--prompt",
+                "test prompt",
+                "--dry-run",
+            ],
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+        self.assertEqual(exit_code, 0)
+        output = stdout.getvalue()
+        self.assertIn("POST https://hermestoken.top/v1/video/generations", output)
+        self.assertNotIn("example.invalid", output)
+
+    @mock.patch("call_veo31.getpass.getpass", return_value="sk-secret-value")
+    def test_main_interactive_dry_run_prompts_for_api_key_and_request_fields(self, getpass_mock):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        stdin = io.StringIO("\ninteractive prompt\n2\n6\n\ny\ny\n")
+
+        exit_code = call_veo31.main(
+            ["--interactive"],
+            stdout=stdout,
+            stderr=stderr,
+            stdin=stdin,
+        )
+
+        self.assertEqual(exit_code, 0)
+        getpass_mock.assert_called_once()
+        prompts = stderr.getvalue()
+        self.assertIn("模型", prompts)
+        self.assertIn("1. veo_3_1", prompts)
+        self.assertIn("2. veo_3_1-4K", prompts)
+        output = stdout.getvalue()
+        self.assertIn("POST https://hermestoken.top/v1/video/generations", output)
+        self.assertIn("interactive prompt", output)
+        self.assertIn('"size": "1280x720"', output)
+        self.assertIn('"seconds": "6"', output)
+        self.assertIn('"enable_upsample": "true"', output)
+        self.assertNotIn("sk-secret-value", output)
+
+    @mock.patch("call_veo31.getpass.getpass", return_value="sk-secret-value")
+    def test_main_interactive_can_select_4k_model_by_number(self, getpass_mock):
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        stdin = io.StringIO("2\n4k prompt\n1\n8\n\nn\ny\n")
+
+        exit_code = call_veo31.main(
+            ["--interactive"],
+            stdout=stdout,
+            stderr=stderr,
+            stdin=stdin,
+        )
+
+        self.assertEqual(exit_code, 0)
+        getpass_mock.assert_called_once()
+        output = stdout.getvalue()
+        self.assertIn('"model": "veo_3_1-4K"', output)
+        self.assertIn('"size": "720x1280"', output)
+
     @mock.patch("call_veo31.http_request_json")
     def test_submit_only_posts_form_and_returns_task(self, http_request_json):
         http_request_json.return_value = {"id": "task_123", "status": "queued"}
@@ -188,6 +258,29 @@ class CallVeo31Tests(unittest.TestCase):
         self.assertEqual(called_headers["Authorization"], "Bearer sk-secret-value")
         self.assertIn(b"test prompt", called_body)
         self.assertIn("task_123", stdout.getvalue())
+
+    @mock.patch("call_veo31.download_video")
+    @mock.patch("call_veo31.http_request_json")
+    def test_default_download_output_is_next_to_script(self, http_request_json, download_video):
+        http_request_json.return_value = {"url": "https://cdn.example/video.mp4"}
+        download_video.return_value = Path(call_veo31.DEFAULT_OUTPUT)
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        exit_code = call_veo31.main(
+            [
+                "--api-key",
+                "sk-secret-value",
+                "--prompt",
+                "test prompt",
+            ],
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(Path(call_veo31.DEFAULT_OUTPUT).parent, TOOL_DIR)
+        self.assertEqual(download_video.call_args.kwargs["output_path"], call_veo31.DEFAULT_OUTPUT)
 
 
 if __name__ == "__main__":

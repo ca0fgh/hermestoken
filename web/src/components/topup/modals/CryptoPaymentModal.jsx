@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Typography,
@@ -7,7 +7,8 @@ import {
   Progress,
   Banner,
 } from '@douyinfe/semi-ui';
-import { Copy, Wallet } from 'lucide-react';
+import { CircleCheckBig, Copy, Wallet } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { copy } from '../../../helpers';
 
 const { Text, Title } = Typography;
@@ -23,21 +24,36 @@ const terminalStatuses = new Set([
 ]);
 
 const CryptoPaymentModal = ({ t, open, order, onCancel }) => {
+  const isSuccess = order?.status === 'success';
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    if (!open || !order?.expires_at || isSuccess) return;
+    setNow(Math.floor(Date.now() / 1000));
+    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [open, order?.expires_at, isSuccess]);
+
   const secondsLeft = useMemo(() => {
     if (!order?.expires_at) return 0;
-    return Math.max(0, order.expires_at - Math.floor(Date.now() / 1000));
-  }, [order?.expires_at]);
+    return Math.max(0, order.expires_at - now);
+  }, [order?.expires_at, now]);
 
+  const confirmedConfirmations = order?.required_confirmations
+    ? Math.min(order.confirmations || 0, order.required_confirmations)
+    : order?.confirmations || 0;
   const progress = order?.required_confirmations
     ? Math.min(
         100,
         Math.round(
-          ((order.confirmations || 0) / order.required_confirmations) * 100,
+          (confirmedConfirmations / order.required_confirmations) * 100,
         ),
       )
     : 0;
-  const expired = order?.status === 'expired' || secondsLeft <= 0;
+  const expired =
+    !isSuccess && (order?.status === 'expired' || secondsLeft <= 0);
   const terminal = terminalStatuses.has(order?.status);
+  const paymentQrValue = order?.receive_address || '';
 
   return (
     <Modal
@@ -61,63 +77,104 @@ const CryptoPaymentModal = ({ t, open, order, onCancel }) => {
               {order.network === 'tron_trc20' ? 'TRON TRC-20' : 'BSC'}
             </Tag>
             <Tag color='blue'>USDT</Tag>
-            <Tag color={terminal ? 'grey' : 'orange'}>{order.status}</Tag>
+            <Tag color={isSuccess ? 'green' : terminal ? 'grey' : 'orange'}>
+              {isSuccess ? t('订单已完成') : order.status}
+            </Tag>
           </div>
 
-          <Banner
-            type='warning'
-            closeIcon={null}
-            description={t(
-              '请严格使用当前网络并支付完整显示金额。少付、多付、超时到账都不会自动入账。',
-            )}
-          />
-
-          <div className='rounded-xl border border-gray-200 p-4 space-y-3'>
-            <div>
-              <Text type='secondary'>{t('应付金额')}</Text>
-              <div className='flex items-center justify-between gap-2'>
-                <Title heading={3} style={{ margin: 0 }}>
-                  {order.pay_amount} USDT
-                </Title>
-                <Button
-                  icon={<Copy size={14} />}
-                  disabled={expired}
-                  onClick={() => copy(order.pay_amount)}
-                >
-                  {t('复制')}
-                </Button>
+          {isSuccess && (
+            <div className='flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3'>
+              <CircleCheckBig
+                size={22}
+                className='mt-0.5 shrink-0'
+                color='var(--semi-color-success)'
+              />
+              <div>
+                <Text strong>{t('充值成功')}</Text>
+                <div className='text-sm text-gray-600'>
+                  {t('额度已自动入账，可关闭窗口后查看余额。')}
+                </div>
               </div>
             </div>
-            <div>
-              <Text type='secondary'>{t('收款地址')}</Text>
-              <div className='flex items-center justify-between gap-2 break-all'>
-                <Text copyable={false}>{order.receive_address}</Text>
-                <Button
-                  icon={<Copy size={14} />}
-                  disabled={expired}
-                  onClick={() => copy(order.receive_address)}
-                >
-                  {t('复制')}
-                </Button>
+          )}
+
+          {!isSuccess && (
+            <Banner
+              type='warning'
+              closeIcon={null}
+              description={t(
+                '请严格使用当前网络并支付完整显示金额。少付、多付、超时到账都不会自动入账。',
+              )}
+            />
+          )}
+
+          <div className='rounded-xl border border-gray-200 p-4'>
+            <div className='flex flex-col gap-4 md:flex-row md:items-start md:justify-between'>
+              <div className='min-w-0 flex-1 space-y-3'>
+                <div>
+                  <Text type='secondary'>{t('应付金额')}</Text>
+                  <div className='flex items-center justify-between gap-2'>
+                    <Title heading={3} style={{ margin: 0 }}>
+                      {order.pay_amount} USDT
+                    </Title>
+                    <Button
+                      icon={<Copy size={14} />}
+                      disabled={expired}
+                      onClick={() => copy(order.pay_amount)}
+                    >
+                      {t('复制')}
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Text type='secondary'>{t('收款地址')}</Text>
+                  <div className='flex items-center justify-between gap-2 break-all'>
+                    <Text copyable={false}>{order.receive_address}</Text>
+                    <Button
+                      icon={<Copy size={14} />}
+                      disabled={expired}
+                      onClick={() => copy(order.receive_address)}
+                    >
+                      {t('复制')}
+                    </Button>
+                  </div>
+                </div>
               </div>
+
+              {!isSuccess && paymentQrValue && (
+                <div className='mx-auto flex w-36 shrink-0 flex-col items-center gap-2 rounded-lg border border-gray-100 bg-white p-2 md:mx-0'>
+                  <QRCodeSVG
+                    value={paymentQrValue}
+                    size={128}
+                    level='M'
+                    role='img'
+                    aria-label={t('收款地址二维码')}
+                  />
+                  <Text type='secondary' size='small'>
+                    {t('收款地址二维码')}
+                  </Text>
+                </div>
+              )}
             </div>
           </div>
 
           <div className='space-y-2'>
-            <div className='flex justify-between'>
-              <Text type='secondary'>{t('订单倒计时')}</Text>
-              <Text strong>
-                {expired
-                  ? t('已过期')
-                  : `${Math.floor(secondsLeft / 60)}:${String(
-                      secondsLeft % 60,
-                    ).padStart(2, '0')}`}
-              </Text>
-            </div>
+            {!isSuccess && (
+              <div className='flex justify-between'>
+                <Text type='secondary'>{t('订单倒计时')}</Text>
+                <Text strong>
+                  {expired
+                    ? t('已过期')
+                    : `${Math.floor(secondsLeft / 60)}:${String(
+                        secondsLeft % 60,
+                      ).padStart(2, '0')}`}
+                </Text>
+              </div>
+            )}
             <div className='flex justify-between'>
               <Text type='secondary'>{t('确认进度')}</Text>
               <Text>
-                {order.confirmations || 0}/{order.required_confirmations}
+                {confirmedConfirmations}/{order.required_confirmations}
               </Text>
             </div>
             <Progress percent={progress} showInfo={false} />

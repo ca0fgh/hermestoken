@@ -27,13 +27,17 @@ func StartCryptoPaymentScanners() {
 }
 
 func BuildConfiguredScanners() []NetworkScanner {
-	scanners := make([]NetworkScanner, 0, 2)
+	scanners := make([]NetworkScanner, 0, 4)
 	for _, network := range setting.GetEnabledCryptoPaymentNetworks() {
 		switch network.Network {
 		case model.CryptoNetworkBSCERC20:
 			scanners = append(scanners, NewBSCScanner(network))
+		case model.CryptoNetworkPolygonPOS:
+			scanners = append(scanners, NewPolygonScanner(network))
 		case model.CryptoNetworkTronTRC20:
 			scanners = append(scanners, NewTronScanner(network))
+		case model.CryptoNetworkSolana:
+			scanners = append(scanners, NewSolanaScanner(network))
 		}
 	}
 	return scanners

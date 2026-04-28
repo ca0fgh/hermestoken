@@ -86,10 +86,10 @@ func TestRequestStripePayStoresComputedMoneyWithoutStripePriceID(t *testing.T) {
 	originalGenerator := stripeCheckoutLinkGenerator
 	var captured struct {
 		referenceID string
-		amount      int64
+		amount      float64
 		payMoney    float64
 	}
-	stripeCheckoutLinkGenerator = func(referenceID string, customerID string, email string, amount int64, payMoney float64, successURL string, cancelURL string) (string, error) {
+	stripeCheckoutLinkGenerator = func(referenceID string, customerID string, email string, amount float64, payMoney float64, successURL string, cancelURL string) (string, error) {
 		captured.referenceID = referenceID
 		captured.amount = amount
 		captured.payMoney = payMoney
@@ -119,7 +119,7 @@ func TestRequestStripePayStoresComputedMoneyWithoutStripePriceID(t *testing.T) {
 		t.Fatalf("failed to load created stripe topup: %v", err)
 	}
 	if topUp.Amount != 10 {
-		t.Fatalf("expected stored amount 10, got %d", topUp.Amount)
+		t.Fatalf("expected stored amount 10, got %s", formatTopUpAmount(topUp.Amount))
 	}
 	if topUp.Money != 25 {
 		t.Fatalf("expected stored money 25, got %.2f", topUp.Money)
