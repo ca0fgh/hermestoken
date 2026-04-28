@@ -46,7 +46,6 @@ const MINIMAL_SHELL_FALLBACK = (
   <div className='min-h-screen bg-white dark:bg-slate-950' />
 );
 
-
 async function fetchStatusPayload() {
   const response = await fetch('/api/status', {
     headers: {

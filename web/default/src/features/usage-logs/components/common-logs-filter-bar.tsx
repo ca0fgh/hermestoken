@@ -65,6 +65,8 @@ export function CommonLogsFilterBar({
     if (searchParams.requestId) next.requestId = searchParams.requestId
 
     if (Object.keys(next).length > 0) {
+      // URL search params are the external source of truth for this draft form.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFilters((prev) => ({ ...prev, ...next }))
     }
 
