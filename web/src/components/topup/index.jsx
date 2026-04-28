@@ -854,9 +854,13 @@ const TopUp = () => {
     if (value === undefined) {
       value = topUpCount;
     }
+    if (!enableOnlineTopUp && enableStripeTopUp) {
+      await getStripeAmount(value);
+      return;
+    }
     if (!enableOnlineTopUp && enableCryptoTopUp) {
       setAmount(parseFloat(value) || 0);
-      setAmountCurrency('USD');
+      setAmountCurrency('USDT');
       return;
     }
     setAmountLoading(true);
@@ -946,6 +950,12 @@ const TopUp = () => {
   const selectPresetAmount = (preset) => {
     setTopUpCount(preset.value);
     setSelectedPreset(preset.value);
+
+    if (!enableOnlineTopUp && !enableStripeTopUp && enableCryptoTopUp) {
+      setAmount(preset.value);
+      setAmountCurrency('USDT');
+      return;
+    }
 
     // 计算实际支付金额，考虑折扣
     const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;

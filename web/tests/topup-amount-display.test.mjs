@@ -20,7 +20,7 @@ function createStorage(seed = {}) {
   };
 }
 
-test('top-up payment amount display converts CNY quotes through the USD exchange rate', async () => {
+test('top-up ordinary gateway amount displays the CNY settlement amount', async () => {
   const previousStorage = globalThis.localStorage;
   globalThis.localStorage = createStorage({
     quota_display_type: 'USD',
@@ -31,7 +31,7 @@ test('top-up payment amount display converts CNY quotes through the USD exchange
     '../src/components/topup/topupAmount.js'
   );
 
-  assert.equal(formatTopUpPaymentAmount(70, 'CNY'), '$10.00');
+  assert.equal(formatTopUpPaymentAmount(70, 'CNY'), '¥70.00');
 
   if (previousStorage === undefined) {
     delete globalThis.localStorage;
@@ -40,7 +40,7 @@ test('top-up payment amount display converts CNY quotes through the USD exchange
   }
 });
 
-test('top-up payment amount display can convert USD quotes to CNY', async () => {
+test('top-up Stripe amount displays the USD settlement amount', async () => {
   const previousStorage = globalThis.localStorage;
   globalThis.localStorage = createStorage({
     quota_display_type: 'CNY',
@@ -51,7 +51,7 @@ test('top-up payment amount display can convert USD quotes to CNY', async () => 
     '../src/components/topup/topupAmount.js'
   );
 
-  assert.equal(formatTopUpPaymentAmount(10, 'USD'), '¥70.00');
+  assert.equal(formatTopUpPaymentAmount(10, 'USD'), '$10.00');
 
   if (previousStorage === undefined) {
     delete globalThis.localStorage;
