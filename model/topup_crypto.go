@@ -454,6 +454,10 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 	if transfer.ObservedAt.IsZero() {
 		transfer.ObservedAt = time.Now()
 	}
+	paidAtUnix := transfer.ObservedAt.Unix()
+	if transfer.BlockTimestamp > 0 {
+		paidAtUnix = transfer.BlockTimestamp
+	}
 	var savedTx CryptoPaymentTransaction
 	var matchedOrder *CryptoPaymentOrder
 	err := DB.Transaction(func(tx *gorm.DB) error {
@@ -502,8 +506,8 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 
 		var orders []CryptoPaymentOrder
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(
-			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at >= ? AND status = ?",
-			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, transfer.ObservedAt.Unix(), CryptoPaymentStatusPending,
+			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at >= ? AND status IN ?",
+			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, paidAtUnix, []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
 		).Find(&orders).Error; err != nil {
 			return err
 		}
@@ -536,7 +540,7 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 		var expired CryptoPaymentOrder
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(
 			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at < ? AND status IN ?",
-			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, transfer.ObservedAt.Unix(), []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
+			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, paidAtUnix, []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
 		).Order("expires_at desc").First(&expired).Error
 		if err == nil {
 			expired.Status = CryptoPaymentStatusLatePaid

@@ -1,8 +1,12 @@
 package crypto_payment
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,4 +31,22 @@ func TestDecodeBSCTransferLog(t *testing.T) {
 	assert.Equal(t, "10000000000000000000", transfer.AmountBaseUnits)
 	assert.Equal(t, int64(100), transfer.BlockNumber)
 	assert.Equal(t, 1, transfer.LogIndex)
+}
+
+func TestBSCBlockTimestamp(t *testing.T) {
+	originalURL := setting.CryptoBSCRPCURL
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"timestamp":"0x65"}}`))
+	}))
+	t.Cleanup(func() {
+		setting.CryptoBSCRPCURL = originalURL
+		server.Close()
+	})
+	setting.CryptoBSCRPCURL = server.URL
+
+	scanner := NewBSCScanner(setting.CryptoPaymentNetworkConfig{})
+	timestamp, err := scanner.blockTimestamp(context.Background(), 100)
+	require.NoError(t, err)
+	assert.EqualValues(t, 101, timestamp)
 }

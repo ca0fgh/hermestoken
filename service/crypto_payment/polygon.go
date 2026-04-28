@@ -52,6 +52,7 @@ func (s *PolygonScanner) ScanOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	blockTimestamps := make(map[int64]int64)
 	for _, item := range logs {
 		transfer, err := decodeBSCTransferLog(item, s.config.Decimals)
 		if err != nil {
@@ -60,8 +61,17 @@ func (s *PolygonScanner) ScanOnce(ctx context.Context) error {
 		if !strings.EqualFold(transfer.ToAddress, s.config.ReceiveAddress) {
 			continue
 		}
+		blockTimestamp, ok := blockTimestamps[transfer.BlockNumber]
+		if !ok {
+			blockTimestamp, err = s.blockTimestamp(ctx, transfer.BlockNumber)
+			if err != nil {
+				return err
+			}
+			blockTimestamps[transfer.BlockNumber] = blockTimestamp
+		}
 		transfer.Network = s.Network()
 		transfer.TokenContract = s.config.Contract
+		transfer.BlockTimestamp = blockTimestamp
 		transfer.Confirmations = currentBlock - transfer.BlockNumber + 1
 		transfer.ObservedAt = time.Now()
 		if _, _, err := model.RecordCryptoTransfer(transfer); err != nil {
@@ -77,6 +87,17 @@ func (s *PolygonScanner) currentBlock(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return parseHexInt64(result)
+}
+
+func (s *PolygonScanner) blockTimestamp(ctx context.Context, blockNumber int64) (int64, error) {
+	var block evmRPCBlock
+	if err := s.rpc(ctx, "eth_getBlockByNumber", []interface{}{fmt.Sprintf("0x%x", blockNumber), false}, &block); err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(block.Timestamp) == "" {
+		return 0, fmt.Errorf("Polygon block %d response missing timestamp", blockNumber)
+	}
+	return parseHexInt64(block.Timestamp)
 }
 
 func (s *PolygonScanner) getLogs(ctx context.Context, fromBlock int64, toBlock int64) ([]bscRPCLog, error) {
