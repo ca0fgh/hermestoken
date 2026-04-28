@@ -36,7 +36,10 @@ func TestInternalPublicHomeEndpointReturnsNoCacheHTML(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	SetWebRouter(r, embed.FS{}, []byte(`<!doctype html><html><head></head><body><div id="root"></div></body></html>`))
+	SetWebRouter(r, ThemeAssets{
+		DefaultBuildFS:   embed.FS{},
+		DefaultIndexPage: []byte(`<!doctype html><html><head></head><body><div id="root"></div></body></html>`),
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/__internal/public-home", nil)
 	rec := httptest.NewRecorder()

@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -406,6 +407,15 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	info.IsChannelTest = true
 	info.InitChannelMeta(c)
 
+	err = attachTestBillingRequestInput(info, request)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+		}
+	}
+
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return testResult{
@@ -645,28 +655,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
-	quota := 0
-	if !priceData.UsePrice {
-		quota = usage.PromptTokens + int(math.Round(float64(usage.CompletionTokens)*priceData.CompletionRatio))
-		quota = int(math.Round(float64(quota) * priceData.ModelRatio * priceData.GroupRatioInfo.GroupRatio))
-		if priceData.GroupRatioInfo.GroupRatio != 0 && priceData.ModelRatio != 0 && quota <= 0 {
-			quota = 1
-		}
-	} else {
-		quota = int(math.Round(priceData.ModelPrice * priceData.GroupRatioInfo.GroupRatio * common.QuotaPerUnit))
-	}
+	info.SetEstimatePromptTokens(usage.PromptTokens)
+
+	quota, tieredResult := settleTestQuota(info, priceData, usage)
 	milliseconds := time.Since(tik).Milliseconds()
-	other := service.GenerateTextOtherInfo(
-		c,
-		info,
-		priceData.ModelRatio,
-		priceData.GroupRatioInfo.GroupRatio,
-		priceData.CompletionRatio,
-		usage.PromptTokensDetails.CachedTokens,
-		priceData.CacheRatio,
-		priceData.ModelPrice,
-		priceData.GroupRatioInfo.GroupSpecialRatio,
-	)
+	other := buildTestLogOther(c, info, priceData, usage, tieredResult)
 	addChannelTestLogInfo(other, channelTestGroups, info.UsingGroup)
 	if channelTestLogGroup == "" {
 		channelTestLogGroup = c.GetString("group")
@@ -691,6 +684,50 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		localErr:    nil,
 		newAPIError: nil,
 	}
+}
+
+func attachTestBillingRequestInput(info *relaycommon.RelayInfo, request dto.Request) error {
+	if info == nil {
+		return nil
+	}
+
+	input, err := helper.BuildBillingExprRequestInputFromRequest(request, info.RequestHeaders)
+	if err != nil {
+		return err
+	}
+	info.BillingRequestInput = &input
+	return nil
+}
+
+func settleTestQuota(info *relaycommon.RelayInfo, priceData types.PriceData, usage *dto.Usage) (int, *billingexpr.TieredResult) {
+	if usage != nil && info != nil && info.TieredBillingSnapshot != nil {
+		isClaudeUsageSemantic := usage.UsageSemantic == "anthropic" || info.GetFinalRequestRelayFormat() == types.RelayFormatClaude
+		usedVars := billingexpr.UsedVars(info.TieredBillingSnapshot.ExprString)
+		if ok, quota, result := service.TryTieredSettle(info, service.BuildTieredTokenParams(usage, isClaudeUsageSemantic, usedVars)); ok {
+			return quota, result
+		}
+	}
+
+	quota := 0
+	if !priceData.UsePrice {
+		quota = usage.PromptTokens + int(math.Round(float64(usage.CompletionTokens)*priceData.CompletionRatio))
+		quota = int(math.Round(float64(quota) * priceData.ModelRatio * priceData.GroupRatioInfo.GroupRatio))
+		if priceData.GroupRatioInfo.GroupRatio != 0 && priceData.ModelRatio != 0 && quota <= 0 {
+			quota = 1
+		}
+		return quota, nil
+	}
+
+	return int(math.Round(priceData.ModelPrice * priceData.GroupRatioInfo.GroupRatio * common.QuotaPerUnit)), nil
+}
+
+func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData types.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
+	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
+		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
+	if tieredResult != nil {
+		service.InjectTieredBillingInfo(other, info, tieredResult)
+	}
+	return other
 }
 
 func coerceTestUsage(usageAny any, isStream bool, estimatePromptTokens int) (*dto.Usage, error) {

@@ -41,6 +41,8 @@ type userSchemaWithoutGroupDefault struct {
 	Setting             string         `gorm:"column:setting;type:text"`
 	Remark              string         `gorm:"column:remark;type:text"`
 	StripeCustomer      string         `gorm:"column:stripe_customer;type:text"`
+	CreatedAt           int64          `gorm:"column:created_at;type:bigint"`
+	LastLoginAt         int64          `gorm:"column:last_login_at;type:bigint;default:0"`
 }
 
 func (userSchemaWithoutGroupDefault) TableName() string {

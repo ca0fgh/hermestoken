@@ -38,29 +38,35 @@ RUN set -eux; \
       rm -f "$missing_assets_file" "$missing_assets_file.refs"; \
     }; \
     build_web_dist() { \
+      app_dir="$1"; \
+      out_dir="$2"; \
       version="$(resolve_version)"; \
-      cd web; \
+      cd "/build/$app_dir"; \
       bun install --registry "${NPM_REGISTRY}"; \
       DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$version" bun run build; \
-      mkdir -p /build/dist; \
-      cp -R dist/. /build/dist/; \
-      validate_dist_integrity /build/dist; \
+      mkdir -p "$out_dir"; \
+      cp -R dist/. "$out_dir/"; \
+      validate_dist_integrity "$out_dir"; \
     }; \
     copy_prebuilt_dist() { \
-      if [ ! -d web/dist ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then \
-        echo "web/dist is empty; use WEB_DIST_STRATEGY=build or provide a prebuilt dist" >&2; \
+      app_dir="$1"; \
+      out_dir="$2"; \
+      if [ ! -d "$app_dir/dist" ] || [ -z "$(ls -A "$app_dir/dist" 2>/dev/null)" ]; then \
+        echo "$app_dir/dist is empty; use WEB_DIST_STRATEGY=build or provide a prebuilt dist" >&2; \
         exit 1; \
       fi; \
-      mkdir -p /build/dist; \
-      cp -R web/dist/. /build/dist/; \
-      validate_dist_integrity /build/dist; \
+      mkdir -p "$out_dir"; \
+      cp -R "$app_dir/dist/." "$out_dir/"; \
+      validate_dist_integrity "$out_dir"; \
     }; \
     case "$WEB_DIST_STRATEGY" in \
       build) \
-        build_web_dist; \
+        build_web_dist web/default /build/default-dist; \
+        build_web_dist web/classic /build/classic-dist; \
         ;; \
       prebuilt) \
-        copy_prebuilt_dist; \
+        copy_prebuilt_dist web/default /build/default-dist; \
+        copy_prebuilt_dist web/classic /build/classic-dist; \
         ;; \
       *) \
         echo "Unsupported WEB_DIST_STRATEGY: $WEB_DIST_STRATEGY" >&2; \
@@ -94,13 +100,14 @@ RUN set -eux; \
     [ "$n" -lt 5 ]
 
 COPY . .
-COPY --from=builder /build/dist ./web/dist
+COPY --from=builder /build/default-dist ./web/default/dist
+COPY --from=builder /build/classic-dist ./web/classic/dist
 RUN set -eux; \
     version="$(tr -d '\r\n' < VERSION 2>/dev/null || true)"; \
     if [ -z "$version" ]; then \
       version="${APP_VERSION:-dev}"; \
     fi; \
-    go build -tags embed -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${version}'" -o new-api
+    go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${version}'" -o new-api
 
 FROM mirror.gcr.io/library/debian:bookworm-slim
 

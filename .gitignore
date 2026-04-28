@@ -6,20 +6,25 @@ upload
 *.db
 *.db-journal
 logs*
+web/default/dist
+web/classic/dist
+web/node_modules
+web/dist
+.env
 one-api
 new-api
 /__debug_bin*
 tiktoken_cache
 .gocache
 .gomodcache/
-
+.cache
+plans
 .claude
+.cursor
 
 data/
 .gocache-temp
 .gopath
-
-
 # Workspace-local files
 /.worktrees/
 /.scripts/
@@ -66,6 +71,7 @@ node_modules/
 .next/
 .nuxt/
 .parcel-cache/
+.vite/
 .cache/
 .eslintcache
 dist/
@@ -119,4 +125,6 @@ appendonlydir/
 .langgraph_api/
 .data/
 .gstack/
+.test
 token_estimator_test.go
+skills-lock.json

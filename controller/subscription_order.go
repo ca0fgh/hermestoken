@@ -18,6 +18,7 @@ func createPendingSubscriptionOrder(
 	tradeNo string,
 	paymentMethod string,
 	validate func(plan *model.SubscriptionPlan) error,
+	paymentProvider ...string,
 ) (*model.SubscriptionPlan, error) {
 	if quantity <= 0 {
 		return nil, errors.New("invalid quantity")
@@ -59,6 +60,10 @@ func createPendingSubscriptionOrder(
 		}
 
 		orderTotal := getSubscriptionOrderTotal(lockedPlan.PriceAmount, quantity)
+		provider := ""
+		if len(paymentProvider) > 0 {
+			provider = paymentProvider[0]
+		}
 		order := &model.SubscriptionOrder{
 			UserId:          userId,
 			PlanId:          lockedPlan.Id,
@@ -68,6 +73,7 @@ func createPendingSubscriptionOrder(
 			Quantity:        quantity,
 			TradeNo:         tradeNo,
 			PaymentMethod:   paymentMethod,
+			PaymentProvider: provider,
 			CreateTime:      time.Now().Unix(),
 			Status:          "pending",
 			StockReserved:   stockReserved,

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
+func TestStripeWebhookEnabledRequiresWebhookConfig(t *testing.T) {
 	originalAPISecret := setting.StripeApiSecret
 	originalWebhookSecret := setting.StripeWebhookSecret
 	originalPriceID := setting.StripePriceId
@@ -27,7 +27,7 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.True(t, isStripeWebhookEnabled())
 
 	setting.StripePriceId = ""
-	require.False(t, isStripeWebhookEnabled())
+	require.True(t, isStripeWebhookEnabled())
 }
 
 func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {

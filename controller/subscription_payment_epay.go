@@ -85,6 +85,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 			}
 			return nil
 		},
+		model.PaymentProviderEpay,
 	)
 	if err != nil {
 		common.ApiError(c, err)
@@ -93,12 +94,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	total := getSubscriptionOrderTotal(plan.PriceAmount, quantity)
 	paymentTotal := getSubscriptionEpayPaymentTotal(total)
 	if paymentTotal < 0.01 {
-		_ = model.ExpireSubscriptionOrder(tradeNo)
+		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
 		common.ApiErrorMsg(c, "支付金额过低")
 		return
 	}
 	if err := model.UpdateSubscriptionOrderPaymentAmount(tradeNo, paymentTotal, "CNY"); err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo)
+		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
 		common.ApiErrorMsg(c, "创建订单失败")
 		return
 	}
@@ -112,7 +113,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo)
+		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
@@ -165,8 +166,9 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
 	verification := &model.SubscriptionPaymentVerification{
-		PaymentMethod: verifyInfo.Type,
-		PaidMoney:     verifyInfo.Money,
+		PaymentMethod:   verifyInfo.Type,
+		PaymentProvider: model.PaymentProviderEpay,
+		PaidMoney:       verifyInfo.Money,
 	}
 	if err := model.CompleteSubscriptionOrderWithValidation(verifyInfo.ServiceTradeNo, verification, common.GetJsonString(verifyInfo)); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
@@ -201,8 +203,9 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
 		verification := &model.SubscriptionPaymentVerification{
-			PaymentMethod: verifyInfo.Type,
-			PaidMoney:     verifyInfo.Money,
+			PaymentMethod:   verifyInfo.Type,
+			PaymentProvider: model.PaymentProviderEpay,
+			PaidMoney:       verifyInfo.Money,
 		}
 		if err := model.CompleteSubscriptionOrderWithValidation(verifyInfo.ServiceTradeNo, verification, common.GetJsonString(verifyInfo)); err != nil {
 			renderBrowserRedirect(c, target)

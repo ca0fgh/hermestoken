@@ -130,17 +130,6 @@ type AmountRequest struct {
 	Amount float64 `json:"amount"`
 }
 
-var nonEpayPaymentMethodsForCallback = []string{
-	model.PaymentMethodStripe,
-	model.PaymentMethodCreem,
-	model.PaymentMethodWaffo,
-	model.PaymentMethodWaffoPancake,
-}
-
-func isNonEpayPaymentMethodForEpayCallback(paymentMethod string) bool {
-	return lo.Contains(nonEpayPaymentMethodsForCallback, paymentMethod)
-}
-
 func GetEpayClient() *epay.Client {
 	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
 		return nil
@@ -262,13 +251,14 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).InexactFloat64()
 	}
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        amount,
-		Money:         payMoney,
-		TradeNo:       tradeNo,
-		PaymentMethod: req.PaymentMethod,
-		CreateTime:    time.Now().Unix(),
-		Status:        "pending",
+		UserId:          id,
+		Amount:          amount,
+		Money:           payMoney,
+		TradeNo:         tradeNo,
+		PaymentMethod:   req.PaymentMethod,
+		PaymentProvider: model.PaymentProviderEpay,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -400,6 +390,8 @@ func EpayReturn(c *gin.Context) {
 		}
 		renderBrowserRedirect(c, topUpResultURL("success"))
 		return
+	} else {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 return 忽略事件 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 	}
 
 	renderBrowserRedirect(c, topUpResultURL("pending"))
@@ -432,6 +424,9 @@ func completeEpayTopUp(tradeNo string, paidType string, paidMoney string) error 
 	}
 	if topUp.Status != common.TopUpStatusPending && topUp.Status != "pending" {
 		return fmt.Errorf("订单状态异常: %s", topUp.Status)
+	}
+	if topUp.PaymentProvider != "" && topUp.PaymentProvider != model.PaymentProviderEpay {
+		return fmt.Errorf("订单支付网关异常: %s", topUp.PaymentProvider)
 	}
 	if topUp.PaymentMethod == PaymentMethodStripe ||
 		topUp.PaymentMethod == PaymentMethodCreem ||

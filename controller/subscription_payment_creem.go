@@ -79,6 +79,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 			}
 			return nil
 		},
+		model.PaymentProviderCreem,
 	)
 	if err != nil {
 		common.ApiError(c, err)
@@ -105,7 +106,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 
 	checkoutUrl, err := subscriptionCreemCheckoutLinkGenerator(referenceId, product, user.Email, user.Username, quantity)
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(referenceId)
+		_ = model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderCreem)
 		log.Printf("获取Creem支付链接失败: %v", err)
 		c.JSON(200, gin.H{"message": "error", "data": "拉起支付失败"})
 		return

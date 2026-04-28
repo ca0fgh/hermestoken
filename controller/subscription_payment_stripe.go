@@ -101,6 +101,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 			}
 			return nil
 		},
+		model.PaymentProviderStripe,
 	)
 	if err != nil {
 		common.ApiError(c, err)
@@ -109,7 +110,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 
 	payLink, err := subscriptionStripeCheckoutLinkGenerator(referenceId, user.StripeCustomer, user.Email, plan.StripePriceId, int64(quantity))
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(referenceId)
+		_ = model.ExpireSubscriptionOrder(referenceId, model.PaymentProviderStripe)
 		log.Println("获取Stripe Checkout支付链接失败", err)
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return

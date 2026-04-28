@@ -51,10 +51,11 @@ var (
 )
 
 type SubscriptionPaymentVerification struct {
-	PaymentMethod string
-	PaidMoney     string
-	PaidCurrency  string
-	ProductID     string
+	PaymentMethod   string
+	PaymentProvider string
+	PaidMoney       string
+	PaidCurrency    string
+	ProductID       string
 }
 
 type SubscriptionWalletPurchaseResult struct {
@@ -242,12 +243,13 @@ type SubscriptionOrder struct {
 	PaymentCurrency string  `json:"payment_currency" gorm:"type:varchar(16);not null;default:''"`
 	Quantity        int     `json:"quantity" gorm:"type:int;not null;default:1"`
 
-	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
-	Status        string `json:"status"`
-	CreateTime    int64  `json:"create_time"`
-	CompleteTime  int64  `json:"complete_time"`
-	StockReserved int    `json:"stock_reserved" gorm:"type:int;default:0"`
+	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	Status          string `json:"status"`
+	CreateTime      int64  `json:"create_time"`
+	CompleteTime    int64  `json:"complete_time"`
+	StockReserved   int    `json:"stock_reserved" gorm:"type:int;default:0"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
 }
@@ -1001,16 +1003,19 @@ func PurchaseSubscriptionWithWallet(userId int, planId int, quantity int, tradeN
 	return result, nil
 }
 
-// CompleteSubscriptionOrder completes a pending order and optionally enforces
-// the expected payment method. Existing 2-arg callers remain supported.
-func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentMethod ...string) error {
-	var verification *SubscriptionPaymentVerification
-	if len(expectedPaymentMethod) > 0 && strings.TrimSpace(expectedPaymentMethod[0]) != "" {
-		verification = &SubscriptionPaymentVerification{
-			PaymentMethod: strings.TrimSpace(expectedPaymentMethod[0]),
-		}
+// CompleteSubscriptionOrder completes a pending order. Existing 2-arg callers
+// remain supported; optional guards are expected payment provider and actual
+// payment method, in that order.
+func CompleteSubscriptionOrder(tradeNo string, providerPayload string, guards ...string) error {
+	expectedPaymentProvider := ""
+	actualPaymentMethod := ""
+	if len(guards) > 0 {
+		expectedPaymentProvider = strings.TrimSpace(guards[0])
 	}
-	err := CompleteSubscriptionOrderWithValidation(tradeNo, verification, providerPayload)
+	if len(guards) > 1 {
+		actualPaymentMethod = strings.TrimSpace(guards[1])
+	}
+	err := completeSubscriptionOrderWithValidation(tradeNo, nil, providerPayload, expectedPaymentProvider, actualPaymentMethod)
 	if errors.Is(err, ErrSubscriptionOrderPaymentMethodMismatch) {
 		return ErrPaymentMethodMismatch
 	}
@@ -1020,6 +1025,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 func validateSubscriptionOrderPayment(order *SubscriptionOrder, plan *SubscriptionPlan, verification *SubscriptionPaymentVerification) error {
 	if verification == nil {
 		return nil
+	}
+	if verification.PaymentProvider != "" && order.PaymentProvider != "" && order.PaymentProvider != verification.PaymentProvider {
+		return ErrPaymentMethodMismatch
 	}
 	if verification.PaymentMethod != "" && order.PaymentMethod != verification.PaymentMethod {
 		return ErrSubscriptionOrderPaymentMethodMismatch
@@ -1053,6 +1061,10 @@ func validateSubscriptionOrderPayment(order *SubscriptionOrder, plan *Subscripti
 // CompleteSubscriptionOrderWithValidation completes a pending subscription order and verifies
 // the payment channel and amount when provider-specific evidence is available.
 func CompleteSubscriptionOrderWithValidation(tradeNo string, verification *SubscriptionPaymentVerification, providerPayload string) error {
+	return completeSubscriptionOrderWithValidation(tradeNo, verification, providerPayload, "", "")
+}
+
+func completeSubscriptionOrderWithValidation(tradeNo string, verification *SubscriptionPaymentVerification, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
@@ -1070,6 +1082,9 @@ func CompleteSubscriptionOrderWithValidation(tradeNo string, verification *Subsc
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
+		if expectedPaymentProvider != "" && order.PaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
+			return ErrPaymentMethodMismatch
+		}
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
 		}
@@ -1082,6 +1097,12 @@ func CompleteSubscriptionOrderWithValidation(tradeNo string, verification *Subsc
 		}
 		if err := validateSubscriptionOrderPayment(&order, plan, verification); err != nil {
 			return err
+		}
+		if verification != nil && order.PaymentProvider == "" {
+			order.PaymentProvider = strings.TrimSpace(verification.PaymentProvider)
+		}
+		if actualPaymentMethod != "" && order.PaymentMethod != actualPaymentMethod {
+			order.PaymentMethod = actualPaymentMethod
 		}
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
@@ -1142,15 +1163,16 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			topup = TopUp{
-				UserId:        order.UserId,
-				Amount:        0,
-				Money:         order.ExpectedPaymentMoney(),
-				TradeNo:       order.TradeNo,
-				PaymentMethod: order.PaymentMethod,
-				Currency:      order.ExpectedPaymentCurrency(),
-				CreateTime:    order.CreateTime,
-				CompleteTime:  now,
-				Status:        common.TopUpStatusSuccess,
+				UserId:          order.UserId,
+				Amount:          0,
+				Money:           order.ExpectedPaymentMoney(),
+				TradeNo:         order.TradeNo,
+				PaymentMethod:   order.PaymentMethod,
+				PaymentProvider: order.PaymentProvider,
+				Currency:        order.ExpectedPaymentCurrency(),
+				CreateTime:      order.CreateTime,
+				CompleteTime:    now,
+				Status:          common.TopUpStatusSuccess,
 			}
 			return tx.Create(&topup).Error
 		}
@@ -1163,6 +1185,9 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	if topup.PaymentMethod == "" {
 		topup.PaymentMethod = order.PaymentMethod
 	}
+	if topup.PaymentProvider == "" {
+		topup.PaymentProvider = order.PaymentProvider
+	}
 	if topup.CreateTime == 0 {
 		topup.CreateTime = order.CreateTime
 	}
@@ -1171,7 +1196,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	return tx.Save(&topup).Error
 }
 
-func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string) (bool, error) {
+func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string, expectedPaymentProvider string) (bool, error) {
 	if tx == nil {
 		return false, errors.New("tx is nil")
 	}
@@ -1185,6 +1210,9 @@ func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string) (bool, error) {
 	var order SubscriptionOrder
 	if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 		return false, ErrSubscriptionOrderNotFound
+	}
+	if expectedPaymentProvider != "" && order.PaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
+		return false, ErrPaymentMethodMismatch
 	}
 	if order.Status != common.TopUpStatusPending {
 		return false, nil
@@ -1203,29 +1231,16 @@ func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string) (bool, error) {
 	return true, tx.Save(&order).Error
 }
 
-func ExpireSubscriptionOrder(tradeNo string, expectedPaymentMethod ...string) error {
+func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider ...string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
 	}
-	var expectedMethod string
-	if len(expectedPaymentMethod) > 0 {
-		expectedMethod = strings.TrimSpace(expectedPaymentMethod[0])
+	expectedProvider := ""
+	if len(expectedPaymentProvider) > 0 {
+		expectedProvider = strings.TrimSpace(expectedPaymentProvider[0])
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		if expectedMethod != "" {
-			refCol := "`trade_no`"
-			if common.UsingPostgreSQL {
-				refCol = `"trade_no"`
-			}
-			var order SubscriptionOrder
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
-				return ErrSubscriptionOrderNotFound
-			}
-			if order.PaymentMethod != expectedMethod {
-				return ErrPaymentMethodMismatch
-			}
-		}
-		_, err := expireSubscriptionOrderTx(tx, tradeNo)
+		_, err := expireSubscriptionOrderTx(tx, tradeNo, expectedProvider)
 		return err
 	})
 }
@@ -1253,7 +1268,7 @@ func ExpirePendingSubscriptionOrdersCreatedBefore(cutoffUnix int64, limit int) (
 		expired := false
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			var expireErr error
-			expired, expireErr = expireSubscriptionOrderTx(tx, tradeNo)
+			expired, expireErr = expireSubscriptionOrderTx(tx, tradeNo, "")
 			return expireErr
 		})
 		if err != nil {

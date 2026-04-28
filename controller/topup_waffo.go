@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -208,14 +210,15 @@ func RequestWaffoPay(c *gin.Context) {
 
 	// 创建本地订单
 	topUp := &model.TopUp{
-		UserId:        id,
-		Amount:        float64(amount),
-		Money:         payMoney,
-		TradeNo:       merchantOrderId,
-		PaymentMethod: "waffo",
-		Currency:      currency,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          id,
+		Amount:          float64(amount),
+		Money:           payMoney,
+		TradeNo:         merchantOrderId,
+		PaymentMethod:   model.PaymentMethodWaffo,
+		PaymentProvider: model.PaymentProviderWaffo,
+		Currency:        currency,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
 		log.Printf("Waffo 创建本地订单失败: %v", err)
@@ -372,10 +375,10 @@ func handleWaffoPayment(c *gin.Context, wh *core.WebhookHandler, result *core.Pa
 		log.Printf("Waffo 订单状态非成功: %s, 订单: %s", result.OrderStatus, result.MerchantOrderID)
 		// 终态失败订单标记为 failed，避免永远停在 pending
 		if result.MerchantOrderID != "" {
-			if topUp := model.GetTopUpByTradeNo(result.MerchantOrderID); topUp != nil &&
-				topUp.Status == common.TopUpStatusPending {
-				topUp.Status = common.TopUpStatusFailed
-				_ = topUp.Update()
+			if err := model.UpdatePendingTopUpStatus(result.MerchantOrderID, model.PaymentProviderWaffo, common.TopUpStatusFailed); err != nil &&
+				!errors.Is(err, model.ErrTopUpNotFound) &&
+				!errors.Is(err, model.ErrTopUpStatusInvalid) {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo 标记失败订单状态失败 trade_no=%s error=%q", result.MerchantOrderID, err.Error()))
 			}
 		}
 		sendWaffoWebhookResponse(c, wh, true, "")

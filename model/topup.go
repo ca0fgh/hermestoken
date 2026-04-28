@@ -26,6 +26,7 @@ type TopUp struct {
 	Money             float64 `json:"money"`
 	TradeNo           string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod     string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider   string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
 	Currency          string  `json:"currency" gorm:"type:varchar(16);default:''"`
 	ProviderProductID string  `json:"provider_product_id" gorm:"type:varchar(128);default:''"`
 	CreateTime        int64   `json:"create_time"`
@@ -40,6 +41,14 @@ const (
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodWallet       = "wallet"
 	PaymentMethodCryptoUSDT   = "crypto_usdt"
+)
+
+const (
+	PaymentProviderEpay         = "epay"
+	PaymentProviderStripe       = "stripe"
+	PaymentProviderCreem        = "creem"
+	PaymentProviderWaffo        = "waffo"
+	PaymentProviderWaffoPancake = "waffo_pancake"
 )
 
 var (
@@ -104,7 +113,7 @@ func equalTopUpCurrency(expected string, actual string) bool {
 	return expected == actual
 }
 
-func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentMethod string, targetStatus string) error {
+func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -119,7 +128,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentMethod string, targ
 		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
-		if expectedPaymentMethod != "" && topUp.PaymentMethod != expectedPaymentMethod {
+		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status != common.TopUpStatusPending {
@@ -139,8 +148,8 @@ func Recharge(referenceId string, customerId string, extras ...any) (err error) 
 		amountTotal int64
 		callerIP    string
 	)
-	if len(extras) > 0 {
-		switch value := extras[0].(type) {
+	for _, extra := range extras {
+		switch value := extra.(type) {
 		case int64:
 			amountTotal = value
 		case int:
@@ -164,7 +173,7 @@ func Recharge(referenceId string, customerId string, extras ...any) (err error) 
 			return errors.New("充值订单不存在")
 		}
 
-		if topUp.PaymentMethod != PaymentMethodStripe {
+		if topUp.PaymentProvider != PaymentProviderStripe {
 			return ErrPaymentMethodMismatch
 		}
 
@@ -386,9 +395,13 @@ func ManualCompleteTopUp(tradeNo string, callerIP ...string) error {
 
 		// 计算应充值额度：
 		// - Creem 订单：Amount 直接表示充值额度
+		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
 		// - 其他在线充值订单：Amount 表示等价美元数量，按 QuotaPerUnit 折算
-		if topUp.PaymentMethod == "creem" {
+		if topUp.PaymentProvider == PaymentProviderCreem || topUp.PaymentMethod == PaymentMethodCreem {
 			quotaToAdd = int(topUp.Amount)
+		} else if topUp.PaymentProvider == PaymentProviderStripe {
+			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
 		} else {
 			quotaToAdd = int(quotaFromStandardTopUpAmount(topUp.Amount))
 		}
@@ -463,7 +476,7 @@ func RechargeCreem(referenceId string, customerEmail string, args ...string) (er
 			return errors.New("充值订单不存在")
 		}
 
-		if topUp.PaymentMethod != PaymentMethodCreem {
+		if topUp.PaymentProvider != PaymentProviderCreem {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status != common.TopUpStatusPending {
@@ -559,6 +572,10 @@ func RechargeWaffo(tradeNo string, paidMoney string, paidCurrency string) (err e
 			return errors.New("充值订单不存在")
 		}
 
+		if topUp.PaymentProvider != PaymentProviderWaffo {
+			return ErrPaymentMethodMismatch
+		}
+
 		if topUp.Status == common.TopUpStatusSuccess {
 			return nil // 幂等：已成功直接返回
 		}
@@ -630,6 +647,10 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error
 		if err != nil {
 			return errors.New("充值订单不存在")
+		}
+
+		if topUp.PaymentProvider != PaymentProviderWaffoPancake {
+			return ErrPaymentMethodMismatch
 		}
 
 		if topUp.Status == common.TopUpStatusSuccess {

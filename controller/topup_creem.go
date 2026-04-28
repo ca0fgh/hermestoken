@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
@@ -122,6 +123,7 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		Money:             selectedProduct.Price,          // 支付金额
 		TradeNo:           referenceId,
 		PaymentMethod:     PaymentMethodCreem,
+		PaymentProvider:   model.PaymentProviderCreem,
 		Currency:          strings.ToUpper(selectedProduct.Currency),
 		ProviderProductID: selectedProduct.ProductId,
 		CreateTime:        time.Now().Unix(),
@@ -321,11 +323,13 @@ func handleCheckoutCompleted(c *gin.Context, event *CreemWebhookEvent) {
 	LockOrder(referenceId)
 	defer UnlockOrder(referenceId)
 	verification := &model.SubscriptionPaymentVerification{
-		PaymentMethod: PaymentMethodCreem,
-		PaidMoney:     moneyStringFromMinorUnits(int64(event.Object.Order.AmountPaid), event.Object.Order.Currency),
-		ProductID:     event.Object.Product.Id,
+		PaymentMethod:   PaymentMethodCreem,
+		PaymentProvider: model.PaymentProviderCreem,
+		PaidMoney:       moneyStringFromMinorUnits(int64(event.Object.Order.AmountPaid), event.Object.Order.Currency),
+		ProductID:       event.Object.Product.Id,
 	}
 	if err := model.CompleteSubscriptionOrderWithValidation(referenceId, verification, common.GetJsonString(event)); err == nil {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("Creem 订阅订单处理成功 trade_no=%s creem_order_id=%s", referenceId, event.Object.Order.Id))
 		c.Status(http.StatusOK)
 		return
 	} else if err != nil && !errors.Is(err, model.ErrSubscriptionOrderNotFound) {
