@@ -21,6 +21,14 @@ import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
 import { useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
+type LogTypeSearchValue = `${(typeof LOG_TYPES)[number]['value']}`
+const LOG_TYPE_VALUES = new Set<string>(
+  LOG_TYPES.map((type) => String(type.value))
+)
+
+function toLogTypeSearchValue(value: string): LogTypeSearchValue | '' {
+  return LOG_TYPE_VALUES.has(value) ? (value as LogTypeSearchValue) : ''
+}
 
 interface CommonLogsFilterBarProps {
   stats?: ReactNode
@@ -42,7 +50,7 @@ export function CommonLogsFilterBar({
     const { start, end } = getDefaultTimeRange()
     return { startTime: start, endTime: end }
   })
-  const [logType, setLogType] = useState<string>('')
+  const [logType, setLogType] = useState<LogTypeSearchValue | ''>('')
 
   useEffect(() => {
     const next: Partial<CommonLogFilters> = {}
@@ -157,7 +165,7 @@ export function CommonLogsFilterBar({
         />
         <Select
           value={logType}
-          onValueChange={(v) => setLogType(v === 'all' ? '' : v)}
+          onValueChange={(v) => setLogType(toLogTypeSearchValue(v))}
         >
           <SelectTrigger className='h-9'>
             <SelectValue placeholder={t('All Types')} />
@@ -193,9 +201,7 @@ export function CommonLogsFilterBar({
       <div
         className={cn(
           'grid gap-2 overflow-hidden transition-all duration-200',
-          expanded
-            ? 'grid-rows-[1fr] opacity-100'
-            : 'grid-rows-[0fr] opacity-0'
+          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
         )}
       >
         <div className='min-h-0 overflow-hidden'>
