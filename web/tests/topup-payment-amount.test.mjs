@@ -18,7 +18,8 @@ globalThis.localStorage = {
   },
 };
 
-const { formatTopUpPaymentAmount } = await import(
+const { formatTopUpPaymentAmount, formatTopUpPresetSettlementSummary } =
+  await import(
   '../src/components/topup/topupAmount.js'
 );
 
@@ -48,4 +49,20 @@ test('formats crypto amount in USDT without currency conversion', () => {
   localStorage.setItem('status', JSON.stringify({ usd_exchange_rate: 6.9 }));
 
   assert.equal(formatTopUpPaymentAmount(0.012677, 'USDT'), '0.012677 USDT');
+});
+
+test('formats preset settlement summary in payment currency, not account display currency', () => {
+  localStorage.setItem('quota_display_type', 'USD');
+  localStorage.setItem('status', JSON.stringify({ usd_exchange_rate: 6.9 }));
+
+  assert.equal(
+    formatTopUpPresetSettlementSummary({
+      actualPay: 69,
+      save: 0,
+      currency: 'CNY',
+      hasDiscount: false,
+      t: (key) => key,
+    }),
+    '实付 ¥69.00，节省 ¥0.00',
+  );
 });

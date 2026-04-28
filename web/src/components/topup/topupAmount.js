@@ -39,3 +39,20 @@ export function formatTopUpPaymentAmount(
 
   return `${normalizedSourceCurrency} ${numericAmount.toFixed(2)}`;
 }
+
+export function formatTopUpPresetSettlementSummary({
+  actualPay,
+  save = 0,
+  currency = 'CNY',
+  hasDiscount = false,
+  t = (key) => key,
+}) {
+  const formattedActualPay = formatTopUpPaymentAmount(actualPay, currency, t);
+  const formattedSave = formatTopUpPaymentAmount(
+    hasDiscount ? save : 0,
+    currency,
+    t,
+  );
+
+  return `${t('实付')} ${formattedActualPay}，${t('节省')} ${formattedSave}`;
+}

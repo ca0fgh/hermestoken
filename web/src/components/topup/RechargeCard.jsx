@@ -49,6 +49,7 @@ import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
 import { getCurrencyConfig } from '../../helpers/render';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
+import { formatTopUpPresetSettlementSummary } from './topupAmount';
 
 const { Text } = Typography;
 
@@ -467,21 +468,15 @@ const RechargeCard = ({
                     } catch (e) {}
 
                     let displayValue = preset.value; // 显示的数量
-                    let displayActualPay = actualPay;
-                    let displaySave = save;
 
                     if (type === 'USD') {
-                      // 数量保持USD，价格从CNY转USD
-                      displayActualPay = actualPay / usdRate;
-                      displaySave = save / usdRate;
+                      // 数量保持USD，支付金额仍按网关结算币种显示
                     } else if (type === 'CNY') {
                       // 数量转CNY，价格已是CNY
                       displayValue = preset.value * usdRate;
                     } else if (type === 'CUSTOM') {
-                      // 数量和价格都转自定义货币
+                      // 数量转自定义货币，支付金额仍按网关结算币种显示
                       displayValue = preset.value * rate;
-                      displayActualPay = (actualPay / usdRate) * rate;
-                      displaySave = (save / usdRate) * rate;
                     }
 
                     return (
@@ -530,11 +525,13 @@ const RechargeCard = ({
                               margin: '4px 0',
                             }}
                           >
-                            {t('实付')} {symbol}
-                            {displayActualPay.toFixed(2)}，
-                            {hasDiscount
-                              ? `${t('节省')} ${symbol}${displaySave.toFixed(2)}`
-                              : `${t('节省')} ${symbol}0.00`}
+                            {formatTopUpPresetSettlementSummary({
+                              actualPay,
+                              save,
+                              currency: 'CNY',
+                              hasDiscount,
+                              t,
+                            })}
                           </div>
                         </div>
                       </Card>
