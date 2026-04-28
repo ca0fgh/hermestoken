@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -16,14 +19,157 @@ type NetworkScanner interface {
 	ScanOnce(ctx context.Context) error
 }
 
+type scannerLauncher func(context.Context, NetworkScanner, string)
+
+type managedScanner struct {
+	signature string
+	cancel    context.CancelFunc
+}
+
+type cryptoScannerManager struct {
+	root     context.Context
+	owner    string
+	launch   scannerLauncher
+	mu       sync.Mutex
+	running  map[string]managedScanner
+	started  bool
+	shutdown context.CancelFunc
+}
+
+var defaultCryptoScannerManager = newCryptoScannerManager(context.Background(), func(ctx context.Context, scanner NetworkScanner, owner string) {
+	go runScannerLoop(ctx, scanner, owner)
+})
+
 func StartCryptoPaymentScanners() {
-	if !setting.CryptoScannerEnabled || !setting.CryptoPaymentEnabled {
+	defaultCryptoScannerManager.startSupervisor()
+}
+
+func EnsureCryptoPaymentScanners() {
+	defaultCryptoScannerManager.reconcile()
+}
+
+func newCryptoScannerManager(root context.Context, launch scannerLauncher) *cryptoScannerManager {
+	if root == nil {
+		root = context.Background()
+	}
+	if launch == nil {
+		launch = func(ctx context.Context, scanner NetworkScanner, owner string) {
+			go runScannerLoop(ctx, scanner, owner)
+		}
+	}
+	return &cryptoScannerManager{
+		root:    root,
+		owner:   fmt.Sprintf("%s-%d", common.GetRandomString(8), os.Getpid()),
+		launch:  launch,
+		running: make(map[string]managedScanner),
+	}
+}
+
+func (m *cryptoScannerManager) startSupervisor() {
+	m.mu.Lock()
+	if m.started {
+		m.mu.Unlock()
 		return
 	}
-	owner := fmt.Sprintf("%s-%d", common.GetRandomString(8), os.Getpid())
-	for _, scanner := range BuildConfiguredScanners() {
-		go runScannerLoop(context.Background(), scanner, owner)
+	ctx, cancel := context.WithCancel(m.root)
+	m.shutdown = cancel
+	m.started = true
+	m.mu.Unlock()
+
+	go func() {
+		m.reconcile()
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				m.stopAll()
+				return
+			case <-ticker.C:
+				m.reconcile()
+			}
+		}
+	}()
+}
+
+func (m *cryptoScannerManager) reconcile() {
+	desired := map[string]NetworkScanner{}
+	if setting.CryptoScannerEnabled && setting.CryptoPaymentEnabled {
+		for _, scanner := range BuildConfiguredScanners() {
+			desired[scanner.Network()] = scanner
+		}
 	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for network, managed := range m.running {
+		scanner, ok := desired[network]
+		if !ok || managed.signature != scannerSignature(scanner) {
+			managed.cancel()
+			delete(m.running, network)
+			common.SysLog("crypto scanner stopped: " + network)
+		}
+	}
+
+	for network, scanner := range desired {
+		if _, ok := m.running[network]; ok {
+			continue
+		}
+		scannerCtx, cancel := context.WithCancel(m.root)
+		m.running[network] = managedScanner{
+			signature: scannerSignature(scanner),
+			cancel:    cancel,
+		}
+		m.launch(scannerCtx, scanner, m.owner)
+		common.SysLog("crypto scanner started: " + network)
+	}
+}
+
+func (m *cryptoScannerManager) stopAll() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for network, managed := range m.running {
+		managed.cancel()
+		delete(m.running, network)
+	}
+}
+
+func (m *cryptoScannerManager) runningNetworks() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	networks := make([]string, 0, len(m.running))
+	for network := range m.running {
+		networks = append(networks, network)
+	}
+	sort.Strings(networks)
+	return networks
+}
+
+func scannerSignature(scanner NetworkScanner) string {
+	switch s := scanner.(type) {
+	case *BSCScanner:
+		return networkConfigSignature(s.config)
+	case *PolygonScanner:
+		return networkConfigSignature(s.config)
+	case *TronScanner:
+		return networkConfigSignature(s.config)
+	case *SolanaScanner:
+		return networkConfigSignature(s.config)
+	default:
+		return scanner.Network()
+	}
+}
+
+func networkConfigSignature(config setting.CryptoPaymentNetworkConfig) string {
+	parts := []string{
+		config.Network,
+		strings.ToLower(strings.TrimSpace(config.Contract)),
+		strings.ToLower(strings.TrimSpace(config.ReceiveAddress)),
+		fmt.Sprintf("%d", config.Decimals),
+		fmt.Sprintf("%d", config.Confirmations),
+	}
+	return strings.Join(parts, "|")
 }
 
 func BuildConfiguredScanners() []NetworkScanner {
