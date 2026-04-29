@@ -726,6 +726,36 @@ Keep separate:
 
 Do not place marketplace keys into the normal `channels`, `abilities`, or `auto` route unless a future design explicitly adds a safe bridge.
 
+## Current Code Touchpoints
+
+The marketplace should reuse existing code where the boundary is clear, but it should not masquerade seller credentials as normal channels.
+
+Reuse directly:
+
+- Model vendor identity: reuse `constant.ChannelType*` values and `constant.ChannelTypeNames` from `constant/channel.go` for the seller "model vendor" selector and display snapshot.
+- Auth middleware: reuse `middleware.UserAuth()` for seller, buyer management, and admin APIs; reuse `middleware.TokenAuth()` for marketplace relay calls.
+- User quota balance: reuse existing user quota mutation primitives for pool calls and fixed-order purchase escrow, with marketplace-specific balance logs.
+- Official/base pricing data: reuse `setting/ratio_setting`, `setting/billing_setting`, `types.PriceData`, and `common.QuotaPerUnit` to read configured official or base model cost.
+- Provider adapters: reuse relay provider request/response adaptation, usage parsing, token counting, and endpoint-type resolution where a marketplace-specific relay context can satisfy the adapter contract safely.
+- Router registration style: add marketplace API routes alongside existing `/api` routes and marketplace relay routes alongside existing relay routes.
+- Existing withdrawal flow: extend seller income withdrawal with marketplace income source instead of creating a separate withdrawal product.
+
+Use as reference, not as-is:
+
+- `service.BillingSession` is a useful reference for pre-consume, settle, refund, and trust-quota edge cases. Marketplace relay should not call it directly unless it is refactored to support a marketplace funding source without normal token/wallet double billing.
+- `relay/helper.ModelPriceHelper` and `ModelPriceHelperPerCall` currently include group-ratio behavior. Marketplace pricing needs a helper that extracts official/base cost before group-ratio application, then applies only seller multiplier and marketplace fee.
+- `model.Channel`, channel cache, ability matching, and `middleware.Distribute()` are normal-channel routing surfaces. They should not be used to store or select marketplace seller credentials.
+- Existing channel test logic can guide vendor-specific credential validation, but tests must run against encrypted marketplace credentials and write marketplace credential events, not channel test logs only.
+
+New marketplace-specific code should own:
+
+- Credential encryption and fingerprinting.
+- Credential lifecycle and history.
+- Fixed-route order escrow, fills, expiry, and settlement.
+- Order-pool candidate selection and routing.
+- Marketplace settlement ledger and reconciliation.
+- Marketplace admin risk controls.
+
 ## Implementation Blueprint
 
 ### Module Boundaries
@@ -888,6 +918,56 @@ Pool call settlement must be idempotent:
 
 All fill and settlement writes need a unique request id or idempotency key. Retried client requests and retry-after-upstream-success paths must not double-charge buyers or double-create seller income.
 
+### Consistency And Failure Policy
+
+The marketplace has two financial surfaces, fixed-order escrow and pool wallet billing. Both need explicit consistency rules.
+
+Locking order:
+
+1. Lock the buyer funding source: fixed order for fixed-route usage, user quota for pool usage or fixed-order purchase.
+2. Lock the marketplace credential stats or capacity row.
+3. Create or load the idempotent request record.
+4. Write fill, settlement, stats, and credential event rows in one local transaction after upstream usage is known.
+
+This consistent order reduces deadlock risk when many buyers hit the same seller credential.
+
+Request idempotency:
+
+- Every relay request should have a server-generated `request_id`. If the client provides an idempotency key, store it with buyer ID, source type, and source ID.
+- Repeated requests with the same idempotency identity must return the recorded result or reconciliation state, not call the seller credential again.
+- Fill and settlement tables must have uniqueness constraints on `request_id` or source-specific idempotency keys.
+
+Reservation and settlement:
+
+- Fixed-route calls may reserve estimated quota from `marketplace_fixed_orders.remaining_quota` before the upstream request. Final settlement adjusts to actual usage.
+- Pool calls may reserve estimated user quota before the upstream request. Final settlement adjusts the user's quota to actual usage.
+- Reserved quota must be released if the upstream request fails before any billable success.
+- Seller income is created only after billable upstream success and local settlement write.
+
+Failure outcomes:
+
+| Failure point | Buyer effect | Seller effect | Credential effect | Required record |
+| --- | --- | --- | --- | --- |
+| Validation fails before upstream call | No charge | No income | No usage delta | Request error log only |
+| Upstream rejects before billable usage | Release reservation | No income | Failure counter and health signal | Fill with failed status if request reached upstream |
+| Upstream succeeds, local billing fails | Mark reconciliation required | Income pending until repaired | Usage may be pending reconciliation | Reconciliation row with request id |
+| Local billing succeeds, response delivery fails | Charge remains | Income remains pending | Usage recorded | Fill and settlement already committed |
+| Streaming response ends without usage payload | Use verified token estimate or configured fallback policy | Income follows computed billable usage | Mark usage source as estimated | Fill with usage_source snapshot |
+| Credential disabled during request | In-flight request may finish; no new routing | Income only if upstream success settles | Capacity releases after request | Credential event if service status changed |
+
+Capacity handling:
+
+- Increment in-flight concurrency before upstream dispatch and decrement it in a `defer` or equivalent finally path.
+- If the process crashes with stale concurrency, a background job should expire old in-flight reservations and repair capacity status.
+- Fixed-route traffic gets priority over pool traffic when a credential is close to its concurrency limit.
+
+Quota exhaustion handling:
+
+- Seller-declared quota exhaustion is evaluated from successful settled usage, not from reservations alone.
+- When quota becomes exhausted, write `quota_exhausted`, block new fixed-route purchases, and block pool routing.
+- Existing fixed-route orders can continue while enabled, technically usable, and not risk-paused, even if new demand is blocked by seller-declared quota status.
+- If reconciliation later reduces usage below the cap, write `quota_recovered` and restore market eligibility when other checks pass.
+
 ### Pool Router
 
 The router should use a two-step process: hard filtering first, scoring second.
@@ -969,11 +1049,16 @@ Admin:
 - Platform fee uses the global marketplace fee setting and is snapshotted per settlement.
 - Buyer-facing price equals official/base cost times seller multiplier.
 - Buyer-facing stats show success rate, not both success rate and error rate.
+- Marketplace pricing does not accidentally apply normal buyer group ratio on top of seller multiplier.
 - Raw seller API keys are encrypted at rest, masked in logs, and never returned by APIs.
 - Unsupported model vendor types are rejected even if they exist in the project's create-channel type selector.
+- Marketplace credentials do not create normal `Channel` rows and do not enter normal ability or auto-route pools.
+- Fixed-route and pool relay calls do not double-charge through normal relay billing.
 - Seller quota limits stop new sales and pool routing after exhaustion, but they do not remove or reduce already purchased fixed-route quota.
 - Seller credentials support list, unlist, enable, disable, and edit actions.
 - Each seller credential has a state-change history that includes seller, admin, system, and buyer-caused events.
+- Failed or retried requests do not double-create fills, settlements, seller income, or buyer charges.
+- Pool and fixed-route usage update seller credential state without exposing buyer private data to the seller.
 
 ## Security Requirements
 
@@ -1000,6 +1085,10 @@ Admin:
 - Seller income hold period: exact default pending duration before income becomes available.
 - Pool routing weights: exact weight values for lower multiplier, lower latency, higher success rate, fair seller distribution, and load penalty.
 - Abuse limit values: global minimum/maximum fixed-route purchase amount and per-buyer/per-seller rate limits.
+- Streaming usage fallback policy when the upstream response does not return final usage.
+- Idempotency retention window for marketplace relay requests and purchase requests.
+- Health degradation thresholds: how many upstream errors, timeouts, or rate limits move a credential from healthy to degraded or failed.
+- Seller quota recovery policy after reconciliation reduces previously counted usage.
 
 ## MVP Phases
 
@@ -1016,3 +1105,52 @@ The first usable slice should prove:
 ```text
 seller escrow -> order list -> buyer fixed-route purchase -> marketplace relay call -> fixed-order quota deduction -> seller pending income
 ```
+
+## Implementation Slices And Test Focus
+
+Slice 1: schema and settings.
+
+- Add marketplace models and migrations.
+- Add global marketplace settings.
+- Add encrypted credential storage and key fingerprint tests.
+- Test that plaintext API keys are never returned by seller or admin APIs.
+
+Slice 2: seller credential management.
+
+- Add seller credential create, list, detail, edit, test, list, unlist, enable, and disable APIs.
+- Reuse existing model vendor type values and reject marketplace-disabled vendor types.
+- Write lifecycle and validation events.
+- Test ownership isolation, status transitions, key replacement validation, and seller-visible event sanitization.
+
+Slice 3: order list and fixed-route purchase.
+
+- Add order-list query with seller-configured filters and runtime eligibility.
+- Add fixed-order purchase with quota escrow, pricing snapshots, fee snapshot, expiry, and sold exposure updates.
+- Test that purchase does not remove the credential from order list or order pool.
+- Test insufficient buyer quota, exhausted credential, disabled credential, and idempotent purchase retry.
+
+Slice 4: fixed-route relay.
+
+- Add marketplace relay path with fixed-order header.
+- Build marketplace relay context using encrypted seller credential without creating normal `Channel` rows.
+- Deduct fixed-order quota, write fill, write settlement, update stats, and write credential events.
+- Test no normal wallet double charge, no normal channel used-quota mutation, idempotent retry, and fixed-order exhaustion.
+
+Slice 5: order-pool routing and relay.
+
+- Add pool candidate query and hard-filter plus score router.
+- Add pool relay flow without fixed-order header.
+- Deduct buyer user quota, settle seller income, and update credential stats.
+- Test routing eligibility, concurrency exclusion, seller quota exhaustion, and fixed-route priority.
+
+Slice 6: seller income and admin operations.
+
+- Add seller income views, pending-to-available release job, withdrawal integration, and settlement audit.
+- Add admin credential history, risk pause/resume, settlement block/release, and reconciliation queue.
+- Test risk-paused blocks both pool and fixed-route usage, blocked settlements do not become withdrawable, and admin APIs never return plaintext keys.
+
+Slice 7: background repair and observability.
+
+- Add health check, fixed-order expiry, stats aggregation, stale capacity repair, settlement release, and reconciliation jobs.
+- Add metrics for marketplace request count, success rate, latency, reconciliation backlog, pending settlement amount, expired fixed-order quota, and credential state counts.
+- Test expiry creates expired quota audit without refund or seller income.
