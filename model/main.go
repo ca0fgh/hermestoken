@@ -260,7 +260,7 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
-	err := DB.AutoMigrate(
+	migrationModels := append([]interface{}{
 		&Channel{},
 		&Token{},
 		&User{},
@@ -288,7 +288,8 @@ func migrateDB() error {
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
-	)
+	}, marketplaceMigrationModels()...)
+	err := DB.AutoMigrate(migrationModels...)
 	if err != nil {
 		return err
 	}
@@ -395,6 +396,12 @@ func migrateDBFast() error {
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
+	}
+	for _, marketplaceModel := range marketplaceMigrationModels() {
+		migrations = append(migrations, struct {
+			model interface{}
+			name  string
+		}{marketplaceModel, fmt.Sprintf("%T", marketplaceModel)})
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

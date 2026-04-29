@@ -215,6 +215,15 @@ func InitOptionMap() {
 	common.OptionMap["WithdrawalMinAmount"] = "10"
 	common.OptionMap["WithdrawalInstruction"] = ""
 	common.OptionMap["WithdrawalFeeRules"] = "[]"
+	common.OptionMap["MarketplaceEnabled"] = strconv.FormatBool(setting.MarketplaceEnabled)
+	common.OptionMap["MarketplaceEnabledVendorTypes"] = setting.MarketplaceEnabledVendorTypesToJSONString()
+	common.OptionMap["MarketplaceFeeRate"] = strconv.FormatFloat(setting.MarketplaceFeeRate, 'f', -1, 64)
+	common.OptionMap["MarketplaceSellerIncomeHoldSeconds"] = strconv.Itoa(setting.MarketplaceSellerIncomeHoldSeconds)
+	common.OptionMap["MarketplaceMinFixedOrderQuota"] = strconv.Itoa(setting.MarketplaceMinFixedOrderQuota)
+	common.OptionMap["MarketplaceMaxFixedOrderQuota"] = strconv.Itoa(setting.MarketplaceMaxFixedOrderQuota)
+	common.OptionMap["MarketplaceFixedOrderDefaultExpirySeconds"] = strconv.Itoa(setting.MarketplaceFixedOrderDefaultExpirySeconds)
+	common.OptionMap["MarketplaceMaxSellerMultiplier"] = strconv.FormatFloat(setting.MarketplaceMaxSellerMultiplier, 'f', -1, 64)
+	common.OptionMap["MarketplaceMaxCredentialConcurrency"] = strconv.Itoa(setting.MarketplaceMaxCredentialConcurrency)
 	//common.OptionMap["ChatLink"] = common.ChatLink
 	//common.OptionMap["ChatLink2"] = common.ChatLink2
 	common.OptionMap["QuotaPerUnit"] = strconv.FormatFloat(common.QuotaPerUnit, 'f', -1, 64)
@@ -419,6 +428,8 @@ func updateOptionMap(key string, value string) (err error) {
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
 			ratio_setting.SetExposeRatioEnabled(boolValue)
+		case "MarketplaceEnabled":
+			setting.MarketplaceEnabled = boolValue
 		}
 	}
 	switch key {
@@ -633,6 +644,22 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.ModelRequestRateLimitSuccessCount, _ = strconv.Atoi(value)
 	case "ModelRequestRateLimitGroup":
 		err = setting.UpdateModelRequestRateLimitGroupByJSONString(value)
+	case "MarketplaceEnabledVendorTypes":
+		err = setting.UpdateMarketplaceEnabledVendorTypesByJSONString(value)
+	case "MarketplaceFeeRate":
+		setting.MarketplaceFeeRate, _ = strconv.ParseFloat(value, 64)
+	case "MarketplaceSellerIncomeHoldSeconds":
+		setting.MarketplaceSellerIncomeHoldSeconds, _ = strconv.Atoi(value)
+	case "MarketplaceMinFixedOrderQuota":
+		setting.MarketplaceMinFixedOrderQuota, _ = strconv.Atoi(value)
+	case "MarketplaceMaxFixedOrderQuota":
+		setting.MarketplaceMaxFixedOrderQuota, _ = strconv.Atoi(value)
+	case "MarketplaceFixedOrderDefaultExpirySeconds":
+		setting.MarketplaceFixedOrderDefaultExpirySeconds, _ = strconv.Atoi(value)
+	case "MarketplaceMaxSellerMultiplier":
+		setting.MarketplaceMaxSellerMultiplier, _ = strconv.ParseFloat(value, 64)
+	case "MarketplaceMaxCredentialConcurrency":
+		setting.MarketplaceMaxCredentialConcurrency, _ = strconv.Atoi(value)
 	case "RetryTimes":
 		common.RetryTimes, _ = strconv.Atoi(value)
 	case "DataExportInterval":

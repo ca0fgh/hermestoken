@@ -806,6 +806,22 @@ MarketplaceMaxCredentialConcurrency
 
 `MarketplaceEnabledVendorTypes` should store the existing create-channel type values used by the model vendor selector. A vendor type appearing in this list only means the marketplace may accept that type; the implementation must still have explicit validation and relay support for it.
 
+Initial Slice 1 defaults are deliberately safe:
+
+```text
+MarketplaceEnabled = false
+MarketplaceEnabledVendorTypes = []
+MarketplaceFeeRate = 0
+MarketplaceSellerIncomeHoldSeconds = 604800
+MarketplaceMinFixedOrderQuota = 0
+MarketplaceMaxFixedOrderQuota = 0
+MarketplaceFixedOrderDefaultExpirySeconds = 2592000
+MarketplaceMaxSellerMultiplier = 10
+MarketplaceMaxCredentialConcurrency = 5
+```
+
+The marketplace starts disabled, with no enabled model vendors. Production rollout must explicitly configure vendor allowlist, fee rate, and purchase limits before public use.
+
 Credential encryption is mandatory and must not be feature-flagged off. The API-key encryption secret should not be stored in options. It must come from environment or secret manager configuration.
 
 ### Pricing Contract
@@ -1079,10 +1095,9 @@ Admin:
 
 ## Open Decisions Before Implementation
 
-- Default `MarketplaceFeeRate` value.
-- Initial `MarketplaceEnabledVendorTypes` and supported marketplace relay modes.
-- Fixed-route order expiry policy: default duration and whether buyers can choose among platform-defined durations.
-- Seller income hold period: exact default pending duration before income becomes available.
+- Production rollout values for `MarketplaceFeeRate`, `MarketplaceEnabledVendorTypes`, fixed-order purchase limits, and seller income hold period.
+- Supported marketplace relay modes for each enabled model vendor.
+- Whether buyers can choose among platform-defined fixed-order expiry durations instead of using the default duration only.
 - Pool routing weights: exact weight values for lower multiplier, lower latency, higher success rate, fair seller distribution, and load penalty.
 - Abuse limit values: global minimum/maximum fixed-route purchase amount and per-buyer/per-seller rate limits.
 - Streaming usage fallback policy when the upstream response does not return final usage.
