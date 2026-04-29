@@ -1,7 +1,15 @@
 import { z } from 'zod'
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 import { DEFAULT_GROUP } from '../constants'
-import { type ApiKeyFormData, type ApiKey } from '../types'
+import {
+  DEFAULT_MARKETPLACE_ROUTE_ENABLED,
+  DEFAULT_MARKETPLACE_ROUTE_ORDER,
+  MARKETPLACE_ROUTE_ORDER_VALUES,
+  normalizeMarketplaceRouteEnabled,
+  normalizeMarketplaceRouteOrder,
+  type ApiKeyFormData,
+  type ApiKey,
+} from '../types'
 
 // ============================================================================
 // Form Schema
@@ -16,6 +24,14 @@ export const apiKeyFormSchema = z.object({
   allow_ips: z.string().optional(),
   group: z.string().optional(),
   cross_group_retry: z.boolean().optional(),
+  marketplace_fixed_order_id: z.number().int().min(0).optional(),
+  marketplace_fixed_order_ids: z.array(z.number().int().min(1)).optional(),
+  marketplace_route_order: z
+    .array(z.enum(MARKETPLACE_ROUTE_ORDER_VALUES))
+    .optional(),
+  marketplace_route_enabled: z
+    .array(z.enum(MARKETPLACE_ROUTE_ORDER_VALUES))
+    .optional(),
   tokenCount: z.number().min(1).optional(),
 })
 
@@ -34,6 +50,10 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   allow_ips: '',
   group: DEFAULT_GROUP,
   cross_group_retry: true,
+  marketplace_fixed_order_id: 0,
+  marketplace_fixed_order_ids: [],
+  marketplace_route_order: [...DEFAULT_MARKETPLACE_ROUTE_ORDER],
+  marketplace_route_enabled: [...DEFAULT_MARKETPLACE_ROUTE_ENABLED],
   tokenCount: 1,
 }
 
@@ -47,6 +67,15 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
 export function transformFormDataToPayload(
   data: ApiKeyFormValues
 ): ApiKeyFormData {
+  const primaryFixedOrderId = data.marketplace_fixed_order_id || 0
+  const existingFixedOrderIds = data.marketplace_fixed_order_ids ?? []
+  const fixedOrderIds =
+    existingFixedOrderIds[0] === primaryFixedOrderId
+      ? existingFixedOrderIds
+      : primaryFixedOrderId
+        ? [primaryFixedOrderId]
+        : []
+
   return {
     name: data.name,
     remain_quota: data.unlimited_quota
@@ -59,8 +88,16 @@ export function transformFormDataToPayload(
     model_limits_enabled: data.model_limits.length > 0,
     model_limits: data.model_limits.join(','),
     allow_ips: data.allow_ips || '',
-    group: data.group || '',
+    group: data.group || DEFAULT_GROUP,
     cross_group_retry: data.group === 'auto' ? !!data.cross_group_retry : false,
+    marketplace_fixed_order_id: primaryFixedOrderId,
+    marketplace_fixed_order_ids: fixedOrderIds,
+    marketplace_route_order: normalizeMarketplaceRouteOrder(
+      data.marketplace_route_order
+    ),
+    marketplace_route_enabled: normalizeMarketplaceRouteEnabled(
+      data.marketplace_route_enabled
+    ),
   }
 }
 
@@ -70,6 +107,13 @@ export function transformFormDataToPayload(
 export function transformApiKeyToFormDefaults(
   apiKey: ApiKey
 ): ApiKeyFormValues {
+  const fixedOrderIds =
+    apiKey.marketplace_fixed_order_ids?.length > 0
+      ? apiKey.marketplace_fixed_order_ids
+      : apiKey.marketplace_fixed_order_id
+        ? [apiKey.marketplace_fixed_order_id]
+        : []
+
   return {
     name: apiKey.name,
     remain_quota_dollars: quotaUnitsToDollars(apiKey.remain_quota),
@@ -84,6 +128,14 @@ export function transformApiKeyToFormDefaults(
     allow_ips: apiKey.allow_ips || '',
     group: apiKey.group || DEFAULT_GROUP,
     cross_group_retry: !!apiKey.cross_group_retry,
+    marketplace_fixed_order_id: fixedOrderIds[0] ?? 0,
+    marketplace_fixed_order_ids: fixedOrderIds,
+    marketplace_route_order: normalizeMarketplaceRouteOrder(
+      apiKey.marketplace_route_order
+    ),
+    marketplace_route_enabled: normalizeMarketplaceRouteEnabled(
+      apiKey.marketplace_route_enabled
+    ),
     tokenCount: 1,
   }
 }

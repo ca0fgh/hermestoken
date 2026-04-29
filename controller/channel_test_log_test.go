@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +102,114 @@ func TestChannelTestRecordsConsumeLog(t *testing.T) {
 		t.Fatalf("expected consume log user_id=%d, got %d", user.Id, logEntry.UserId)
 	}
 	if logEntry.Group != "default,cc-opus-福利渠道" {
+		t.Fatalf("expected consume log group to use channel test groups, got %q", logEntry.Group)
+	}
+}
+
+func TestChannelTestSupportsOpenAIVideoEndpoint(t *testing.T) {
+	db := setupChannelControllerTestDB(t)
+	withChannelGroupRatios(t, `{"default":1,"veo-福利渠道":1}`)
+
+	if err := db.AutoMigrate(&model.User{}, &model.Log{}); err != nil {
+		t.Fatalf("failed to migrate channel test log tables: %v", err)
+	}
+
+	originalLogConsumeEnabled := common.LogConsumeEnabled
+	originalDataExportEnabled := common.DataExportEnabled
+	common.LogConsumeEnabled = true
+	common.DataExportEnabled = false
+	service.InitHttpClient()
+	t.Cleanup(func() {
+		common.LogConsumeEnabled = originalLogConsumeEnabled
+		common.DataExportEnabled = originalDataExportEnabled
+	})
+
+	user := &model.User{
+		Id:       1,
+		Username: "ca0fgh",
+		Password: "password123",
+		Role:     common.RoleRootUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "veo-福利渠道",
+		Quota:    int(common.QuotaPerUnit * 100),
+	}
+	user.SetSetting(dto.UserSetting{AcceptUnsetRatioModel: true})
+	if err := db.Create(user).Error; err != nil {
+		t.Fatalf("failed to create channel-test user: %v", err)
+	}
+
+	var upstreamPath string
+	var upstreamModel string
+	var upstreamPrompt string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamPath = r.URL.Path
+		var payload struct {
+			Model  string `json:"model"`
+			Prompt string `json:"prompt"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode upstream video request: %v", err)
+		}
+		upstreamModel = payload.Model
+		upstreamPrompt = payload.Prompt
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"video-upstream-test",
+			"object":"video",
+			"model":"sora-2",
+			"status":"queued",
+			"progress":0,
+			"created_at":1710000000
+		}`))
+	}))
+	defer upstream.Close()
+
+	channel := &model.Channel{
+		Id:       100,
+		Type:     constant.ChannelTypeOpenAI,
+		Key:      "sk-test",
+		Status:   common.ChannelStatusEnabled,
+		Name:     "test-openai-video-channel",
+		BaseURL:  common.GetPointer(upstream.URL),
+		Models:   "sora-2",
+		Group:    "default,veo-福利渠道",
+		Priority: common.GetPointer(int64(0)),
+		Weight:   common.GetPointer(uint(0)),
+	}
+	if err := channel.AddAbilities(db); err != nil {
+		t.Fatalf("failed to add channel abilities: %v", err)
+	}
+
+	result := testChannel(channel, "sora-2", "", false)
+	if result.localErr != nil {
+		t.Fatalf("testChannel returned local error: %v", result.localErr)
+	}
+	if result.hermesTokenError != nil {
+		t.Fatalf("testChannel returned api error: %v", result.hermesTokenError)
+	}
+	if upstreamPath != "/v1/videos" {
+		t.Fatalf("expected upstream video test path /v1/videos, got %q", upstreamPath)
+	}
+	if upstreamModel != "sora-2" {
+		t.Fatalf("expected upstream model sora-2, got %q", upstreamModel)
+	}
+	if upstreamPrompt == "" {
+		t.Fatalf("expected video test prompt to be populated")
+	}
+
+	var logEntry model.Log
+	if err := db.Where("type = ? AND token_name = ?", model.LogTypeConsume, channelTestTokenName).
+		Order("id desc").
+		First(&logEntry).Error; err != nil {
+		t.Fatalf("expected video channel test to record consume log: %v", err)
+	}
+	if logEntry.ChannelId != channel.Id {
+		t.Fatalf("expected consume log channel_id=%d, got %d", channel.Id, logEntry.ChannelId)
+	}
+	if logEntry.ModelName != "sora-2" {
+		t.Fatalf("expected consume log model sora-2, got %s", logEntry.ModelName)
+	}
+	if logEntry.Group != "default,veo-福利渠道" {
 		t.Fatalf("expected consume log group to use channel test groups, got %q", logEntry.Group)
 	}
 }

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -263,7 +264,12 @@ func ensureDefaultOptionRecords() {
 	if err := ensureDefaultOptionRecord("Footer", common.DefaultFooterHTML); err != nil {
 		common.SysLog("failed to persist default footer option: " + err.Error())
 	}
+	if err := ensureGPT55PricingDefaults(); err != nil {
+		common.SysLog("failed to persist GPT-5.5 pricing defaults: " + err.Error())
+	}
 }
+
+const gpt55PricingDefaultsAppliedOptionKey = "GPT55PricingDefaultsApplied"
 
 func ensureDefaultOptionRecord(key string, value string) error {
 	if DB == nil {
@@ -283,6 +289,80 @@ func ensureDefaultOptionRecord(key string, value string) error {
 		Key:   key,
 		Value: value,
 	}).Error
+}
+
+func ensureGPT55PricingDefaults() error {
+	if DB == nil {
+		return nil
+	}
+
+	var marker Option
+	err := DB.First(&marker, "key = ?", gpt55PricingDefaultsAppliedOptionKey).Error
+	if err == nil && marker.Value == "true" {
+		return nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
+	if _, err := ensureMissingFloatMapOptionDefaults(
+		"ModelRatio",
+		ratio_setting.ModelRatio2JSONString(),
+		map[string]float64{
+			"gpt-5.5":                2.5,
+			"gpt-5.5-pro":            15,
+			"gpt-5.5-pro-2026-04-23": 15,
+		},
+		ratio_setting.UpdateModelRatioByJSONString,
+	); err != nil {
+		return err
+	}
+	if _, err := ensureMissingFloatMapOptionDefaults(
+		"CacheRatio",
+		ratio_setting.CacheRatio2JSONString(),
+		map[string]float64{
+			"gpt-5.5": 0.1,
+		},
+		ratio_setting.UpdateCacheRatioByJSONString,
+	); err != nil {
+		return err
+	}
+
+	return UpdateOption(gpt55PricingDefaultsAppliedOptionKey, "true")
+}
+
+func ensureMissingFloatMapOptionDefaults(key string, raw string, defaults map[string]float64, apply func(string) error) (bool, error) {
+	if DB == nil || len(defaults) == 0 {
+		return false, nil
+	}
+
+	values := make(map[string]float64)
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &values); err != nil {
+			return false, err
+		}
+	}
+
+	changed := false
+	for modelName, value := range defaults {
+		if _, ok := values[modelName]; !ok {
+			values[modelName] = value
+			changed = true
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return false, err
+	}
+	value := string(payload)
+	if err := UpdateOption(key, value); err != nil {
+		return false, err
+	}
+	return true, apply(value)
 }
 
 func loadOptionsFromDatabase() {

@@ -51,12 +51,16 @@ func ResolveEndpointTypeFromPath(path string) (constant.EndpointType, bool) {
 	}
 
 	switch {
-	case endpointPathHasPrefix(path, "/v1/responses/compact"):
+	case endpointPathHasPrefix(path, "/v1/responses/compact"),
+		endpointPathHasPrefix(path, "/responses/compact"):
 		return constant.EndpointTypeOpenAIResponseCompact, true
-	case endpointPathHasPrefix(path, "/v1/responses"):
+	case endpointPathHasPrefix(path, "/v1/responses"),
+		endpointPathHasPrefix(path, "/responses"):
 		return constant.EndpointTypeOpenAIResponse, true
 	case endpointPathHasPrefix(path, "/v1/images/generations"),
-		endpointPathHasPrefix(path, "/v1/images/edits"):
+		endpointPathHasPrefix(path, "/images/generations"),
+		endpointPathHasPrefix(path, "/v1/images/edits"),
+		endpointPathHasPrefix(path, "/images/edits"):
 		return constant.EndpointTypeImageGeneration, true
 	case endpointPathHasPrefix(path, "/v1/videos"),
 		endpointPathHasPrefix(path, "/v1/video/generations"),
@@ -64,6 +68,7 @@ func ResolveEndpointTypeFromPath(path string) (constant.EndpointType, bool) {
 		strings.HasSuffix(path, "/mj/submit/video"):
 		return constant.EndpointTypeOpenAIVideo, true
 	case endpointPathHasPrefix(path, "/v1/embeddings"),
+		endpointPathHasPrefix(path, "/embeddings"),
 		strings.HasSuffix(path, "/embeddings"):
 		return constant.EndpointTypeEmbeddings, true
 	case endpointPathHasPrefix(path, "/v1/rerank"),
@@ -73,11 +78,14 @@ func ResolveEndpointTypeFromPath(path string) (constant.EndpointType, bool) {
 	case endpointPathHasPrefix(path, "/v1/messages"):
 		return constant.EndpointTypeAnthropic, true
 	case endpointPathHasPrefix(path, "/v1beta/models"),
-		endpointPathHasPrefix(path, "/v1/models"):
+		endpointPathHasPrefix(path, "/v1/models"),
+		endpointPathHasPrefix(path, "/models"):
 		return constant.EndpointTypeGemini, true
 	case endpointPathHasPrefix(path, "/v1/chat/completions"),
+		endpointPathHasPrefix(path, "/chat/completions"),
 		endpointPathHasPrefix(path, "/pg/chat/completions"),
-		endpointPathHasPrefix(path, "/v1/completions"):
+		endpointPathHasPrefix(path, "/v1/completions"),
+		endpointPathHasPrefix(path, "/completions"):
 		return constant.EndpointTypeOpenAI, true
 	}
 

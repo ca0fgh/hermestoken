@@ -79,8 +79,11 @@ func TestResolveEndpointTypePrefersRequestPath(t *testing.T) {
 		expected constant.EndpointType
 	}{
 		{name: "chat completions", path: "/v1/chat/completions", expected: constant.EndpointTypeOpenAI},
+		{name: "root chat completions", path: "/chat/completions", expected: constant.EndpointTypeOpenAI},
 		{name: "responses compact", path: "/v1/responses/compact", expected: constant.EndpointTypeOpenAIResponseCompact},
+		{name: "root responses compact", path: "/responses/compact", expected: constant.EndpointTypeOpenAIResponseCompact},
 		{name: "responses", path: "/v1/responses", expected: constant.EndpointTypeOpenAIResponse},
+		{name: "root responses", path: "/responses", expected: constant.EndpointTypeOpenAIResponse},
 		{name: "image generations", path: "/v1/images/generations", expected: constant.EndpointTypeImageGeneration},
 		{name: "image edits", path: "/v1/images/edits", expected: constant.EndpointTypeImageGeneration},
 		{name: "openai videos", path: "/v1/videos", expected: constant.EndpointTypeOpenAIVideo},

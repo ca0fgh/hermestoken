@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 const DEFAULT_HEADER_NAV_MODULES = {
   home: true,
+  marketplace: true,
   console: true,
   pricing: {
     enabled: true,
@@ -65,6 +66,7 @@ export function normalizeHeaderNavModules(rawConfig) {
 
   return {
     home: parsed.home !== false,
+    marketplace: parsed.marketplace !== false,
     console: parsed.console !== false,
     pricing: normalizePricingConfig(parsed.pricing),
     docs: parsed.docs !== false,

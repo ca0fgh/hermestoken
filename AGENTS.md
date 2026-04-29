@@ -7,7 +7,8 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 ## Tech Stack
 
 - **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
-- **Frontend**: React 19, TypeScript, Rsbuild, Radix UI, Tailwind CSS
+- **Frontend primary UI**: Classic frontend (`web/classic/`) — React 18, Vite, Semi Design
+- **Frontend compatibility UI**: Default frontend (`web/default/`) — React 19, TypeScript, Rsbuild, Radix UI, Tailwind CSS
 - **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache
 - **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, etc.)
@@ -38,6 +39,16 @@ web/             — Frontend themes container
   web/classic/   — Classic frontend (React 18, Vite, Semi Design)
   web/default/src/i18n/ — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
 ```
+
+## Frontend Priority
+
+Classic is the primary frontend for current product work.
+
+- Implement user-facing marketplace and token-management UX in `web/classic/` first.
+- Use `web/classic/` for local preview, screenshots, and acceptance checks unless a task explicitly asks for the default frontend.
+- Keep `web/default/` compatible when shared backend contracts or APIs change, but do not treat it as the primary review surface.
+- Classic commands: run from `web/classic/` with `npm run dev` for preview and `npm run build` for production verification.
+- Default frontend commands still apply only when touching `web/default/`.
 
 ## Internationalization (i18n)
 

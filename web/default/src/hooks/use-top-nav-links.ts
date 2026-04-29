@@ -13,10 +13,54 @@ export type TopNavLink = {
 // Default navigation configuration
 const DEFAULT_HEADER_NAV_MODULES = {
   home: true,
+  marketplace: true,
   console: true,
   pricing: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
+}
+
+function normalizeHeaderNavModules(raw: unknown) {
+  if (!raw || (typeof raw === 'string' && raw.trim() === '')) {
+    return DEFAULT_HEADER_NAV_MODULES
+  }
+
+  try {
+    const parsed =
+      typeof raw === 'string'
+        ? (JSON.parse(raw) as Record<string, unknown>)
+        : raw
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return DEFAULT_HEADER_NAV_MODULES
+    }
+
+    const parsedModules = parsed as Record<string, unknown>
+    const pricing =
+      typeof parsedModules.pricing === 'boolean'
+        ? {
+            enabled: parsedModules.pricing,
+            requireAuth: DEFAULT_HEADER_NAV_MODULES.pricing.requireAuth,
+          }
+        : parsedModules.pricing && typeof parsedModules.pricing === 'object'
+          ? {
+              enabled:
+                (parsedModules.pricing as { enabled?: unknown }).enabled !==
+                false,
+              requireAuth:
+                (parsedModules.pricing as { requireAuth?: unknown })
+                  .requireAuth === true,
+            }
+          : DEFAULT_HEADER_NAV_MODULES.pricing
+
+    return {
+      ...DEFAULT_HEADER_NAV_MODULES,
+      ...parsedModules,
+      pricing,
+      marketplace: parsedModules.marketplace !== false,
+    }
+  } catch {
+    return DEFAULT_HEADER_NAV_MODULES
+  }
 }
 
 /**
@@ -24,6 +68,7 @@ const DEFAULT_HEADER_NAV_MODULES = {
  * Backend format example (stringified JSON):
  * {
  *   home: true,
+ *   marketplace: true,
  *   console: true,
  *   pricing: { enabled: true, requireAuth: false },
  *   docs: true,
@@ -37,17 +82,7 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Parse HeaderNavModules
   const modules = useMemo(() => {
-    const raw = status?.HeaderNavModules
-    // If empty string, null, or undefined, use default config
-    if (!raw || (raw as string).trim() === '') {
-      return DEFAULT_HEADER_NAV_MODULES
-    }
-    try {
-      return JSON.parse(raw as string)
-    } catch {
-      // Parse failed, use default config
-      return DEFAULT_HEADER_NAV_MODULES
-    }
+    return normalizeHeaderNavModules(status?.HeaderNavModules)
   }, [status?.HeaderNavModules])
 
   // Documentation link (may be external)
@@ -60,6 +95,11 @@ export function useTopNavLinks(): TopNavLink[] {
   // Home
   if (modules?.home !== false) {
     links.push({ title: t('Home'), href: '/' })
+  }
+
+  // Marketplace
+  if (modules?.marketplace !== false) {
+    links.push({ title: t('Marketplace'), href: '/marketplace' })
   }
 
   // Console -> /dashboard (new console path)

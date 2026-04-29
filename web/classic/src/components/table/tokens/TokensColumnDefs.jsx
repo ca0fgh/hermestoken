@@ -116,6 +116,40 @@ const renderGroupColumn = (text, record, t, groupRatios = {}) => {
   );
 };
 
+const renderMarketplaceFixedOrder = (text, record, t) => {
+  const rawIds = Array.isArray(record?.marketplace_fixed_order_ids)
+    ? record.marketplace_fixed_order_ids
+    : typeof record?.marketplace_fixed_order_ids === 'string'
+      ? record.marketplace_fixed_order_ids.split(',')
+      : [];
+  const ids = Array.from(
+    new Set(
+      [Number(text) || 0, ...rawIds]
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    ),
+  );
+  if (ids.length === 0) {
+    return (
+      <Tag color='white' shape='circle'>
+        {t('未绑定')}
+      </Tag>
+    );
+  }
+  const label =
+    ids.length > 3
+      ? `${ids
+          .slice(0, 3)
+          .map((id) => `#${id}`)
+          .join(', ')} +${ids.length - 3}`
+      : ids.map((id) => `#${id}`).join(', ');
+  return (
+    <Tag color='green' shape='circle'>
+      {label}
+    </Tag>
+  );
+};
+
 // Render token key column with show/hide and copy functionality
 const renderTokenKey = (
   text,
@@ -496,6 +530,12 @@ export const getTokensColumns = ({
       dataIndex: 'group',
       key: 'group',
       render: (text, record) => renderGroupColumn(text, record, t, groupRatios),
+    },
+    {
+      title: t('市场订单'),
+      dataIndex: 'marketplace_fixed_order_id',
+      key: 'marketplace_fixed_order_id',
+      render: (text, record) => renderMarketplaceFixedOrder(text, record, t),
     },
     {
       title: t('密钥'),

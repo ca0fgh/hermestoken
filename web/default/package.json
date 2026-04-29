@@ -109,5 +109,13 @@
     "shadcn": "^3.7.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.2"
+  },
+  "overrides": {
+    "dompurify": "^3.4.1",
+    "follow-redirects": "^1.16.0",
+    "hono": "^4.12.15",
+    "minimist": "^1.2.8",
+    "postcss": "^8.5.12",
+    "uuid": "^14.0.0"
   }
 }

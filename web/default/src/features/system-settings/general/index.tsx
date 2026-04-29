@@ -45,6 +45,16 @@ const defaultGeneralSettings: GeneralSettings = {
   'channel_affinity_setting.max_entries': 100000,
   'channel_affinity_setting.default_ttl_seconds': 3600,
   'channel_affinity_setting.rules': '[]',
+  MarketplaceEnabled: true,
+  MarketplaceEnabledVendorTypes:
+    '[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,31,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57]',
+  MarketplaceFeeRate: 0,
+  MarketplaceSellerIncomeHoldSeconds: 604800,
+  MarketplaceMinFixedOrderQuota: 0,
+  MarketplaceMaxFixedOrderQuota: 0,
+  MarketplaceFixedOrderDefaultExpirySeconds: 2592000,
+  MarketplaceMaxSellerMultiplier: 10,
+  MarketplaceMaxCredentialConcurrency: 5,
 }
 
 export function GeneralSettings() {
@@ -70,6 +80,7 @@ export function GeneralSettings() {
     | 'system-info'
     | 'quota'
     | 'pricing'
+    | 'marketplace'
     | 'checkin'
     | 'behavior'
     | 'channel-affinity'

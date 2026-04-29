@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import { Route, CircleAlert, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { getAvatarColorClass } from '@/lib/colors'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import {
   formatUseTime,
   formatLogQuota,
   formatTimestampToDate,
 } from '@/lib/format'
-import { getAvatarColorClass } from '@/lib/colors'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -54,6 +54,37 @@ interface DetailSegment {
   danger?: boolean
 }
 
+function getMarketplaceLogInfo(
+  other: LogOtherData | null,
+  t: (key: string, opts?: Record<string, unknown>) => string
+) {
+  if (!other) return null
+
+  if (other.billing_source === 'marketplace_fixed_order') {
+    return {
+      label: t('Marketplace fixed order'),
+      meta:
+        other.marketplace_fixed_order_id != null
+          ? `${t('Fixed order')} #${other.marketplace_fixed_order_id}`
+          : '',
+      variant: 'blue' as StatusBadgeProps['variant'],
+    }
+  }
+
+  if (other.billing_source === 'marketplace_pool') {
+    return {
+      label: t('Marketplace pool'),
+      meta:
+        other.marketplace_pool_credential_id != null
+          ? `${t('Credential')} #${other.marketplace_pool_credential_id}`
+          : '',
+      variant: 'purple' as StatusBadgeProps['variant'],
+    }
+  }
+
+  return null
+}
+
 function formatRatioCompact(ratio: number | undefined): string {
   if (ratio == null || !Number.isFinite(ratio)) return '-'
   return ratio % 1 === 0 ? String(ratio) : ratio.toFixed(4)
@@ -90,6 +121,13 @@ function buildDetailSegments(
   if (!other) return []
 
   const segments: DetailSegment[] = []
+  const marketplaceLogInfo = getMarketplaceLogInfo(other, t)
+  if (marketplaceLogInfo) {
+    segments.push({ text: marketplaceLogInfo.label })
+    if (marketplaceLogInfo.meta) {
+      segments.push({ text: marketplaceLogInfo.meta, muted: true })
+    }
+  }
 
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
   const formatPrice = (price: number) =>
@@ -114,11 +152,9 @@ function buildDetailSegments(
 
     const cacheEntries = tieredSummary.priceEntries
       .filter((entry) =>
-        [
-          'cacheReadPrice',
-          'cacheCreatePrice',
-          'cacheCreate1hPrice',
-        ].includes(entry.field)
+        ['cacheReadPrice', 'cacheCreatePrice', 'cacheCreate1hPrice'].includes(
+          entry.field
+        )
       )
       .map((entry) => {
         return formatPriceCompact(entry.price)
@@ -171,8 +207,7 @@ function buildDetailSegments(
           other.cache_ratio != null && other.cache_ratio !== 1
             ? formatPriceCompact(inputPriceUSD * other.cache_ratio)
             : null,
-          other.cache_creation_ratio != null &&
-          other.cache_creation_ratio !== 1
+          other.cache_creation_ratio != null && other.cache_creation_ratio !== 1
             ? formatPriceCompact(inputPriceUSD * other.cache_creation_ratio)
             : null,
           other.cache_creation_ratio_1h != null &&
@@ -262,11 +297,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <DataTableColumnHeader column={column} title={t('Channel')} />
         ),
         cell: function ChannelCell({ row }) {
-          const {
-            sensitiveVisible,
-            setAffinityTarget,
-            setAffinityDialogOpen,
-          } = useUsageLogsContext()
+          const { sensitiveVisible, setAffinityTarget, setAffinityDialogOpen } =
+            useUsageLogsContext()
           const log = row.original
 
           if (!isDisplayableLogType(log.type)) return null
@@ -328,7 +360,9 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 </TooltipTrigger>
                 <TooltipContent>
                   <div className='space-y-1'>
-                    <p>{sensitiveVisible ? channelDisplay : channelIdDisplay}</p>
+                    <p>
+                      {sensitiveVisible ? channelDisplay : channelIdDisplay}
+                    </p>
                     {channelChain && (
                       <p className='text-muted-foreground text-xs'>
                         {t('Chain')}: {channelChain}
@@ -364,11 +398,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <DataTableColumnHeader column={column} title={t('User')} />
         ),
         cell: function UserCell({ row }) {
-          const {
-            sensitiveVisible,
-            setSelectedUserId,
-            setUserInfoDialogOpen,
-          } = useUsageLogsContext()
+          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
+            useUsageLogsContext()
           const log = row.original
 
           if (!isDisplayableLogType(log.type) || !log.username) return null
@@ -612,7 +643,8 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         return (
           <div className='flex flex-col gap-0.5'>
             <span className='font-mono text-xs font-medium'>
-              {promptTokens.toLocaleString()} / {completionTokens.toLocaleString()}
+              {promptTokens.toLocaleString()} /{' '}
+              {completionTokens.toLocaleString()}
             </span>
             {cacheSegments.length > 0 && (
               <span className='text-muted-foreground/60 text-[11px]'>
@@ -637,6 +669,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const quota = row.getValue('quota') as number
         const other = parseLogOther(log.other)
         const isSubscription = other?.billing_source === 'subscription'
+        const marketplaceLogInfo = getMarketplaceLogInfo(other, t)
 
         if (isSubscription) {
           return (
@@ -659,6 +692,22 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+          )
+        }
+
+        if (marketplaceLogInfo) {
+          return (
+            <div className='flex flex-col gap-1'>
+              <span className='font-mono text-xs font-medium tabular-nums'>
+                {formatLogQuota(quota)}
+              </span>
+              <StatusBadge
+                label={marketplaceLogInfo.label}
+                variant={marketplaceLogInfo.variant}
+                size='sm'
+                copyable={false}
+              />
+            </div>
           )
         }
 

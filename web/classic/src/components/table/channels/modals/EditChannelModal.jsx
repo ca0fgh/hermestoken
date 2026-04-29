@@ -52,7 +52,6 @@ import {
   Dropdown,
 } from '@douyinfe/semi-ui';
 import {
-  getChannelModels,
   copy,
   getChannelIcon,
   getModelCategories,
@@ -222,7 +221,6 @@ const EditChannelModal = (props) => {
   const [originModelOptions, setOriginModelOptions] = useState([]);
   const [modelOptions, setModelOptions] = useState([]);
   const [groupOptions, setGroupOptions] = useState([]);
-  const [basicModels, setBasicModels] = useState([]);
   const [fullModels, setFullModels] = useState([]);
   const [modelGroups, setModelGroups] = useState([]);
   const [customModel, setCustomModel] = useState('');
@@ -626,59 +624,12 @@ const EditChannelModal = (props) => {
     }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
     if (name === 'type') {
-      let localModels = [];
-      switch (value) {
-        case 2:
-          localModels = [
-            'mj_imagine',
-            'mj_variation',
-            'mj_reroll',
-            'mj_blend',
-            'mj_upscale',
-            'mj_describe',
-            'mj_uploads',
-          ];
-          break;
-        case 5:
-          localModels = [
-            'swap_face',
-            'mj_imagine',
-            'mj_video',
-            'mj_edits',
-            'mj_variation',
-            'mj_reroll',
-            'mj_blend',
-            'mj_upscale',
-            'mj_describe',
-            'mj_zoom',
-            'mj_shorten',
-            'mj_modal',
-            'mj_inpaint',
-            'mj_custom_zoom',
-            'mj_high_variation',
-            'mj_low_variation',
-            'mj_pan',
-            'mj_uploads',
-          ];
-          break;
-        case 36:
-          localModels = ['suno_music', 'suno_lyrics'];
-          break;
-        case 45:
-          localModels = getChannelModels(value);
-          setInputs((prevInputs) => ({
-            ...prevInputs,
-            base_url: 'https://ark.cn-beijing.volces.com',
-          }));
-          break;
-        default:
-          localModels = getChannelModels(value);
-          break;
+      if (value === 45) {
+        setInputs((prevInputs) => ({
+          ...prevInputs,
+          base_url: 'https://ark.cn-beijing.volces.com',
+        }));
       }
-      if (inputs.models.length === 0) {
-        setInputs((inputs) => ({ ...inputs, models: localModels }));
-      }
-      setBasicModels(localModels);
 
       // 重置手动输入模式状态
       setUseManualInput(false);
@@ -974,7 +925,6 @@ const EditChannelModal = (props) => {
       }
       // 同步企业账户状态
       setIsEnterpriseAccount(data.is_enterprise_account || false);
-      setBasicModels(getChannelModels(data.type));
       // 同步更新channelSettings状态显示
       setChannelSettings({
         force_format: data.force_format,
@@ -1137,9 +1087,11 @@ const EditChannelModal = (props) => {
 
   const fetchModels = async () => {
     try {
-      let res = await API.get(`/api/channel/models`);
-      const localModelOptions = res.data.data.map((model) => {
-        const id = (model.id || '').trim();
+      const res = await API.get(`/api/channel/models_priced`);
+      const pricedModelIds = (res.data.data || [])
+        .map((model) => (model.id || '').trim())
+        .filter(Boolean);
+      const localModelOptions = pricedModelIds.map((id) => {
         return {
           key: id,
           label: id,
@@ -1147,14 +1099,7 @@ const EditChannelModal = (props) => {
         };
       });
       setOriginModelOptions(localModelOptions);
-      setFullModels(res.data.data.map((model) => model.id));
-      setBasicModels(
-        res.data.data
-          .filter((model) => {
-            return model.id.startsWith('gpt-') || model.id.startsWith('text-');
-          })
-          .map((model) => model.id),
-      );
+      setFullModels(pricedModelIds);
     } catch (error) {
       showError(error.message);
     }
@@ -1294,7 +1239,6 @@ const EditChannelModal = (props) => {
   }, [originModelOptions, inputs.models, t]);
 
   useEffect(() => {
-    fetchModels().then();
     fetchGroups().then();
     if (!isEdit) {
       initialBaseUrlRef.current = '';
@@ -1302,10 +1246,11 @@ const EditChannelModal = (props) => {
       if (formApiRef.current) {
         formApiRef.current.setValues(originInputs);
       }
-      let localModels = getChannelModels(inputs.type);
-      setBasicModels(localModels);
-      setInputs((inputs) => ({ ...inputs, models: localModels }));
     }
+  }, [props.editingChannel.id]);
+
+  useEffect(() => {
+    fetchModels().then();
   }, [props.editingChannel.id]);
 
   useEffect(() => {
@@ -3738,15 +3683,6 @@ const EditChannelModal = (props) => {
                         }}
                         extraText={
                           <Space>
-                            <Button
-                              size='small'
-                              type='primary'
-                              onClick={() =>
-                                handleInputChange('models', basicModels)
-                              }
-                            >
-                              {t('填入相关模型')}
-                            </Button>
                             {MODEL_FETCHABLE_CHANNEL_TYPES.has(inputs.type) && (
                               <Button
                                 size='small'

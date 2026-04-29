@@ -273,15 +273,18 @@ const ModelSelectModal = ({
     const categoryEntries = Object.entries(modelsByCategory);
     if (categoryEntries.length === 0) return null;
 
-    // 生成所有面板的key，确保都展开
-    const allActiveKeys = categoryEntries.map(
+    const defaultExpandedCategoryKeys = categoryEntries.map(
       (_, index) => `${categoryKeyPrefix}_${index}`,
     );
+    const shouldExpandCategories =
+      keyword.trim() !== '' || categoryEntries.length === 1;
 
     return (
       <Collapse
         key={`${categoryKeyPrefix}_${categoryEntries.length}`}
-        defaultActiveKey={[]}
+        defaultActiveKey={
+          shouldExpandCategories ? defaultExpandedCategoryKeys : []
+        }
       >
         {categoryEntries.map(([key, categoryData], index) => (
           <Collapse.Panel

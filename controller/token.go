@@ -45,6 +45,40 @@ func validateTokenGroupSelection(c *gin.Context, userID int, tokenGroup string) 
 	return true
 }
 
+func validateTokenMarketplaceFixedOrderBinding(c *gin.Context, userID int, fixedOrderID int) bool {
+	if fixedOrderID <= 0 {
+		return true
+	}
+	if _, err := service.ValidateBuyerMarketplaceFixedOrderBindings(userID, []int{fixedOrderID}); err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	return true
+}
+
+func validateTokenMarketplaceFixedOrderBindings(c *gin.Context, userID int, fixedOrderIDs []int) bool {
+	if len(fixedOrderIDs) == 0 {
+		return true
+	}
+	if _, err := service.ValidateBuyerMarketplaceFixedOrderBindings(userID, fixedOrderIDs); err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	return true
+}
+
+func marketplaceFixedOrderIDListsEqual(first []int, second []int) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	for index, id := range first {
+		if id != second[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func GetAllTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -222,21 +256,29 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	cleanToken := model.Token{
-		UserId:             c.GetInt("id"),
-		Name:               token.Name,
-		Key:                key,
-		CreatedTime:        common.GetTimestamp(),
-		AccessedTime:       common.GetTimestamp(),
-		ExpiredTime:        token.ExpiredTime,
-		RemainQuota:        token.RemainQuota,
-		UnlimitedQuota:     token.UnlimitedQuota,
-		ModelLimitsEnabled: token.ModelLimitsEnabled,
-		ModelLimits:        token.ModelLimits,
-		AllowIps:           token.AllowIps,
-		Group:              token.Group,
-		CrossGroupRetry:    token.CrossGroupRetry,
+		UserId:                   c.GetInt("id"),
+		Name:                     token.Name,
+		Key:                      key,
+		CreatedTime:              common.GetTimestamp(),
+		AccessedTime:             common.GetTimestamp(),
+		ExpiredTime:              token.ExpiredTime,
+		RemainQuota:              token.RemainQuota,
+		UnlimitedQuota:           token.UnlimitedQuota,
+		ModelLimitsEnabled:       token.ModelLimitsEnabled,
+		ModelLimits:              token.ModelLimits,
+		AllowIps:                 token.AllowIps,
+		Group:                    token.Group,
+		CrossGroupRetry:          token.CrossGroupRetry,
+		MarketplaceFixedOrderID:  token.MarketplaceFixedOrderID,
+		MarketplaceFixedOrderIDs: token.MarketplaceFixedOrderIDs,
+		MarketplaceRouteOrder:    model.NewMarketplaceRouteOrder(token.MarketplaceRouteOrderList()),
+		MarketplaceRouteEnabled:  model.NewMarketplaceRouteEnabled(token.MarketplaceRouteEnabledList()),
 	}
+	cleanToken.SetMarketplaceFixedOrderIDList(cleanToken.MarketplaceFixedOrderIDList())
 	if !validateTokenGroupSelection(c, cleanToken.UserId, cleanToken.Group) {
+		return
+	}
+	if !validateTokenMarketplaceFixedOrderBindings(c, cleanToken.UserId, cleanToken.MarketplaceFixedOrderIDList()) {
 		return
 	}
 	err = cleanToken.Insert()
@@ -306,6 +348,7 @@ func UpdateToken(c *gin.Context) {
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
+		previousMarketplaceFixedOrderIDs := cleanToken.MarketplaceFixedOrderIDList()
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
@@ -316,7 +359,17 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.AllowIps = token.AllowIps
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
+		cleanToken.MarketplaceFixedOrderID = token.MarketplaceFixedOrderID
+		cleanToken.MarketplaceFixedOrderIDs = token.MarketplaceFixedOrderIDs
+		cleanToken.SetMarketplaceFixedOrderIDList(cleanToken.MarketplaceFixedOrderIDList())
+		cleanToken.MarketplaceRouteOrder = model.NewMarketplaceRouteOrder(token.MarketplaceRouteOrderList())
+		cleanToken.MarketplaceRouteEnabled = model.NewMarketplaceRouteEnabled(token.MarketplaceRouteEnabledList())
 		if !validateTokenGroupSelection(c, userId, cleanToken.Group) {
+			return
+		}
+		nextMarketplaceFixedOrderIDs := cleanToken.MarketplaceFixedOrderIDList()
+		if !marketplaceFixedOrderIDListsEqual(previousMarketplaceFixedOrderIDs, nextMarketplaceFixedOrderIDs) &&
+			!validateTokenMarketplaceFixedOrderBindings(c, userId, nextMarketplaceFixedOrderIDs) {
 			return
 		}
 	}

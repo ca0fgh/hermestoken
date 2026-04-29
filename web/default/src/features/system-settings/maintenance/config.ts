@@ -7,6 +7,7 @@ export type HeaderNavPricingConfig = {
 
 export type HeaderNavModulesConfig = {
   home: boolean
+  marketplace: boolean
   console: boolean
   pricing: HeaderNavPricingConfig
   docs: boolean
@@ -23,6 +24,7 @@ export type SidebarModulesAdminConfig = Record<string, SidebarSectionConfig>
 
 export const HEADER_NAV_DEFAULT: HeaderNavModulesConfig = {
   home: true,
+  marketplace: true,
   console: true,
   pricing: {
     enabled: true,
@@ -49,6 +51,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
   personal: {
     enabled: true,
     topup: true,
+    marketplace: true,
     personal: true,
   },
   admin: {

@@ -9,6 +9,22 @@ type OpenAIModels struct {
 	Created                int                     `json:"created"`
 	OwnedBy                string                  `json:"owned_by"`
 	SupportedEndpointTypes []constant.EndpointType `json:"supported_endpoint_types"`
+	ModelName              string                  `json:"model_name,omitempty"`
+	QuotaType              string                  `json:"quota_type,omitempty"`
+	BillingMode            string                  `json:"billing_mode,omitempty"`
+	BillingExpr            string                  `json:"billing_expr,omitempty"`
+	ModelPrice             float64                 `json:"model_price,omitempty"`
+	ModelRatio             float64                 `json:"model_ratio,omitempty"`
+	CompletionRatio        float64                 `json:"completion_ratio,omitempty"`
+	CacheRatio             *float64                `json:"cache_ratio,omitempty"`
+	CreateCacheRatio       *float64                `json:"create_cache_ratio,omitempty"`
+	InputPricePerMTok      float64                 `json:"input_price_per_mtok,omitempty"`
+	OutputPricePerMTok     float64                 `json:"output_price_per_mtok,omitempty"`
+	CacheReadPricePerMTok  *float64                `json:"cache_read_price_per_mtok,omitempty"`
+	CacheWritePricePerMTok *float64                `json:"cache_write_price_per_mtok,omitempty"`
+	TaskPerRequestPrice    float64                 `json:"task_per_request_price,omitempty"`
+	TaskPerSecondPrice     float64                 `json:"task_per_second_price,omitempty"`
+	Configured             bool                    `json:"configured,omitempty"`
 }
 
 type AnthropicModel struct {

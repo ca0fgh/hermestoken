@@ -106,6 +106,12 @@ const SingleModelSelectModal = ({
     () => Object.entries(modelsByCategory),
     [modelsByCategory],
   );
+  const defaultExpandedCategoryKeys = useMemo(
+    () => categoryEntries.map((_, index) => `category_${index}`),
+    [categoryEntries],
+  );
+  const shouldExpandCategories =
+    keyword.trim() !== '' || categoryEntries.length === 1;
 
   return (
     <Modal
@@ -158,12 +164,14 @@ const SingleModelSelectModal = ({
             <Collapse
               className='w-full'
               style={{ width: '100%' }}
-              defaultActiveKey={[]}
+              defaultActiveKey={
+                shouldExpandCategories ? defaultExpandedCategoryKeys : []
+              }
             >
               {categoryEntries.map(([key, categoryData], index) => (
                 <Collapse.Panel
                   key={`${key}_${index}`}
-                  itemKey={`${key}_${index}`}
+                  itemKey={`category_${index}`}
                   header={
                     <span className='flex items-center gap-2'>
                       {categoryData.icon}

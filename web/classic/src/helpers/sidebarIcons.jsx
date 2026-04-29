@@ -31,6 +31,7 @@ import {
   Package,
   Server,
   Settings,
+  Store,
   TerminalSquare,
   User,
 } from 'lucide-react';
@@ -63,6 +64,8 @@ export function getSidebarIcon(key, selected = false) {
       return <CheckSquare {...commonProps} color={iconColor} />;
     case 'topup':
       return <CreditCard {...commonProps} color={iconColor} />;
+    case 'marketplace':
+      return <Store {...commonProps} color={iconColor} />;
     case 'rebate':
       return <BadgePercent {...commonProps} color={iconColor} />;
     case 'channel':

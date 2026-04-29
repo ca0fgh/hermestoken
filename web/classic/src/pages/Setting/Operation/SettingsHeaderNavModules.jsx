@@ -28,6 +28,10 @@ import {
 import { API, showError, showSuccess } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../../context/Status';
+import {
+  DEFAULT_HEADER_NAV_MODULES,
+  normalizeHeaderNavModules,
+} from '../../../helpers/headerNavModules';
 
 const { Text } = Typography;
 
@@ -38,14 +42,7 @@ export default function SettingsHeaderNavModules(props) {
 
   // 顶栏模块管理状态
   const [headerNavModules, setHeaderNavModules] = useState({
-    home: true,
-    console: true,
-    pricing: {
-      enabled: true,
-      requireAuth: false, // 默认不需要登录鉴权
-    },
-    docs: true,
-    about: true,
+    ...DEFAULT_HEADER_NAV_MODULES,
   });
 
   // 处理顶栏模块配置变更
@@ -77,17 +74,7 @@ export default function SettingsHeaderNavModules(props) {
 
   // 重置顶栏模块为默认配置
   function resetHeaderNavModules() {
-    const defaultModules = {
-      home: true,
-      console: true,
-      pricing: {
-        enabled: true,
-        requireAuth: false,
-      },
-      docs: true,
-      about: true,
-    };
-    setHeaderNavModules(defaultModules);
+    setHeaderNavModules({ ...DEFAULT_HEADER_NAV_MODULES });
     showSuccess(t('已重置为默认配置'));
   }
 
@@ -129,32 +116,9 @@ export default function SettingsHeaderNavModules(props) {
   useEffect(() => {
     // 从 props.options 中获取配置
     if (props.options && props.options.HeaderNavModules) {
-      try {
-        const modules = JSON.parse(props.options.HeaderNavModules);
-
-        // 处理向后兼容性：如果pricing是boolean，转换为对象格式
-        if (typeof modules.pricing === 'boolean') {
-          modules.pricing = {
-            enabled: modules.pricing,
-            requireAuth: false, // 默认不需要登录鉴权
-          };
-        }
-
-        setHeaderNavModules(modules);
-      } catch (error) {
-        // 使用默认配置
-        const defaultModules = {
-          home: true,
-          console: true,
-          pricing: {
-            enabled: true,
-            requireAuth: false,
-          },
-          docs: true,
-          about: true,
-        };
-        setHeaderNavModules(defaultModules);
-      }
+      setHeaderNavModules(
+        normalizeHeaderNavModules(props.options.HeaderNavModules),
+      );
     }
   }, [props.options]);
 
@@ -164,6 +128,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'home',
       title: t('首页'),
       description: t('用户主页，展示系统信息'),
+    },
+    {
+      key: 'marketplace',
+      title: t('市场'),
+      description: t('控制是否显示市场入口'),
     },
     {
       key: 'console',
@@ -194,7 +163,12 @@ export default function SettingsHeaderNavModules(props) {
         text={t('顶栏管理')}
         extraText={t('控制顶栏与演示站页脚相关入口显示状态，全局生效')}
       >
-        <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+        <Row
+          type='flex'
+          align='top'
+          gutter={[16, 16]}
+          style={{ marginBottom: '24px' }}
+        >
           {moduleConfigs.map((module) => (
             <Col key={module.key} xs={24} sm={12} md={6} lg={6} xl={6}>
               <Card
@@ -293,7 +267,9 @@ export default function SettingsHeaderNavModules(props) {
                               display: 'block',
                             }}
                           >
-                            {t('关闭后游客按 default 分组浏览模型广场，登录用户可查看全部展示模型')}
+                            {t(
+                              '关闭后游客按 default 分组浏览模型广场，登录用户可查看全部展示模型',
+                            )}
                           </Text>
                         </div>
                         <div style={{ marginLeft: '16px' }}>

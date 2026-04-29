@@ -6,6 +6,7 @@ import type {
   GetApiKeysResponse,
   SearchApiKeysParams,
   ApiKeyFormData,
+  GetApiKeyMarketplaceFixedOrdersResponse,
 } from './types'
 
 // ============================================================================
@@ -95,5 +96,20 @@ export async function fetchTokenKeysBatch(ids: number[]): Promise<{
   data?: { keys: Record<number, string> }
 }> {
   const res = await api.post('/api/token/batch/keys', { ids })
+  return res.data
+}
+
+export async function getApiKeyMarketplaceFixedOrders(
+  params: {
+    p?: number
+    page_size?: number
+  } = {}
+): Promise<GetApiKeyMarketplaceFixedOrdersResponse> {
+  const { p = 1, page_size = 100 } = params
+  const res = await api.get('/api/marketplace/fixed-orders', {
+    params: { p, page_size },
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
   return res.data
 }

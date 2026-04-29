@@ -452,6 +452,13 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	if reqId == "" {
 		reqId = common.GetTimeString() + common.GetRandomString(8)
 	}
+	requestURLPath := c.Request.URL.String()
+	if canonicalPath, ok := relayconstant.CanonicalOpenAIPath(c.Request.URL.Path); ok {
+		requestURLPath = canonicalPath
+		if c.Request.URL.RawQuery != "" {
+			requestURLPath += "?" + c.Request.URL.RawQuery
+		}
+	}
 	info := &RelayInfo{
 		Request: request,
 
@@ -471,7 +478,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 		isFirstResponse: true,
 		RelayMode:       relayconstant.Path2RelayMode(c.Request.URL.Path),
-		RequestURLPath:  c.Request.URL.String(),
+		RequestURLPath:  requestURLPath,
 		RequestHeaders:  cloneRequestHeaders(c),
 		IsStream:        isStream,
 

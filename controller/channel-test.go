@@ -231,6 +231,13 @@ func setChannelTestLogContext(c *gin.Context, testGroups []string, logGroup stri
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
 	tik := time.Now()
+	testModel = resolveChannelTestModel(channel, testModel)
+
+	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	isOpenAIVideoTest := endpointType == string(constant.EndpointTypeOpenAIVideo) ||
+		(endpointType == "" && channelTestEndpointTypesContain(channel, testModel, "", constant.EndpointTypeOpenAIVideo))
+	supportsOpenAIVideoTest := isOpenAIVideoTest && channelSupportsVideoTaskTest(channel.Type)
+
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
@@ -240,35 +247,30 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		constant.ChannelTypeDoubaoVideo,
 		constant.ChannelTypeVidu,
 	}
-	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
+	if lo.Contains(unsupportedTestChannelTypes, channel.Type) && !supportsOpenAIVideoTest {
 		channelTypeName := constant.GetChannelTypeName(channel.Type)
 		return testResult{
 			localErr: fmt.Errorf("%s channel test is not supported", channelTypeName),
 			skipped:  true,
 		}
 	}
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-
-	testModel = resolveChannelTestModel(channel, testModel)
-
-	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
-	if endpointType == string(constant.EndpointTypeOpenAIVideo) ||
-		(endpointType == "" && channelTestEndpointTypesContain(channel, testModel, "", constant.EndpointTypeOpenAIVideo)) {
-		unsupportedEndpointType := endpointType
-		if unsupportedEndpointType == "" {
-			unsupportedEndpointType = string(constant.EndpointTypeOpenAIVideo)
-		}
+	if isOpenAIVideoTest && !supportsOpenAIVideoTest {
 		return testResult{
-			localErr: fmt.Errorf("%s channel test is not supported by synchronous channel testing", unsupportedEndpointType),
+			localErr: fmt.Errorf("%s channel test is not supported for %s channels", constant.EndpointTypeOpenAIVideo, constant.GetChannelTypeName(channel.Type)),
 			skipped:  true,
 		}
 	}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
 
 	requestPath := "/v1/chat/completions"
 
 	// 如果指定了端点类型，使用指定的端点类型
-	if endpointType != "" {
+	if isOpenAIVideoTest {
+		if endpointInfo, ok := common.GetDefaultEndpointInfo(constant.EndpointTypeOpenAIVideo); ok {
+			requestPath = endpointInfo.Path
+		}
+	} else if endpointType != "" {
 		if endpointInfo, ok := common.GetDefaultEndpointInfo(constant.EndpointType(endpointType)); ok {
 			requestPath = endpointInfo.Path
 		}
@@ -328,6 +330,18 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 
 	//c.Request.Header.Set("Authorization", "Bearer "+channel.Key)
 	c.Request.Header.Set("Content-Type", "application/json")
+	if isOpenAIVideoTest {
+		body, marshalErr := common.Marshal(buildTestVideoTaskRequest(testModel))
+		if marshalErr != nil {
+			return testResult{
+				context:          c,
+				localErr:         marshalErr,
+				hermesTokenError: types.NewError(marshalErr, types.ErrorCodeJsonMarshalFailed),
+			}
+		}
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+		c.Request.ContentLength = int64(len(body))
+	}
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
 	userGroup, _ := model.GetUserGroup(1, false)
@@ -340,6 +354,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			localErr:         hermesTokenError,
 			hermesTokenError: hermesTokenError,
 		}
+	}
+	if isOpenAIVideoTest {
+		return testVideoTaskChannel(c, channel, testModel, channelTestGroups, channelTestLogGroup, tik)
 	}
 
 	// Determine relay format based on endpoint type or request path
@@ -679,6 +696,189 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Other:            other,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	return testResult{
+		context:          c,
+		localErr:         nil,
+		hermesTokenError: nil,
+	}
+}
+
+func buildTestVideoTaskRequest(modelName string) relaycommon.TaskSubmitReq {
+	return relaycommon.TaskSubmitReq{
+		Model:   modelName,
+		Prompt:  "a short test video of a cat walking",
+		Size:    "720x1280",
+		Seconds: "4",
+	}
+}
+
+func channelSupportsVideoTaskTest(channelType int) bool {
+	return relay.GetTaskAdaptor(constant.TaskPlatform(strconv.Itoa(channelType))) != nil
+}
+
+func testVideoTaskChannel(c *gin.Context, channel *model.Channel, testModel string, channelTestGroups []string, channelTestLogGroup string, tik time.Time) testResult {
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	if err != nil {
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
+		}
+	}
+	info.IsChannelTest = true
+	info.InitChannelMeta(c)
+	info.PublicTaskID = model.GenerateTaskID()
+
+	adaptor := relay.GetTaskAdaptor(relay.GetTaskPlatform(c))
+	if adaptor == nil {
+		err := fmt.Errorf("invalid api platform: %s", relay.GetTaskPlatform(c))
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeInvalidApiType),
+		}
+	}
+	adaptor.Init(info)
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+		err := taskErr.Error
+		if err == nil {
+			err = errors.New(taskErr.Message)
+		}
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCode(taskErr.Code), taskErr.StatusCode),
+		}
+	}
+
+	modelName := info.OriginModelName
+	if modelName == "" {
+		modelName = testModel
+	}
+	info.OriginModelName = modelName
+	info.UpstreamModelName = modelName
+	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeChannelModelMappedError),
+		}
+	}
+	if info.UpstreamModelName != "" {
+		testModel = info.UpstreamModelName
+	}
+
+	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	if err != nil {
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+		}
+	}
+	info.PriceData = priceData
+	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+		for k, v := range estimatedRatios {
+			info.PriceData.AddOtherRatio(k, v)
+		}
+	}
+	if helper.ApplyTaskModelPricing(info.OriginModelName, &info.PriceData) {
+		// Quota is calculated by the task-specific formula.
+	} else if !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+		for _, ratio := range info.PriceData.OtherRatios {
+			if ratio != 1.0 {
+				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ratio)
+			}
+		}
+	}
+
+	requestBody, err := adaptor.BuildRequestBody(c, info)
+	if err != nil {
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCodeConvertRequestFailed, http.StatusInternalServerError),
+		}
+	}
+	resp, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+		}
+	}
+	if resp != nil && resp.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(resp.Body)
+		err := fmt.Errorf("%s", strings.TrimSpace(string(responseBody)))
+		if err.Error() == "" {
+			err = fmt.Errorf("upstream returned status %d", resp.StatusCode)
+		}
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+		}
+	}
+
+	_, taskData, taskErr := adaptor.DoResponse(c, resp, info)
+	if taskErr != nil {
+		err := taskErr.Error
+		if err == nil {
+			err = errors.New(taskErr.Message)
+		}
+		return testResult{
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCode(taskErr.Code), taskErr.StatusCode),
+		}
+	}
+	if bodyErr := detectErrorFromTestResponseBody(taskData); bodyErr != nil {
+		return testResult{
+			context:          c,
+			localErr:         bodyErr,
+			hermesTokenError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+		}
+	}
+
+	milliseconds := time.Since(tik).Milliseconds()
+	other := map[string]interface{}{
+		"is_task":      true,
+		"request_path": c.Request.URL.Path,
+		"model_price":  info.PriceData.ModelPrice,
+		"group_ratio":  info.PriceData.GroupRatioInfo.GroupRatio,
+	}
+	if info.PriceData.TaskModelPricingApplied {
+		other["task_model_pricing"] = true
+		other["per_request"] = info.PriceData.TaskPerRequestPrice
+		other["per_second"] = info.PriceData.TaskPerSecondPrice
+	}
+	if info.PriceData.ModelRatio > 0 {
+		other["model_ratio"] = info.PriceData.ModelRatio
+	}
+	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
+		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
+	}
+	if info.IsModelMapped {
+		other["is_model_mapped"] = true
+		other["upstream_model_name"] = info.UpstreamModelName
+	}
+	addChannelTestLogInfo(other, channelTestGroups, info.UsingGroup)
+	if channelTestLogGroup == "" {
+		channelTestLogGroup = c.GetString("group")
+	}
+	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
+		ChannelId:      channel.Id,
+		ModelName:      testModel,
+		TokenName:      channelTestTokenName,
+		Quota:          info.PriceData.Quota,
+		Content:        "模型测试",
+		TokenId:        0,
+		UseTimeSeconds: int(float64(milliseconds) / 1000.0),
+		Group:          channelTestLogGroup,
+		Other:          other,
+	})
+	common.SysLog(fmt.Sprintf("testing video channel #%d, response: \n%s", channel.Id, string(taskData)))
 	return testResult{
 		context:          c,
 		localErr:         nil,

@@ -77,9 +77,38 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	appendRequestConversionChain(relayInfo, other)
 	appendFinalRequestFormat(relayInfo, other)
 	appendBillingInfo(relayInfo, other)
+	appendMarketplaceInfo(ctx, relayInfo, other)
 	appendParamOverrideInfo(relayInfo, other)
 	appendStreamStatus(relayInfo, other)
 	return other
+}
+
+func appendMarketplaceInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
+	if other == nil {
+		return
+	}
+
+	isMarketplace := relayInfo != nil && strings.HasPrefix(relayInfo.BillingSource, "marketplace_")
+	if ctx != nil && ctx.GetBool("marketplace_relay") {
+		isMarketplace = true
+	}
+	if !isMarketplace {
+		return
+	}
+
+	other["marketplace_relay"] = true
+	if ctx == nil {
+		return
+	}
+	if fixedOrderID := ctx.GetInt("marketplace_fixed_order_id"); fixedOrderID > 0 {
+		other["marketplace_fixed_order_id"] = fixedOrderID
+	}
+	if poolCredentialID := ctx.GetInt("marketplace_pool_credential_id"); poolCredentialID > 0 {
+		other["marketplace_pool_credential_id"] = poolCredentialID
+	}
+	if originalPath := ctx.GetString("marketplace_original_path"); originalPath != "" {
+		other["marketplace_original_path"] = originalPath
+	}
 }
 
 func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {

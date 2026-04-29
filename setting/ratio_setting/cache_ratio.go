@@ -32,6 +32,7 @@ var defaultCacheRatio = map[string]float64{
 	"gpt-5":                               0.1,
 	"gpt-5-2025-08-07":                    0.1,
 	"gpt-5-chat-latest":                   0.1,
+	"gpt-5.5":                             0.1,
 	"gpt-5-mini":                          0.1,
 	"gpt-5-mini-2025-08-07":               0.1,
 	"gpt-5-nano":                          0.1,
@@ -116,6 +117,10 @@ var createCacheRatioMap = types.NewRWMap[string, float64]()
 // GetCacheRatioMap returns a copy of the cache ratio map
 func GetCacheRatioMap() map[string]float64 {
 	return cacheRatioMap.ReadAll()
+}
+
+func GetDefaultCacheRatioMap() map[string]float64 {
+	return defaultCacheRatio
 }
 
 // CacheRatio2JSONString converts the cache ratio map to a JSON string

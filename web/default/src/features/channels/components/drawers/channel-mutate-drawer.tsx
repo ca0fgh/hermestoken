@@ -9,7 +9,6 @@ import {
   Sparkles,
   Trash2,
   Copy,
-  FileText,
   Eraser,
   Plus,
   Eye,
@@ -72,6 +71,7 @@ import {
   getChannelKey,
   getGroups,
   getPrefillGroups,
+  getPricedModels,
   refreshCodexCredential,
   updateChannel,
 } from '../../api'
@@ -276,6 +276,12 @@ export function ChannelMutateDrawer({
   const currentModels = form.watch('models')
   const currentModelMapping = form.watch('model_mapping')
   const awsKeyType = form.watch('aws_key_type')
+
+  // Fetch models configured in model pricing settings
+  const { data: pricedModelsData } = useQuery({
+    queryKey: ['channel_priced_models'],
+    queryFn: getPricedModels,
+  })
   const {
     unlocked: doubaoApiEditUnlocked,
     handleClick: handleApiConfigSecretClick,
@@ -304,17 +310,12 @@ export function ChannelMutateDrawer({
     [allModelsData]
   )
 
-  // Get basic models for the current channel type
-  const basicModels = useMemo(() => {
-    if (!allModelsList.length) return []
-    // Filter models based on common patterns for specific types
-    if (currentType === 1) {
-      return allModelsList.filter(
-        (model) => model.startsWith('gpt-') || model.startsWith('text-')
-      )
-    }
-    return allModelsList
-  }, [allModelsList, currentType])
+  // Get models from pricing settings
+  const pricedModelsList = useMemo(() => {
+    return (
+      pricedModelsData?.data?.map((model) => model.id).filter(Boolean) || []
+    )
+  }, [pricedModelsData])
 
   // Get prefill groups
   const prefillGroups = useMemo(
@@ -352,12 +353,12 @@ export function ChannelMutateDrawer({
 
   // Transform models to multi-select options
   const modelOptions = useMemo(() => {
-    const allModels = new Set([...allModelsList, ...currentModelsArray])
+    const allModels = new Set([...pricedModelsList, ...currentModelsArray])
     return Array.from(allModels).map((model) => ({
       value: model,
       label: model,
     }))
-  }, [allModelsList, currentModelsArray])
+  }, [pricedModelsList, currentModelsArray])
 
   const modelMappingGuardrail = useMemo<ModelMappingGuardrail>(() => {
     if (!currentModelMapping?.trim()) {
@@ -639,18 +640,6 @@ export function ChannelMutateDrawer({
     setCustomModel('')
     toast.success(t('Added {{count}} custom model(s)', { count }))
   }, [customModel, t, updateModels])
-
-  // Handle model operations
-  const handleFillRelatedModels = useCallback(() => {
-    if (!basicModels.length) {
-      toast.info(t('No related models available for this channel type'))
-      return
-    }
-    updateModels(basicModels)
-    toast.success(
-      t('Filled {{count}} related model(s)', { count: basicModels.length })
-    )
-  }, [basicModels, updateModels, t])
 
   const handleFillAllModels = useCallback(() => {
     if (!allModelsList.length) {
@@ -2215,16 +2204,6 @@ export function ChannelMutateDrawer({
                         <div className='flex flex-col gap-2'>
                           <span>{t(FIELD_DESCRIPTIONS.MODELS)}</span>
                           <div className='flex flex-wrap gap-2'>
-                            <Button
-                              type='button'
-                              variant='outline'
-                              size='sm'
-                              onClick={handleFillRelatedModels}
-                              disabled={!basicModels.length}
-                            >
-                              <FileText className='mr-2 h-4 w-4' />
-                              {t('Fill Related Models')}
-                            </Button>
                             <Button
                               type='button'
                               variant='outline'

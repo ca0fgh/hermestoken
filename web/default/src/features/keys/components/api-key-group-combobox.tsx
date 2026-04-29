@@ -96,6 +96,12 @@ export function ApiKeyGroupCombobox({
   }, [options, searchValue])
 
   const handleSelect = (selectedValue: string) => {
+    if (selectedValue === '__empty__') {
+      onValueChange('')
+      setOpen(false)
+      setSearchValue('')
+      return
+    }
     onValueChange(selectedValue)
     setOpen(false)
     setSearchValue('')
@@ -138,6 +144,26 @@ export function ApiKeyGroupCombobox({
           <CommandList className='max-h-[360px]'>
             <CommandEmpty>{t('No group found.')}</CommandEmpty>
             <CommandGroup>
+              <CommandItem
+                value='__empty__'
+                onSelect={handleSelect}
+                className='items-start gap-3 px-3 py-3'
+              >
+                <Check
+                  className={cn(
+                    'mt-0.5 h-4 w-4',
+                    !value ? 'opacity-100' : 'opacity-0'
+                  )}
+                />
+                <span className='min-w-0 flex-1'>
+                  <span className='block truncate font-medium'>
+                    {t('Do not set group')}
+                  </span>
+                  <span className='text-muted-foreground block truncate text-xs'>
+                    {t('Optional. Leave blank to configure later.')}
+                  </span>
+                </span>
+              </CommandItem>
               {filteredOptions.map((option) => (
                 <CommandItem
                   key={option.value}

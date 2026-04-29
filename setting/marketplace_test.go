@@ -8,9 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMarketplaceSettingsDefaultsAreSafe(t *testing.T) {
-	assert.False(t, MarketplaceEnabled)
-	assert.Empty(t, MarketplaceEnabledVendorTypes)
+func TestMarketplaceSettingsDefaultsMatchVisibleMarketplace(t *testing.T) {
+	assert.True(t, MarketplaceEnabled)
+	assert.Equal(t, DefaultMarketplaceEnabledVendorTypes(), MarketplaceEnabledVendorTypes)
+	assert.Contains(t, MarketplaceEnabledVendorTypes, constant.ChannelTypeOpenAI)
+	assert.Contains(t, MarketplaceEnabledVendorTypes, constant.ChannelTypeAnthropic)
+	assert.NotContains(t, MarketplaceEnabledVendorTypes, constant.ChannelTypeUnknown)
 	assert.Equal(t, 0.0, MarketplaceFeeRate)
 	assert.Equal(t, 0, MarketplaceMinFixedOrderQuota)
 	assert.Equal(t, 0, MarketplaceMaxFixedOrderQuota)

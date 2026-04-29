@@ -15,6 +15,14 @@ func TestPath2RelayModeRecognizesOpenAIVideoPaths(t *testing.T) {
 	require.Equal(t, RelayModeVideoFetchByID, Path2RelayMode("/v1/video/generations/task_123"))
 }
 
+func TestPath2RelayModeRecognizesRootOpenAICompatiblePaths(t *testing.T) {
+	require.Equal(t, RelayModeChatCompletions, Path2RelayMode("/chat/completions"))
+	require.Equal(t, RelayModeCompletions, Path2RelayMode("/completions"))
+	require.Equal(t, RelayModeResponses, Path2RelayMode("/responses"))
+	require.Equal(t, RelayModeResponsesCompact, Path2RelayMode("/responses/compact"))
+	require.Equal(t, RelayModeGemini, Path2RelayMode("/models/gemini-2.5-pro:generateContent"))
+}
+
 func TestPath2RelayModeRecognizesKlingVideoPaths(t *testing.T) {
 	require.Equal(t, RelayModeVideoSubmit, Path2RelayMode("/kling/v1/videos/text2video"))
 	require.Equal(t, RelayModeVideoSubmit, Path2RelayMode("/kling/v1/videos/image2video"))

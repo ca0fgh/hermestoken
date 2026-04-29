@@ -80,7 +80,17 @@ export function getServerAddress() {
   if (status) {
     try {
       status = JSON.parse(status);
-      serverAddress = status.server_address || '';
+      const payload =
+        status && typeof status === 'object' && status.data
+          ? status.data
+          : status;
+      const apiInfo = Array.isArray(payload?.api_info)
+        ? payload.api_info
+        : [];
+      const firstApiInfoUrl = apiInfo
+        .map((item) => (typeof item?.url === 'string' ? item.url.trim() : ''))
+        .find(Boolean);
+      serverAddress = firstApiInfoUrl || payload?.server_address || '';
     } catch (error) {
       console.error('Failed to parse status from localStorage:', error);
     }

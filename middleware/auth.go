@@ -13,6 +13,7 @@ import (
 	"github.com/ca0fgh/hermestoken/i18n"
 	"github.com/ca0fgh/hermestoken/logger"
 	"github.com/ca0fgh/hermestoken/model"
+	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
 	"github.com/ca0fgh/hermestoken/service"
 	"github.com/ca0fgh/hermestoken/types"
 
@@ -282,16 +283,17 @@ func TokenAuth() func(c *gin.Context) {
 			c.Request.Header.Set("Authorization", "Bearer "+key)
 		}
 		// 检查path包含/v1/messages 或 /v1/models
-		if strings.Contains(c.Request.URL.Path, "/v1/messages") || strings.Contains(c.Request.URL.Path, "/v1/models") {
+		path := canonicalOpenAIRequestPath(c)
+		if strings.Contains(path, "/v1/messages") || strings.Contains(path, "/v1/models") {
 			anthropicKey := c.Request.Header.Get("x-api-key")
 			if anthropicKey != "" {
 				c.Request.Header.Set("Authorization", "Bearer "+anthropicKey)
 			}
 		}
 		// gemini api 从query中获取key
-		if strings.HasPrefix(c.Request.URL.Path, "/v1beta/models") ||
-			strings.HasPrefix(c.Request.URL.Path, "/v1beta/openai/models") ||
-			strings.HasPrefix(c.Request.URL.Path, "/v1/models/") {
+		if strings.HasPrefix(path, "/v1beta/models") ||
+			strings.HasPrefix(path, "/v1beta/openai/models") ||
+			strings.HasPrefix(path, "/v1/models/") {
 			skKey := c.Query("key")
 			if skKey != "" {
 				c.Request.Header.Set("Authorization", "Bearer "+skKey)
@@ -371,8 +373,7 @@ func TokenAuth() func(c *gin.Context) {
 		userCache.WriteContext(c)
 
 		userGroup := userCache.Group
-		tokenGroup := token.Group
-		usingGroup, err := service.ResolveTokenGroupForUserRequest(token.UserId, userGroup, tokenGroup)
+		usingGroup, err := resolveTokenAuthUsingGroup(c, token.UserId, userGroup, token)
 		if err != nil {
 			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
 			return
@@ -383,8 +384,113 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		markMarketplaceUnifiedRelay(c, token)
 		c.Next()
 	}
+}
+
+func resolveTokenAuthUsingGroup(c *gin.Context, userID int, userGroup string, token *model.Token) (string, error) {
+	tokenGroup := ""
+	if token != nil {
+		tokenGroup = token.Group
+	}
+	if shouldAllowBlankTokenGroupForMarketplaceModelList(c, token) {
+		return userGroup, nil
+	}
+	if shouldAllowBlankTokenGroupForMarketplaceRelay(c, token) {
+		return userGroup, nil
+	}
+	return service.ResolveTokenGroupForUserRequest(userID, userGroup, tokenGroup)
+}
+
+func shouldAllowBlankTokenGroupForMarketplaceModelList(c *gin.Context, token *model.Token) bool {
+	if token == nil || strings.TrimSpace(token.Group) != "" {
+		return false
+	}
+	if !isMarketplaceModelListRequest(c) {
+		return false
+	}
+	if !tokenMarketplaceAnyRouteEnabled(token) {
+		return false
+	}
+	common.SetContextKey(c, constant.ContextKeyMarketplaceModelList, true)
+	return true
+}
+
+func shouldAllowBlankTokenGroupForMarketplaceRelay(c *gin.Context, token *model.Token) bool {
+	if token == nil || strings.TrimSpace(token.Group) != "" {
+		return false
+	}
+	if !isMarketplaceRelayRequest(c) && !isUnifiedMarketplaceRelayRequest(c) {
+		return false
+	}
+	return tokenMarketplaceAnyRouteEnabled(token)
+}
+
+func isMarketplaceModelListRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	return c.Request.Method == http.MethodGet && canonicalOpenAIRequestPath(c) == "/v1/models"
+}
+
+func isMarketplaceRelayRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	path := c.Request.URL.Path
+	return strings.HasPrefix(path, "/marketplace/v1/") || strings.HasPrefix(path, "/marketplace/pool/v1/")
+}
+
+func isUnifiedMarketplaceRelayRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	if c.Request.Method != http.MethodPost {
+		return false
+	}
+	switch canonicalOpenAIRequestPath(c) {
+	case "/v1/completions", "/v1/chat/completions", "/v1/responses", "/v1/responses/compact":
+		return true
+	default:
+		return false
+	}
+}
+
+func canonicalOpenAIRequestPath(c *gin.Context) string {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return ""
+	}
+	path := c.Request.URL.Path
+	if canonicalPath, ok := relayconstant.CanonicalOpenAIPath(path); ok {
+		return canonicalPath
+	}
+	return path
+}
+
+func markMarketplaceUnifiedRelay(c *gin.Context, token *model.Token) {
+	if token == nil || !isUnifiedMarketplaceRelayRequest(c) {
+		return
+	}
+	if strings.TrimSpace(c.GetHeader("X-Marketplace-Fixed-Order-Id")) != "" {
+		if tokenMarketplaceRouteEnabled(token, model.MarketplaceRouteFixedOrder) {
+			common.SetContextKey(c, constant.ContextKeyMarketplaceUnifiedRelay, true)
+		}
+	}
+}
+
+func tokenMarketplaceRouteEnabled(token *model.Token, route string) bool {
+	if token == nil {
+		return false
+	}
+	return model.MarketplaceRouteEnabledMap(token.MarketplaceRouteEnabledList())[route]
+}
+
+func tokenMarketplaceAnyRouteEnabled(token *model.Token) bool {
+	if token == nil {
+		return false
+	}
+	return len(token.MarketplaceRouteEnabledList()) > 0
 }
 
 func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) error {
@@ -395,6 +501,10 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_id", token.Id)
 	c.Set("token_key", token.Key)
 	c.Set("token_name", token.Name)
+	c.Set("token_marketplace_fixed_order_id", token.MarketplaceFixedOrderID)
+	c.Set("token_marketplace_fixed_order_ids", token.MarketplaceFixedOrderIDList())
+	common.SetContextKey(c, constant.ContextKeyMarketplaceRouteOrder, token.MarketplaceRouteOrderList())
+	common.SetContextKey(c, constant.ContextKeyMarketplaceRouteEnabled, token.MarketplaceRouteEnabledList())
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)

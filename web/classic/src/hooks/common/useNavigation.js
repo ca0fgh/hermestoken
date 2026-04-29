@@ -33,6 +33,11 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         to: '/',
       },
       {
+        text: t('市场'),
+        itemKey: 'marketplace',
+        to: '/marketplace',
+      },
+      {
         text: t('控制台'),
         itemKey: 'console',
         to: '/console',
@@ -67,6 +72,12 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
       if (link.itemKey === 'pricing') {
         return (
           hasLoadedHeaderModules && isHeaderNavModuleEnabled(modules, 'pricing')
+        );
+      }
+      if (link.itemKey === 'marketplace') {
+        return (
+          hasLoadedHeaderModules &&
+          isHeaderNavModuleEnabled(modules, 'marketplace')
         );
       }
       return isHeaderNavModuleEnabled(modules, link.itemKey);

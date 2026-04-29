@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useQuery } from '@tanstack/react-query'
-import { ChevronDown } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, ChevronDown } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatQuota } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
@@ -36,8 +37,13 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { DateTimePicker } from '@/components/datetime-picker'
 import { MultiSelect } from '@/components/multi-select'
-import { createApiKey, updateApiKey, getApiKey } from '../api'
-import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
+import {
+  createApiKey,
+  updateApiKey,
+  getApiKey,
+  getApiKeyMarketplaceFixedOrders,
+} from '../api'
+import { DEFAULT_GROUP, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   apiKeyFormSchema,
   type ApiKeyFormValues,
@@ -45,7 +51,13 @@ import {
   transformFormDataToPayload,
   transformApiKeyToFormDefaults,
 } from '../lib'
-import { type ApiKey } from '../types'
+import {
+  MARKETPLACE_ROUTE_ORDER_VALUES,
+  normalizeMarketplaceRouteEnabled,
+  normalizeMarketplaceRouteOrder,
+  type ApiKey,
+  type MarketplaceRouteOrderItem,
+} from '../types'
 import {
   ApiKeyGroupCombobox,
   type ApiKeyGroupOption,
@@ -59,6 +71,44 @@ type ApiKeyMutateDrawerProps = {
   side?: 'left' | 'right'
 }
 
+const MARKETPLACE_ROUTE_ORDER_LABELS: Record<
+  MarketplaceRouteOrderItem,
+  string
+> = {
+  fixed_order: 'Marketplace fixed order',
+  group: 'Normal group',
+  pool: 'Order pool',
+}
+
+function moveMarketplaceRouteOrderItem(
+  current: MarketplaceRouteOrderItem[] | undefined,
+  index: number,
+  direction: -1 | 1
+): MarketplaceRouteOrderItem[] {
+  const next = normalizeMarketplaceRouteOrder(current)
+  const targetIndex = index + direction
+  if (targetIndex < 0 || targetIndex >= next.length) return next
+
+  const moved = [...next]
+  ;[moved[index], moved[targetIndex]] = [moved[targetIndex], moved[index]]
+
+  return normalizeMarketplaceRouteOrder(moved)
+}
+
+function toggleMarketplaceRouteEnabled(
+  current: MarketplaceRouteOrderItem[] | undefined,
+  route: MarketplaceRouteOrderItem,
+  enabled: boolean
+): MarketplaceRouteOrderItem[] {
+  const currentSet = new Set(normalizeMarketplaceRouteEnabled(current))
+  if (enabled) {
+    currentSet.add(route)
+  } else {
+    currentSet.delete(route)
+  }
+  return MARKETPLACE_ROUTE_ORDER_VALUES.filter((value) => currentSet.has(value))
+}
+
 export function ApiKeysMutateDrawer({
   open,
   onOpenChange,
@@ -67,7 +117,8 @@ export function ApiKeysMutateDrawer({
 }: ApiKeyMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
-  const { triggerRefresh } = useApiKeys()
+  const { setCurrentRow, triggerRefresh } = useApiKeys()
+  const queryClient = useQueryClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
 
@@ -85,7 +136,22 @@ export function ApiKeysMutateDrawer({
     staleTime: 5 * 60 * 1000,
   })
 
+  const { data: fixedOrdersData } = useQuery({
+    queryKey: ['api-key-marketplace-fixed-orders'],
+    queryFn: () => getApiKeyMarketplaceFixedOrders({ p: 1, page_size: 100 }),
+    enabled: open,
+    retry: false,
+    staleTime: 30 * 1000,
+  })
+
   const models = modelsData?.data || []
+  const marketplaceFixedOrders = fixedOrdersData?.success
+    ? (fixedOrdersData.data?.items ?? [])
+    : []
+  const marketplaceFixedOrderOptions = marketplaceFixedOrders.map((order) => ({
+    label: `#${order.id} · ${t('Credential')} #${order.credential_id} · ${t(order.status)} · ${formatQuota(order.remaining_quota)}`,
+    value: String(order.id),
+  }))
   const groupsRaw = groupsData?.data || {}
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
     ([key, info]) => ({
@@ -96,19 +162,22 @@ export function ApiKeysMutateDrawer({
     })
   )
 
-  // Add auto group if configured
-  if (!groups.some((g) => g.value === 'auto')) {
-    groups.unshift({
-      value: 'auto',
-      label: 'auto',
-      desc: t('Auto (Circuit Breaker)'),
-    })
-  }
-
   const form = useForm<ApiKeyFormValues>({
     resolver: zodResolver(apiKeyFormSchema),
     defaultValues: API_KEY_FORM_DEFAULT_VALUES,
   })
+  const marketplaceRouteEnabled = form.watch('marketplace_route_enabled')
+  const marketplacePoolRouteEnabled = normalizeMarketplaceRouteEnabled(
+    marketplaceRouteEnabled
+  ).includes('pool')
+
+  useEffect(() => {
+    if (!open || groups.length === 0) return
+    const currentGroup = form.getValues('group')
+    if (currentGroup && !groups.some((group) => group.value === currentGroup)) {
+      form.setValue('group', DEFAULT_GROUP, { shouldDirty: false })
+    }
+  }, [open, form, groups])
 
   // Load existing data when updating
   useEffect(() => {
@@ -136,9 +205,21 @@ export function ApiKeysMutateDrawer({
           id: currentRow.id,
         })
         if (result.success) {
+          if (result.data) {
+            const updatedApiKey = result.data
+            setCurrentRow((previous) =>
+              previous?.id === updatedApiKey.id
+                ? { ...previous, ...updatedApiKey }
+                : previous
+            )
+          }
           toast.success(t(SUCCESS_MESSAGES.API_KEY_UPDATED))
           onOpenChange(false)
           triggerRefresh()
+          void queryClient.invalidateQueries({ queryKey: ['keys'] })
+          void queryClient.invalidateQueries({
+            queryKey: ['marketplace', 'buyer-console-tokens'],
+          })
         } else {
           toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
         }
@@ -171,6 +252,10 @@ export function ApiKeysMutateDrawer({
           )
           onOpenChange(false)
           triggerRefresh()
+          void queryClient.invalidateQueries({ queryKey: ['keys'] })
+          void queryClient.invalidateQueries({
+            queryKey: ['marketplace', 'buyer-console-tokens'],
+          })
         }
       }
     } catch (_error) {
@@ -295,6 +380,176 @@ export function ApiKeysMutateDrawer({
                 )}
               />
             )}
+
+            <FormField
+              control={form.control}
+              name='marketplace_fixed_order_ids'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Marketplace fixed order binding')}</FormLabel>
+                  <FormControl>
+                    <MultiSelect
+                      options={marketplaceFixedOrderOptions}
+                      selected={(field.value ?? []).map(String)}
+                      onChange={(values) => {
+                        const fixedOrderIds = values
+                          .map((value) => Number(value))
+                          .filter(
+                            (value) => Number.isFinite(value) && value > 0
+                          )
+                        field.onChange(fixedOrderIds)
+                        form.setValue(
+                          'marketplace_fixed_order_id',
+                          fixedOrderIds[0] ?? 0
+                        )
+                      }}
+                      placeholder={t('Do not bind')}
+                    />
+                  </FormControl>
+                  <div className='space-y-1'>
+                    <FormDescription>
+                      {(field.value ?? []).length > 0
+                        ? t(
+                            'Bound marketplace fixed order calls can use this token directly without manually entering the fixed order header.'
+                          )
+                        : t(
+                            'Optional. Bind a purchased marketplace fixed order so fixed-order calls are tied to this token.'
+                          )}
+                    </FormDescription>
+                    <FormDescription
+                      className={
+                        marketplacePoolRouteEnabled
+                          ? 'text-green-600 dark:text-green-500'
+                          : undefined
+                      }
+                    >
+                      {marketplacePoolRouteEnabled
+                        ? t('Order pool is active for this token')
+                        : t('Order pool is not active for this token')}
+                    </FormDescription>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='marketplace_route_order'
+              render={({ field }) => {
+                const routeOrder = normalizeMarketplaceRouteOrder(field.value)
+                const enabledRoutes = normalizeMarketplaceRouteEnabled(
+                  marketplaceRouteEnabled
+                )
+                const enabledSet = new Set(enabledRoutes)
+
+                return (
+                  <FormItem>
+                    <FormLabel>{t('Token route priority')}</FormLabel>
+                    <FormControl>
+                      <div className='space-y-2'>
+                        {routeOrder.map((route, index) => (
+                          <div
+                            key={route}
+                            className={`flex items-center gap-3 rounded-md border p-3 ${
+                              enabledSet.has(route)
+                                ? 'bg-background'
+                                : 'bg-muted/40 text-muted-foreground'
+                            }`}
+                          >
+                            <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm font-medium'>
+                              {index + 1}
+                            </div>
+                            <div className='min-w-0 flex-1'>
+                              <div className='truncate text-sm font-medium'>
+                                {t(MARKETPLACE_ROUTE_ORDER_LABELS[route])}
+                              </div>
+                            </div>
+                            <Switch
+                              checked={enabledSet.has(route)}
+                              onCheckedChange={(checked) =>
+                                form.setValue(
+                                  'marketplace_route_enabled',
+                                  toggleMarketplaceRouteEnabled(
+                                    enabledRoutes,
+                                    route,
+                                    checked
+                                  ),
+                                  {
+                                    shouldDirty: true,
+                                    shouldTouch: true,
+                                    shouldValidate: true,
+                                  }
+                                )
+                              }
+                              aria-label={t('Enable {{route}} route', {
+                                route: t(MARKETPLACE_ROUTE_ORDER_LABELS[route]),
+                              })}
+                            />
+                            <div className='flex shrink-0 gap-1'>
+                              <Button
+                                type='button'
+                                variant='ghost'
+                                size='icon'
+                                disabled={index === 0}
+                                onClick={() =>
+                                  form.setValue(
+                                    'marketplace_route_order',
+                                    moveMarketplaceRouteOrderItem(
+                                      routeOrder,
+                                      index,
+                                      -1
+                                    ),
+                                    {
+                                      shouldDirty: true,
+                                      shouldTouch: true,
+                                      shouldValidate: true,
+                                    }
+                                  )
+                                }
+                                aria-label={t('Move route up')}
+                              >
+                                <ArrowUp className='h-4 w-4' />
+                              </Button>
+                              <Button
+                                type='button'
+                                variant='ghost'
+                                size='icon'
+                                disabled={index === routeOrder.length - 1}
+                                onClick={() =>
+                                  form.setValue(
+                                    'marketplace_route_order',
+                                    moveMarketplaceRouteOrderItem(
+                                      routeOrder,
+                                      index,
+                                      1
+                                    ),
+                                    {
+                                      shouldDirty: true,
+                                      shouldTouch: true,
+                                      shouldValidate: true,
+                                    }
+                                  )
+                                }
+                                aria-label={t('Move route down')}
+                              >
+                                <ArrowDown className='h-4 w-4' />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Enabled routes are tried in order. Default: marketplace fixed order, normal group, order pool.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )
+              }}
+            />
 
             <FormField
               control={form.control}

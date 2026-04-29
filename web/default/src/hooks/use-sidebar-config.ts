@@ -76,6 +76,18 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
 function parseSidebarConfig(
   value: string | null | undefined
 ): SidebarModulesAdminConfig {
+  const mergeDefaults = (parsed: SidebarModulesAdminConfig) =>
+    Object.entries(DEFAULT_SIDEBAR_MODULES).reduce<SidebarModulesAdminConfig>(
+      (acc, [sectionKey, defaultSection]) => {
+        acc[sectionKey] = {
+          ...defaultSection,
+          ...(parsed[sectionKey] ?? {}),
+        }
+        return acc
+      },
+      { ...parsed }
+    )
+
   // If empty string, null, or undefined, use default config
   if (!value || value.trim() === '') {
     return DEFAULT_SIDEBAR_MODULES
@@ -83,15 +95,7 @@ function parseSidebarConfig(
 
   try {
     const parsed = JSON.parse(value) as SidebarModulesAdminConfig
-    // Ensure chat section and its modules are correctly initialized if missing
-    if (!parsed.chat) {
-      parsed.chat = { enabled: true, playground: true, chat: true }
-    } else {
-      if (parsed.chat.enabled === undefined) parsed.chat.enabled = true
-      if (parsed.chat.playground === undefined) parsed.chat.playground = true
-      if (parsed.chat.chat === undefined) parsed.chat.chat = true
-    }
-    return parsed
+    return mergeDefaults(parsed)
   } catch {
     // eslint-disable-next-line no-console
     console.error('Failed to parse sidebar modules configuration')

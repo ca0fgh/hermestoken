@@ -378,6 +378,33 @@ function getUsageLogGroupSummary(groupRatio, userGroupRatio, t) {
   return `${useUserGroupRatio ? t('专属倍率') : t('分组')} ${formatRatio(ratio)}x`;
 }
 
+function getMarketplaceLogInfo(other, t) {
+  if (!other) {
+    return null;
+  }
+  if (other.billing_source === 'marketplace_fixed_order') {
+    return {
+      label: t('市场买断'),
+      meta:
+        other.marketplace_fixed_order_id !== undefined
+          ? `${t('买断订单')} #${other.marketplace_fixed_order_id}`
+          : '',
+      color: 'light-blue',
+    };
+  }
+  if (other.billing_source === 'marketplace_pool') {
+    return {
+      label: t('市场订单池'),
+      meta:
+        other.marketplace_pool_credential_id !== undefined
+          ? `${t('托管Key')} #${other.marketplace_pool_credential_id}`
+          : '',
+      color: 'purple',
+    };
+  }
+  return null;
+}
+
 function renderCompactDetailSummary(summarySegments) {
   const segments = Array.isArray(summarySegments)
     ? summarySegments.filter((segment) => segment?.text)
@@ -452,16 +479,37 @@ function getUsageLogDetailSummary(record, text, billingDisplayMode, t) {
     };
   }
 
-  const summaryOpts = { ...other, displayMode: billingDisplayMode, outputMode: 'segments' };
+  const marketplaceInfo = getMarketplaceLogInfo(other, t);
+  const summaryOpts = {
+    ...other,
+    displayMode: billingDisplayMode,
+    outputMode: 'segments',
+  };
+  const marketplaceSegments = marketplaceInfo
+    ? [
+        { text: marketplaceInfo.label, tone: 'primary' },
+        marketplaceInfo.meta
+          ? { text: marketplaceInfo.meta, tone: 'secondary' }
+          : null,
+      ].filter(Boolean)
+    : [];
 
   if (other?.billing_mode === 'tiered_expr') {
-    return { segments: renderTieredModelPriceSimple(summaryOpts) };
+    return {
+      segments: [
+        ...marketplaceSegments,
+        ...renderTieredModelPriceSimple(summaryOpts),
+      ],
+    };
   }
 
   return {
-    segments: other?.claude
-      ? renderModelPriceSimple({ ...summaryOpts, provider: 'claude' })
-      : renderModelPriceSimple({ ...summaryOpts, provider: 'openai' }),
+    segments: [
+      ...marketplaceSegments,
+      ...(other?.claude
+        ? renderModelPriceSimple({ ...summaryOpts, provider: 'claude' })
+        : renderModelPriceSimple({ ...summaryOpts, provider: 'openai' })),
+    ],
   };
 }
 
@@ -809,12 +857,23 @@ export const getLogsColumns = ({
         }
         const other = getLogOther(record.other);
         const isSubscription = other?.billing_source === 'subscription';
+        const marketplaceInfo = getMarketplaceLogInfo(other, t);
         if (isSubscription) {
           // Subscription billed: show only tag (no $0), but keep tooltip for equivalent cost.
           return (
             <Tooltip content={`${t('由订阅抵扣')}：${renderQuota(text, 6)}`}>
               <span>{renderBillingTag(record, t)}</span>
             </Tooltip>
+          );
+        }
+        if (marketplaceInfo) {
+          return (
+            <Space vertical spacing={2} align='start'>
+              <span>{renderQuota(text, 6)}</span>
+              <Tag color={marketplaceInfo.color} shape='circle'>
+                {marketplaceInfo.label}
+              </Tag>
+            </Space>
           );
         }
         return <>{renderQuota(text, 6)}</>;

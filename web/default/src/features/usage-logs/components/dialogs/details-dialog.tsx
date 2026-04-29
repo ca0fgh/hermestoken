@@ -103,6 +103,33 @@ function DetailSection(props: {
   )
 }
 
+function getMarketplaceLogInfo(
+  other: LogOtherData | null,
+  t: (key: string, opts?: Record<string, unknown>) => string
+) {
+  if (!other) return null
+
+  if (other.billing_source === 'marketplace_fixed_order') {
+    return {
+      label: t('Marketplace fixed order'),
+      idLabel: t('Fixed order'),
+      id: other.marketplace_fixed_order_id,
+      variant: 'blue' as StatusBadgeProps['variant'],
+    }
+  }
+
+  if (other.billing_source === 'marketplace_pool') {
+    return {
+      label: t('Marketplace pool'),
+      idLabel: t('Credential'),
+      id: other.marketplace_pool_credential_id,
+      variant: 'purple' as StatusBadgeProps['variant'],
+    }
+  }
+
+  return null
+}
+
 function formatRatio(ratio: number | undefined): string {
   if (ratio == null) return '-'
   return ratio.toFixed(4)
@@ -376,6 +403,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
+  const marketplaceLogInfo = getMarketplaceLogInfo(other, t)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
@@ -883,6 +911,38 @@ export function DetailsDialog(props: DetailsDialogProps) {
                     )}
                 </DetailSection>
               )}
+
+            {/* Marketplace billing details */}
+            {marketplaceLogInfo && other && (
+              <DetailSection label={t('Marketplace source')}>
+                <DetailRow
+                  label={t('Source')}
+                  value={
+                    <StatusBadge
+                      label={marketplaceLogInfo.label}
+                      variant={marketplaceLogInfo.variant}
+                      size='sm'
+                      copyable={false}
+                    />
+                  }
+                />
+                {marketplaceLogInfo.id != null && (
+                  <DetailRow
+                    label={marketplaceLogInfo.idLabel}
+                    value={`#${marketplaceLogInfo.id}`}
+                    mono
+                  />
+                )}
+                {other.marketplace_original_path && (
+                  <DetailRow
+                    label={t('Original path')}
+                    value={other.marketplace_original_path}
+                    mono
+                    muted
+                  />
+                )}
+              </DetailSection>
+            )}
 
             {/* Subscription billing details */}
             {isSubscription && other && (

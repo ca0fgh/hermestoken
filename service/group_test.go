@@ -123,23 +123,23 @@ func TestGetUserSelectableGroupsAppliesPerUserOverridesAndKeepsAssignedGroupVisi
 	}
 }
 
-func TestValidateTokenSelectableGroupRejectsImplicitAssignedUserGroupWhenNotSelectable(t *testing.T) {
+func TestValidateTokenSelectableGroupAllowsBlankGroupWhenAssignedGroupIsNotSelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
 	err := ValidateTokenSelectableGroup("default", "")
 
-	if err == nil {
-		t.Fatalf("expected blank token group to be rejected when assigned group is not selectable")
+	if err != nil {
+		t.Fatalf("expected blank token group to be allowed while saving, got %v", err)
 	}
 }
 
-func TestValidateTokenSelectableGroupStillRejectsDefaultGroupWhenExplicitlySelectable(t *testing.T) {
+func TestValidateTokenSelectableGroupAllowsBlankGroupWhenDefaultGroupIsExplicitlySelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
 
 	err := ValidateTokenSelectableGroup("default", "")
 
-	if err == nil {
-		t.Fatalf("expected default assigned group to stay blocked for token selection")
+	if err != nil {
+		t.Fatalf("expected blank token group to be allowed while saving, got %v", err)
 	}
 }
 
@@ -194,7 +194,7 @@ func TestValidateTokenSelectableGroupForUserAllowsAssignedNonDefaultGroupFallbac
 	seedGroupTestUser(t, 106, "cc-opus-福利渠道")
 
 	if err := ValidateTokenSelectableGroupForUser(106, "cc-opus-福利渠道", ""); err != nil {
-		t.Fatalf("expected blank token group to fall back to assigned non-default user group, got %v", err)
+		t.Fatalf("expected blank token group to be allowed while saving, got %v", err)
 	}
 
 	resolvedGroup, err := ResolveTokenGroupForUserRequest(106, "cc-opus-福利渠道", "")
@@ -259,7 +259,7 @@ func TestValidateTokenSelectableGroupForUserAllowsSubscriptionBackedFallback(t *
 	seedGroupTestSubscription(t, 102, "codex-5.4", "active", time.Now().Add(time.Hour).Unix())
 
 	if err := ValidateTokenSelectableGroupForUser(102, "codex-5.4", ""); err != nil {
-		t.Fatalf("expected implicit fallback to active subscription group to pass, got %v", err)
+		t.Fatalf("expected blank token group to be allowed while saving, got %v", err)
 	}
 
 	resolvedGroup, err := ResolveTokenGroupForUserRequest(102, "codex-5.4", "")

@@ -9,6 +9,8 @@ docs
 .eslintcache
 .gocache
 /web/node_modules
+web/**/node_modules
+tmp
 data
 data-prod
 logs

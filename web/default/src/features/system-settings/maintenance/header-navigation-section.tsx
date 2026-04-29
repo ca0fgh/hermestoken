@@ -25,6 +25,7 @@ import {
 const headerNavSchema = z.object({
   home: z.boolean(),
   console: z.boolean(),
+  marketplace: z.boolean(),
   pricingEnabled: z.boolean(),
   pricingRequireAuth: z.boolean(),
   docs: z.boolean(),
@@ -45,6 +46,10 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.console === undefined
       ? HEADER_NAV_DEFAULT.console
       : Boolean(config.console),
+  marketplace:
+    config.marketplace === undefined
+      ? HEADER_NAV_DEFAULT.marketplace
+      : Boolean(config.marketplace),
   pricingEnabled:
     config.pricing?.enabled === undefined
       ? HEADER_NAV_DEFAULT.pricing.enabled
@@ -83,6 +88,7 @@ export function HeaderNavigationSection({
       ...config,
       home: values.home,
       console: values.console,
+      marketplace: values.marketplace,
       docs: values.docs,
       about: values.about,
       pricing: {
@@ -116,6 +122,11 @@ export function HeaderNavigationSection({
       key: 'home',
       title: t('Home'),
       description: t('Landing page with system overview.'),
+    },
+    {
+      key: 'marketplace',
+      title: t('Marketplace'),
+      description: t('Escrow AI keys and buy marketplace quota.'),
     },
     {
       key: 'console',

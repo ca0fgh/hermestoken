@@ -122,10 +122,7 @@ func ValidateTokenSelectableGroup(userGroup, tokenGroup string) error {
 
 func ValidateTokenSelectableGroupForUser(userId int, userGroup, tokenGroup string) error {
 	if tokenGroup == "" {
-		if _, ok := GetUserTokenSelectableGroupsForUser(userId, userGroup)[userGroup]; ok {
-			return nil
-		}
-		return errors.New("当前用户默认分组未开放为用户可选分组，请选择一个用户可选分组")
+		return nil
 	}
 	if _, ok := GetUserTokenSelectableGroupsForUser(userId, userGroup)[tokenGroup]; !ok {
 		return fmt.Errorf("分组 %s 不是用户可选分组", tokenGroup)

@@ -41,6 +41,27 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
+function getMarketplaceLogInfo(other, t) {
+  if (!other) {
+    return null;
+  }
+  if (other.billing_source === 'marketplace_fixed_order') {
+    return {
+      label: t('市场买断'),
+      idKey: t('买断订单'),
+      id: other.marketplace_fixed_order_id,
+    };
+  }
+  if (other.billing_source === 'marketplace_pool') {
+    return {
+      label: t('市场订单池'),
+      idKey: t('托管Key'),
+      id: other.marketplace_pool_credential_id,
+    };
+  }
+  return null;
+}
+
 export const useLogsData = () => {
   const { t } = useTranslation();
 
@@ -433,7 +454,10 @@ export const useLogsData = () => {
           expandDataLocal.push({
             key: t('日志详情'),
             value: other?.claude
-              ? renderClaudeLogContent({ ...other, displayMode: billingDisplayMode })
+              ? renderClaudeLogContent({
+                  ...other,
+                  displayMode: billingDisplayMode,
+                })
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
@@ -591,6 +615,25 @@ export const useLogsData = () => {
             />
           ),
         });
+      }
+      const marketplaceInfo = getMarketplaceLogInfo(other, t);
+      if (marketplaceInfo) {
+        expandDataLocal.push({
+          key: t('市场来源'),
+          value: marketplaceInfo.label,
+        });
+        if (marketplaceInfo.id !== undefined && marketplaceInfo.id !== null) {
+          expandDataLocal.push({
+            key: marketplaceInfo.idKey,
+            value: `#${marketplaceInfo.id}`,
+          });
+        }
+        if (other?.marketplace_original_path) {
+          expandDataLocal.push({
+            key: t('市场原始路径'),
+            value: other.marketplace_original_path,
+          });
+        }
       }
       if (other?.billing_source === 'subscription') {
         const planId = other?.subscription_plan_id;

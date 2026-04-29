@@ -16,7 +16,7 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 - Let buyers filter by seller-configured attributes such as model vendor, model, limit mode, multiplier, latency, success rate, and health.
 - Keep fixed-route orders and pool routing separate at the buyer experience level while sharing the same seller credential state.
 - Charge buyers from platform-controlled balances or fixed-order quota, not by exposing seller keys.
-- Settle seller income from actual successful usage, with platform fee and frozen income states.
+- Settle pool and fixed-route seller income after successful usage, then settle unused fixed-route escrow once when the order expires, with no marketplace transaction fee.
 
 ## Non-Goals
 
@@ -37,7 +37,8 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 - Seller unlisting stops new purchases and pool routing, but it should not stop already purchased fixed-route orders unless the key is disabled, technically unavailable, or risk-paused.
 - Seller disabling stops new purchases, pool routing, and fixed-route serving through that credential until it is enabled again. It does not consume, reduce, or cancel existing fixed-route order quota.
 - Seller credential deletion must be blocked while active fixed-route orders exist, or converted into an unlisted no-new-sales state until those orders end.
-- Seller income is created from actual successful usage, not from unused fixed-route quota.
+- Buyers can see their own seller credentials in buyer-facing marketplace lists, but they must not buy fixed-route orders from or route billable requests through credentials they own.
+- Pool seller income is created from successful pool usage. Fixed-route seller income is created from successful fixed-route usage, and any unused fixed-route escrow is settled once when the order expires.
 - Fixed-route purchase affects seller credential state as sold exposure, not as inventory removal.
 - Successful fixed-route and pool calls affect seller credential usage state.
 - Every credential state/configuration change must be recorded in that credential's history, including seller actions, admin actions, system health/capacity changes, and buyer-caused usage or order changes.
@@ -82,8 +83,6 @@ After escrow, seller lifecycle operations are:
 - Disable: stop new purchases, pool routing, and fixed-route serving through this credential until re-enabled.
 - Edit: update supported models, quota mode, multiplier, concurrency, or replace the API key after validation.
 
-Each lifecycle operation must write a credential history event.
-
 Seller-escrowed API keys do not have seller-configured expiry time. Expiry exists on fixed-route orders, not on the seller credential itself.
 
 ### Seller Terms Semantics
@@ -123,7 +122,7 @@ When a buyer purchases a fixed-route quota order, the order stores snapshots:
 - Multiplier snapshot.
 - Official price snapshot.
 - Buyer price snapshot.
-- Platform fee rate snapshot.
+- Platform fee rate snapshot, currently always `0` because marketplace transaction fees are disabled.
 - Status.
 
 Calls using this order always route to the bound seller credential and deduct from the fixed order's remaining quota.
@@ -237,69 +236,23 @@ Important consequences:
 - Health, capacity, and risk are runtime or operator states. They can temporarily prevent serving through the credential without changing the buyer's purchased quota balance.
 - When a blocked state is resolved, existing fixed-route orders continue with their remaining quota and original expiry.
 
-## Credential History
-
-Each seller-escrowed AI API key needs a credential-level history timeline. The history is the audit trail for why the key's market state changed and which user or system action caused it.
-
-History must record:
-
-- Seller actions: list, unlist, enable, disable, edit configuration, replace key, test key.
-- Admin actions: force unlist, force disable, risk pause, risk resume, settlement block or release if tied to the credential.
-- System actions: validation result, health status change, capacity status change, quota exhausted, quota recovered, stats aggregation changes that affect eligibility.
-- Buyer-caused actions: fixed-route order purchase, fixed-route usage, order-pool usage, fixed-route order exhaustion, fixed-route order expiry, refund/reversal exceptions.
-
-Buyer-caused history should be visible under the seller credential without exposing buyer private data. Seller views can show event type, order/fill reference, model, quota delta, status impact, and timestamp. Admin views can include buyer user IDs and reconciliation details.
-
-High-volume call details still live in `marketplace_fixed_order_fills` and `marketplace_pool_fills`. The credential history should reference those rows and record the state delta that matters to the credential, such as used quota, sold exposure, active order count, health status, capacity status, or service eligibility.
-
-## Credential Event Write Policy
-
-Credential events are the product-facing audit layer. They must be written in the same transaction as the state, stats, order, fill, or settlement mutation that caused the event. If the mutation commits and the event does not, the system loses explainability for seller-visible status changes.
-
-Required event writes:
-
-| Trigger | Event type | Source | Required delta |
-| --- | --- | --- | --- |
-| Seller lists or unlists a credential | `credential_listed`, `credential_unlisted` | seller | `listing_status`, reason |
-| Seller enables or disables a credential | `credential_enabled`, `credential_disabled` | seller | `service_status`, reason |
-| Seller edits terms | `credential_edited` | seller | changed fields, old and new safe snapshots |
-| Seller replaces key | `credential_key_replaced` | seller | old and new key fingerprint snapshots, validation result |
-| Seller or system tests key | `credential_tested` | seller or system | health result, model tested, failure class |
-| Admin market or service action | credential lifecycle event, `risk_paused`, `risk_resumed` | admin | status changed, admin reason |
-| Fixed-route order purchase | `fixed_order_purchased` | buyer | purchased quota, sold exposure delta, active order count delta |
-| Fixed-route successful usage | `fixed_order_used` | buyer | fill id, charged quota, remaining fixed-order quota, credential quota used delta |
-| Fixed-route exhaustion, expiry, refund exception | `fixed_order_exhausted`, `fixed_order_expired`, `fixed_order_refunded` | system, buyer, admin, or reconciliation | order status delta, expired or refunded quota |
-| Pool successful usage | `pool_used` | buyer | fill id, charged quota, credential quota used delta |
-| Runtime eligibility changes | `health_changed`, `capacity_changed`, `quota_exhausted`, `quota_recovered` | system or reconciliation | old and new status, computed reason |
-| Settlement review action | `settlement_blocked`, `settlement_released` | admin, system, or reconciliation | settlement id, old and new settlement status |
-
-Seller-visible event payloads must be sanitized:
-
-- Allowed: event type, event source category, source reference, model, quota delta, price or settlement delta, safe old/new status, safe changed-field names, timestamp, non-sensitive reason.
-- Not allowed: raw API key, request body, response body, buyer private data, buyer token, upstream authorization headers, raw provider error bodies, unmasked sensitive URLs.
-- Buyer user IDs can be stored for admin and reconciliation views, but seller APIs must not return them.
-- Key replacement events can show fingerprints and validation results, never plaintext key values.
-
-Usage events may be paged, summarized, or compacted for seller UI performance, but the underlying fill and settlement records must remain the source of financial truth.
-
 ## Visibility And Permissions
 
 Seller views:
 
 - Can see only credentials owned by the seller.
 - Can see masked key fingerprint, model vendor display name, configured models, quota mode, multiplier, concurrency limit, listing status, service status, health, capacity, risk label, aggregate usage, fixed-route sold exposure, active order count, and seller income states.
-- Can see seller-visible credential events, including buyer-caused effects, without buyer identity or request content.
 - Can list, unlist, enable, disable, edit, test, and replace their own credential subject to validation and risk rules.
 
 Buyer views:
 
 - Can see order-list and pool candidate fields needed for purchase or routing decisions: model vendor, model, limit mode, multiplier, effective price, success rate, latency, health label, capacity label, and fixed-route expiry policy.
 - Can see their own fixed-route orders, remaining quota, expiry, status, fills, and charges.
-- Cannot see raw seller API keys, seller-side encrypted values, other buyers' orders, or credential history internals.
+- Cannot see raw seller API keys, seller-side encrypted values, or other buyers' orders.
 
 Admin views:
 
-- Can see all marketplace credentials, events, fixed orders, fills, settlements, and reconciliation states.
+- Can see all marketplace credentials, fixed orders, fills, settlements, and reconciliation states.
 - Can see buyer and seller user IDs where needed for audit.
 - Must still never receive plaintext seller API keys through normal admin APIs.
 
@@ -326,11 +279,12 @@ This makes historical settlement explainable even when official prices change la
 
 Fixed-route order purchase:
 
-- Buyer prepays quota from the buyer's platform balance into the fixed order.
-- The prepaid quota remains attached to that fixed order.
-- Seller income is released by actual usage, not immediately at purchase.
-- Unused fixed-route quota is not seller income. When a fixed-route order expires, unused quota expires and is not refunded.
-- Expired unused quota must be recorded as expired fixed-order quota for audit. It is platform-retained expired balance, not seller income.
+- Buyer prepays quota from the buyer's platform balance into platform-held fixed-order escrow.
+- The prepaid quota remains attached to that fixed order until the order exhausts or expires.
+- Seller income is not released at purchase.
+- Each successful fixed-route call releases seller income for that call's actual buyer charge.
+- When a fixed-route order expires, the platform creates one final fixed-order settlement for the unused expired quota.
+- Expired unused quota is not refunded. It must be recorded as expired fixed-order quota for audit and is included in the final fixed-order settlement.
 
 Fixed-route call:
 
@@ -338,13 +292,23 @@ Fixed-route call:
 official_cost = usage priced by official price snapshot
 buyer_charge = official_cost * multiplier_snapshot
 fixed_order.remaining_quota -= buyer_charge
-platform_fee = buyer_charge * fixed_order.platform_fee_rate_snapshot
-seller_income = buyer_charge - platform_fee
+platform_fee = 0
+seller_income = buyer_charge
+write fixed_order_fill, fixed_order_fill settlement, and credential stats
+seller user.quota += seller_income
 ```
 
-Platform fee is globally configurable for the marketplace. The global fee rate is applied consistently to fixed-route and pool settlements.
+Fixed-route final settlement:
 
-Fixed-route orders snapshot the global marketplace fee rate at purchase time. Fixed-route fills use the order's fee snapshot so seller payout terms do not change after purchase. Pool fills use the current global marketplace fee rate at request time and snapshot it onto the settlement row.
+```text
+buyer_charge = fixed_order.expired_quota
+platform_fee = 0
+seller_income = buyer_charge
+official_cost = 0
+seller user.quota += seller_income
+```
+
+Marketplace transaction fees are disabled for now. Settlement rows keep platform-fee fields for compatibility and audit shape, but new marketplace settlements write `platform_fee = 0` and `platform_fee_rate_snapshot = 0`.
 
 Pool call:
 
@@ -352,15 +316,16 @@ Pool call:
 official_cost = usage priced by official pricing
 buyer_charge = official_cost * credential.multiplier
 buyer user.quota -= buyer_charge
-platform_fee = buyer_charge * current_global_fee_rate
-seller_income = buyer_charge - platform_fee
+platform_fee = 0
+seller_income = buyer_charge
+seller user.quota += seller_income
 ```
 
 Billing mutations must be idempotent and atomic per request:
 
 - Deduct fixed-order quota or user quota.
 - Write the usage record.
-- Write the settlement record.
+- Write the settlement record for fixed-route calls, pool calls, or terminal fixed-route expiry settlement.
 - Update credential stats.
 
 If one step fails after upstream success, the system must record a recoverable reconciliation state rather than silently dropping seller income or double-charging the buyer.
@@ -373,7 +338,7 @@ pending -> blocked -> available
 pending -> blocked -> reversed
 ```
 
-The pending window protects against provider failures, abuse, refunds, and risk review.
+Normal pool settlements, fixed-route fill settlements, and final fixed-route expiry settlements are created as `available` and credit seller quota in the same transaction. The pending window remains available for operator hold, abuse review, refunds, and reconciliation paths.
 
 ## Data Model
 
@@ -426,65 +391,6 @@ last_success_at
 last_failed_at
 last_failed_reason
 updated_at
-```
-
-### marketplace_credential_events
-
-Credential-level history for seller, buyer, admin, and system-caused state changes.
-
-```text
-id
-credential_id
-event_type
-event_source
-actor_user_id
-buyer_user_id
-source_type
-source_id
-old_state_snapshot
-new_state_snapshot
-delta_snapshot
-changed_fields
-reason
-seller_visible
-admin_visible
-created_at
-```
-
-Event source values:
-
-```text
-seller
-buyer
-admin
-system
-reconciliation
-```
-
-Event types should include at least:
-
-```text
-credential_listed
-credential_unlisted
-credential_enabled
-credential_disabled
-credential_edited
-credential_key_replaced
-credential_tested
-health_changed
-capacity_changed
-quota_exhausted
-quota_recovered
-fixed_order_purchased
-fixed_order_used
-fixed_order_exhausted
-fixed_order_expired
-fixed_order_refunded
-pool_used
-risk_paused
-risk_resumed
-settlement_blocked
-settlement_released
 ```
 
 ### marketplace_fixed_orders
@@ -553,7 +459,7 @@ created_at
 
 ### marketplace_settlements
 
-Financial ledger for seller income and platform fee.
+Financial ledger for seller income and compatibility platform-fee fields.
 
 ```text
 id
@@ -577,7 +483,7 @@ updated_at
 
 `request_id` or a source-specific idempotency key must be unique to prevent duplicate settlement.
 
-Fixed-order expiry should also write an auditable balance event, either in a dedicated expiry table or as a non-settlement ledger row. It must not create seller income.
+Fixed-order expiry persists expired quota on the fixed-order row and creates one idempotent final fixed-order settlement for the unused expired quota.
 
 ## API Surfaces
 
@@ -593,7 +499,6 @@ POST   /api/marketplace/seller/credentials/:id/list
 POST   /api/marketplace/seller/credentials/:id/unlist
 POST   /api/marketplace/seller/credentials/:id/enable
 POST   /api/marketplace/seller/credentials/:id/disable
-GET    /api/marketplace/seller/credentials/:id/events
 GET    /api/marketplace/seller/income
 GET    /api/marketplace/seller/settlements
 ```
@@ -630,7 +535,6 @@ Without a fixed-order ID, the request uses order-pool routing.
 
 ```text
 GET  /api/marketplace/admin/credentials
-GET  /api/marketplace/admin/credentials/:id/events
 POST /api/marketplace/admin/credentials/:id/unlist
 POST /api/marketplace/admin/credentials/:id/disable
 POST /api/marketplace/admin/credentials/:id/enable
@@ -652,8 +556,10 @@ POST /api/marketplace/admin/settlements/:id/release
 2. Seller enters API key, supported models, quota mode, optional quota cap, multiplier, and concurrency limit.
 3. Platform validates marketplace support for the selected model vendor and models.
 4. Platform encrypts the API key, stores a keyed fingerprint, and tests the credential.
-5. Platform creates credential stats and writes initial history events.
+5. Platform creates credential stats.
 6. A healthy listed and enabled credential becomes available to the order list and order pool through derived eligibility rules.
+
+Slice 2 implements the storage and lifecycle part of this flow. It stores the credential as listed, enabled, and untested. The seller test endpoint currently verifies local decryptability; provider-specific upstream validation and health promotion to `healthy` belongs to the vendor validation slice.
 
 ### Seller Changes Credential State
 
@@ -664,17 +570,16 @@ POST /api/marketplace/admin/settlements/:id/release
 - Edit: changes future market display, filtering, and pool eligibility. Existing fixed-route orders keep purchase-time snapshots.
 - Replace key: validates the replacement before it can serve traffic. A failed replacement does not break the currently serving key.
 
-Every action writes a credential event and updates only the state dimension or configuration fields that the action owns.
+Every action updates only the state dimension or configuration fields that the action owns.
 
 ### Buyer Purchases A Fixed-Route Order
 
 1. Buyer filters the order list using seller-configured terms and runtime health fields.
 2. Buyer chooses a quota amount within global marketplace guardrails.
-3. Platform verifies the credential is eligible for new purchase.
-4. Platform snapshots pricing, multiplier, fee rate, expiry policy, seller ID, buyer ID, credential ID, and model/vendor metadata.
+3. Platform verifies the credential is eligible for new purchase and is not owned by the buyer.
+4. Platform snapshots pricing, multiplier, zero fee rate, expiry policy, seller ID, buyer ID, credential ID, and model/vendor metadata.
 5. Platform deducts the buyer's platform quota into the fixed order.
 6. Platform increments seller credential sold exposure and active fixed-order count.
-7. Platform writes `fixed_order_purchased` to the credential history.
 
 The purchase does not remove the credential from the market, does not reduce other buyers' fixed-route orders, and does not grant raw key access.
 
@@ -685,8 +590,9 @@ The purchase does not remove the credential from the market, does not reduce oth
 3. Platform proxies through the encrypted seller credential.
 4. Platform prices actual usage from the fixed order's snapshots.
 5. Platform deducts only the fixed order's remaining quota.
-6. Platform writes fill, settlement, stats, and credential history records.
-7. If the fixed order is exhausted or expired, the order status changes and the credential history records why.
+6. Platform writes fill, settlement, and stats records, then immediately credits seller income for this call.
+7. If the fixed order is exhausted, the order status changes without an extra final settlement.
+8. If the fixed order later expires with unused quota, one final fixed-order settlement is created from the expired unused escrow.
 
 The buyer's normal quota balance is not charged again for the same fixed-route usage.
 
@@ -694,11 +600,11 @@ The buyer's normal quota balance is not charged again for the same fixed-route u
 
 1. Buyer calls a marketplace relay endpoint without a fixed-order ID.
 2. Platform authenticates the buyer token and checks buyer quota balance.
-3. Router filters eligible credentials by model vendor, model, listing, service, health, risk, capacity, seller quota, endpoint policy, and concurrency.
+3. Router filters eligible credentials by model vendor, model, listing, service, health, risk, capacity, seller quota, endpoint policy, concurrency, and excludes credentials owned by the buyer for actual routing.
 4. Router scores candidates by effective price, latency, success rate, fairness, and load.
 5. Platform proxies through the selected encrypted seller credential.
-6. Platform prices actual usage from current official pricing, seller multiplier, and current global marketplace fee rate.
-7. Platform deducts the buyer's normal platform quota and writes fill, settlement, stats, and credential history records.
+6. Platform prices actual usage from current official pricing and seller multiplier.
+7. Platform deducts the buyer's normal platform quota, writes fill and settlement records, and immediately credits available seller income.
 
 Pool usage may change seller credential usage, capacity, health, and quota state. It must not consume or alter any buyer's fixed-route order balance.
 
@@ -743,14 +649,14 @@ Reuse directly:
 Use as reference, not as-is:
 
 - `service.BillingSession` is a useful reference for pre-consume, settle, refund, and trust-quota edge cases. Marketplace relay should not call it directly unless it is refactored to support a marketplace funding source without normal token/wallet double billing.
-- `relay/helper.ModelPriceHelper` and `ModelPriceHelperPerCall` currently include group-ratio behavior. Marketplace pricing needs a helper that extracts official/base cost before group-ratio application, then applies only seller multiplier and marketplace fee.
+- `relay/helper.ModelPriceHelper` and `ModelPriceHelperPerCall` currently include group-ratio behavior. Marketplace pricing needs a helper that extracts official/base cost before group-ratio application, then applies only seller multiplier.
 - `model.Channel`, channel cache, ability matching, and `middleware.Distribute()` are normal-channel routing surfaces. They should not be used to store or select marketplace seller credentials.
-- Existing channel test logic can guide vendor-specific credential validation, but tests must run against encrypted marketplace credentials and write marketplace credential events, not channel test logs only.
+- Existing channel test logic can guide vendor-specific credential validation, but tests must run against encrypted marketplace credentials, not normal channel records.
 
 New marketplace-specific code should own:
 
 - Credential encryption and fingerprinting.
-- Credential lifecycle and history.
+- Credential lifecycle.
 - Fixed-route order escrow, fills, expiry, and settlement.
 - Order-pool candidate selection and routing.
 - Marketplace settlement ledger and reconciliation.
@@ -766,13 +672,11 @@ Suggested backend packages:
 
 ```text
 model/marketplace_credential.go
-model/marketplace_credential_event.go
 model/marketplace_fixed_order.go
 model/marketplace_fill.go
 model/marketplace_settlement.go
 model/marketplace_setting.go
 service/marketplace_crypto.go
-service/marketplace_credential_event.go
 service/marketplace_pricing.go
 service/marketplace_router.go
 service/marketplace_settlement.go
@@ -793,7 +697,6 @@ Use the existing option system for operator-configurable marketplace policy:
 ```text
 MarketplaceEnabled
 MarketplaceEnabledVendorTypes
-MarketplaceFeeRate
 MarketplaceSellerIncomeHoldSeconds
 MarketplaceMinFixedOrderQuota
 MarketplaceMaxFixedOrderQuota
@@ -802,16 +705,15 @@ MarketplaceMaxSellerMultiplier
 MarketplaceMaxCredentialConcurrency
 ```
 
-`MarketplaceFeeRate` is the global transaction fee. It should be snapshotted onto every settlement row.
+Marketplace transaction fees are disabled. Legacy `MarketplaceFeeRate` config may remain in stored options for compatibility, but marketplace purchase and relay code must not charge it.
 
 `MarketplaceEnabledVendorTypes` should store the existing create-channel type values used by the model vendor selector. A vendor type appearing in this list only means the marketplace may accept that type; the implementation must still have explicit validation and relay support for it.
 
-Initial Slice 1 defaults are deliberately safe:
+The marketplace UI is visible by default, so backend marketplace access is enabled by default as well. The initial policy keeps fees and buyout bounds neutral while allowing the existing channel vendor types to be selected by sellers:
 
 ```text
-MarketplaceEnabled = false
-MarketplaceEnabledVendorTypes = []
-MarketplaceFeeRate = 0
+MarketplaceEnabled = true
+MarketplaceEnabledVendorTypes = all existing non-unknown channel type ids
 MarketplaceSellerIncomeHoldSeconds = 604800
 MarketplaceMinFixedOrderQuota = 0
 MarketplaceMaxFixedOrderQuota = 0
@@ -820,7 +722,7 @@ MarketplaceMaxSellerMultiplier = 10
 MarketplaceMaxCredentialConcurrency = 5
 ```
 
-The marketplace starts disabled, with no enabled model vendors. Production rollout must explicitly configure vendor allowlist, fee rate, and purchase limits before public use.
+Operators can still disable the marketplace or narrow the vendor allowlist from system settings before public use.
 
 Credential encryption is mandatory and must not be feature-flagged off. The API-key encryption secret should not be stored in options. It must come from environment or secret manager configuration.
 
@@ -831,8 +733,8 @@ Marketplace pricing is:
 ```text
 official_cost_quota = official model usage converted to platform quota
 buyer_charge = official_cost_quota * seller_multiplier
-platform_fee = buyer_charge * global_fee_rate
-seller_income = buyer_charge - platform_fee
+platform_fee = 0
+seller_income = buyer_charge
 ```
 
 The existing `ratio_setting`, `billing_setting`, `types.PriceData`, and `common.QuotaPerUnit` can be reused to obtain official model cost and unit conversion. The marketplace pricing helper must not accidentally apply the buyer's normal group ratio on top of seller multiplier. If an existing helper always includes group ratio, create a marketplace-specific helper that extracts official/base cost before buyer group pricing.
@@ -845,7 +747,7 @@ Snapshots required on purchase and fill:
 - Price version or config hash.
 - Official/base price fields.
 - Seller multiplier.
-- Global fee rate.
+- Zero marketplace transaction fee rate.
 - Final buyer charge.
 
 `vendor_type` is the canonical model-vendor identity in marketplace records. Any vendor name should be a display snapshot derived from the existing create-channel type names, not an independently editable source of truth.
@@ -891,7 +793,7 @@ pending -> blocked -> available
 pending -> blocked -> reversed
 ```
 
-`blocked` and `reversed` are operator/risk states. They should not exist in the normal happy path, but they are needed for abuse, upstream disputes, and reconciliation.
+Normal marketplace settlements are created as `available`. `pending`, `blocked`, and `reversed` are operator/risk states. They should not exist in the normal happy path, but they are needed for abuse, upstream disputes, and reconciliation.
 
 ### Transaction Boundaries
 
@@ -901,12 +803,11 @@ Fixed-route purchase must be atomic:
 2. Verify buyer has enough quota.
 3. Verify credential is eligible for new purchase.
 4. Deduct buyer quota into fixed-order escrow.
-5. Create fixed order with purchase and fee snapshots.
+5. Create fixed order with purchase snapshots and zero fee snapshot.
 6. Increment seller credential fixed-route sold exposure.
-7. Write credential event `fixed_order_purchased`.
-8. Write buyer-facing balance log.
+7. Write buyer-facing balance log.
 
-Fixed-route call settlement must be idempotent:
+Fixed-route call billing must be idempotent:
 
 1. Validate buyer token and fixed-order ownership.
 2. Lock fixed order and credential capacity.
@@ -915,9 +816,17 @@ Fixed-route call settlement must be idempotent:
 5. Calculate actual official cost and buyer charge.
 6. Adjust fixed-order remaining quota.
 7. Create fill record.
-8. Create settlement row with fee snapshot.
+8. Create an available `fixed_order_fill` settlement row and credit seller quota.
 9. Update credential stats and used seller quota.
-10. Write credential event `fixed_order_used` and any resulting capacity or quota status event.
+10. If the order exhausts, mark it exhausted without an extra final settlement.
+
+Fixed-route final settlement must be idempotent:
+
+1. Lock the fixed order.
+2. Persist remaining quota as expired quota.
+3. Calculate seller income from expired quota with zero transaction fee.
+4. Create a unique `fixed_order_final` settlement row.
+5. Credit seller quota only when the settlement row is newly created.
 
 Pool call settlement must be idempotent:
 
@@ -928,11 +837,10 @@ Pool call settlement must be idempotent:
 5. Calculate actual official cost and buyer charge.
 6. Adjust buyer quota.
 7. Create pool fill record.
-8. Create settlement row with fee snapshot.
+8. Create an available settlement row with zero fee snapshot and credit seller quota.
 9. Update credential stats and used seller quota.
-10. Write credential event `pool_used` and any resulting capacity or quota status event.
 
-All fill and settlement writes need a unique request id or idempotency key. Retried client requests and retry-after-upstream-success paths must not double-charge buyers or double-create seller income.
+All fill and settlement writes need a unique request id or source-specific idempotency key. Retried client requests and retry-after-upstream-success paths must not double-charge buyers or double-create seller income.
 
 ### Consistency And Failure Policy
 
@@ -943,7 +851,7 @@ Locking order:
 1. Lock the buyer funding source: fixed order for fixed-route usage, user quota for pool usage or fixed-order purchase.
 2. Lock the marketplace credential stats or capacity row.
 3. Create or load the idempotent request record.
-4. Write fill, settlement, stats, and credential event rows in one local transaction after upstream usage is known.
+4. Write fill, any required settlement, and stats rows in one local transaction after upstream usage is known.
 
 This consistent order reduces deadlock risk when many buyers hit the same seller credential.
 
@@ -955,10 +863,11 @@ Request idempotency:
 
 Reservation and settlement:
 
-- Fixed-route calls may reserve estimated quota from `marketplace_fixed_orders.remaining_quota` before the upstream request. Final settlement adjusts to actual usage.
+- Fixed-route calls may reserve estimated quota from `marketplace_fixed_orders.remaining_quota` before the upstream request. Final call billing adjusts remaining quota to actual usage.
 - Pool calls may reserve estimated user quota before the upstream request. Final settlement adjusts the user's quota to actual usage.
 - Reserved quota must be released if the upstream request fails before any billable success.
-- Seller income is created only after billable upstream success and local settlement write.
+- Pool seller income is created after billable upstream success and local settlement write.
+- Fixed-route seller income is created after each billable upstream success and local settlement write; unused fixed-route escrow is settled once when the fixed order expires.
 
 Failure outcomes:
 
@@ -966,10 +875,10 @@ Failure outcomes:
 | --- | --- | --- | --- | --- |
 | Validation fails before upstream call | No charge | No income | No usage delta | Request error log only |
 | Upstream rejects before billable usage | Release reservation | No income | Failure counter and health signal | Fill with failed status if request reached upstream |
-| Upstream succeeds, local billing fails | Mark reconciliation required | Income pending until repaired | Usage may be pending reconciliation | Reconciliation row with request id |
-| Local billing succeeds, response delivery fails | Charge remains | Income remains pending | Usage recorded | Fill and settlement already committed |
+| Upstream succeeds, local billing fails | Mark reconciliation required | Income unavailable until repaired | Usage may be pending reconciliation | Reconciliation row with request id |
+| Local billing succeeds, response delivery fails | Charge remains | Pool income, fixed-route fill income, or expiry final income remains available if settlement committed | Usage recorded | Fill and settlement already committed when applicable |
 | Streaming response ends without usage payload | Use verified token estimate or configured fallback policy | Income follows computed billable usage | Mark usage source as estimated | Fill with usage_source snapshot |
-| Credential disabled during request | In-flight request may finish; no new routing | Income only if upstream success settles | Capacity releases after request | Credential event if service status changed |
+| Credential disabled during request | In-flight request may finish; no new routing | Income only if upstream success settles | Capacity releases after request | Status update only |
 
 Capacity handling:
 
@@ -1019,9 +928,8 @@ For MVP, fixed-route calls should have priority over pool calls when a credentia
 Required jobs:
 
 - Credential health check: test active credentials and update health status.
-- Credential history retention or compaction job if event volume grows too large.
-- Fixed-order expiry check: mark expired orders, persist expired quota, and invalidate unused quota without refund.
-- Settlement release: move pending seller income to available after the hold period.
+- Fixed-order expiry check: mark expired orders, persist expired quota, invalidate unused quota without refund, and create the idempotent final fixed-order settlement.
+- Settlement release: move manually held pending seller income to available after the hold period.
 - Stats aggregation: refresh success rate, latency, request counts, and failure counters.
 - Reconciliation: repair requests that succeeded upstream but failed before local billing completed.
 
@@ -1031,13 +939,12 @@ Seller:
 
 - Escrow key form: model vendor, models, limit mode, multiplier, concurrency.
 - Seller credential list: masked key fingerprint, listing status, service status, models, multiplier, health, used quota, sold fixed-route exposure, active orders, pool usage, income.
-- Seller credential detail: state-change history including seller actions, system changes, and buyer-caused order/usage effects.
 - Seller income page: pending, available, withdrawn, blocked.
 
 Buyer:
 
 - Order list: filters based on seller configuration and runtime status.
-- Fixed-order purchase modal: choose quota amount within global guardrails, show effective price snapshot, fee snapshot, expiry, and no-refund expiry policy before purchase.
+- Fixed-order purchase modal: choose quota amount within global guardrails, show effective price snapshot, zero-fee policy, expiry, and no-refund expiry policy before purchase.
 - Fixed-order list: remaining quota, expiry, status, bound credential health.
 - Pool page: model selection, optional filters, estimated effective price range.
 
@@ -1056,13 +963,15 @@ Admin:
 - A seller can escrow one supported model-vendor API key and never see the plaintext key again.
 - The same escrowed key appears in order-list and pool candidates when eligible.
 - A buyer can buy fixed-route quota for part of a seller key without removing the key from the market.
+- A buyer can see their own seller credential but cannot buy or route through it.
 - Fixed-route usage deducts only that order's remaining quota.
 - Pool usage deducts the buyer's normal quota balance.
 - Other buyers' usage never reduces an existing fixed-route order.
 - Fixed-route unused quota expires without refund at order expiry.
-- Fixed-route expired quota is auditable and does not become seller income.
-- Seller income is created only after successful usage.
-- Platform fee uses the global marketplace fee setting and is snapshotted per settlement.
+- Fixed-route expired quota is auditable and is included in the one-time final fixed-order seller settlement.
+- Pool seller income is created immediately after successful usage.
+- Fixed-route seller income is created immediately after successful usage, with unused quota settled once at expiry.
+- Marketplace transaction fee is zero for new purchases, pool fills, fixed-route fills, and final expiry settlements.
 - Buyer-facing price equals official/base cost times seller multiplier.
 - Buyer-facing stats show success rate, not both success rate and error rate.
 - Marketplace pricing does not accidentally apply normal buyer group ratio on top of seller multiplier.
@@ -1072,7 +981,6 @@ Admin:
 - Fixed-route and pool relay calls do not double-charge through normal relay billing.
 - Seller quota limits stop new sales and pool routing after exhaustion, but they do not remove or reduce already purchased fixed-route quota.
 - Seller credentials support list, unlist, enable, disable, and edit actions.
-- Each seller credential has a state-change history that includes seller, admin, system, and buyer-caused events.
 - Failed or retried requests do not double-create fills, settlements, seller income, or buyer charges.
 - Pool and fixed-route usage update seller credential state without exposing buyer private data to the seller.
 
@@ -1090,12 +998,11 @@ Admin:
 - Custom, localhost, private-network, and seller-supplied arbitrary base URLs should be disabled for marketplace escrow until a separate SSRF and credential-exfiltration review explicitly enables them.
 - Settlement writes must be idempotent.
 - Logs must mask API keys and sensitive upstream URLs.
-- Credential event history must not store raw API keys, request bodies, response bodies, or buyer private data in seller-visible fields.
 - Admin access must be required for risk overrides and settlement blocking.
 
 ## Open Decisions Before Implementation
 
-- Production rollout values for `MarketplaceFeeRate`, `MarketplaceEnabledVendorTypes`, fixed-order purchase limits, and seller income hold period.
+- Production rollout values for `MarketplaceEnabledVendorTypes`, fixed-order purchase limits, and seller income hold period.
 - Supported marketplace relay modes for each enabled model vendor.
 - Whether buyers can choose among platform-defined fixed-order expiry durations instead of using the default duration only.
 - Pool routing weights: exact weight values for lower multiplier, lower latency, higher success rate, fair seller distribution, and load penalty.
@@ -1109,16 +1016,16 @@ Admin:
 
 1. Seller credential escrow, encryption, validation, and seller list.
 2. Order list display and fixed-route order purchase.
-3. Fixed-route marketplace relay call and usage-based settlement.
+3. Fixed-route marketplace relay call with realtime seller settlement and terminal expiry settlement.
 4. Order pool candidate listing and router.
-5. Pool relay call and usage-based settlement.
+5. Pool relay call and immediate usage-based settlement.
 6. Seller income views and withdrawal integration.
 7. Admin risk and settlement tooling.
 
 The first usable slice should prove:
 
 ```text
-seller escrow -> order list -> buyer fixed-route purchase -> marketplace relay call -> fixed-order quota deduction -> seller pending income
+seller escrow -> order list -> buyer fixed-route purchase -> marketplace relay call -> fixed-order quota deduction -> realtime seller settlement -> expiry settlement for unused quota
 ```
 
 ## Implementation Slices And Test Focus
@@ -1134,13 +1041,12 @@ Slice 2: seller credential management.
 
 - Add seller credential create, list, detail, edit, test, list, unlist, enable, and disable APIs.
 - Reuse existing model vendor type values and reject marketplace-disabled vendor types.
-- Write lifecycle and validation events.
-- Test ownership isolation, status transitions, key replacement validation, and seller-visible event sanitization.
+- Test ownership isolation, status transitions, and key replacement validation.
 
 Slice 3: order list and fixed-route purchase.
 
 - Add order-list query with seller-configured filters and runtime eligibility.
-- Add fixed-order purchase with quota escrow, pricing snapshots, fee snapshot, expiry, and sold exposure updates.
+- Add fixed-order purchase with quota escrow, pricing snapshots, zero fee snapshot, expiry, and sold exposure updates.
 - Test that purchase does not remove the credential from order list or order pool.
 - Test insufficient buyer quota, exhausted credential, disabled credential, and idempotent purchase retry.
 
@@ -1148,24 +1054,24 @@ Slice 4: fixed-route relay.
 
 - Add marketplace relay path with fixed-order header.
 - Build marketplace relay context using encrypted seller credential without creating normal `Channel` rows.
-- Deduct fixed-order quota, write fill, write settlement, update stats, and write credential events.
-- Test no normal wallet double charge, no normal channel used-quota mutation, idempotent retry, and fixed-order exhaustion.
+- Deduct fixed-order quota, write fill, create realtime settlement, update stats, and create the final fixed-order settlement only when unused quota expires.
+- Test no normal wallet double charge, no normal channel used-quota mutation, idempotent retry, realtime seller settlement, no exhausted-order double settlement, and fixed-order exhaustion.
 
 Slice 5: order-pool routing and relay.
 
 - Add pool candidate query and hard-filter plus score router.
 - Add pool relay flow without fixed-order header.
-- Deduct buyer user quota, settle seller income, and update credential stats.
+- Deduct buyer user quota, settle seller income immediately, and update credential stats.
 - Test routing eligibility, concurrency exclusion, seller quota exhaustion, and fixed-route priority.
 
 Slice 6: seller income and admin operations.
 
 - Add seller income views, pending-to-available release job, withdrawal integration, and settlement audit.
-- Add admin credential history, risk pause/resume, settlement block/release, and reconciliation queue.
+- Add admin risk pause/resume, settlement block/release, and reconciliation queue.
 - Test risk-paused blocks both pool and fixed-route usage, blocked settlements do not become withdrawable, and admin APIs never return plaintext keys.
 
 Slice 7: background repair and observability.
 
 - Add health check, fixed-order expiry, stats aggregation, stale capacity repair, settlement release, and reconciliation jobs.
 - Add metrics for marketplace request count, success rate, latency, reconciliation backlog, pending settlement amount, expired fixed-order quota, and credential state counts.
-- Test expiry creates expired quota audit without refund or seller income.
+- Test expiry creates expired quota audit without refund and creates only one final fixed-order seller settlement.

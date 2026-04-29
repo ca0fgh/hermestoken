@@ -2,13 +2,15 @@ package setting
 
 import (
 	"encoding/json"
+	"sort"
 	"sync"
 
 	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/constant"
 )
 
-var MarketplaceEnabled = false
-var MarketplaceEnabledVendorTypes = []int{}
+var MarketplaceEnabled = true
+var MarketplaceEnabledVendorTypes = DefaultMarketplaceEnabledVendorTypes()
 var MarketplaceFeeRate = 0.0
 var MarketplaceSellerIncomeHoldSeconds = 7 * 24 * 60 * 60
 var MarketplaceMinFixedOrderQuota = 0
@@ -18,6 +20,18 @@ var MarketplaceMaxSellerMultiplier = 10.0
 var MarketplaceMaxCredentialConcurrency = 5
 
 var marketplaceEnabledVendorTypesMutex sync.RWMutex
+
+func DefaultMarketplaceEnabledVendorTypes() []int {
+	vendorTypes := make([]int, 0, len(constant.ChannelTypeNames)-1)
+	for vendorType := range constant.ChannelTypeNames {
+		if vendorType == constant.ChannelTypeUnknown {
+			continue
+		}
+		vendorTypes = append(vendorTypes, vendorType)
+	}
+	sort.Ints(vendorTypes)
+	return vendorTypes
+}
 
 func MarketplaceEnabledVendorTypesToJSONString() string {
 	marketplaceEnabledVendorTypesMutex.RLock()

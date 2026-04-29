@@ -4,6 +4,9 @@ const (
 	MarketplaceQuotaModeUnlimited = "unlimited"
 	MarketplaceQuotaModeLimited   = "limited"
 
+	MarketplaceTimeModeUnlimited = "unlimited"
+	MarketplaceTimeModeLimited   = "limited"
+
 	MarketplaceListingStatusListed   = "listed"
 	MarketplaceListingStatusUnlisted = "unlisted"
 
@@ -22,14 +25,14 @@ const (
 	MarketplaceRiskStatusNormal     = "normal"
 	MarketplaceRiskStatusWatching   = "watching"
 	MarketplaceRiskStatusRiskPaused = "risk_paused"
-)
 
-const (
-	MarketplaceEventSourceSeller         = "seller"
-	MarketplaceEventSourceBuyer          = "buyer"
-	MarketplaceEventSourceAdmin          = "admin"
-	MarketplaceEventSourceSystem         = "system"
-	MarketplaceEventSourceReconciliation = "reconciliation"
+	MarketplaceRouteStatusAvailable  = "route_available"
+	MarketplaceRouteStatusUnlisted   = "route_unlisted"
+	MarketplaceRouteStatusDisabled   = "route_disabled"
+	MarketplaceRouteStatusFailed     = "route_failed"
+	MarketplaceRouteStatusRiskPaused = "route_risk_paused"
+	MarketplaceRouteStatusExhausted  = "route_exhausted"
+	MarketplaceRouteStatusBusy       = "route_busy"
 )
 
 const (
@@ -46,6 +49,11 @@ const (
 	MarketplaceSettlementStatusReversed  = "reversed"
 )
 
+const (
+	MarketplaceFillStatusSucceeded = "succeeded"
+	MarketplaceFillStatusFailed    = "failed"
+)
+
 type MarketplaceCredential struct {
 	ID                 int     `json:"id"`
 	SellerUserID       int     `json:"seller_user_id" gorm:"not null;index"`
@@ -53,9 +61,21 @@ type MarketplaceCredential struct {
 	VendorNameSnapshot string  `json:"vendor_name_snapshot" gorm:"type:varchar(64);not null;default:''"`
 	EncryptedAPIKey    string  `json:"-" gorm:"column:encrypted_api_key;type:text;not null"`
 	KeyFingerprint     string  `json:"key_fingerprint" gorm:"type:varchar(128);not null;index"`
+	OpenAIOrganization string  `json:"openai_organization" gorm:"type:varchar(255);not null;default:''"`
+	TestModel          string  `json:"test_model" gorm:"type:varchar(255);not null;default:''"`
+	BaseURL            string  `json:"base_url" gorm:"column:base_url;type:varchar(1024);not null;default:''"`
+	Other              string  `json:"other" gorm:"type:text"`
+	ModelMapping       string  `json:"model_mapping" gorm:"type:text"`
+	StatusCodeMapping  string  `json:"status_code_mapping" gorm:"type:varchar(1024);not null;default:''"`
+	Setting            string  `json:"setting" gorm:"type:text"`
+	ParamOverride      string  `json:"param_override" gorm:"type:text"`
+	HeaderOverride     string  `json:"header_override" gorm:"type:text"`
+	OtherSettings      string  `json:"settings" gorm:"column:settings;type:text"`
 	Models             string  `json:"models" gorm:"type:text;not null"`
 	QuotaMode          string  `json:"quota_mode" gorm:"type:varchar(32);not null;default:'unlimited';index"`
 	QuotaLimit         int64   `json:"quota_limit" gorm:"bigint;not null;default:0"`
+	TimeMode           string  `json:"time_mode" gorm:"type:varchar(32);not null;default:'unlimited';index"`
+	TimeLimitSeconds   int64   `json:"time_limit_seconds" gorm:"bigint;not null;default:0"`
 	Multiplier         float64 `json:"multiplier" gorm:"type:decimal(10,4);not null;default:1"`
 	ConcurrencyLimit   int     `json:"concurrency_limit" gorm:"not null;default:1"`
 	ListingStatus      string  `json:"listing_status" gorm:"type:varchar(32);not null;default:'listed';index"`
@@ -63,6 +83,8 @@ type MarketplaceCredential struct {
 	HealthStatus       string  `json:"health_status" gorm:"type:varchar(32);not null;default:'untested';index"`
 	CapacityStatus     string  `json:"capacity_status" gorm:"type:varchar(32);not null;default:'available';index"`
 	RiskStatus         string  `json:"risk_status" gorm:"type:varchar(32);not null;default:'normal';index"`
+	ResponseTime       int     `json:"response_time" gorm:"not null;default:0"`
+	TestTime           int64   `json:"test_time" gorm:"bigint;not null;default:0"`
 	CreatedAt          int64   `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt          int64   `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -87,25 +109,6 @@ type MarketplaceCredentialStats struct {
 	LastFailedAt           int64  `json:"last_failed_at" gorm:"bigint;not null;default:0"`
 	LastFailedReason       string `json:"last_failed_reason" gorm:"type:varchar(255);not null;default:''"`
 	UpdatedAt              int64  `json:"updated_at" gorm:"autoUpdateTime"`
-}
-
-type MarketplaceCredentialEvent struct {
-	ID               int    `json:"id"`
-	CredentialID     int    `json:"credential_id" gorm:"not null;index"`
-	EventType        string `json:"event_type" gorm:"type:varchar(64);not null;index"`
-	EventSource      string `json:"event_source" gorm:"type:varchar(32);not null;index"`
-	ActorUserID      int    `json:"actor_user_id" gorm:"not null;default:0;index"`
-	BuyerUserID      int    `json:"buyer_user_id" gorm:"not null;default:0;index"`
-	SourceType       string `json:"source_type" gorm:"type:varchar(64);not null;default:'';index"`
-	SourceID         string `json:"source_id" gorm:"type:varchar(64);not null;default:'';index"`
-	OldStateSnapshot string `json:"old_state_snapshot" gorm:"type:text"`
-	NewStateSnapshot string `json:"new_state_snapshot" gorm:"type:text"`
-	DeltaSnapshot    string `json:"delta_snapshot" gorm:"type:text"`
-	ChangedFields    string `json:"changed_fields" gorm:"type:text"`
-	Reason           string `json:"reason" gorm:"type:varchar(255);not null;default:''"`
-	SellerVisible    bool   `json:"seller_visible" gorm:"not null;default:true;index"`
-	AdminVisible     bool   `json:"admin_visible" gorm:"not null;default:true;index"`
-	CreatedAt        int64  `json:"created_at" gorm:"autoCreateTime;index"`
 }
 
 type MarketplaceFixedOrder struct {
@@ -184,7 +187,6 @@ func marketplaceMigrationModels() []interface{} {
 	return []interface{}{
 		&MarketplaceCredential{},
 		&MarketplaceCredentialStats{},
-		&MarketplaceCredentialEvent{},
 		&MarketplaceFixedOrder{},
 		&MarketplaceFixedOrderFill{},
 		&MarketplacePoolFill{},

@@ -142,6 +142,10 @@ export interface LogOtherData {
   is_system_prompt_overwritten?: boolean
   po?: string[]
   billing_source?: string
+  marketplace_relay?: boolean
+  marketplace_fixed_order_id?: number
+  marketplace_pool_credential_id?: number
+  marketplace_original_path?: string
   group?: string
   stream_status?: {
     status?: string

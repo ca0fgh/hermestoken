@@ -1,5 +1,10 @@
 {
-  "Go to Settings": "Go to Settings",
-  "Failed to adjust quota": "Failed to adjust quota",
-  "Select an operation mode and enter the amount": "Select an operation mode and enter the amount"
+  "Failed to bind tokens": "Failed to bind tokens",
+  "Fixed orders route to this seller credential and spend only the fixed order balance.": "Fixed orders route to this seller credential and spend only the fixed order balance.",
+  "Host keys, set models, prices, and concurrency": "Host keys, set models, prices, and concurrency",
+  "Buy fixed quota and bind tokens for fixed routing": "Buy fixed quota and bind tokens for fixed routing",
+  "Failed to activate order pool": "Failed to activate order pool",
+  "Automatically select supply by model, price, and concurrency": "Automatically select supply by model, price, and concurrency",
+  "Optional. Leave blank to configure later.": "Optional. Leave blank to configure later.",
+  "Select one or more console tokens for this fixed order.": "Select one or more console tokens for this fixed order."
 }

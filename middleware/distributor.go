@@ -74,6 +74,17 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 
+			if shouldUseMarketplaceUnifiedRelay(c, modelRequest.Model) {
+				if shouldSelectChannel && modelRequest.Model == "" {
+					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
+					return
+				}
+				common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+				common.SetContextKey(c, constant.ContextKeyOriginalModel, modelRequest.Model)
+				c.Next()
+				return
+			}
+
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
@@ -141,6 +152,12 @@ func Distribute() func(c *gin.Context) {
 						Retry:      common.GetPointer(0),
 					})
 					if err != nil {
+						if shouldFallbackToMarketplaceUnifiedRelayAfterGroup(c, modelRequest.Model) {
+							common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+							common.SetContextKey(c, constant.ContextKeyOriginalModel, modelRequest.Model)
+							c.Next()
+							return
+						}
 						showGroup := usingGroup
 						if usingGroup == "auto" {
 							showGroup = fmt.Sprintf("auto(%s)", selectGroup)
@@ -155,6 +172,12 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if channel == nil {
+						if shouldFallbackToMarketplaceUnifiedRelayAfterGroup(c, modelRequest.Model) {
+							common.SetContextKey(c, constant.ContextKeyRequestStartTime, time.Now())
+							common.SetContextKey(c, constant.ContextKeyOriginalModel, modelRequest.Model)
+							c.Next()
+							return
+						}
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
@@ -170,6 +193,128 @@ func Distribute() func(c *gin.Context) {
 			service.InvalidateChannelAffinity(c)
 		}
 	}
+}
+
+func shouldUseMarketplaceUnifiedRelay(c *gin.Context, modelName string) bool {
+	if common.GetContextKeyBool(c, constant.ContextKeyMarketplaceUnifiedRelay) {
+		return true
+	}
+	if !isUnifiedMarketplaceRelayRequest(c) || strings.TrimSpace(modelName) == "" {
+		return false
+	}
+	if strings.TrimSpace(c.GetHeader("X-Marketplace-Fixed-Order-Id")) != "" {
+		common.SetContextKey(c, constant.ContextKeyMarketplaceUnifiedRelay, true)
+		return true
+	}
+	for _, route := range marketplaceRouteOrderFromContext(c) {
+		switch route {
+		case model.MarketplaceRouteFixedOrder:
+			if marketplaceFixedOrderRouteAvailable(c, modelName) {
+				common.SetContextKey(c, constant.ContextKeyMarketplaceUnifiedRelay, true)
+				return true
+			}
+		case model.MarketplaceRouteGroup:
+			if !common.GetContextKeyBool(c, constant.ContextKeyMarketplaceSkipGroup) && marketplaceGroupRouteAvailable(c) {
+				return false
+			}
+		case model.MarketplaceRoutePool:
+			common.SetContextKey(c, constant.ContextKeyMarketplaceUnifiedRelay, true)
+			return true
+		}
+	}
+	return false
+}
+
+func shouldFallbackToMarketplaceUnifiedRelayAfterGroup(c *gin.Context, modelName string) bool {
+	if !isUnifiedMarketplaceRelayRequest(c) || strings.TrimSpace(modelName) == "" || !marketplaceGroupRouteAvailable(c) {
+		return false
+	}
+	seenGroup := false
+	for _, route := range marketplaceRouteOrderFromContext(c) {
+		if route == model.MarketplaceRouteGroup {
+			seenGroup = true
+			continue
+		}
+		if !seenGroup {
+			continue
+		}
+		if route == model.MarketplaceRouteFixedOrder && marketplaceFixedOrderRouteAvailable(c, modelName) {
+			common.SetContextKey(c, constant.ContextKeyMarketplaceSkipGroup, true)
+			common.SetContextKey(c, constant.ContextKeyMarketplaceUnifiedRelay, true)
+			return true
+		}
+		if route == model.MarketplaceRoutePool {
+			common.SetContextKey(c, constant.ContextKeyMarketplaceSkipGroup, true)
+			common.SetContextKey(c, constant.ContextKeyMarketplaceUnifiedRelay, true)
+			return true
+		}
+	}
+	return false
+}
+
+func marketplaceRouteOrderFromContext(c *gin.Context) []string {
+	routes := common.GetContextKeyStringSlice(c, constant.ContextKeyMarketplaceRouteOrder)
+	if len(routes) == 0 {
+		routes = model.DefaultMarketplaceRouteOrderList()
+	} else {
+		routes = model.NormalizeMarketplaceRouteOrderList(routes)
+	}
+	enabled := marketplaceRouteEnabledFromContext(c)
+	if len(enabled) == 0 {
+		return []string{}
+	}
+	enabledMap := model.MarketplaceRouteEnabledMap(enabled)
+	filtered := make([]string, 0, len(routes))
+	for _, route := range routes {
+		if enabledMap[route] {
+			filtered = append(filtered, route)
+		}
+	}
+	return filtered
+}
+
+func marketplaceRouteEnabledFromContext(c *gin.Context) []string {
+	value, ok := common.GetContextKey(c, constant.ContextKeyMarketplaceRouteEnabled)
+	if !ok {
+		return model.DefaultMarketplaceRouteOrderList()
+	}
+	routes, ok := value.([]string)
+	if !ok {
+		return model.DefaultMarketplaceRouteOrderList()
+	}
+	return model.NormalizeMarketplaceRouteEnabledList(routes)
+}
+
+func marketplaceGroupRouteAvailable(c *gin.Context) bool {
+	return strings.TrimSpace(common.GetContextKeyString(c, constant.ContextKeyUsingGroup)) != ""
+}
+
+func marketplaceFixedOrderRouteAvailable(c *gin.Context, modelName string) bool {
+	if strings.TrimSpace(c.GetHeader("X-Marketplace-Fixed-Order-Id")) != "" {
+		return true
+	}
+	fixedOrderIDs := marketplaceFixedOrderIDsFromContext(c)
+	if len(fixedOrderIDs) == 0 {
+		return false
+	}
+	order, err := service.SelectBuyerMarketplaceFixedOrderForTokenBindings(service.MarketplaceFixedOrderBindingSelectInput{
+		BuyerUserID:   c.GetInt("id"),
+		FixedOrderIDs: fixedOrderIDs,
+		Model:         modelName,
+	})
+	return err == nil && order != nil
+}
+
+func marketplaceFixedOrderIDsFromContext(c *gin.Context) []int {
+	if value, ok := c.Get("token_marketplace_fixed_order_ids"); ok {
+		if ids, ok := value.([]int); ok && len(ids) > 0 {
+			return ids
+		}
+	}
+	if id := c.GetInt("token_marketplace_fixed_order_id"); id > 0 {
+		return []int{id}
+	}
+	return nil
 }
 
 // getModelFromRequest 从请求中读取模型信息
@@ -190,7 +335,8 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 	var modelRequest ModelRequest
 	shouldSelectChannel := true
 	var err error
-	if strings.Contains(c.Request.URL.Path, "/mj/") {
+	path := canonicalOpenAIRequestPath(c)
+	if strings.Contains(path, "/mj/") {
 		relayMode := relayconstant.Path2RelayModeMidjourney(c.Request.URL.Path)
 		if relayMode == relayconstant.RelayModeMidjourneyTaskFetch ||
 			relayMode == relayconstant.RelayModeMidjourneyTaskFetchByCondition ||
@@ -218,7 +364,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = midjourneyModel
 		}
 		c.Set("relay_mode", relayMode)
-	} else if strings.Contains(c.Request.URL.Path, "/suno/") {
+	} else if strings.Contains(path, "/suno/") {
 		relayMode := relayconstant.Path2RelaySuno(c.Request.Method, c.Request.URL.Path)
 		if relayMode == relayconstant.RelayModeSunoFetch ||
 			relayMode == relayconstant.RelayModeSunoFetchByID {
@@ -229,7 +375,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("platform", string(constant.TaskPlatformSuno))
 		c.Set("relay_mode", relayMode)
-	} else if relayMode := relayconstant.Path2RelayVideo(c.Request.Method, c.Request.URL.Path); relayMode != relayconstant.RelayModeUnknown {
+	} else if relayMode := relayconstant.Path2RelayVideo(c.Request.Method, path); relayMode != relayconstant.RelayModeUnknown {
 		if relayMode == relayconstant.RelayModeVideoSubmit && strings.HasSuffix(c.Request.URL.Path, "/remix") {
 			shouldSelectChannel = false
 		} else if relayMode == relayconstant.RelayModeVideoSubmit {
@@ -244,38 +390,38 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			shouldSelectChannel = false
 		}
 		c.Set("relay_mode", relayMode)
-	} else if strings.HasPrefix(c.Request.URL.Path, "/v1beta/models/") || strings.HasPrefix(c.Request.URL.Path, "/v1/models/") {
+	} else if strings.HasPrefix(path, "/v1beta/models/") || strings.HasPrefix(path, "/v1/models/") {
 		// Gemini API 路径处理: /v1beta/models/gemini-2.0-flash:generateContent
 		relayMode := relayconstant.RelayModeGemini
-		modelName := extractModelNameFromGeminiPath(c.Request.URL.Path)
+		modelName := extractModelNameFromGeminiPath(path)
 		if modelName != "" {
 			modelRequest.Model = modelName
 		}
 		c.Set("relay_mode", relayMode)
-	} else if !strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") && !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+	} else if !strings.HasPrefix(path, "/v1/audio/transcriptions") && !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
 		req, err := getModelFromRequest(c)
 		if err != nil {
 			return nil, false, err
 		}
 		modelRequest.Model = req.Model
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/realtime") {
+	if strings.HasPrefix(path, "/v1/realtime") {
 		//wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01
 		modelRequest.Model = c.Query("model")
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/moderations") {
+	if strings.HasPrefix(path, "/v1/moderations") {
 		if modelRequest.Model == "" {
 			modelRequest.Model = "text-moderation-stable"
 		}
 	}
-	if strings.HasSuffix(c.Request.URL.Path, "embeddings") {
+	if strings.HasSuffix(path, "embeddings") {
 		if modelRequest.Model == "" {
 			modelRequest.Model = c.Param("model")
 		}
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") {
+	if strings.HasPrefix(path, "/v1/images/generations") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")
-	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/edits") {
+	} else if strings.HasPrefix(path, "/v1/images/edits") {
 		//modelRequest.Model = common.GetStringIfEmpty(c.PostForm("model"), "gpt-image-1")
 		contentType := c.ContentType()
 		if slices.Contains([]string{gin.MIMEPOSTForm, gin.MIMEMultipartPOSTForm}, contentType) {
@@ -285,19 +431,19 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			}
 		}
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/audio") {
+	if strings.HasPrefix(path, "/v1/audio") {
 		relayMode := relayconstant.RelayModeAudioSpeech
-		if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/speech") {
+		if strings.HasPrefix(path, "/v1/audio/speech") {
 
 			modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "tts-1")
-		} else if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/translations") {
+		} else if strings.HasPrefix(path, "/v1/audio/translations") {
 			// 先尝试从请求读取
 			if req, err := getModelFromRequest(c); err == nil && req.Model != "" {
 				modelRequest.Model = req.Model
 			}
 			modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "whisper-1")
 			relayMode = relayconstant.RelayModeAudioTranslation
-		} else if strings.HasPrefix(c.Request.URL.Path, "/v1/audio/transcriptions") {
+		} else if strings.HasPrefix(path, "/v1/audio/transcriptions") {
 			// 先尝试从请求读取
 			if req, err := getModelFromRequest(c); err == nil && req.Model != "" {
 				modelRequest.Model = req.Model
@@ -307,7 +453,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("relay_mode", relayMode)
 	}
-	if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
+	if strings.HasPrefix(path, "/pg/chat/completions") {
 		// playground chat completions
 		req, err := getModelFromRequest(c)
 		if err != nil {
@@ -318,7 +464,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		common.SetContextKey(c, constant.ContextKeyTokenGroup, modelRequest.Group)
 	}
 
-	if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") && modelRequest.Model != "" {
+	if strings.HasPrefix(path, "/v1/responses/compact") && modelRequest.Model != "" {
 		modelRequest.Model = ratio_setting.WithCompactModelSuffix(modelRequest.Model)
 	}
 	return &modelRequest, shouldSelectChannel, nil

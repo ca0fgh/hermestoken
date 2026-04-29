@@ -20,7 +20,10 @@ import { useLocation } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import SetupCheck from './components/layout/SetupCheck';
 import { StatusContext } from './context/Status';
-import { getPricingModuleConfig } from './helpers/headerNavModules';
+import {
+  getPricingModuleConfig,
+  normalizeHeaderNavModules,
+} from './helpers/headerNavModules';
 import { lazyWithRetry } from './helpers/lazyWithRetry';
 import HomeRoutes from './routes/HomeRoutes';
 
@@ -47,6 +50,14 @@ function App() {
 
     return getPricingModuleConfig(statusState?.status?.HeaderNavModules);
   }, [statusState?.status, statusState?.status?.HeaderNavModules]);
+  const marketplaceEnabled = useMemo(() => {
+    if (!statusState?.status) {
+      return false;
+    }
+
+    return normalizeHeaderNavModules(statusState.status.HeaderNavModules)
+      .marketplace;
+  }, [statusState?.status, statusState?.status?.HeaderNavModules]);
   const isConsoleRoute = location.pathname.startsWith('/console');
   const isHomeRoute = location.pathname === '/';
   const RoutesComponent = isConsoleRoute
@@ -64,6 +75,7 @@ function App() {
         <RoutesComponent
           pricingEnabled={pricingConfig.enabled}
           pricingRequireAuth={pricingConfig.requireAuth}
+          marketplaceEnabled={marketplaceEnabled}
         />
       </Suspense>
     </SetupCheck>

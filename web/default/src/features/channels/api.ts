@@ -495,6 +495,18 @@ export async function getAllModels(): Promise<{
 }
 
 /**
+ * Get models configured in model pricing settings
+ */
+export async function getPricedModels(): Promise<{
+  success: boolean
+  message?: string
+  data?: Array<{ id: string; [key: string]: unknown }>
+}> {
+  const res = await api.get('/api/channel/models_priced')
+  return res.data
+}
+
+/**
  * Get all enabled models
  */
 export async function getEnabledModels(): Promise<{

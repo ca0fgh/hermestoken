@@ -65,7 +65,6 @@
   "name@example.com": "name@example.com",
   "HermesToken": "HermesToken",
   "HermesToken &lt;noreply@example.com&gt;": "HermesToken &lt;noreply@example.com&gt;",
-  "HermesToken": "HermesToken",
   "noreply@example.com": "noreply@example.com",
   "OhMyGPT": "OhMyGPT",
   "Ollama": "Ollama",

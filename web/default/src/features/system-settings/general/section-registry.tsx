@@ -2,6 +2,7 @@ import type { GeneralSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { ChannelAffinitySection } from './channel-affinity'
 import { CheckinSettingsSection } from './checkin-settings-section'
+import { MarketplaceSettingsSection } from './marketplace-settings-section'
 import { PricingSection } from './pricing-section'
 import { QuotaSettingsSection } from './quota-settings-section'
 import { SystemBehaviorSection } from './system-behavior-section'
@@ -73,6 +74,29 @@ const GENERAL_SECTIONS = [
             custom_currency_exchange_rate:
               settings['general_setting.custom_currency_exchange_rate'] ?? 1,
           },
+        }}
+      />
+    ),
+  },
+  {
+    id: 'marketplace',
+    titleKey: 'Marketplace',
+    descriptionKey: 'Configure marketplace availability and trade limits',
+    build: (settings: GeneralSettings) => (
+      <MarketplaceSettingsSection
+        defaultValues={{
+          MarketplaceEnabled: settings.MarketplaceEnabled,
+          MarketplaceEnabledVendorTypes: settings.MarketplaceEnabledVendorTypes,
+          MarketplaceSellerIncomeHoldSeconds:
+            settings.MarketplaceSellerIncomeHoldSeconds,
+          MarketplaceMinFixedOrderQuota: settings.MarketplaceMinFixedOrderQuota,
+          MarketplaceMaxFixedOrderQuota: settings.MarketplaceMaxFixedOrderQuota,
+          MarketplaceFixedOrderDefaultExpirySeconds:
+            settings.MarketplaceFixedOrderDefaultExpirySeconds,
+          MarketplaceMaxSellerMultiplier:
+            settings.MarketplaceMaxSellerMultiplier,
+          MarketplaceMaxCredentialConcurrency:
+            settings.MarketplaceMaxCredentialConcurrency,
         }}
       />
     ),

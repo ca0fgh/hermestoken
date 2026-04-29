@@ -18,15 +18,19 @@ import (
 )
 
 func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dto.Request, err error) {
-	relayMode := relayconstant.Path2RelayMode(c.Request.URL.Path)
+	path := c.Request.URL.Path
+	if canonicalPath, ok := relayconstant.CanonicalOpenAIPath(path); ok {
+		path = canonicalPath
+	}
+	relayMode := relayconstant.Path2RelayMode(path)
 
 	switch format {
 	case types.RelayFormatOpenAI:
 		request, err = GetAndValidateTextRequest(c, relayMode)
 	case types.RelayFormatGemini:
-		if strings.Contains(c.Request.URL.Path, ":embedContent") {
+		if strings.Contains(path, ":embedContent") {
 			request, err = GetAndValidateGeminiEmbeddingRequest(c)
-		} else if strings.Contains(c.Request.URL.Path, ":batchEmbedContents") {
+		} else if strings.Contains(path, ":batchEmbedContents") {
 			request, err = GetAndValidateGeminiBatchEmbeddingRequest(c)
 		} else {
 			request, err = GetAndValidateGeminiRequest(c)

@@ -55,38 +55,41 @@ const (
 )
 
 func Path2RelayMode(path string) int {
+	if canonicalPath, ok := CanonicalOpenAIPath(path); ok {
+		path = canonicalPath
+	}
 	relayMode := RelayModeUnknown
-	if strings.HasPrefix(path, "/v1/chat/completions") || strings.HasPrefix(path, "/pg/chat/completions") {
+	if relayPathHasPrefix(path, "/v1/chat/completions") || relayPathHasPrefix(path, "/pg/chat/completions") {
 		relayMode = RelayModeChatCompletions
-	} else if strings.HasPrefix(path, "/v1/completions") {
+	} else if relayPathHasPrefix(path, "/v1/completions") {
 		relayMode = RelayModeCompletions
-	} else if strings.HasPrefix(path, "/v1/embeddings") {
+	} else if relayPathHasPrefix(path, "/v1/embeddings") {
 		relayMode = RelayModeEmbeddings
 	} else if strings.HasSuffix(path, "embeddings") {
 		relayMode = RelayModeEmbeddings
-	} else if strings.HasPrefix(path, "/v1/moderations") {
+	} else if relayPathHasPrefix(path, "/v1/moderations") {
 		relayMode = RelayModeModerations
-	} else if strings.HasPrefix(path, "/v1/images/generations") {
+	} else if relayPathHasPrefix(path, "/v1/images/generations") {
 		relayMode = RelayModeImagesGenerations
-	} else if strings.HasPrefix(path, "/v1/images/edits") {
+	} else if relayPathHasPrefix(path, "/v1/images/edits") {
 		relayMode = RelayModeImagesEdits
-	} else if strings.HasPrefix(path, "/v1/edits") {
+	} else if relayPathHasPrefix(path, "/v1/edits") {
 		relayMode = RelayModeEdits
-	} else if strings.HasPrefix(path, "/v1/responses/compact") {
+	} else if relayPathHasPrefix(path, "/v1/responses/compact") {
 		relayMode = RelayModeResponsesCompact
-	} else if strings.HasPrefix(path, "/v1/responses") {
+	} else if relayPathHasPrefix(path, "/v1/responses") {
 		relayMode = RelayModeResponses
-	} else if strings.HasPrefix(path, "/v1/audio/speech") {
+	} else if relayPathHasPrefix(path, "/v1/audio/speech") {
 		relayMode = RelayModeAudioSpeech
-	} else if strings.HasPrefix(path, "/v1/audio/transcriptions") {
+	} else if relayPathHasPrefix(path, "/v1/audio/transcriptions") {
 		relayMode = RelayModeAudioTranscription
-	} else if strings.HasPrefix(path, "/v1/audio/translations") {
+	} else if relayPathHasPrefix(path, "/v1/audio/translations") {
 		relayMode = RelayModeAudioTranslation
-	} else if strings.HasPrefix(path, "/v1/rerank") {
+	} else if relayPathHasPrefix(path, "/v1/rerank") {
 		relayMode = RelayModeRerank
-	} else if strings.HasPrefix(path, "/v1/realtime") {
+	} else if relayPathHasPrefix(path, "/v1/realtime") {
 		relayMode = RelayModeRealtime
-	} else if strings.HasPrefix(path, "/v1beta/models") || strings.HasPrefix(path, "/v1/models") {
+	} else if relayPathHasPrefix(path, "/v1beta/models") || relayPathHasPrefix(path, "/v1/models") {
 		relayMode = RelayModeGemini
 	} else if videoMode := Path2RelayVideo("", path); videoMode != RelayModeUnknown {
 		relayMode = videoMode
@@ -94,6 +97,45 @@ func Path2RelayMode(path string) int {
 		relayMode = Path2RelayModeMidjourney(path)
 	}
 	return relayMode
+}
+
+func CanonicalOpenAIPath(path string) (string, bool) {
+	if idx := strings.Index(path, "?"); idx >= 0 {
+		path = path[:idx]
+	}
+	if path == "" || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/v1beta/") {
+		return "", false
+	}
+	rootPaths := []string{
+		"/chat/completions",
+		"/completions",
+		"/responses/compact",
+		"/responses",
+		"/embeddings",
+		"/moderations",
+		"/images/generations",
+		"/images/edits",
+		"/images/variations",
+		"/edits",
+		"/audio/speech",
+		"/audio/transcriptions",
+		"/audio/translations",
+		"/rerank",
+		"/models",
+		"/engines",
+		"/files",
+		"/fine-tunes",
+	}
+	for _, rootPath := range rootPaths {
+		if relayPathHasPrefix(path, rootPath) {
+			return "/v1" + path, true
+		}
+	}
+	return "", false
+}
+
+func relayPathHasPrefix(path, prefix string) bool {
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
 func Path2RelayVideo(method, path string) int {

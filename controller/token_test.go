@@ -31,10 +31,14 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Key    string `json:"key"`
-	Status int    `json:"status"`
+	ID                       int      `json:"id"`
+	Name                     string   `json:"name"`
+	Key                      string   `json:"key"`
+	Status                   int      `json:"status"`
+	MarketplaceFixedOrderID  int      `json:"marketplace_fixed_order_id"`
+	MarketplaceFixedOrderIDs []int    `json:"marketplace_fixed_order_ids"`
+	MarketplaceRouteOrder    []string `json:"marketplace_route_order"`
+	MarketplaceRouteEnabled  []string `json:"marketplace_route_enabled"`
 }
 
 type tokenKeyResponse struct {
@@ -149,6 +153,27 @@ func seedToken(t *testing.T, db *gorm.DB, userID int, name string, rawKey string
 		t.Fatalf("failed to create token: %v", err)
 	}
 	return token
+}
+
+func seedMarketplaceFixedOrderForTokenTest(t *testing.T, db *gorm.DB, buyerUserID int) *model.MarketplaceFixedOrder {
+	t.Helper()
+
+	if err := db.AutoMigrate(&model.MarketplaceFixedOrder{}); err != nil {
+		t.Fatalf("failed to migrate marketplace fixed order table: %v", err)
+	}
+	order := &model.MarketplaceFixedOrder{
+		BuyerUserID:        buyerUserID,
+		SellerUserID:       10,
+		CredentialID:       1,
+		PurchasedQuota:     1000,
+		RemainingQuota:     1000,
+		MultiplierSnapshot: 1,
+		Status:             model.MarketplaceFixedOrderStatusActive,
+	}
+	if err := db.Create(order).Error; err != nil {
+		t.Fatalf("failed to create marketplace fixed order: %v", err)
+	}
+	return order
 }
 
 func newAuthenticatedContext(t *testing.T, method string, target string, body any, userID int) (*gin.Context, *httptest.ResponseRecorder) {
@@ -308,7 +333,151 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 }
 
-func TestAddTokenRejectsBlankGroupWhenAssignedDefaultGroupIsNotSelectable(t *testing.T) {
+func TestUpdateTokenStoresMarketplaceRouteSettings(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "standard")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
+	token := seedToken(t, db, 1, "route-edit-token", "route1234edit5678")
+
+	body := map[string]any{
+		"id":                        token.Id,
+		"name":                      "route-edit-token-updated",
+		"expired_time":              -1,
+		"remain_quota":              100,
+		"unlimited_quota":           true,
+		"model_limits_enabled":      false,
+		"model_limits":              "",
+		"group":                     "standard",
+		"cross_group_retry":         false,
+		"marketplace_route_order":   []string{"group", "fixed_order", "pool"},
+		"marketplace_route_enabled": []string{"group", "fixed_order"},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token update to store route settings, got %q", response.Message)
+	}
+
+	var detail tokenResponseItem
+	if err := common.Unmarshal(response.Data, &detail); err != nil {
+		t.Fatalf("failed to decode token update response: %v", err)
+	}
+	expectedOrder := []string{
+		model.MarketplaceRouteGroup,
+		model.MarketplaceRouteFixedOrder,
+		model.MarketplaceRoutePool,
+	}
+	expectedEnabled := []string{
+		model.MarketplaceRouteGroup,
+		model.MarketplaceRouteFixedOrder,
+	}
+	if fmt.Sprint(detail.MarketplaceRouteOrder) != fmt.Sprint(expectedOrder) {
+		t.Fatalf("expected response route order %v, got %v", expectedOrder, detail.MarketplaceRouteOrder)
+	}
+	if fmt.Sprint(detail.MarketplaceRouteEnabled) != fmt.Sprint(expectedEnabled) {
+		t.Fatalf("expected response enabled routes %v, got %v", expectedEnabled, detail.MarketplaceRouteEnabled)
+	}
+
+	var stored model.Token
+	if err := db.First(&stored, "id = ? AND user_id = ?", token.Id, 1).Error; err != nil {
+		t.Fatalf("failed to reload updated token: %v", err)
+	}
+	if got := stored.MarketplaceRouteOrderList(); fmt.Sprint(got) != fmt.Sprint(expectedOrder) {
+		t.Fatalf("expected stored route order %v, got %v", expectedOrder, got)
+	}
+	if got := stored.MarketplaceRouteEnabledList(); fmt.Sprint(got) != fmt.Sprint(expectedEnabled) {
+		t.Fatalf("expected stored enabled routes %v, got %v", expectedEnabled, got)
+	}
+}
+
+func TestUpdateTokenAllowsRouteUpdateWithUnchangedExpiredMarketplaceFixedOrderBinding(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "standard")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
+	order := seedMarketplaceFixedOrderForTokenTest(t, db, 1)
+	order.Status = model.MarketplaceFixedOrderStatusExpired
+	if err := db.Save(order).Error; err != nil {
+		t.Fatalf("failed to expire marketplace fixed order: %v", err)
+	}
+	token := seedToken(t, db, 1, "route-toggle-token", "route1234toggle5678")
+	token.SetMarketplaceFixedOrderIDList([]int{order.ID})
+	token.MarketplaceRouteOrder = model.NewMarketplaceRouteOrder([]string{
+		model.MarketplaceRouteFixedOrder,
+		model.MarketplaceRouteGroup,
+		model.MarketplaceRoutePool,
+	})
+	token.MarketplaceRouteEnabled = model.NewMarketplaceRouteEnabled([]string{
+		model.MarketplaceRouteFixedOrder,
+		model.MarketplaceRouteGroup,
+		model.MarketplaceRoutePool,
+	})
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to bind expired marketplace fixed order to token: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                         token.Id,
+		"name":                       "route-toggle-token",
+		"expired_time":               -1,
+		"remain_quota":               100,
+		"unlimited_quota":            true,
+		"model_limits_enabled":       false,
+		"model_limits":               "",
+		"group":                      "standard",
+		"cross_group_retry":          false,
+		"marketplace_fixed_order_id": order.ID,
+		"marketplace_fixed_order_ids": []int{
+			order.ID,
+		},
+		"marketplace_route_order": []string{
+			model.MarketplaceRouteFixedOrder,
+			model.MarketplaceRouteGroup,
+			model.MarketplaceRoutePool,
+		},
+		"marketplace_route_enabled": []string{
+			model.MarketplaceRouteFixedOrder,
+			model.MarketplaceRouteGroup,
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token update to allow unchanged expired fixed order binding, got %q", response.Message)
+	}
+
+	var stored model.Token
+	if err := db.First(&stored, "id = ? AND user_id = ?", token.Id, 1).Error; err != nil {
+		t.Fatalf("failed to reload updated token: %v", err)
+	}
+	if got := stored.MarketplaceFixedOrderIDList(); fmt.Sprint(got) != fmt.Sprint([]int{order.ID}) {
+		t.Fatalf("expected unchanged fixed order binding %v, got %v", []int{order.ID}, got)
+	}
+	expectedEnabled := []string{
+		model.MarketplaceRouteFixedOrder,
+		model.MarketplaceRouteGroup,
+	}
+	if got := stored.MarketplaceRouteEnabledList(); fmt.Sprint(got) != fmt.Sprint(expectedEnabled) {
+		t.Fatalf("expected enabled routes %v, got %v", expectedEnabled, got)
+	}
+}
+
+func TestAddTokenAllowsBlankGroupWhenAssignedDefaultGroupIsNotSelectable(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	seedUser(t, db, 1, "default")
 	withTokenGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
@@ -328,12 +497,12 @@ func TestAddTokenRejectsBlankGroupWhenAssignedDefaultGroupIsNotSelectable(t *tes
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	if response.Success {
-		t.Fatalf("expected token creation to fail when assigned default group is not selectable")
+	if !response.Success {
+		t.Fatalf("expected token creation to allow blank group, got %q", response.Message)
 	}
 }
 
-func TestAddTokenStillRejectsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelectable(t *testing.T) {
+func TestAddTokenAllowsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelectable(t *testing.T) {
 	db := setupTokenControllerTestDB(t)
 	seedUser(t, db, 1, "default")
 	withTokenGroupSettings(t, `{"standard":"标准价格","default":"默认分组"}`, `{}`)
@@ -353,8 +522,8 @@ func TestAddTokenStillRejectsBlankGroupWhenAssignedDefaultGroupIsExplicitlySelec
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	if response.Success {
-		t.Fatalf("expected token creation to fail when assigned default group is default, even if explicitly selectable")
+	if !response.Success {
+		t.Fatalf("expected token creation to allow blank group, got %q", response.Message)
 	}
 }
 
@@ -415,6 +584,159 @@ func TestAddTokenAllowsExplicitAssignedNonDefaultGroupSelection(t *testing.T) {
 	response := decodeAPIResponse(t, recorder)
 	if !response.Success {
 		t.Fatalf("expected token creation to succeed when explicitly selecting assigned non-default group, got %q", response.Message)
+	}
+}
+
+func TestAddTokenAllowsOwnedMarketplaceFixedOrderBinding(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "standard")
+	order := seedMarketplaceFixedOrderForTokenTest(t, db, 1)
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
+
+	body := map[string]any{
+		"name":                       "market-token",
+		"expired_time":               -1,
+		"remain_quota":               100,
+		"unlimited_quota":            true,
+		"model_limits_enabled":       false,
+		"model_limits":               "",
+		"group":                      "standard",
+		"cross_group_retry":          false,
+		"marketplace_fixed_order_id": order.ID,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token creation to bind owned marketplace order, got %q", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "market-token").First(&token).Error; err != nil {
+		t.Fatalf("failed to load created token: %v", err)
+	}
+	if token.MarketplaceFixedOrderID != order.ID {
+		t.Fatalf("expected marketplace fixed order binding %d, got %d", order.ID, token.MarketplaceFixedOrderID)
+	}
+}
+
+func TestAddTokenNormalizesMarketplaceRouteOrder(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "standard")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
+
+	body := map[string]any{
+		"name":                    "route-order-token",
+		"expired_time":            -1,
+		"remain_quota":            100,
+		"unlimited_quota":         true,
+		"model_limits_enabled":    false,
+		"model_limits":            "",
+		"group":                   "standard",
+		"cross_group_retry":       false,
+		"marketplace_route_order": []string{"group", "pool", "fixed_order"},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token creation to accept route order, got %q", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "route-order-token").First(&token).Error; err != nil {
+		t.Fatalf("failed to load created token: %v", err)
+	}
+	expected := []string{model.MarketplaceRouteGroup, model.MarketplaceRoutePool, model.MarketplaceRouteFixedOrder}
+	if got := token.MarketplaceRouteOrderList(); fmt.Sprint(got) != fmt.Sprint(expected) {
+		t.Fatalf("expected route order %v, got %v", expected, got)
+	}
+}
+
+func TestAddTokenStoresMarketplaceRouteEnabled(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "standard")
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
+
+	body := map[string]any{
+		"name":                      "route-enabled-token",
+		"expired_time":              -1,
+		"remain_quota":              100,
+		"unlimited_quota":           true,
+		"model_limits_enabled":      false,
+		"model_limits":              "",
+		"group":                     "standard",
+		"cross_group_retry":         false,
+		"marketplace_route_order":   []string{"fixed_order", "group", "pool"},
+		"marketplace_route_enabled": []string{"group", "pool"},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected token creation to accept route enabled set, got %q", response.Message)
+	}
+
+	var token model.Token
+	if err := db.Where("user_id = ? AND name = ?", 1, "route-enabled-token").First(&token).Error; err != nil {
+		t.Fatalf("failed to load created token: %v", err)
+	}
+	expected := []string{model.MarketplaceRouteGroup, model.MarketplaceRoutePool}
+	if got := token.MarketplaceRouteEnabledList(); fmt.Sprint(got) != fmt.Sprint(expected) {
+		t.Fatalf("expected enabled routes %v, got %v", expected, got)
+	}
+}
+
+func TestAddTokenRejectsUnownedMarketplaceFixedOrderBinding(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	seedUser(t, db, 1, "standard")
+	order := seedMarketplaceFixedOrderForTokenTest(t, db, 2)
+	withTokenGroupSettingsAndRatios(
+		t,
+		`{"standard":"标准价格","default":"默认分组"}`,
+		`{}`,
+		`{"default":1,"standard":1}`,
+	)
+
+	body := map[string]any{
+		"name":                       "market-token",
+		"expired_time":               -1,
+		"remain_quota":               100,
+		"unlimited_quota":            true,
+		"model_limits_enabled":       false,
+		"model_limits":               "",
+		"group":                      "standard",
+		"cross_group_retry":          false,
+		"marketplace_fixed_order_id": order.ID,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/token/", body, 1)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if response.Success {
+		t.Fatalf("expected token creation to reject unowned marketplace order binding")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/controller"
 	"github.com/ca0fgh/hermestoken/middleware"
+	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
@@ -37,6 +38,24 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 			controller.RelayNotFound(c)
 			return
 		}
+		if isRootOpenAIModelsAPIRequest(c) {
+			c.Set(middleware.RouteTagKey, "relay")
+			modelID := strings.TrimPrefix(c.Request.URL.Path, "/models/")
+			if canonicalPath, ok := relayconstant.CanonicalOpenAIPath(c.Request.URL.Path); ok {
+				c.Request.URL.Path = canonicalPath
+			}
+			middleware.TokenAuth()(c)
+			if c.IsAborted() {
+				return
+			}
+			if modelID == "" || modelID == c.Request.URL.Path {
+				openAIModelsHandler(c)
+			} else {
+				c.Params = append(c.Params, gin.Param{Key: "model", Value: modelID})
+				openAIModelHandler(c)
+			}
+			return
+		}
 		c.Header("Cache-Control", "no-cache")
 		if common.GetTheme() == "classic" {
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.ClassicIndexPage)
@@ -44,4 +63,21 @@ func SetWebRouter(router *gin.Engine, assets ThemeAssets) {
 			c.Data(http.StatusOK, "text/html; charset=utf-8", assets.DefaultIndexPage)
 		}
 	})
+}
+
+func isRootOpenAIModelsAPIRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	if c.Request.Method != http.MethodGet {
+		return false
+	}
+	path := c.Request.URL.Path
+	if path != "/models" && !strings.HasPrefix(path, "/models/") {
+		return false
+	}
+	return c.GetHeader("Authorization") != "" ||
+		c.GetHeader("x-api-key") != "" ||
+		c.GetHeader("x-goog-api-key") != "" ||
+		c.Query("key") != ""
 }

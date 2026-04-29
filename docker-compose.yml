@@ -38,6 +38,7 @@ services:
       - SQL_DSN=postgresql://root:123456@postgres:5432/hermestoken # ⚠️ IMPORTANT: Change the password in production!
 #      - SQL_DSN=root:123456@tcp(mysql:3306)/hermestoken  # Point to the mysql service, uncomment if using MySQL
       - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ IMPORTANT: Change the password in production!
+      - MARKETPLACE_CREDENTIAL_SECRET=${MARKETPLACE_CREDENTIAL_SECRET:?MARKETPLACE_CREDENTIAL_SECRET must be set in .env before using marketplace escrow} # ⚠️ IMPORTANT: Keep this stable; changing it makes existing seller API keys undecryptable.
       - TZ=Asia/Shanghai
       - GLOBAL_WEB_RATE_LIMIT_ENABLE=false # 本地调试关闭网页限流，避免 localhost 频繁刷新被 429
       - GLOBAL_API_RATE_LIMIT_ENABLE=false # 本地/外网联调环境关闭全局 API 限流，避免后台巡检和支付验证被 429 打断

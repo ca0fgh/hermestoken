@@ -64,6 +64,15 @@ export type GeneralSettings = {
   'channel_affinity_setting.max_entries': number
   'channel_affinity_setting.default_ttl_seconds': number
   'channel_affinity_setting.rules': string
+  MarketplaceEnabled: boolean
+  MarketplaceEnabledVendorTypes: string
+  MarketplaceFeeRate: number
+  MarketplaceSellerIncomeHoldSeconds: number
+  MarketplaceMinFixedOrderQuota: number
+  MarketplaceMaxFixedOrderQuota: number
+  MarketplaceFixedOrderDefaultExpirySeconds: number
+  MarketplaceMaxSellerMultiplier: number
+  MarketplaceMaxCredentialConcurrency: number
 }
 
 export type AuthSettings = {

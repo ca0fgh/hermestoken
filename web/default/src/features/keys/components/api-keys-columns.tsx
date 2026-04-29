@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/tooltip'
 import { DataTableColumnHeader } from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import { marketplaceTokenFixedOrderIds } from '@/features/marketplace/lib'
 import { getSystemOptions } from '@/features/system-settings/api'
 import { API_KEY_STATUSES } from '../constants'
 import { type ApiKey } from '../types'
@@ -266,6 +267,33 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
       cell: ({ row }) => <ModelLimitsCell apiKey={row.original} />,
       enableSorting: false,
       meta: { label: t('Models'), mobileHidden: true },
+    },
+    {
+      id: 'marketplace_fixed_order_id',
+      accessorKey: 'marketplace_fixed_order_id',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title={t('Marketplace Order')} />
+      ),
+      cell: ({ row }) => {
+        const fixedOrderIds = marketplaceTokenFixedOrderIds(row.original)
+        const label =
+          fixedOrderIds.length <= 3
+            ? fixedOrderIds.map((id) => `#${id}`).join(', ')
+            : `${fixedOrderIds
+                .slice(0, 3)
+                .map((id) => `#${id}`)
+                .join(', ')} +${fixedOrderIds.length - 3}`
+        return fixedOrderIds.length > 0 ? (
+          <StatusBadge
+            label={label}
+            variant='success'
+            copyable={false}
+          />
+        ) : (
+          <span className='text-muted-foreground text-xs'>-</span>
+        )
+      },
+      meta: { label: t('Marketplace Order'), mobileHidden: true },
     },
     {
       id: 'allow_ips',

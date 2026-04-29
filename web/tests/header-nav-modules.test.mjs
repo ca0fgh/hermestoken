@@ -20,6 +20,7 @@ test('normalizeHeaderNavModules falls back to defaults for empty config', () => 
       enabled: true,
       requireAuth: false,
     },
+    marketplace: true,
     docs: true,
     about: true,
   });
@@ -43,7 +44,36 @@ test('normalizeHeaderNavModules upgrades legacy pricing boolean config', () => {
         enabled: false,
         requireAuth: false,
       },
+      marketplace: true,
       docs: false,
+      about: true,
+    },
+  );
+});
+
+test('normalizeHeaderNavModules enables marketplace for legacy saved config', () => {
+  assert.deepEqual(
+    normalizeHeaderNavModules(
+      JSON.stringify({
+        home: true,
+        console: true,
+        pricing: {
+          enabled: true,
+          requireAuth: false,
+        },
+        docs: true,
+        about: true,
+      }),
+    ),
+    {
+      home: true,
+      console: true,
+      pricing: {
+        enabled: true,
+        requireAuth: false,
+      },
+      marketplace: true,
+      docs: true,
       about: true,
     },
   );
@@ -92,6 +122,21 @@ test('settings header nav source separates marketplace entry visibility from gue
   assert.match(source, /t\('控制是否显示模型广场入口'\)/);
   assert.match(
     source,
-    /t\('关闭后游客按 default 分组浏览模型广场，登录用户可查看全部展示模型'\)/,
+    /t\(\s*'关闭后游客按 default 分组浏览模型广场，登录用户可查看全部展示模型'/,
   );
+  assert.match(source, /key:\s*'marketplace'/);
+  assert.match(source, /t\('控制是否显示市场入口'\)/);
+});
+
+test('settings header nav cards use flex grid layout to avoid float masonry gaps', async () => {
+  const source = await readFile(
+    new URL(
+      '../classic/src/pages/Setting/Operation/SettingsHeaderNavModules.jsx',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(source, /<Row[^>]*\btype='flex'/);
+  assert.match(source, /<Row[^>]*\balign='top'/);
 });

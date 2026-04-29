@@ -171,6 +171,46 @@ func SetApiRouter(router *gin.Engine) {
 			cryptoAdminRoute.POST("/topup/orders/:trade_no/complete", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.SecureVerificationRequired(), controller.AdminCompleteCryptoTopUp)
 		}
 
+		marketplaceSellerRoute := apiRouter.Group("/marketplace/seller/credentials")
+		marketplaceSellerRoute.Use(middleware.UserAuth())
+		{
+			marketplaceSellerRoute.POST("", controller.SellerCreateMarketplaceCredential)
+			marketplaceSellerRoute.GET("", controller.SellerListMarketplaceCredentials)
+			marketplaceSellerRoute.POST("/fetch-models", controller.SellerFetchMarketplaceCredentialModels)
+			marketplaceSellerRoute.GET("/:id", controller.SellerGetMarketplaceCredential)
+			marketplaceSellerRoute.PUT("/:id", controller.SellerUpdateMarketplaceCredential)
+			marketplaceSellerRoute.POST("/:id/test", controller.SellerTestMarketplaceCredential)
+			marketplaceSellerRoute.POST("/:id/list", controller.SellerListMarketplaceCredential)
+			marketplaceSellerRoute.POST("/:id/unlist", controller.SellerUnlistMarketplaceCredential)
+			marketplaceSellerRoute.POST("/:id/enable", controller.SellerEnableMarketplaceCredential)
+			marketplaceSellerRoute.POST("/:id/disable", controller.SellerDisableMarketplaceCredential)
+		}
+
+		marketplaceSellerIncomeRoute := apiRouter.Group("/marketplace/seller")
+		marketplaceSellerIncomeRoute.Use(middleware.UserAuth())
+		{
+			marketplaceSellerIncomeRoute.GET("/priced-models", controller.SellerListMarketplacePricedModels)
+			marketplaceSellerIncomeRoute.GET("/income", controller.SellerGetMarketplaceIncome)
+			marketplaceSellerIncomeRoute.GET("/settlements", controller.SellerListMarketplaceSettlements)
+			marketplaceSellerIncomeRoute.POST("/settlements/release", controller.SellerReleaseMarketplaceSettlements)
+		}
+
+		marketplaceBuyerRoute := apiRouter.Group("/marketplace")
+		marketplaceBuyerRoute.Use(middleware.UserAuth())
+		{
+			marketplaceBuyerRoute.GET("/pricing", controller.MarketplaceListPricing)
+			marketplaceBuyerRoute.GET("/order-filter-ranges", controller.BuyerGetMarketplaceOrderFilterRanges)
+			marketplaceBuyerRoute.GET("/orders", controller.BuyerListMarketplaceOrders)
+			marketplaceBuyerRoute.POST("/fixed-orders", controller.BuyerCreateMarketplaceFixedOrder)
+			marketplaceBuyerRoute.GET("/fixed-orders", controller.BuyerListMarketplaceFixedOrders)
+			marketplaceBuyerRoute.POST("/fixed-orders/bind-token", controller.BuyerBindMarketplaceFixedOrderToken)
+			marketplaceBuyerRoute.GET("/fixed-orders/:id", controller.BuyerGetMarketplaceFixedOrder)
+			marketplaceBuyerRoute.POST("/fixed-orders/:id/bind-token", controller.BuyerBindMarketplaceFixedOrderToken)
+			marketplaceBuyerRoute.POST("/fixed-orders/:id/bind-tokens", controller.BuyerBindMarketplaceFixedOrderTokens)
+			marketplaceBuyerRoute.GET("/pool/models", controller.BuyerListMarketplacePoolModels)
+			marketplaceBuyerRoute.GET("/pool/candidates", controller.BuyerListMarketplacePoolCandidates)
+		}
+
 		// Subscription billing (plans, purchase, admin management)
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())
@@ -263,6 +303,7 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.GET("/", controller.GetAllChannels)
 			channelRoute.GET("/search", controller.SearchChannels)
 			channelRoute.GET("/models", controller.ChannelListModels)
+			channelRoute.GET("/models_priced", controller.ChannelListPricedModels)
 			channelRoute.GET("/models_enabled", controller.EnabledListModels)
 			channelRoute.GET("/:id", controller.GetChannel)
 			channelRoute.POST("/:id/key", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.GetChannelKey)

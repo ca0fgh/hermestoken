@@ -52,7 +52,14 @@ const Chat2Link = lazyWithRetry(
   () => import('../pages/Chat2Link'),
   'chat2link-route',
 );
-const Pricing = lazyWithRetry(() => import('../pages/Pricing'), 'pricing-route');
+const Pricing = lazyWithRetry(
+  () => import('../pages/Pricing'),
+  'pricing-route',
+);
+const Marketplace = lazyWithRetry(
+  () => import('../pages/Marketplace'),
+  'marketplace-route',
+);
 const OAuth2Callback = lazyWithRetry(
   () => import('../components/auth/OAuth2Callback'),
   'oauth-callback-route',
@@ -71,7 +78,11 @@ function DynamicOAuth2Callback() {
   return <OAuth2Callback type={provider} />;
 }
 
-function PublicRoutes({ pricingEnabled = false, pricingRequireAuth = false }) {
+function PublicRoutes({
+  pricingEnabled = false,
+  pricingRequireAuth = false,
+  marketplaceEnabled = false,
+}) {
   const location = useLocation();
   const renderWithSuspense = (element, key = location.pathname) => (
     <Suspense fallback={<Loading />} key={key}>
@@ -104,7 +115,10 @@ function PublicRoutes({ pricingEnabled = false, pricingRequireAuth = false }) {
           </AuthRedirect>,
         )}
       />
-      <Route path='/reset' element={renderWithSuspense(<PasswordResetForm />)} />
+      <Route
+        path='/reset'
+        element={renderWithSuspense(<PasswordResetForm />)}
+      />
       <Route
         path='/oauth/github'
         element={renderWithSuspense(<OAuth2Callback type='github' />)}
@@ -136,6 +150,16 @@ function PublicRoutes({ pricingEnabled = false, pricingRequireAuth = false }) {
             )
           ) : (
             renderWithSuspense(<NotFound />, 'pricing-not-found')
+          )
+        }
+      />
+      <Route
+        path='/marketplace'
+        element={
+          marketplaceEnabled ? (
+            <PrivateRoute>{renderWithSuspense(<Marketplace />)}</PrivateRoute>
+          ) : (
+            renderWithSuspense(<NotFound />, 'marketplace-not-found')
           )
         }
       />

@@ -110,6 +110,11 @@ func init() {
 }
 
 func ListModels(c *gin.Context, modelType int) {
+	if common.GetContextKeyBool(c, constant.ContextKeyMarketplaceModelList) {
+		listMarketplaceModels(c, modelType)
+		return
+	}
+
 	userOpenAiModels := make([]dto.OpenAIModels, 0)
 
 	acceptUnsetRatioModel := operation_setting.SelfUseModeEnabled
@@ -238,10 +243,118 @@ func ListModels(c *gin.Context, modelType int) {
 	}
 }
 
+func listMarketplaceModels(c *gin.Context, modelType int) {
+	tokenID := c.GetInt("token_id")
+	userID := c.GetInt("id")
+	token, err := model.GetTokenById(tokenID)
+	if err != nil {
+		abortWithOpenAIModelListError(c, "failed to load token")
+		return
+	}
+	modelNames, err := service.ListMarketplaceTokenModels(service.MarketplaceTokenModelListInput{
+		BuyerUserID: userID,
+		UserGroup:   common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
+		Token:       token,
+	})
+	if err != nil {
+		abortWithOpenAIModelListError(c, err.Error())
+		return
+	}
+	userOpenAiModels := make([]dto.OpenAIModels, 0, len(modelNames))
+	for _, modelName := range modelNames {
+		userOpenAiModels = append(userOpenAiModels, openAIModelForName(modelName))
+	}
+	writeModelListResponse(c, modelType, userOpenAiModels)
+}
+
+func openAIModelForName(modelName string) dto.OpenAIModels {
+	if oaiModel, ok := openAIModelsMap[modelName]; ok {
+		oaiModel.SupportedEndpointTypes = model.GetModelSupportEndpointTypes(modelName)
+		return oaiModel
+	}
+	return dto.OpenAIModels{
+		Id:                     modelName,
+		Object:                 "model",
+		Created:                1626777600,
+		OwnedBy:                "marketplace",
+		SupportedEndpointTypes: model.GetModelSupportEndpointTypes(modelName),
+	}
+}
+
+func abortWithOpenAIModelListError(c *gin.Context, message string) {
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": types.OpenAIError{
+			Message: message,
+			Type:    "hermestoken_error",
+		},
+	})
+}
+
+func writeModelListResponse(c *gin.Context, modelType int, userOpenAiModels []dto.OpenAIModels) {
+	switch modelType {
+	case constant.ChannelTypeAnthropic:
+		useranthropicModels := make([]dto.AnthropicModel, len(userOpenAiModels))
+		for i, model := range userOpenAiModels {
+			useranthropicModels[i] = dto.AnthropicModel{
+				ID:          model.Id,
+				CreatedAt:   time.Unix(int64(model.Created), 0).UTC().Format(time.RFC3339),
+				DisplayName: model.Id,
+				Type:        "model",
+			}
+		}
+		c.JSON(200, gin.H{
+			"data":     useranthropicModels,
+			"first_id": firstAnthropicModelID(useranthropicModels),
+			"has_more": false,
+			"last_id":  lastAnthropicModelID(useranthropicModels),
+		})
+	case constant.ChannelTypeGemini:
+		userGeminiModels := make([]dto.GeminiModel, len(userOpenAiModels))
+		for i, model := range userOpenAiModels {
+			userGeminiModels[i] = dto.GeminiModel{
+				Name:        model.Id,
+				DisplayName: model.Id,
+			}
+		}
+		c.JSON(200, gin.H{
+			"models":        userGeminiModels,
+			"nextPageToken": nil,
+		})
+	default:
+		c.JSON(200, gin.H{
+			"success": true,
+			"data":    userOpenAiModels,
+			"object":  "list",
+		})
+	}
+}
+
+func firstAnthropicModelID(models []dto.AnthropicModel) string {
+	if len(models) == 0 {
+		return ""
+	}
+	return models[0].ID
+}
+
+func lastAnthropicModelID(models []dto.AnthropicModel) string {
+	if len(models) == 0 {
+		return ""
+	}
+	return models[len(models)-1].ID
+}
+
 func ChannelListModels(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"success": true,
 		"data":    openAIModels,
+	})
+}
+
+func ChannelListPricedModels(c *gin.Context) {
+	c.JSON(200, gin.H{
+		"success": true,
+		"data":    service.ListPricedOpenAIModels(openAIModelsMap),
+		"object":  "list",
 	})
 }
 
