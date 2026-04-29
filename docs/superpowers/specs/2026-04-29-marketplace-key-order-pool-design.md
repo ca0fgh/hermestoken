@@ -13,7 +13,7 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 
 - Let sellers escrow one AI API key and configure its sellable attributes once.
 - Automatically make eligible escrowed keys visible in both the order list and order pool.
-- Let buyers filter by seller-configured attributes such as model, limit mode, time mode, multiplier, latency, success rate, and health.
+- Let buyers filter by seller-configured attributes such as model vendor, model, limit mode, multiplier, latency, success rate, and health.
 - Keep fixed-route orders and pool routing separate at the buyer experience level while sharing the same seller credential state.
 - Charge buyers from platform-controlled balances or fixed-order quota, not by exposing seller keys.
 - Settle seller income from actual successful usage, with platform fee and frozen income states.
@@ -31,11 +31,11 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 - Seller escrow configuration is a filter and pricing source, not a buyer-editable package template.
 - Fixed-route orders snapshot the purchase-time pricing, expiry, and quota terms.
 - Order-pool usage and other buyers' fixed-route purchases must not reduce or cancel an existing fixed-route order.
-- Seller credential quota/time exhaustion can stop new fixed-route purchases and order-pool routing, but it must not retroactively consume a fixed-route order's remaining quota.
+- Seller credential quota exhaustion can stop new fixed-route purchases and order-pool routing, but it must not retroactively consume a fixed-route order's remaining quota.
 - A fixed-route order can fail to serve only when its own quota/expiry is invalid, the bound credential is technically unavailable, or platform risk controls block it.
 - Seller edits after purchase affect new order-list display and pool routing; existing fixed-route orders keep their snapshots.
-- Seller pause stops new purchases and pool routing, but it should not stop already purchased fixed-route orders unless the key is technically unavailable or risk-paused.
-- Seller credential deletion must be blocked while active fixed-route orders exist, or converted into a no-new-sales state until those orders end.
+- Seller unlisting stops new purchases and pool routing, but it should not stop already purchased fixed-route orders unless the key is technically unavailable or risk-paused.
+- Seller credential deletion must be blocked while active fixed-route orders exist, or converted into an unlisted no-new-sales state until those orders end.
 - Seller income is created from actual successful usage, not from unused fixed-route quota.
 - Fixed-route purchase affects seller credential state as sold exposure, not as inventory removal.
 - Successful fixed-route and pool calls affect seller credential usage state.
@@ -51,27 +51,34 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 
 The seller creates one escrow record with:
 
-- Channel type, selected from the project's existing channel types.
+- Model vendor, selected from the project's existing create-channel type options.
 - API key, stored encrypted and never returned in plaintext.
 - Supported models.
 - Limit mode: unlimited or limited.
-- Time mode: unlimited or limited.
 - Multiplier used for buyer-facing price display and actual charge.
 - Concurrency limit.
 
-Provider endpoint configuration should be system-controlled or allowlisted. The MVP should not let sellers submit arbitrary base URLs.
+Vendor endpoint configuration should be system-controlled or allowlisted. The MVP should not let sellers submit arbitrary base URLs.
 
-The marketplace should support the project's existing channel types instead of inventing marketplace-only provider identifiers. Each supported channel type still needs marketplace-specific validation, key handling, pricing compatibility, and safe endpoint policy before it is enabled.
+The marketplace should reuse the project's existing create-channel type options for model vendor selection instead of inventing marketplace-only vendor identifiers. Each supported vendor type still needs marketplace-specific validation, key handling, pricing compatibility, and safe endpoint policy before it is enabled.
 
 After submission:
 
 1. The platform validates basic input.
 2. The API key is encrypted and stored.
-3. The platform tests the key against selected channel type and model rules.
+3. The platform tests the key against selected model vendor and model rules.
 4. A dynamic stats record is initialized.
 5. If healthy, the key becomes visible in the order list and eligible for order pool routing.
 
 The seller does not configure separate switches for order-list display or pool participation. Those surfaces are derived from the same escrow configuration and runtime status.
+
+After escrow, seller lifecycle operations are:
+
+- List: make a healthy credential available for new fixed-route purchases and pool routing.
+- Unlist: stop new fixed-route purchases and pool routing without breaking existing fixed-route orders.
+- Edit: update supported models, quota mode, multiplier, concurrency, or replace the API key after validation.
+
+Seller-escrowed API keys do not have seller-configured expiry time. Expiry exists on fixed-route orders, not on the seller credential itself.
 
 ### Seller Terms Semantics
 
@@ -84,14 +91,6 @@ Quota mode:
 - Fixed-route purchases increase sold exposure and active order count, but they do not subtract from a sellable inventory field.
 - When the seller-declared cap is exhausted, the credential stops accepting new fixed-route purchases and pool routing. Existing fixed-route orders keep their own remaining quota and can continue while the credential is technically usable and not risk-paused.
 
-Time mode:
-
-- `unlimited` means no seller-declared marketplace expiry.
-- `limited` means the credential has an `expires_at` market cutoff.
-- New fixed-route orders snapshot an effective expiry at purchase time. The effective expiry cannot be later than the seller credential's `expires_at` when the seller time mode is limited.
-- Pool routing stops once the seller credential expires.
-- Existing fixed-route orders expire at their own snapshotted `expires_at`.
-
 This keeps the user's "no inventory" rule intact while still letting order-list purchases and pool usage dynamically affect seller credential status, sorting, risk, and new-sale eligibility.
 
 ## Buyer Entry Points
@@ -102,7 +101,6 @@ The order list is fixed-route buying. Buyers filter escrowed keys by seller-conf
 
 - Model.
 - Limited or unlimited quota.
-- Limited or unlimited time.
 - Multiplier range.
 - Effective price derived from official price times multiplier.
 - Average latency.
@@ -124,7 +122,7 @@ When a buyer purchases a fixed-route quota order, the order stores snapshots:
 
 Calls using this order always route to the bound seller credential and deduct from the fixed order's remaining quota.
 
-The buyer selects the purchased quota amount at purchase time. Seller-configured attributes decide whether the key appears in the filtered result set and how usage is priced. Platform-level guardrails, not per-key seller fields, should define global minimum purchase amount, maximum purchase amount, and abuse limits.
+The buyer selects the purchased quota amount at purchase time. The fixed-order expiry is generated by marketplace fixed-order policy, not by a seller credential expiry. Seller-configured attributes decide whether the key appears in the filtered result set and how usage is priced. Platform-level guardrails, not per-key seller fields, should define global minimum purchase amount, maximum purchase amount, expiry policy, and abuse limits.
 
 ### Order Pool
 
@@ -135,7 +133,6 @@ The order pool is automatic routing. Buyers choose a marketplace model and optio
 - Health status.
 - Risk status.
 - Capacity status.
-- Expiry status.
 - Seller limit status.
 - Current concurrency.
 - Multiplier.
@@ -192,9 +189,9 @@ External buyer-facing display should show success rate, not both success rate an
 
 Suggested status dimensions:
 
-- Seller status: active or paused.
+- Listing status: listed or unlisted.
 - Health status: healthy, degraded, or failed.
-- Capacity status: available, busy, exhausted, or expired.
+- Capacity status: available, busy, or exhausted.
 - Risk status: normal, watching, or risk_paused.
 
 Runtime state affects:
@@ -203,11 +200,11 @@ Runtime state affects:
 - Order pool routing weight.
 - Order list sorting.
 - Whether new purchases are allowed.
-- Whether the key is shown as busy, degraded, expired, or risk-paused.
+- Whether the key is shown as busy, degraded, exhausted, unlisted, or risk-paused.
 
 Runtime state should not retroactively cancel valid fixed-route orders unless the key is technically unavailable or risk-paused.
 
-Seller-configured quota and time limits affect market availability for new purchases and pool routing. Existing fixed-route orders use their own snapshots and are not consumed by pool usage. If the seller key later becomes invalid, rate-limited, revoked, or blocked by risk controls, fixed-route calls may fail because the platform can no longer proxy through that key.
+Seller-configured quota limits and unlisting affect market availability for new purchases and pool routing. Existing fixed-route orders use their own snapshots and are not consumed by pool usage. If the seller key later becomes invalid, rate-limited, revoked, or blocked by risk controls, fixed-route calls may fail only when the platform can no longer proxy through that key or risk controls require blocking it.
 
 ## Pricing
 
@@ -290,18 +287,16 @@ Seller escrowed key and seller-configured attributes.
 ```text
 id
 seller_user_id
-channel_type
-provider_name_snapshot
+vendor_type
+vendor_name_snapshot
 encrypted_api_key
 key_fingerprint
 models
 quota_mode
 quota_limit
-time_mode
-expires_at
 multiplier
 concurrency_limit
-seller_status
+listing_status
 health_status
 capacity_status
 risk_status
@@ -437,8 +432,8 @@ GET    /api/marketplace/seller/credentials
 GET    /api/marketplace/seller/credentials/:id
 PUT    /api/marketplace/seller/credentials/:id
 POST   /api/marketplace/seller/credentials/:id/test
-POST   /api/marketplace/seller/credentials/:id/pause
-POST   /api/marketplace/seller/credentials/:id/resume
+POST   /api/marketplace/seller/credentials/:id/list
+POST   /api/marketplace/seller/credentials/:id/unlist
 GET    /api/marketplace/seller/income
 GET    /api/marketplace/seller/settlements
 ```
@@ -497,7 +492,7 @@ Reuse:
 - Existing withdrawal flows, extended with marketplace income source.
 - Existing official pricing data where suitable.
 - Existing upstream adapter code where it can be safely reused without registering marketplace credentials as normal channels.
-- Existing channel type definitions for marketplace channel-type selection, with marketplace-specific validation before enablement.
+- Existing create-channel type definitions for marketplace model vendor selection, with marketplace-specific validation before enablement.
 
 Keep separate:
 
@@ -514,7 +509,7 @@ Do not place marketplace keys into the normal `channels`, `abilities`, or `auto`
 
 ### Module Boundaries
 
-The marketplace should be implemented as a separate domain module, even though it reuses existing identity, quota, pricing, channel type, and withdrawal capabilities.
+The marketplace should be implemented as a separate domain module, even though it reuses existing identity, quota, pricing, model vendor options, and withdrawal capabilities.
 
 Suggested backend packages:
 
@@ -544,18 +539,19 @@ Use the existing option system for operator-configurable marketplace policy:
 
 ```text
 MarketplaceEnabled
-MarketplaceEnabledChannelTypes
+MarketplaceEnabledVendorTypes
 MarketplaceFeeRate
 MarketplaceSellerIncomeHoldSeconds
 MarketplaceMinFixedOrderQuota
 MarketplaceMaxFixedOrderQuota
+MarketplaceFixedOrderDefaultExpirySeconds
 MarketplaceMaxSellerMultiplier
 MarketplaceMaxCredentialConcurrency
 ```
 
 `MarketplaceFeeRate` is the global transaction fee. It should be snapshotted onto every settlement row.
 
-`MarketplaceEnabledChannelTypes` should store existing `constant.ChannelType*` integer values. A channel type appearing in this list only means the marketplace may accept that type; the implementation must still have explicit validation and relay support for it.
+`MarketplaceEnabledVendorTypes` should store the existing create-channel type values used by the model vendor selector. A vendor type appearing in this list only means the marketplace may accept that type; the implementation must still have explicit validation and relay support for it.
 
 Credential encryption is mandatory and must not be feature-flagged off. The API-key encryption secret should not be stored in options. It must come from environment or secret manager configuration.
 
@@ -583,28 +579,27 @@ Snapshots required on purchase and fill:
 - Global fee rate.
 - Final buyer charge.
 
-`channel_type` is the canonical provider identity in marketplace records. Any provider name should be a display snapshot derived from `constant.ChannelTypeNames`, not an independently editable source of truth.
+`vendor_type` is the canonical model-vendor identity in marketplace records. Any vendor name should be a display snapshot derived from the existing create-channel type names, not an independently editable source of truth.
 
 ### State Transitions
 
 Credential state is represented by multiple dimensions instead of one overloaded status:
 
 ```text
-seller_status: active -> paused -> active
+listing_status: listed -> unlisted -> listed
 health_status: untested -> healthy -> degraded -> failed -> healthy
 capacity_status: available -> busy -> exhausted -> available
-capacity_status: available -> expired
 risk_status: normal -> watching -> risk_paused -> normal
 ```
 
 Eligibility rules:
 
-- Order-list display requires seller active, risk normal or watching, not expired, and supported models.
+- Order-list display requires listed status, risk normal or watching, and supported models.
 - New fixed-route purchase additionally requires health healthy or degraded and capacity not exhausted.
 - Pool routing additionally requires current concurrency below limit.
 - Existing fixed-route call can proceed when the fixed order is valid and the credential is technically usable, unless risk is `risk_paused`.
 
-Seller key replacement should be staged: the existing encrypted key remains serving until the replacement key passes validation for the same channel type, compatible models, and endpoint policy. A failed replacement must not break active fixed-route orders.
+Seller key replacement should be staged: the existing encrypted key remains serving until the replacement key passes validation for the same model vendor, compatible models, and endpoint policy. A failed replacement must not break active fixed-route orders.
 
 Fixed-route order state:
 
@@ -673,15 +668,14 @@ The router should use a two-step process: hard filtering first, scoring second.
 Hard filters:
 
 - Marketplace enabled.
-- Channel type enabled for marketplace.
+- Model vendor type enabled for marketplace.
 - Model supported.
-- Relay mode supported by the channel type for the marketplace endpoint.
-- Seller active.
+- Relay mode supported by the model vendor type for the marketplace endpoint.
+- Credential listed.
 - Risk not paused.
-- Credential not expired.
 - Credential not exhausted.
 - Current concurrency below limit.
-- Channel endpoint policy valid.
+- Vendor endpoint policy valid.
 
 Suggested score:
 
@@ -701,7 +695,6 @@ For MVP, fixed-route calls should have priority over pool calls when a credentia
 Required jobs:
 
 - Credential health check: test active credentials and update health status.
-- Credential expiry check: mark expired seller-limited keys and stop new sales/routing.
 - Fixed-order expiry check: mark expired orders, persist expired quota, and invalidate unused quota without refund.
 - Settlement release: move pending seller income to available after the hold period.
 - Stats aggregation: refresh success rate, latency, request counts, and failure counters.
@@ -711,7 +704,7 @@ Required jobs:
 
 Seller:
 
-- Escrow key form: channel type, models, limit mode, time mode, multiplier, concurrency.
+- Escrow key form: model vendor, models, limit mode, multiplier, concurrency.
 - Seller credential list: masked key fingerprint, models, multiplier, health, used quota, sold fixed-route exposure, active orders, pool usage, income.
 - Seller income page: pending, available, withdrawn, blocked.
 
@@ -725,7 +718,7 @@ Buyer:
 Admin:
 
 - Marketplace settings.
-- Enabled channel type allowlist.
+- Enabled model vendor allowlist.
 - Credential risk review.
 - Fixed-order review.
 - Fill and settlement audit.
@@ -733,7 +726,7 @@ Admin:
 
 ## Acceptance Criteria
 
-- A seller can escrow one supported channel-type API key and never see the plaintext key again.
+- A seller can escrow one supported model-vendor API key and never see the plaintext key again.
 - The same escrowed key appears in order-list and pool candidates when eligible.
 - A buyer can buy fixed-route quota for part of a seller key without removing the key from the market.
 - Fixed-route usage deducts only that order's remaining quota.
@@ -746,7 +739,7 @@ Admin:
 - Buyer-facing price equals official/base cost times seller multiplier.
 - Buyer-facing stats show success rate, not both success rate and error rate.
 - Raw seller API keys are encrypted at rest, masked in logs, and never returned by APIs.
-- Unsupported channel types are rejected even if they exist in the project's global channel constants.
+- Unsupported model vendor types are rejected even if they exist in the project's create-channel type selector.
 - Seller quota limits stop new sales and pool routing after exhaustion, but they do not remove or reduce already purchased fixed-route quota.
 
 ## Security Requirements
@@ -756,10 +749,10 @@ Admin:
 - API key plaintext must never be returned by seller, buyer, or admin list APIs.
 - Key fingerprints should use a keyed hash or other non-reversible fingerprinting scheme, not a raw hash that can be compared across deployments.
 - Seller key replacement should not expose old key material.
-- Seller key replacement for an active credential must revalidate channel type, models, and endpoint policy before it can serve existing fixed-route orders.
+- Seller key replacement for an active credential must revalidate model vendor, models, and endpoint policy before it can serve existing fixed-route orders.
 - Marketplace calls must verify buyer token ownership and fixed-order ownership.
-- Marketplace router must validate channel type and base URL against a safe provider policy.
-- Marketplace router must reject any existing channel type that has not been explicitly enabled for marketplace escrow.
+- Marketplace router must validate model vendor type and base URL against a safe provider policy.
+- Marketplace router must reject any existing vendor type that has not been explicitly enabled for marketplace escrow.
 - Custom, localhost, private-network, and seller-supplied arbitrary base URLs should be disabled for marketplace escrow until a separate SSRF and credential-exfiltration review explicitly enables them.
 - Settlement writes must be idempotent.
 - Logs must mask API keys and sensitive upstream URLs.
@@ -768,7 +761,8 @@ Admin:
 ## Open Decisions Before Implementation
 
 - Default `MarketplaceFeeRate` value.
-- Initial `MarketplaceEnabledChannelTypes` and supported marketplace relay modes.
+- Initial `MarketplaceEnabledVendorTypes` and supported marketplace relay modes.
+- Fixed-route order expiry policy: default duration and whether buyers can choose among platform-defined durations.
 - Seller income hold period: exact default pending duration before income becomes available.
 - Pool routing weights: exact weight values for lower multiplier, lower latency, higher success rate, fair seller distribution, and load penalty.
 - Abuse limit values: global minimum/maximum fixed-route purchase amount and per-buyer/per-seller rate limits.
