@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState } from 'react';
@@ -167,11 +165,11 @@ const SettingsAPIInfo = ({ options, refresh }) => {
         );
       } else {
         const newId = Math.max(...apiInfoList.map((api) => api.id), 0) + 1;
-        const newApi = {
+        const apiInfoEntry = {
           id: newId,
           ...apiForm,
         };
-        newList = [...apiInfoList, newApi];
+        newList = [...apiInfoList, apiInfoEntry];
       }
 
       setApiInfoList(newList);

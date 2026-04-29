@@ -12,7 +12,7 @@ web/node_modules
 web/dist
 .env
 one-api
-new-api
+hermestoken
 /__debug_bin*
 tiktoken_cache
 .gocache

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"

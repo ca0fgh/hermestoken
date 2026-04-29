@@ -16,13 +16,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/logger"
 
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting/billing_setting"
+	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -35,8 +35,7 @@ const (
 	maxRatioConfigBytes         = 10 << 20 // 10MB
 	floatEpsilon                = 1e-9
 	officialRatioPresetID       = -100
-	officialRatioPresetName     = "官方倍率预设"
-	officialRatioPresetBaseURL  = "https://basellm.github.io"
+	officialRatioPresetName     = "HermesToken 倍率预设"
 	modelsDevPresetID           = -101
 	modelsDevPresetName         = "models.dev 价格预设"
 	modelsDevPresetBaseURL      = "https://models.dev"
@@ -72,6 +71,14 @@ var pricingSyncFields = []string{
 	"model_price",
 	billing_setting.BillingModeField,
 	billing_setting.BillingExprField,
+}
+
+func getOfficialRatioPresetBaseURL() string {
+	return strings.TrimRight(strings.TrimSpace(common.GetEnvOrDefaultString("OFFICIAL_RATIO_PRESET_BASE_URL", "")), "/")
+}
+
+func getOfficialRatioPresetEndpoint() string {
+	return strings.TrimSpace(common.GetEnvOrDefaultString("OFFICIAL_RATIO_PRESET_ENDPOINT", ""))
 }
 
 var numericPricingSyncFields = map[string]bool{
@@ -1007,18 +1014,22 @@ func GetSyncableChannels(c *gin.Context) {
 		}
 	}
 
-	syncableChannels = append(syncableChannels, dto.SyncableChannel{
-		ID:      officialRatioPresetID,
-		Name:    officialRatioPresetName,
-		BaseURL: officialRatioPresetBaseURL,
-		Status:  1,
-	})
+	if baseURL := getOfficialRatioPresetBaseURL(); baseURL != "" {
+		syncableChannels = append(syncableChannels, dto.SyncableChannel{
+			ID:       officialRatioPresetID,
+			Name:     officialRatioPresetName,
+			BaseURL:  baseURL,
+			Endpoint: getOfficialRatioPresetEndpoint(),
+			Status:   1,
+		})
+	}
 
 	syncableChannels = append(syncableChannels, dto.SyncableChannel{
-		ID:      modelsDevPresetID,
-		Name:    modelsDevPresetName,
-		BaseURL: modelsDevPresetBaseURL,
-		Status:  1,
+		ID:       modelsDevPresetID,
+		Name:     modelsDevPresetName,
+		BaseURL:  modelsDevPresetBaseURL,
+		Endpoint: modelsDevPath,
+		Status:   1,
 	})
 
 	c.JSON(http.StatusOK, gin.H{

@@ -3,8 +3,8 @@ package service
 import (
 	"math"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 )
 
 // ToolCallUsage captures all tool call counts from a single request.

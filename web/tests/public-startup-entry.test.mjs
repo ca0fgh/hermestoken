@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const indexEntryPath = new URL('../src/index.jsx', import.meta.url);
-const indexHtmlPath = new URL('../index.html', import.meta.url);
+const indexEntryPath = new URL('../classic/src/index.jsx', import.meta.url);
+const indexHtmlPath = new URL('../classic/index.html', import.meta.url);
 
 const loadSource = (path) => readFile(path, 'utf8');
 

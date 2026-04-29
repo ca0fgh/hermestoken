@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import assert from 'node:assert/strict';
@@ -29,7 +27,7 @@ import {
   buildInviteeContributionDetailCards,
   buildInviteeOverrideRows,
   normalizeInviteeContributionPage,
-} from '../src/helpers/inviteRebate.js';
+} from '../classic/src/helpers/inviteRebate.js';
 
 test('normalizeInviteeContributionPage coerces invitee page fields and preserves items arrays', () => {
   const items = [{ id: 12, username: 'alice' }];

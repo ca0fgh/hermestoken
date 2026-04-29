@@ -4,14 +4,14 @@ import { readFileSync } from 'node:fs';
 
 const hookSource = readFileSync(
   new URL(
-    '../src/pages/Setting/Ratio/hooks/useModelPricingEditorState.js',
+    '../classic/src/pages/Setting/Ratio/hooks/useModelPricingEditorState.js',
     import.meta.url,
   ),
   'utf8',
 );
 const editorSource = readFileSync(
   new URL(
-    '../src/pages/Setting/Ratio/components/ModelPricingEditor.jsx',
+    '../classic/src/pages/Setting/Ratio/components/ModelPricingEditor.jsx',
     import.meta.url,
   ),
   'utf8',

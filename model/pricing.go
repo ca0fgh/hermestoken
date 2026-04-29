@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/constant"
+	"github.com/ca0fgh/hermestoken/setting/billing_setting"
+	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
+	"github.com/ca0fgh/hermestoken/types"
 )
 
 type Pricing struct {

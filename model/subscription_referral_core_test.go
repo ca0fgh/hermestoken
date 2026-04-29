@@ -3,7 +3,7 @@ package model
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 )
 
 func TestNormalizeSubscriptionReferralRateBps(t *testing.T) {

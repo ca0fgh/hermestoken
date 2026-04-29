@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 test('payment setting container includes explicit gateway toggle state', () => {
   const source = readFileSync(
-    new URL('../src/components/settings/PaymentSetting.jsx', import.meta.url),
+    new URL('../classic/src/components/settings/PaymentSetting.jsx', import.meta.url),
     'utf8',
   );
 
@@ -16,21 +16,21 @@ test('payment setting container includes explicit gateway toggle state', () => {
 test('gateway setting forms render and submit dedicated enable switches', () => {
   const epaySource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGateway.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGateway.jsx',
       import.meta.url,
     ),
     'utf8',
   );
   const stripeSource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGatewayStripe.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGatewayStripe.jsx',
       import.meta.url,
     ),
     'utf8',
   );
   const creemSource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGatewayCreem.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGatewayCreem.jsx',
       import.meta.url,
     ),
     'utf8',

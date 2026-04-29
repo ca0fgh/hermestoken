@@ -5,10 +5,10 @@ import test from 'node:test';
 import {
   getFooterSectionVisibility,
   normalizeHeaderNavModules,
-} from '../src/helpers/headerNavModules.js';
+} from '../classic/src/helpers/headerNavModules.js';
 
 const footerPath = new URL(
-  '../src/components/layout/Footer.jsx',
+  '../classic/src/components/layout/Footer.jsx',
   import.meta.url,
 );
 
@@ -83,7 +83,7 @@ test('footer uses shared header-nav visibility instead of hard-coded docs/about 
 test('settings header nav source separates marketplace entry visibility from guest access copy', async () => {
   const source = await readFile(
     new URL(
-      '../src/pages/Setting/Operation/SettingsHeaderNavModules.jsx',
+      '../classic/src/pages/Setting/Operation/SettingsHeaderNavModules.jsx',
       import.meta.url,
     ),
     'utf8',

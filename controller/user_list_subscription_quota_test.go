@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/model"
 )
 
 func TestGetAllUsersReturnsWalletAndSubscriptionQuotaSeparately(t *testing.T) {

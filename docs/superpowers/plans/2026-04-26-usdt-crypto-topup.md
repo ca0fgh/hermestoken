@@ -76,7 +76,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -144,7 +144,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 	"github.com/shopspring/decimal"
 )
 
@@ -413,7 +413,7 @@ package setting
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -471,7 +471,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 )
 
 var (
@@ -923,9 +923,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -1075,9 +1075,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -1964,9 +1964,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 )
 
 type NetworkScanner interface {
@@ -2118,9 +2118,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 )
 
 const bscTransferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
@@ -2401,9 +2401,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 )
 
 type TronScanner struct {
@@ -2729,7 +2729,7 @@ git commit -m "feat: complete confirmed crypto orders"
 In `main.go`, add import:
 
 ```go
-cryptoPayment "github.com/QuantumNous/new-api/service/crypto_payment"
+cryptoPayment "github.com/ca0fgh/hermestoken/service/crypto_payment"
 ```
 
 After Redis initialization in `InitResources()` and after `model.InitOptionMap()`, scanners need settings and Redis. Add this in `main()` after `service.StartSubscriptionQuotaResetTask()`:
@@ -2776,7 +2776,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/model"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

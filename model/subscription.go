@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/pkg/cachex"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/pkg/cachex"
+	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
 	"github.com/samber/hot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -67,8 +67,8 @@ type SubscriptionWalletPurchaseResult struct {
 }
 
 const (
-	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
-	subscriptionPlanInfoCacheNamespace = "new-api:subscription_plan_info:v1"
+	subscriptionPlanCacheNamespace     = "hermestoken:subscription_plan:v1"
+	subscriptionPlanInfoCacheNamespace = "hermestoken:subscription_plan_info:v1"
 )
 
 var (

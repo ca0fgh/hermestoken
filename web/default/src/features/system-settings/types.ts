@@ -279,6 +279,7 @@ export type UpstreamChannel = {
   id: number
   name: string
   base_url: string
+  endpoint?: string
   status: number
   type?: number
 }

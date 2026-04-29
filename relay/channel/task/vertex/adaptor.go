@@ -9,18 +9,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
 	"github.com/gin-gonic/gin"
 
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/relay/channel"
-	geminitask "github.com/QuantumNous/new-api/relay/channel/task/gemini"
-	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
-	vertexcore "github.com/QuantumNous/new-api/relay/channel/vertex"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/service"
+	"github.com/ca0fgh/hermestoken/constant"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/relay/channel"
+	geminitask "github.com/ca0fgh/hermestoken/relay/channel/task/gemini"
+	taskcommon "github.com/ca0fgh/hermestoken/relay/channel/task/taskcommon"
+	vertexcore "github.com/ca0fgh/hermestoken/relay/channel/vertex"
+	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
+	"github.com/ca0fgh/hermestoken/service"
 )
 
 // ============================

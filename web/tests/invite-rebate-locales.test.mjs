@@ -77,7 +77,7 @@ const requiredKeys = [
 
 function loadTranslation(locale) {
   const content = readFileSync(
-    new URL(`../src/i18n/locales/${locale}.json`, import.meta.url),
+    new URL(`../classic/src/i18n/locales/${locale}.json`, import.meta.url),
     'utf8',
   );
 

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const addEditSource = readFileSync(
   new URL(
-    '../src/components/table/subscriptions/modals/AddEditSubscriptionModal.jsx',
+    '../classic/src/components/table/subscriptions/modals/AddEditSubscriptionModal.jsx',
     import.meta.url,
   ),
   'utf8',

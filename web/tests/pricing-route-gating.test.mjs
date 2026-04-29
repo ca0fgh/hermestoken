@@ -11,7 +11,7 @@ import {
 } from 'bun:test';
 import { act, create } from 'react-test-renderer';
 import { MemoryRouter } from 'react-router-dom';
-import { StatusContext } from '../src/context/Status/index.jsx';
+import { StatusContext } from '../classic/src/context/Status/index.jsx';
 
 let importCounter = 0;
 const h = React.createElement;
@@ -202,21 +202,21 @@ describe('browser shim lifecycle', () => {
 
 describe('PublicRoutes pricing behavior', () => {
   async function renderPricingRoute(props) {
-    mock.module('../src/components/common/ui/Loading.jsx', () => ({
+    mock.module('../classic/src/components/common/ui/Loading.jsx', () => ({
       default: () => h('div', null, 'LOADING'),
     }));
-    mock.module('../src/pages/NotFound/index.jsx', () => ({
+    mock.module('../classic/src/pages/NotFound/index.jsx', () => ({
       default: () => h('div', null, 'NOT_FOUND'),
     }));
-    mock.module('../src/pages/Pricing/index.jsx', () => ({
+    mock.module('../classic/src/pages/Pricing/index.jsx', () => ({
       default: () => h('div', null, 'PRICING_PAGE'),
     }));
-    mock.module('../src/components/auth/LoginForm.jsx', () => ({
+    mock.module('../classic/src/components/auth/LoginForm.jsx', () => ({
       default: () => h('div', null, 'LOGIN_PAGE'),
     }));
 
     const { default: PublicRoutes } = await importFresh(
-      '../src/routes/PublicRoutes.jsx',
+      '../classic/src/routes/PublicRoutes.jsx',
       'public-routes',
     );
 
@@ -256,8 +256,8 @@ describe('PublicRoutes pricing behavior', () => {
 
 describe('marketing header pricing visibility', () => {
   async function renderMarketingHeader(status) {
-    const actualUseIsMobile = await import('../src/hooks/common/useIsMobile.js');
-    const actualLanguage = await import('../src/i18n/language.js');
+    const actualUseIsMobile = await import('../classic/src/hooks/common/useIsMobile.js');
+    const actualLanguage = await import('../classic/src/i18n/language.js');
 
     mock.module('react-i18next', () => ({
       useTranslation: () => ({
@@ -270,25 +270,25 @@ describe('marketing header pricing visibility', () => {
         },
       }),
     }));
-    mock.module('../src/context/Theme/index.jsx', () => ({
+    mock.module('../classic/src/context/Theme/index.jsx', () => ({
       useActualTheme: () => 'light',
       useSetTheme: () => () => {},
       useTheme: () => 'light',
     }));
-    mock.module('../src/helpers/branding.js', () => ({
+    mock.module('../classic/src/helpers/branding.js', () => ({
       getLogo: () => '',
     }));
-    mock.module('../src/helpers/notifications.js', () => ({
+    mock.module('../classic/src/helpers/notifications.js', () => ({
       showSuccess() {},
     }));
-    mock.module('../src/hooks/common/useIsMobile.js', () => ({
+    mock.module('../classic/src/hooks/common/useIsMobile.js', () => ({
       ...actualUseIsMobile,
       useIsMobile: () => false,
     }));
-    mock.module('../src/hooks/common/useMinimumLoadingTime.js', () => ({
+    mock.module('../classic/src/hooks/common/useMinimumLoadingTime.js', () => ({
       useMinimumLoadingTime: (value) => value,
     }));
-    mock.module('../src/hooks/common/useNotifications.js', () => ({
+    mock.module('../classic/src/hooks/common/useNotifications.js', () => ({
       useNotifications: () => ({
         getUnreadKeys: () => [],
         handleNoticeClose() {},
@@ -297,22 +297,22 @@ describe('marketing header pricing visibility', () => {
         unreadCount: 0,
       }),
     }));
-    mock.module('../src/hooks/common/useSidebarCollapsed.js', () => ({
+    mock.module('../classic/src/hooks/common/useSidebarCollapsed.js', () => ({
       useSidebarCollapsed: () => [false, () => {}],
     }));
-    mock.module('../src/i18n/i18n.js', () => ({
+    mock.module('../classic/src/i18n/i18n.js', () => ({
       ensureLanguageResources: async () => {},
     }));
-    mock.module('../src/i18n/language.js', () => ({
+    mock.module('../classic/src/i18n/language.js', () => ({
       ...actualLanguage,
       normalizeLanguage: (value) => value,
     }));
 
     const { default: MarketingHeaderBar } = await importFresh(
-      '../src/components/layout/MarketingHeaderBar.jsx',
+      '../classic/src/components/layout/MarketingHeaderBar.jsx',
       'marketing-header',
     );
-    const { UserContext } = await import('../src/context/User/index.jsx');
+    const { UserContext } = await import('../classic/src/context/User/index.jsx');
 
     return renderElement(
       h(
@@ -364,17 +364,17 @@ describe('App pricing config handoff', () => {
         `pricingEnabled:${String(pricingEnabled)};pricingRequireAuth:${String(pricingRequireAuth)}`,
       );
 
-    mock.module('../src/components/layout/SetupCheck.jsx', () => ({
+    mock.module('../classic/src/components/layout/SetupCheck.jsx', () => ({
       default: ({ children }) => children,
     }));
-    mock.module('../src/components/common/ui/Loading.jsx', () => ({
+    mock.module('../classic/src/components/common/ui/Loading.jsx', () => ({
       default: () => h('div', null, 'LOADING'),
     }));
-    mock.module('../src/routes/PublicRoutes.jsx', () => ({
+    mock.module('../classic/src/routes/PublicRoutes.jsx', () => ({
       default: mockPublicRoutes,
     }));
 
-    const { default: App } = await importFresh('../src/App.jsx', 'app');
+    const { default: App } = await importFresh('../classic/src/App.jsx', 'app');
     return renderElement(
       h(
         MemoryRouter,

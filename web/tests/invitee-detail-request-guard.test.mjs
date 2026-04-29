@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createInviteeDetailRequestGuard,
   resolveInviteeSelectionAfterPageRefresh,
-} from '../src/helpers/inviteeDetailRequestGuard.js';
+} from '../classic/src/helpers/inviteeDetailRequestGuard.js';
 
 test('resolveInviteeSelectionAfterPageRefresh auto-selects the first invitee when nothing is selected', () => {
   const requestGuard = createInviteeDetailRequestGuard();

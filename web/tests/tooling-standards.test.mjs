@@ -5,11 +5,11 @@ import test from 'node:test';
 const prettierIgnorePath = new URL('../.prettierignore', import.meta.url);
 const eslintIgnorePath = new URL('../.eslintignore', import.meta.url);
 const headerNavModulesPath = new URL(
-  '../src/helpers/headerNavModules.js',
+  '../classic/src/helpers/headerNavModules.js',
   import.meta.url,
 );
 const groupTableDraftPath = new URL(
-  '../src/pages/Setting/Ratio/components/groupTableDraft.js',
+  '../classic/src/pages/Setting/Ratio/components/groupTableDraft.js',
   import.meta.url,
 );
 

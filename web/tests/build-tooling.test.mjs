@@ -2,86 +2,86 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const appPath = new URL('../src/App.jsx', import.meta.url);
+const appPath = new URL('../classic/src/App.jsx', import.meta.url);
 const siderBarPath = new URL(
-  '../src/components/layout/SiderBar.jsx',
+  '../classic/src/components/layout/SiderBar.jsx',
   import.meta.url,
 );
 const pageLayoutPath = new URL(
-  '../src/components/layout/PageLayout.jsx',
+  '../classic/src/components/layout/PageLayout.jsx',
   import.meta.url,
 );
 const marketingPageLayoutPath = new URL(
-  '../src/components/layout/MarketingPageLayout.jsx',
+  '../classic/src/components/layout/MarketingPageLayout.jsx',
   import.meta.url,
 );
 const consolePageLayoutPath = new URL(
-  '../src/components/layout/ConsolePageLayout.jsx',
+  '../classic/src/components/layout/ConsolePageLayout.jsx',
   import.meta.url,
 );
 const noticeModalPath = new URL(
-  '../src/components/layout/NoticeModal.jsx',
+  '../classic/src/components/layout/NoticeModal.jsx',
   import.meta.url,
 );
 const footerPath = new URL(
-  '../src/components/layout/Footer.jsx',
+  '../classic/src/components/layout/Footer.jsx',
   import.meta.url,
 );
 const userAreaPath = new URL(
-  '../src/components/layout/headerbar/UserArea.jsx',
+  '../classic/src/components/layout/headerbar/UserArea.jsx',
   import.meta.url,
 );
-const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
-const renderHelperPath = new URL('../src/helpers/render.jsx', import.meta.url);
-const viteConfigPath = new URL('../vite.config.js', import.meta.url);
-const packageJsonPath = new URL('../package.json', import.meta.url);
-const i18nPath = new URL('../src/i18n/i18n.js', import.meta.url);
-const headersFilePath = new URL('../public/_headers', import.meta.url);
+const homePath = new URL('../classic/src/pages/Home/index.jsx', import.meta.url);
+const renderHelperPath = new URL('../classic/src/helpers/render.jsx', import.meta.url);
+const viteConfigPath = new URL('../classic/vite.config.js', import.meta.url);
+const packageJsonPath = new URL('../classic/package.json', import.meta.url);
+const i18nPath = new URL('../classic/src/i18n/i18n.js', import.meta.url);
+const headersFilePath = new URL('../classic/public/_headers', import.meta.url);
 const dashboardPath = new URL(
-  '../src/components/dashboard/index.jsx',
+  '../classic/src/components/dashboard/index.jsx',
   import.meta.url,
 );
 const statsCardsPath = new URL(
-  '../src/components/dashboard/StatsCards.jsx',
+  '../classic/src/components/dashboard/StatsCards.jsx',
   import.meta.url,
 );
 const miniTrendSparklinePath = new URL(
-  '../src/components/dashboard/MiniTrendSparkline.jsx',
+  '../classic/src/components/dashboard/MiniTrendSparkline.jsx',
   import.meta.url,
 );
 const chartsPanelPath = new URL(
-  '../src/components/dashboard/ChartsPanel.jsx',
+  '../classic/src/components/dashboard/ChartsPanel.jsx',
   import.meta.url,
 );
 const apiInfoPanelPath = new URL(
-  '../src/components/dashboard/ApiInfoPanel.jsx',
+  '../classic/src/components/dashboard/ApiInfoPanel.jsx',
   import.meta.url,
 );
 const dashboardChartsHookPath = new URL(
-  '../src/hooks/dashboard/useDashboardCharts.jsx',
+  '../classic/src/hooks/dashboard/useDashboardCharts.jsx',
   import.meta.url,
 );
 const dashboardStatsHookPath = new URL(
-  '../src/hooks/dashboard/useDashboardStats.jsx',
+  '../classic/src/hooks/dashboard/useDashboardStats.jsx',
   import.meta.url,
 );
 const lazyVChartPath = new URL(
-  '../src/components/dashboard/LazyVChart.jsx',
+  '../classic/src/components/dashboard/LazyVChart.jsx',
   import.meta.url,
 );
 const dashboardRuntimePath = new URL(
-  '../src/components/dashboard/vchartDashboardRuntime.js',
+  '../classic/src/components/dashboard/vchartDashboardRuntime.js',
   import.meta.url,
 );
 const markdownRendererPath = new URL(
-  '../src/components/common/markdown/MarkdownRenderer.jsx',
+  '../classic/src/components/common/markdown/MarkdownRenderer.jsx',
   import.meta.url,
 );
-const consoleRoutesPath = new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url);
-const publicRoutesPath = new URL('../src/routes/PublicRoutes.jsx', import.meta.url);
-const homeRoutesPath = new URL('../src/routes/HomeRoutes.jsx', import.meta.url);
+const consoleRoutesPath = new URL('../classic/src/routes/ConsoleRoutes.jsx', import.meta.url);
+const publicRoutesPath = new URL('../classic/src/routes/PublicRoutes.jsx', import.meta.url);
+const homeRoutesPath = new URL('../classic/src/routes/HomeRoutes.jsx', import.meta.url);
 const headerBarHookPath = new URL(
-  '../src/hooks/common/useHeaderBar.js',
+  '../classic/src/hooks/common/useHeaderBar.js',
   import.meta.url,
 );
 
@@ -304,7 +304,7 @@ test('page layout only mounts the console shell for /console routes so public au
   assert.doesNotMatch(pageLayoutSource, /const isMarketingRoute = location\.pathname === '\/';/);
 });
 
-test('startup shell avoids the heavyweight axios helper and lazy loads markdown parsing for the home page', async () => {
+test('startup shell avoids the heavyweight axios helper and keeps markdown parsing out of the home page', async () => {
   const pageLayoutSource = await readFile(pageLayoutPath, 'utf8');
   const homeSource = await readFile(homePath, 'utf8');
   const headerBarHookSource = await readFile(headerBarHookPath, 'utf8');
@@ -313,7 +313,7 @@ test('startup shell avoids the heavyweight axios helper and lazy loads markdown 
   assert.doesNotMatch(homeSource, /from '\.\.\/\.\.\/helpers\/api';/);
   assert.doesNotMatch(headerBarHookSource, /from '\.\.\/\.\.\/helpers\/api';/);
   assert.doesNotMatch(homeSource, /from 'marked';/);
-  assert.match(homeSource, /await import\('marked'\)/);
+  assert.doesNotMatch(homeSource, /await import\('marked'\)/);
   assert.match(headerBarHookSource, /await import\('\.\.\/\.\.\/helpers\/api'\)/);
 });
 
@@ -411,11 +411,11 @@ test('render helper lazy loads lobe icons instead of importing the full icon reg
   assert.match(source, /const staticLobeIconRegistry = \{/);
   assert.match(
     source,
-    /import\.meta\.glob\([\s\S]*\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\*\/index\.js[\s\S]*\)/,
+    /import\.meta\.glob\([\s\S]*\.\.\/\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\*\/index\.js[\s\S]*\)/,
   );
   assert.match(
     source,
-    /!\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\{Ai360,Claude/,
+    /!\.\.\/\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\{Ai360,Claude/,
   );
   assert.match(source, /function DynamicLobeHubIcon\(/);
 });

@@ -128,7 +128,7 @@ export function resolveChatUrl({
 
   if (url.includes('{cherryConfig}')) {
     const payload = {
-      id: 'new-api',
+      id: 'hermestoken',
       baseUrl: safeServerAddress,
       apiKey: safeApiKey,
     }
@@ -138,7 +138,7 @@ export function resolveChatUrl({
 
   if (url.includes('{aionuiConfig}')) {
     const payload = {
-      platform: 'new-api',
+      platform: 'hermestoken',
       baseUrl: safeServerAddress,
       apiKey: safeApiKey,
     }

@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/QuantumNous/new-api/constant"
+	"github.com/ca0fgh/hermestoken/constant"
 )
 
 type EndpointResolutionInput struct {

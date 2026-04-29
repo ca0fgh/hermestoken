@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/types"
 
 	"github.com/gin-gonic/gin"
 )

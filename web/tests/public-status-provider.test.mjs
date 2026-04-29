@@ -6,10 +6,10 @@ import React, { useContext } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 const providerModulePath = new URL(
-  '../src/context/Status/provider.js',
+  '../classic/src/context/Status/provider.js',
   import.meta.url,
 );
-const publicAppPath = new URL('../src/bootstrap/publicApp.jsx', import.meta.url);
+const publicAppPath = new URL('../classic/src/bootstrap/publicApp.jsx', import.meta.url);
 
 test('StatusProvider exposes seeded initial status through StatusContext on first render', async () => {
   const { StatusContext, StatusProvider } = await import(providerModulePath);

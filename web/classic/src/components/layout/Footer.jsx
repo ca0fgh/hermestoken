@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useMemo, useContext } from 'react';
@@ -81,7 +79,7 @@ const FooterBar = () => {
                   </p>
                   <div className='flex flex-col gap-4'>
                     <a
-                      href='https://docs.newapi.pro/wiki/project-introduction/'
+                      href='https://github.com/ca0fgh/hermestoken'
                       target='_blank'
                       rel='noopener noreferrer'
                       className='!text-semi-color-text-1'
@@ -89,7 +87,7 @@ const FooterBar = () => {
                       {t('关于项目')}
                     </a>
                     <a
-                      href='https://docs.newapi.pro/support/community-interaction/'
+                      href='https://github.com/ca0fgh/hermestoken/issues'
                       target='_blank'
                       rel='noopener noreferrer'
                       className='!text-semi-color-text-1'
@@ -97,7 +95,7 @@ const FooterBar = () => {
                       {t('联系我们')}
                     </a>
                     <a
-                      href='https://docs.newapi.pro/wiki/features-introduction/'
+                      href='https://github.com/ca0fgh/hermestoken'
                       target='_blank'
                       rel='noopener noreferrer'
                       className='!text-semi-color-text-1'
@@ -115,7 +113,7 @@ const FooterBar = () => {
                   </p>
                   <div className='flex flex-col gap-4'>
                     <a
-                      href='https://docs.newapi.pro/getting-started/'
+                      href='https://github.com/ca0fgh/hermestoken#quick-start'
                       target='_blank'
                       rel='noopener noreferrer'
                       className='!text-semi-color-text-1'
@@ -123,7 +121,7 @@ const FooterBar = () => {
                       {t('快速开始')}
                     </a>
                     <a
-                      href='https://docs.newapi.pro/installation/'
+                      href='https://github.com/ca0fgh/hermestoken#deployment'
                       target='_blank'
                       rel='noopener noreferrer'
                       className='!text-semi-color-text-1'
@@ -131,7 +129,7 @@ const FooterBar = () => {
                       {t('安装指南')}
                     </a>
                     <a
-                      href='https://docs.newapi.pro/api/'
+                      href='https://github.com/ca0fgh/hermestoken#api'
                       target='_blank'
                       rel='noopener noreferrer'
                       className='!text-semi-color-text-1'
@@ -163,14 +161,6 @@ const FooterBar = () => {
                   >
                     Midjourney-Proxy
                   </a>
-                  <a
-                    href='https://github.com/Calcium-Ion/neko-api-key-tool'
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className='!text-semi-color-text-1'
-                  >
-                    neko-api-key-tool
-                  </a>
                 </div>
               </div>
 
@@ -180,12 +170,12 @@ const FooterBar = () => {
                 </p>
                 <div className='flex flex-col gap-4'>
                   <a
-                    href='https://github.com/Calcium-Ion/new-api-horizon'
+                    href='https://github.com/ca0fgh/hermestoken-horizon'
                     target='_blank'
                     rel='noopener noreferrer'
                     className='!text-semi-color-text-1'
                   >
-                    new-api-horizon
+                    hermestoken-horizon
                   </a>
                   <a
                     href='https://github.com/coaidev/coai'

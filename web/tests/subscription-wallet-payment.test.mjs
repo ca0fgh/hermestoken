@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const topupSource = readFileSync(
-  new URL('../src/components/topup/index.jsx', import.meta.url),
+  new URL('../classic/src/components/topup/index.jsx', import.meta.url),
   'utf8',
 );
 const plansCardSource = readFileSync(
-  new URL('../src/components/topup/SubscriptionPlansCard.jsx', import.meta.url),
+  new URL('../classic/src/components/topup/SubscriptionPlansCard.jsx', import.meta.url),
   'utf8',
 );
 const purchaseModalSource = readFileSync(
   new URL(
-    '../src/components/topup/modals/SubscriptionPurchaseModal.jsx',
+    '../classic/src/components/topup/modals/SubscriptionPurchaseModal.jsx',
     import.meta.url,
   ),
   'utf8',

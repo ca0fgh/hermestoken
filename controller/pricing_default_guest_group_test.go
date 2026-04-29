@@ -6,23 +6,23 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/constant"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
+	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
+	"github.com/ca0fgh/hermestoken/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
 type pricingAPIResponse struct {
-	Success    bool              `json:"success"`
-	Data       []model.Pricing   `json:"data"`
-	GroupRatio map[string]float64 `json:"group_ratio"`
-	UsableGroup map[string]string `json:"usable_group"`
-	AutoGroups []string          `json:"auto_groups"`
+	Success     bool               `json:"success"`
+	Data        []model.Pricing    `json:"data"`
+	GroupRatio  map[string]float64 `json:"group_ratio"`
+	UsableGroup map[string]string  `json:"usable_group"`
+	AutoGroups  []string           `json:"auto_groups"`
 }
 
 func setupPricingControllerTestDB(t *testing.T) *gorm.DB {

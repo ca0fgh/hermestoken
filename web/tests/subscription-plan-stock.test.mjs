@@ -4,25 +4,25 @@ import { readFileSync } from 'node:fs';
 
 const addEditSource = readFileSync(
   new URL(
-    '../src/components/table/subscriptions/modals/AddEditSubscriptionModal.jsx',
+    '../classic/src/components/table/subscriptions/modals/AddEditSubscriptionModal.jsx',
     import.meta.url,
   ),
   'utf8',
 );
 const columnsSource = readFileSync(
   new URL(
-    '../src/components/table/subscriptions/SubscriptionsColumnDefs.jsx',
+    '../classic/src/components/table/subscriptions/SubscriptionsColumnDefs.jsx',
     import.meta.url,
   ),
   'utf8',
 );
 const plansCardSource = readFileSync(
-  new URL('../src/components/topup/SubscriptionPlansCard.jsx', import.meta.url),
+  new URL('../classic/src/components/topup/SubscriptionPlansCard.jsx', import.meta.url),
   'utf8',
 );
 const purchaseModalSource = readFileSync(
   new URL(
-    '../src/components/topup/modals/SubscriptionPurchaseModal.jsx',
+    '../classic/src/components/topup/modals/SubscriptionPurchaseModal.jsx',
     import.meta.url,
   ),
   'utf8',

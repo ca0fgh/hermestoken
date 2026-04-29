@@ -2,30 +2,30 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 
-const appSource = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const appSource = readFileSync(new URL('../classic/src/App.jsx', import.meta.url), 'utf8');
 const consoleRoutesSource = readFileSync(
-  new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url),
+  new URL('../classic/src/routes/ConsoleRoutes.jsx', import.meta.url),
   'utf8',
 );
-const appRoutesPath = new URL('../src/AppRoutes.jsx', import.meta.url);
+const appRoutesPath = new URL('../classic/src/AppRoutes.jsx', import.meta.url);
 const siderBarSource = readFileSync(
-  new URL('../src/components/layout/SiderBar.jsx', import.meta.url),
+  new URL('../classic/src/components/layout/SiderBar.jsx', import.meta.url),
   'utf8',
 );
 const sidebarHookSource = readFileSync(
-  new URL('../src/hooks/common/useSidebar.js', import.meta.url),
+  new URL('../classic/src/hooks/common/useSidebar.js', import.meta.url),
   'utf8',
 );
 const notificationSettingsSource = readFileSync(
   new URL(
-    '../src/components/settings/personal/cards/NotificationSettings.jsx',
+    '../classic/src/components/settings/personal/cards/NotificationSettings.jsx',
     import.meta.url,
   ),
   'utf8',
 );
 const adminSidebarSettingsSource = readFileSync(
   new URL(
-    '../src/pages/Setting/Operation/SettingsSidebarModulesAdmin.jsx',
+    '../classic/src/pages/Setting/Operation/SettingsSidebarModulesAdmin.jsx',
     import.meta.url,
   ),
   'utf8',

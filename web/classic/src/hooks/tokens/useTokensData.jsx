@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useState, useEffect, useRef } from 'react';
@@ -226,7 +224,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
     const serverAddress = getStoredServerAddress();
     if (url.includes('{cherryConfig}') === true) {
       let cherryConfig = {
-        id: 'new-api',
+        id: 'hermestoken',
         baseUrl: serverAddress,
         apiKey: `sk-${fullKey}`,
       };
@@ -236,7 +234,7 @@ export const useTokensData = (openFluentNotification, openCCSwitchModal) => {
       url = url.replaceAll('{cherryConfig}', encodedConfig);
     } else if (url.includes('{aionuiConfig}') === true) {
       let aionuiConfig = {
-        platform: 'new-api',
+        platform: 'hermestoken',
         baseUrl: serverAddress,
         apiKey: `sk-${fullKey}`,
       };

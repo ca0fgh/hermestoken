@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 test('ListPagination centralizes single-page hiding and mobile sizing', () => {
   const source = readFileSync(
-    new URL('../src/components/common/ui/ListPagination.jsx', import.meta.url),
+    new URL('../classic/src/components/common/ui/ListPagination.jsx', import.meta.url),
     'utf8',
   );
 

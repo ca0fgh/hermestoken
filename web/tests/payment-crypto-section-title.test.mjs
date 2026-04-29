@@ -4,12 +4,12 @@ import { readFileSync } from 'node:fs';
 
 test('USDT payment tab hides the redundant inner section title', () => {
   const paymentSource = readFileSync(
-    new URL('../src/components/settings/PaymentSetting.jsx', import.meta.url),
+    new URL('../classic/src/components/settings/PaymentSetting.jsx', import.meta.url),
     'utf8',
   );
   const cryptoSource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
       import.meta.url,
     ),
     'utf8',
@@ -32,7 +32,7 @@ test('USDT payment tab hides the redundant inner section title', () => {
 test('USDT unique suffix setting supports six digits', () => {
   const cryptoSource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
       import.meta.url,
     ),
     'utf8',
@@ -47,12 +47,12 @@ test('USDT unique suffix setting supports six digits', () => {
 
 test('USDT payment settings expose Polygon PoS and Solana chains', () => {
   const paymentSource = readFileSync(
-    new URL('../src/components/settings/PaymentSetting.jsx', import.meta.url),
+    new URL('../classic/src/components/settings/PaymentSetting.jsx', import.meta.url),
     'utf8',
   );
   const cryptoSource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
       import.meta.url,
     ),
     'utf8',
@@ -70,7 +70,7 @@ test('USDT payment settings expose Polygon PoS and Solana chains', () => {
 
 test('USDT payment settings submit cleared Solana address as empty string', async () => {
   const { buildCryptoPaymentOptionUpdates } = await import(
-    '../src/helpers/paymentCrypto.js'
+    '../classic/src/helpers/paymentCrypto.js'
   );
   const updates = buildCryptoPaymentOptionUpdates(
     {
@@ -98,7 +98,7 @@ test('USDT payment settings submit cleared Solana address as empty string', asyn
 
   const cryptoSource = readFileSync(
     new URL(
-      '../src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
+      '../classic/src/pages/Setting/Payment/SettingsPaymentGatewayCrypto.jsx',
       import.meta.url,
     ),
     'utf8',

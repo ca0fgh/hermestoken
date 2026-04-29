@@ -13,40 +13,73 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-// 上游地址
-const (
-	upstreamModelsURL  = "https://basellm.github.io/llm-metadata/api/newapi/models.json"
-	upstreamVendorsURL = "https://basellm.github.io/llm-metadata/api/newapi/vendors.json"
-)
-
 func normalizeLocale(locale string) (string, bool) {
 	l := strings.ToLower(strings.TrimSpace(locale))
 	switch l {
-	case "en", "zh-CN", "zh-TW", "ja":
+	case "en", "ja":
 		return l, true
+	case "zh-cn":
+		return "zh-CN", true
+	case "zh-tw":
+		return "zh-TW", true
 	default:
 		return "", false
 	}
 }
 
-func getUpstreamBase() string {
-	return common.GetEnvOrDefaultString("SYNC_UPSTREAM_BASE", "https://basellm.github.io/llm-metadata")
+func expandUpstreamURLTemplate(tmpl, locale, resource string) string {
+	replacer := strings.NewReplacer(
+		"{locale}", locale,
+		"{resource}", resource,
+	)
+	return replacer.Replace(tmpl)
 }
 
-func getUpstreamURLs(locale string) (modelsURL, vendorsURL string) {
-	base := strings.TrimRight(getUpstreamBase(), "/")
-	if l, ok := normalizeLocale(locale); ok && l != "" {
-		return fmt.Sprintf("%s/api/i18n/%s/newapi/models.json", base, l),
-			fmt.Sprintf("%s/api/i18n/%s/newapi/vendors.json", base, l)
+func getConfiguredUpstreamURLs(locale string) (modelsURL, vendorsURL string, ok bool) {
+	if l, normalized := normalizeLocale(locale); normalized && l != "" {
+		modelsTemplate := strings.TrimSpace(common.GetEnvOrDefaultString("SYNC_UPSTREAM_I18N_MODELS_URL_TEMPLATE", ""))
+		vendorsTemplate := strings.TrimSpace(common.GetEnvOrDefaultString("SYNC_UPSTREAM_I18N_VENDORS_URL_TEMPLATE", ""))
+		if modelsTemplate != "" && vendorsTemplate != "" {
+			return expandUpstreamURLTemplate(modelsTemplate, l, "models"),
+				expandUpstreamURLTemplate(vendorsTemplate, l, "vendors"),
+				true
+		}
 	}
-	return fmt.Sprintf("%s/api/newapi/models.json", base), fmt.Sprintf("%s/api/newapi/vendors.json", base)
+
+	modelsURL = strings.TrimSpace(common.GetEnvOrDefaultString("SYNC_UPSTREAM_MODELS_URL", ""))
+	vendorsURL = strings.TrimSpace(common.GetEnvOrDefaultString("SYNC_UPSTREAM_VENDORS_URL", ""))
+	if modelsURL != "" && vendorsURL != "" {
+		return modelsURL, vendorsURL, true
+	}
+
+	base := strings.TrimRight(strings.TrimSpace(common.GetEnvOrDefaultString("SYNC_UPSTREAM_BASE", "")), "/")
+	dataset := strings.Trim(strings.TrimSpace(common.GetEnvOrDefaultString("SYNC_UPSTREAM_DATASET", "hermestoken")), "/")
+	if base == "" || dataset == "" {
+		return "", "", false
+	}
+	if l, ok := normalizeLocale(locale); ok && l != "" {
+		return fmt.Sprintf("%s/api/i18n/%s/%s/models.json", base, l, dataset),
+			fmt.Sprintf("%s/api/i18n/%s/%s/vendors.json", base, l, dataset),
+			true
+	}
+	return fmt.Sprintf("%s/api/%s/models.json", base, dataset),
+		fmt.Sprintf("%s/api/%s/vendors.json", base, dataset),
+		true
+}
+
+func getUpstreamURLs(locale string) (modelsURL, vendorsURL string, err error) {
+	modelsURL, vendorsURL, ok := getConfiguredUpstreamURLs(locale)
+	if !ok {
+		return "", "", errors.New("模型同步数据源未配置，请设置 SYNC_UPSTREAM_MODELS_URL/SYNC_UPSTREAM_VENDORS_URL 或 SYNC_UPSTREAM_BASE")
+	}
+	return modelsURL, vendorsURL, nil
 }
 
 type upstreamEnvelope[T any] struct {
@@ -279,7 +312,7 @@ func SyncUpstreamModels(c *gin.Context) {
 
 	// 若既无缺失模型需要创建，也未指定覆盖更新字段，则无需请求上游数据，直接返回
 	if len(missing) == 0 && len(req.Overwrite) == 0 {
-		modelsURL, vendorsURL := getUpstreamURLs(req.Locale)
+		modelsURL, vendorsURL, _ := getUpstreamURLs(req.Locale)
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"data": gin.H{
@@ -304,7 +337,11 @@ func SyncUpstreamModels(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	modelsURL, vendorsURL := getUpstreamURLs(req.Locale)
+	modelsURL, vendorsURL, urlErr := getUpstreamURLs(req.Locale)
+	if urlErr != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": urlErr.Error(), "locale": req.Locale})
+		return
+	}
 	var vendorsEnv upstreamEnvelope[upstreamVendor]
 	var modelsEnv upstreamEnvelope[upstreamModel]
 	var fetchErr error
@@ -503,7 +540,11 @@ func SyncUpstreamPreview(c *gin.Context) {
 	defer cancel()
 
 	locale := c.Query("locale")
-	modelsURL, vendorsURL := getUpstreamURLs(locale)
+	modelsURL, vendorsURL, urlErr := getUpstreamURLs(locale)
+	if urlErr != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": urlErr.Error(), "locale": locale})
+		return
+	}
 
 	var vendorsEnv upstreamEnvelope[upstreamVendor]
 	var modelsEnv upstreamEnvelope[upstreamModel]

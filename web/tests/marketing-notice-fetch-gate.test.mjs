@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const marketingNoticeFetchGateModulePath = new URL(
-  '../src/components/layout/marketingNoticeFetchGate.js',
+  '../classic/src/components/layout/marketingNoticeFetchGate.js',
   import.meta.url,
 );
 

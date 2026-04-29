@@ -8,7 +8,7 @@ import {
   formatReferralLevelTypeLabel,
   formatReferralTemplateOptionLabel,
   formatReferralTypeLabel,
-} from '../src/helpers/referralLabels.js';
+} from '../classic/src/helpers/referralLabels.js';
 
 const fakeT = (key) =>
   (

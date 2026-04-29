@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const noticeHtmlHelperPath = new URL(
-  '../src/helpers/noticeHtml.js',
+  '../classic/src/helpers/noticeHtml.js',
   import.meta.url,
 );
 const noticeModalPath = new URL(
-  '../src/components/layout/NoticeModal.jsx',
+  '../classic/src/components/layout/NoticeModal.jsx',
   import.meta.url,
 );
 

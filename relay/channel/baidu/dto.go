@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/ca0fgh/hermestoken/dto"
 )
 
 type BaiduMessage struct {

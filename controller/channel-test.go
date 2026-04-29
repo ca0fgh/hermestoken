@@ -16,19 +16,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
-	"github.com/QuantumNous/new-api/relay"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relay/helper"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/constant"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/middleware"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/pkg/billingexpr"
+	"github.com/ca0fgh/hermestoken/relay"
+	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
+	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
+	"github.com/ca0fgh/hermestoken/relay/helper"
+	"github.com/ca0fgh/hermestoken/service"
+	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
+	"github.com/ca0fgh/hermestoken/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
@@ -38,10 +38,10 @@ import (
 )
 
 type testResult struct {
-	context     *gin.Context
-	localErr    error
-	newAPIError *types.NewAPIError
-	skipped     bool
+	context          *gin.Context
+	localErr         error
+	hermesTokenError *types.HermesTokenError
+	skipped          bool
 }
 
 const (
@@ -320,8 +320,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	cache, err := model.GetUserCache(1)
 	if err != nil {
 		return testResult{
-			localErr:    err,
-			newAPIError: nil,
+			localErr:         err,
+			hermesTokenError: nil,
 		}
 	}
 	cache.WriteContext(c)
@@ -333,12 +333,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	userGroup, _ := model.GetUserGroup(1, false)
 	c.Set("group", selectChannelTestUsingGroup(channelTestGroups, userGroup))
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
-	if newAPIError != nil {
+	hermesTokenError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	if hermesTokenError != nil {
 		return testResult{
-			context:     c,
-			localErr:    newAPIError,
-			newAPIError: newAPIError,
+			context:          c,
+			localErr:         hermesTokenError,
+			hermesTokenError: hermesTokenError,
 		}
 	}
 
@@ -398,9 +398,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
 		}
 	}
 
@@ -410,18 +410,18 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	err = attachTestBillingRequestInput(info, request)
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
 		}
 	}
 
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeChannelModelMappedError),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeChannelModelMappedError),
 		}
 	}
 
@@ -440,17 +440,17 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		apiType != constant.APITypeOpenAI &&
 		apiType != constant.APITypeCodex {
 		return testResult{
-			context:     c,
-			localErr:    fmt.Errorf("responses compaction test only supports openai/codex channels, got api type %d", apiType),
-			newAPIError: types.NewError(fmt.Errorf("unsupported api type: %d", apiType), types.ErrorCodeInvalidApiType),
+			context:          c,
+			localErr:         fmt.Errorf("responses compaction test only supports openai/codex channels, got api type %d", apiType),
+			hermesTokenError: types.NewError(fmt.Errorf("unsupported api type: %d", apiType), types.ErrorCodeInvalidApiType),
 		}
 	}
 	adaptor := relay.GetAdaptor(apiType)
 	if adaptor == nil {
 		return testResult{
-			context:     c,
-			localErr:    fmt.Errorf("invalid api type: %d, adaptor is nil", apiType),
-			newAPIError: types.NewError(fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), types.ErrorCodeInvalidApiType),
+			context:          c,
+			localErr:         fmt.Errorf("invalid api type: %d, adaptor is nil", apiType),
+			hermesTokenError: types.NewError(fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), types.ErrorCodeInvalidApiType),
 		}
 	}
 
@@ -462,9 +462,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	priceData, err := helper.ModelPriceHelper(c, info, 0, request.GetTokenCountMeta())
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
 		}
 	}
 	adaptor.Init(info)
@@ -478,9 +478,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			convertedRequest, err = adaptor.ConvertEmbeddingRequest(c, info, *embeddingReq)
 		} else {
 			return testResult{
-				context:     c,
-				localErr:    errors.New("invalid embedding request type"),
-				newAPIError: types.NewError(errors.New("invalid embedding request type"), types.ErrorCodeConvertRequestFailed),
+				context:          c,
+				localErr:         errors.New("invalid embedding request type"),
+				hermesTokenError: types.NewError(errors.New("invalid embedding request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
 	case relayconstant.RelayModeImagesGenerations:
@@ -489,9 +489,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			convertedRequest, err = adaptor.ConvertImageRequest(c, info, *imageReq)
 		} else {
 			return testResult{
-				context:     c,
-				localErr:    errors.New("invalid image request type"),
-				newAPIError: types.NewError(errors.New("invalid image request type"), types.ErrorCodeConvertRequestFailed),
+				context:          c,
+				localErr:         errors.New("invalid image request type"),
+				hermesTokenError: types.NewError(errors.New("invalid image request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
 	case relayconstant.RelayModeRerank:
@@ -500,9 +500,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			convertedRequest, err = adaptor.ConvertRerankRequest(c, info.RelayMode, *rerankReq)
 		} else {
 			return testResult{
-				context:     c,
-				localErr:    errors.New("invalid rerank request type"),
-				newAPIError: types.NewError(errors.New("invalid rerank request type"), types.ErrorCodeConvertRequestFailed),
+				context:          c,
+				localErr:         errors.New("invalid rerank request type"),
+				hermesTokenError: types.NewError(errors.New("invalid rerank request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
 	case relayconstant.RelayModeResponses:
@@ -511,9 +511,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, *responseReq)
 		} else {
 			return testResult{
-				context:     c,
-				localErr:    errors.New("invalid response request type"),
-				newAPIError: types.NewError(errors.New("invalid response request type"), types.ErrorCodeConvertRequestFailed),
+				context:          c,
+				localErr:         errors.New("invalid response request type"),
+				hermesTokenError: types.NewError(errors.New("invalid response request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
 	case relayconstant.RelayModeResponsesCompact:
@@ -530,9 +530,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			convertedRequest, err = adaptor.ConvertOpenAIResponsesRequest(c, info, *req)
 		default:
 			return testResult{
-				context:     c,
-				localErr:    errors.New("invalid response compaction request type"),
-				newAPIError: types.NewError(errors.New("invalid response compaction request type"), types.ErrorCodeConvertRequestFailed),
+				context:          c,
+				localErr:         errors.New("invalid response compaction request type"),
+				hermesTokenError: types.NewError(errors.New("invalid response compaction request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
 	default:
@@ -541,26 +541,26 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			convertedRequest, err = adaptor.ConvertOpenAIRequest(c, info, generalReq)
 		} else {
 			return testResult{
-				context:     c,
-				localErr:    errors.New("invalid general request type"),
-				newAPIError: types.NewError(errors.New("invalid general request type"), types.ErrorCodeConvertRequestFailed),
+				context:          c,
+				localErr:         errors.New("invalid general request type"),
+				hermesTokenError: types.NewError(errors.New("invalid general request type"), types.ErrorCodeConvertRequestFailed),
 			}
 		}
 	}
 
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
 		}
 	}
 	jsonData, err := common.Marshal(convertedRequest)
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
 		}
 	}
 
@@ -569,7 +569,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	//	return testResult{
 	//		context:     c,
 	//		localErr:    err,
-	//		newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
+	//		hermesTokenError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
 	//	}
 	//}
 
@@ -578,15 +578,15 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		if err != nil {
 			if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
 				return testResult{
-					context:     c,
-					localErr:    fixedErr,
-					newAPIError: relaycommon.NewAPIErrorFromParamOverride(fixedErr),
+					context:          c,
+					localErr:         fixedErr,
+					hermesTokenError: relaycommon.HermesTokenErrorFromParamOverride(fixedErr),
 				}
 			}
 			return testResult{
-				context:     c,
-				localErr:    err,
-				newAPIError: types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid),
+				context:          c,
+				localErr:         err,
+				hermesTokenError: types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid),
 			}
 		}
 	}
@@ -596,9 +596,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
 		}
 	}
 	var httpResp *http.Response
@@ -617,42 +617,42 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 				err,
 			))
 			return testResult{
-				context:     c,
-				localErr:    err,
-				newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+				context:          c,
+				localErr:         err,
+				hermesTokenError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 			}
 		}
 	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
 		return testResult{
-			context:     c,
-			localErr:    respErr,
-			newAPIError: respErr,
+			context:          c,
+			localErr:         respErr,
+			hermesTokenError: respErr,
 		}
 	}
 	usage, usageErr := coerceTestUsage(usageA, isStream, info.GetEstimatePromptTokens())
 	if usageErr != nil {
 		return testResult{
-			context:     c,
-			localErr:    usageErr,
-			newAPIError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+			context:          c,
+			localErr:         usageErr,
+			hermesTokenError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
 	result := w.Result()
 	respBody, err := readTestResponseBody(result.Body, isStream)
 	if err != nil {
 		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError),
+			context:          c,
+			localErr:         err,
+			hermesTokenError: types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError),
 		}
 	}
 	if bodyErr := detectErrorFromTestResponseBody(respBody); bodyErr != nil {
 		return testResult{
-			context:     c,
-			localErr:    bodyErr,
-			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+			context:          c,
+			localErr:         bodyErr,
+			hermesTokenError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
 	info.SetEstimatePromptTokens(usage.PromptTokens)
@@ -680,9 +680,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	return testResult{
-		context:     c,
-		localErr:    nil,
-		newAPIError: nil,
+		context:          c,
+		localErr:         nil,
+		hermesTokenError: nil,
 	}
 }
 
@@ -993,10 +993,10 @@ func TestChannel(c *gin.Context) {
 	milliseconds := tok.Sub(tik).Milliseconds()
 	go channel.UpdateResponseTime(milliseconds)
 	consumedTime := float64(milliseconds) / 1000.0
-	if result.newAPIError != nil {
+	if result.hermesTokenError != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": result.newAPIError.Error(),
+			"message": result.hermesTokenError.Error(),
 			"time":    consumedTime,
 		})
 		return

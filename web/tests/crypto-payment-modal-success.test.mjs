@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(
   new URL(
-    '../src/components/topup/modals/CryptoPaymentModal.jsx',
+    '../classic/src/components/topup/modals/CryptoPaymentModal.jsx',
     import.meta.url,
   ),
   'utf8',

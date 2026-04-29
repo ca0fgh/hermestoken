@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 function readSource(relativePath) {
-  return readFileSync(new URL(`../src/${relativePath}`, import.meta.url), 'utf8');
+  return readFileSync(new URL(`../classic/src/${relativePath}`, import.meta.url), 'utf8');
 }
 
 test('UsersTable keeps activePage in scope when wiring DeleteUserModal', () => {

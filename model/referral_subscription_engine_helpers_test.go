@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 )
 
 type seedTemplateEngineFixtureInput struct {
@@ -96,19 +96,19 @@ func seedTemplateEngineFixture(t *testing.T, input seedTemplateEngineFixtureInpu
 			t.Fatalf("failed to update inviter chain: %v", err)
 		}
 
-			createTemplateBindingForUser(
-				t,
-				ancestor.Id,
-				input.Group,
-				levelType,
-				0,
-				resolveTemplateDirectCapBps(levelType, rateAt(input.AncestorDirectCapBps, idx)),
-				resolveTemplateTeamCapBps(levelType, rateAt(input.AncestorTeamCapBps, idx)),
-			)
-			fixture.Ancestors = append(fixture.Ancestors, ancestor)
-			parentID = ancestor.Id
-			nextID--
-		}
+		createTemplateBindingForUser(
+			t,
+			ancestor.Id,
+			input.Group,
+			levelType,
+			0,
+			resolveTemplateDirectCapBps(levelType, rateAt(input.AncestorDirectCapBps, idx)),
+			resolveTemplateTeamCapBps(levelType, rateAt(input.AncestorTeamCapBps, idx)),
+		)
+		fixture.Ancestors = append(fixture.Ancestors, ancestor)
+		parentID = ancestor.Id
+		nextID--
+	}
 
 	return fixture
 }

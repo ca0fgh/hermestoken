@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/model"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )

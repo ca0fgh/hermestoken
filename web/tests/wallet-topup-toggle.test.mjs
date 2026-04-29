@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 test('personal settings persist the wallet topup toggle', () => {
   const personalSettingSource = readFileSync(
-    new URL('../src/components/settings/PersonalSetting.jsx', import.meta.url),
+    new URL('../classic/src/components/settings/PersonalSetting.jsx', import.meta.url),
     'utf8',
   );
 
@@ -22,7 +22,7 @@ test('personal settings persist the wallet topup toggle', () => {
 test('notification settings expose a dedicated wallet management toggle', () => {
   const notificationSettingsSource = readFileSync(
     new URL(
-      '../src/components/settings/personal/cards/NotificationSettings.jsx',
+      '../classic/src/components/settings/personal/cards/NotificationSettings.jsx',
       import.meta.url,
     ),
     'utf8',
@@ -36,11 +36,11 @@ test('notification settings expose a dedicated wallet management toggle', () => 
 
 test('topup page wires quota topup visibility into RechargeCard', () => {
   const topupSource = readFileSync(
-    new URL('../src/components/topup/index.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/index.jsx', import.meta.url),
     'utf8',
   );
   const rechargeCardSource = readFileSync(
-    new URL('../src/components/topup/RechargeCard.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/RechargeCard.jsx', import.meta.url),
     'utf8',
   );
 

@@ -28,7 +28,7 @@ test('top-up ordinary gateway amount displays the CNY settlement amount', async 
   });
 
   const { formatTopUpPaymentAmount } = await import(
-    '../src/components/topup/topupAmount.js'
+    '../classic/src/components/topup/topupAmount.js'
   );
 
   assert.equal(formatTopUpPaymentAmount(70, 'CNY'), '¥70.00');
@@ -48,7 +48,7 @@ test('top-up Stripe amount displays the USD settlement amount', async () => {
   });
 
   const { formatTopUpPaymentAmount } = await import(
-    '../src/components/topup/topupAmount.js'
+    '../classic/src/components/topup/topupAmount.js'
   );
 
   assert.equal(formatTopUpPaymentAmount(10, 'USD'), '$10.00');
@@ -62,11 +62,11 @@ test('top-up Stripe amount displays the USD settlement amount', async () => {
 
 test('top-up form accepts cent-level recharge quantities', () => {
   const source = readFileSync(
-    new URL('../src/components/topup/RechargeCard.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/RechargeCard.jsx', import.meta.url),
     'utf8',
   );
   const topupSource = readFileSync(
-    new URL('../src/components/topup/index.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/index.jsx', import.meta.url),
     'utf8',
   );
 

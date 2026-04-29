@@ -544,12 +544,12 @@ class LauncherCommonTests(unittest.TestCase):
         removed = launcher_common.remove_legacy_compose_containers(
             legacy_project_name="hermestoken",
             compose_file_path=compose_file_path,
-            container_names=("new-api", "redis", "postgres"),
+            container_names=("hermestoken", "redis", "postgres"),
             output=output,
             repo_root=repo_root,
         )
 
-        self.assertEqual(removed, ["new-api"])
+        self.assertEqual(removed, ["hermestoken"])
         run_command.assert_has_calls(
             [
                 mock.call(
@@ -558,14 +558,14 @@ class LauncherCommonTests(unittest.TestCase):
                         "inspect",
                         "-f",
                         '{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "com.docker.compose.project.config_files" }}',
-                        "new-api",
+                        "hermestoken",
                     ],
                     check=False,
                     stream_output=False,
                     cwd=repo_root,
                 ),
                 mock.call(
-                    ["docker", "rm", "-f", "new-api"],
+                    ["docker", "rm", "-f", "hermestoken"],
                     check=True,
                     stream_output=False,
                     cwd=repo_root,
@@ -596,7 +596,7 @@ class LauncherCommonTests(unittest.TestCase):
                 ),
             ]
         )
-        self.assertIn("Removed legacy compose containers: new-api", output.getvalue())
+        self.assertIn("Removed legacy compose containers: hermestoken", output.getvalue())
 
     @mock.patch("launcher_common.run_command")
     def test_remove_legacy_compose_containers_skips_missing_containers(self, run_command):
@@ -605,7 +605,7 @@ class LauncherCommonTests(unittest.TestCase):
         removed = launcher_common.remove_legacy_compose_containers(
             legacy_project_name="hermestoken",
             compose_file_path=Path("/repo/docker-compose.yml"),
-            container_names=("new-api",),
+            container_names=("hermestoken",),
             output=io.StringIO(),
             repo_root=Path("/repo"),
         )

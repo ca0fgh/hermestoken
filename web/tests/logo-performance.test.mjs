@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { getOptimizedLogoUrl, isUploadedLogoUrl } from '../src/helpers/logo.js';
+import { getOptimizedLogoUrl, isUploadedLogoUrl } from '../classic/src/helpers/logo.js';
 
 const pageLayoutPath = new URL(
-  '../src/components/layout/PageLayout.jsx',
+  '../classic/src/components/layout/PageLayout.jsx',
   import.meta.url,
 );
 

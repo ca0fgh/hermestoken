@@ -30,7 +30,7 @@ test('renderQuotaWithLessThanFloor keeps tiny positive currency values below the
   });
 
   const { renderQuota, renderQuotaWithLessThanFloor } = await import(
-    '../src/helpers/quota.js'
+    '../classic/src/helpers/quota.js'
   );
 
   assert.equal(renderQuota(15), '¥0.01');

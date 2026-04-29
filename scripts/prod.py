@@ -591,7 +591,7 @@ def set_public_url(
             "-U",
             "root",
             "-d",
-            "new-api",
+            "hermestoken",
             "-v",
             "ON_ERROR_STOP=1",
             "-c",
@@ -603,7 +603,7 @@ def set_public_url(
     )
 
     run_command(
-        _compose_command_prefix(compose_file_path, env_file_path) + ["restart", "new-api"],
+        _compose_command_prefix(compose_file_path, env_file_path) + ["restart", "hermestoken"],
         check=True,
         stream_output=True,
         cwd=effective_repo_root,

@@ -20,7 +20,7 @@ globalThis.localStorage = {
 
 const { formatTopUpPaymentAmount, formatTopUpPresetSettlementSummary } =
   await import(
-  '../src/components/topup/topupAmount.js'
+  '../classic/src/components/topup/topupAmount.js'
 );
 
 test('formats ordinary gateway amount in CNY even when account display is USD', () => {

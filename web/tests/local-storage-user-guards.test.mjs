@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const utilsPath = new URL('../src/helpers/utils.jsx', import.meta.url);
-const authPath = new URL('../src/helpers/auth.jsx', import.meta.url);
+const utilsPath = new URL('../classic/src/helpers/utils.jsx', import.meta.url);
+const authPath = new URL('../classic/src/helpers/auth.jsx', import.meta.url);
 const userInfoHeaderPath = new URL(
-  '../src/components/settings/personal/components/UserInfoHeader.jsx',
+  '../classic/src/components/settings/personal/components/UserInfoHeader.jsx',
   import.meta.url,
 );
 

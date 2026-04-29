@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   getSyncedDraftValue,
   shouldCommitDraftValue,
-} from '../src/pages/Setting/Ratio/components/groupTableDraft.js';
+} from '../classic/src/pages/Setting/Ratio/components/groupTableDraft.js';
 
 test('getSyncedDraftValue keeps the local draft while IME composition is active', () => {
   const nextDraft = getSyncedDraftValue({

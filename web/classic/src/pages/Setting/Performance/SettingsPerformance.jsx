@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -320,7 +318,7 @@ export default function SettingsPerformance(props) {
                     field={'performance_setting.disk_cache_path'}
                     label={t('缓存目录')}
                     extraText={t('留空使用系统临时目录')}
-                    placeholder={t('例如 /var/cache/new-api')}
+                    placeholder={t('例如 /var/cache/hermestoken')}
                     onChange={handleFieldChange(
                       'performance_setting.disk_cache_path',
                     )}

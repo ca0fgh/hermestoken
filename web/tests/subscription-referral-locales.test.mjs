@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import test from 'node:test';
@@ -40,7 +38,7 @@ const requiredKeys = [
 
 function loadTranslation(locale) {
   const content = readFileSync(
-    new URL(`../src/i18n/locales/${locale}.json`, import.meta.url),
+    new URL(`../classic/src/i18n/locales/${locale}.json`, import.meta.url),
     'utf8',
   );
 

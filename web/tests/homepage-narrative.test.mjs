@@ -2,20 +2,20 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
-const enLocalePath = new URL('../src/i18n/locales/en.json', import.meta.url);
+const homePath = new URL('../classic/src/pages/Home/index.jsx', import.meta.url);
+const enLocalePath = new URL('../classic/src/i18n/locales/en.json', import.meta.url);
 const zhCNLocalePath = new URL(
-  '../src/i18n/locales/zh-CN.json',
+  '../classic/src/i18n/locales/zh-CN.json',
   import.meta.url,
 );
 const zhTWLocalePath = new URL(
-  '../src/i18n/locales/zh-TW.json',
+  '../classic/src/i18n/locales/zh-TW.json',
   import.meta.url,
 );
-const frLocalePath = new URL('../src/i18n/locales/fr.json', import.meta.url);
-const jaLocalePath = new URL('../src/i18n/locales/ja.json', import.meta.url);
-const ruLocalePath = new URL('../src/i18n/locales/ru.json', import.meta.url);
-const viLocalePath = new URL('../src/i18n/locales/vi.json', import.meta.url);
+const frLocalePath = new URL('../classic/src/i18n/locales/fr.json', import.meta.url);
+const jaLocalePath = new URL('../classic/src/i18n/locales/ja.json', import.meta.url);
+const ruLocalePath = new URL('../classic/src/i18n/locales/ru.json', import.meta.url);
+const viLocalePath = new URL('../classic/src/i18n/locales/vi.json', import.meta.url);
 
 const load = async (path) => readFile(path, 'utf8');
 const homepageNarrativeExpectations = {

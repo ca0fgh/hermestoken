@@ -3,8 +3,8 @@ package controller
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/ca0fgh/hermestoken/setting"
+	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 )
 
 func isStripeTopUpEnabled() bool {

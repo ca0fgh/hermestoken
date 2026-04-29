@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const siderBarPath = new URL(
-  '../src/components/layout/SiderBar.jsx',
+  '../classic/src/components/layout/SiderBar.jsx',
   import.meta.url,
 );
-const indexCssPath = new URL('../src/index.css', import.meta.url);
+const indexCssPath = new URL('../classic/src/index.css', import.meta.url);
 
 test('sidebar shell uses one width source and does not mutate body classes', async () => {
   const source = await readFile(siderBarPath, 'utf8');

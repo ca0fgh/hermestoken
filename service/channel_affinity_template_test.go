@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
+	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
+	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -221,7 +221,7 @@ func TestEnableRetryAfterChannelAffinityFailure_RequiresCacheHit(t *testing.T) {
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 	setChannelAffinityContext(ctx, channelAffinityMeta{
-		CacheKey:   "new-api:channel_affinity:v1:test",
+		CacheKey:   "hermestoken:channel_affinity:v1:test",
 		TTLSeconds: 600,
 		RuleName:   "rule-no-hit",
 	})

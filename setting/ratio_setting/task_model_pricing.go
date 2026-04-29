@@ -3,7 +3,7 @@ package ratio_setting
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/types"
 )
 
 // TaskModelPricing describes task/video billing that combines a fixed

@@ -12,7 +12,7 @@ test('header nav module locales define the guest default-group copy keys', () =>
   locales.forEach((locale) => {
     const translation = JSON.parse(
       readFileSync(
-        new URL(`../src/i18n/locales/${locale}.json`, import.meta.url),
+        new URL(`../classic/src/i18n/locales/${locale}.json`, import.meta.url),
         'utf8',
       ),
     ).translation;

@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/ca0fgh/hermestoken/pkg/billingexpr"
 )
 
 // ---------------------------------------------------------------------------

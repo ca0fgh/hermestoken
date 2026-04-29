@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
@@ -393,7 +391,7 @@ export const getChannelsColumns = ({
             {passThroughEnabled && (
               <Tooltip
                 content={t(
-                  '该渠道已开启请求透传：参数覆写、模型重定向、渠道适配等 NewAPI 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
+                  '该渠道已开启请求透传：参数覆写、模型重定向、渠道适配等 HermesToken 内置功能将失效，非最佳实践；如因此产生问题，请勿提交 issue 反馈。',
                 )}
                 trigger='hover'
                 position='topLeft'

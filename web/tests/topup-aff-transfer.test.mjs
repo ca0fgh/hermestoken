@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 test('aff transfer modal accepts display currency amount instead of raw quota', () => {
   const source = readFileSync(
     new URL(
-      '../src/components/topup/modals/TransferModal.jsx',
+      '../classic/src/components/topup/modals/TransferModal.jsx',
       import.meta.url,
     ),
     'utf8',
@@ -22,7 +22,7 @@ test('aff transfer modal accepts display currency amount instead of raw quota', 
 
 test('topup page guards aff transfer against duplicate submissions', () => {
   const source = readFileSync(
-    new URL('../src/components/topup/index.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/index.jsx', import.meta.url),
     'utf8',
   );
 

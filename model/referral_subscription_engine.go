@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 	"gorm.io/gorm"
 )
 
@@ -495,16 +495,16 @@ func teamChainSnapshotFromContext(context *ReferralSettlementContext) []map[stri
 
 	snapshot := make([]map[string]interface{}, 0, len(context.TeamChain))
 	for _, node := range context.TeamChain {
-			snapshot = append(snapshot, map[string]interface{}{
-				"user_id":            node.UserId,
-				"binding_id":         node.BindingId,
-				"template_id":        node.TemplateId,
-				"team_rate_bps":      node.TeamRateBps,
-				"path_distance":      node.PathDistance,
-				"matched_team_index": node.MatchedTeamIndex,
-				"weight_snapshot":    node.WeightSnapshot,
-				"share_snapshot":     node.ShareSnapshot,
-			})
+		snapshot = append(snapshot, map[string]interface{}{
+			"user_id":            node.UserId,
+			"binding_id":         node.BindingId,
+			"template_id":        node.TemplateId,
+			"team_rate_bps":      node.TeamRateBps,
+			"path_distance":      node.PathDistance,
+			"matched_team_index": node.MatchedTeamIndex,
+			"weight_snapshot":    node.WeightSnapshot,
+			"share_snapshot":     node.ShareSnapshot,
+		})
 	}
 	return snapshot
 }

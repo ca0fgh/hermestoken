@@ -4,7 +4,7 @@ import test from 'node:test';
 
 test('invite management slice survives a real frontend production build', () => {
   const result = spawnSync('npm', ['run', 'build'], {
-    cwd: new URL('..', import.meta.url),
+    cwd: new URL('../classic', import.meta.url),
     encoding: 'utf8',
     env: { ...process.env, BROWSERSLIST_IGNORE_OLD_DATA: 'true' },
   });

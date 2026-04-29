@@ -6,7 +6,7 @@ test('media query helpers support modern listeners, legacy listeners, and missin
     getMediaQueryList,
     matchesMediaQuery,
     subscribeToMediaQueryList,
-  } = await import('../src/helpers/mediaQuery.js');
+  } = await import('../classic/src/helpers/mediaQuery.js');
 
   const modernCalls = [];
   const modernMediaQueryList = {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/model"
 	"github.com/shopspring/decimal"
 )
 

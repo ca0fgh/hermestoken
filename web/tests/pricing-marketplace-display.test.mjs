@@ -41,7 +41,7 @@ async function importFresh(modulePath, suffix) {
 }
 
 async function importPricingUtilsSubset() {
-  const source = readSource('../src/helpers/utils.jsx');
+  const source = readSource('../classic/src/helpers/utils.jsx');
   const start = source.indexOf('export const PRICING_GROUP_ALL_SENTINEL');
   const end = source.indexOf('export const getModelPriceItems');
   const subset = source.slice(start, end);
@@ -58,7 +58,7 @@ async function importPricingUtilsSubset() {
 }
 
 async function importResetPricingUtilsSubset() {
-  const source = readSource('../src/helpers/utils.jsx');
+  const source = readSource('../classic/src/helpers/utils.jsx');
   const sentinelLine = "export const PRICING_GROUP_ALL_SENTINEL = '__all__';";
   const defaultsStart = source.indexOf('const DEFAULT_PRICING_FILTERS = {');
   const resetEndMarker =
@@ -81,7 +81,7 @@ async function importResetPricingUtilsSubset() {
 }
 
 async function importModelsColumnDefsSubset() {
-  const source = readSource('../src/components/table/models/ModelsColumnDefs.jsx');
+  const source = readSource('../classic/src/components/table/models/ModelsColumnDefs.jsx');
   const rewrittenSource = source
     .replace(
       "import React from 'react';",
@@ -140,9 +140,9 @@ afterEach(() => {
 describe('marketplace display group wiring', () => {
   test('useModelPricingData consumes display_groups and exposes displayGroups', () => {
     const source = readSource(
-      '../src/hooks/model-pricing/useModelPricingData.jsx',
+      '../classic/src/hooks/model-pricing/useModelPricingData.jsx',
     );
-    const helperSource = readSource('../src/helpers/utils.jsx');
+    const helperSource = readSource('../classic/src/helpers/utils.jsx');
 
     expect(source).toMatch(/display_groups/);
     expect(source).toMatch(/PRICING_GROUP_ALL_SENTINEL/);
@@ -158,10 +158,10 @@ describe('marketplace display group wiring', () => {
   });
 
   test('PricingGroups uses a distinct UI sentinel while preserving backend all/default display groups', async () => {
-    mock.module('../src/helpers/utils.jsx', () => ({
+    mock.module('../classic/src/helpers/utils.jsx', () => ({
       PRICING_GROUP_ALL_SENTINEL: '__all__',
     }));
-    mock.module('../src/components/common/ui/SelectableButtonGroup.jsx', () => ({
+    mock.module('../classic/src/components/common/ui/SelectableButtonGroup.jsx', () => ({
       default: ({ title, items, activeValue }) =>
         h(
           'section',
@@ -183,7 +183,7 @@ describe('marketplace display group wiring', () => {
     }));
 
     const { default: PricingGroups } = await importFresh(
-      '../src/components/table/model-pricing/filter/PricingGroups.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingGroups.jsx',
       'pricing-groups',
     );
 
@@ -222,13 +222,13 @@ describe('marketplace display group wiring', () => {
 
   test('PricingSidebar, FilterModalContent, and PricingFilterModal thread reset/display props', () => {
     const sidebarSource = readSource(
-      '../src/components/table/model-pricing/layout/PricingSidebar.jsx',
+      '../classic/src/components/table/model-pricing/layout/PricingSidebar.jsx',
     );
     const modalSource = readSource(
-      '../src/components/table/model-pricing/modal/components/FilterModalContent.jsx',
+      '../classic/src/components/table/model-pricing/modal/components/FilterModalContent.jsx',
     );
     const filterModalSource = readSource(
-      '../src/components/table/model-pricing/modal/PricingFilterModal.jsx',
+      '../classic/src/components/table/model-pricing/modal/PricingFilterModal.jsx',
     );
 
     expect(sidebarSource).toMatch(
@@ -251,7 +251,7 @@ describe('marketplace display group wiring', () => {
     const setFilterGroupCalls = [];
 
     mock.module(
-      '../src/hooks/model-pricing/usePricingFilterCounts.js',
+      '../classic/src/hooks/model-pricing/usePricingFilterCounts.js',
       () => ({
         usePricingFilterCounts: () => ({
           quotaTypeModels: [],
@@ -263,13 +263,13 @@ describe('marketplace display group wiring', () => {
       }),
     );
     mock.module(
-      '../src/components/table/model-pricing/filter/PricingDisplaySettings.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingDisplaySettings.jsx',
       () => ({
         default: () => h('div', null, 'display-settings'),
       }),
     );
     mock.module(
-      '../src/components/table/model-pricing/filter/PricingGroups.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingGroups.jsx',
       () => ({
         default: ({ setFilterGroup }) =>
           h(
@@ -283,32 +283,32 @@ describe('marketplace display group wiring', () => {
       }),
     );
     mock.module(
-      '../src/components/table/model-pricing/filter/PricingQuotaTypes.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingQuotaTypes.jsx',
       () => ({
         default: () => h('div', null, 'quota-types'),
       }),
     );
     mock.module(
-      '../src/components/table/model-pricing/filter/PricingEndpointTypes.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingEndpointTypes.jsx',
       () => ({
         default: () => h('div', null, 'endpoint-types'),
       }),
     );
     mock.module(
-      '../src/components/table/model-pricing/filter/PricingVendors.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingVendors.jsx',
       () => ({
         default: () => h('div', null, 'vendors'),
       }),
     );
     mock.module(
-      '../src/components/table/model-pricing/filter/PricingTags.jsx',
+      '../classic/src/components/table/model-pricing/filter/PricingTags.jsx',
       () => ({
         default: () => h('div', null, 'tags'),
       }),
     );
 
     const { default: FilterModalContent } = await importFresh(
-      '../src/components/table/model-pricing/modal/components/FilterModalContent.jsx',
+      '../classic/src/components/table/model-pricing/modal/components/FilterModalContent.jsx',
       'filter-modal-content',
     );
 
@@ -389,7 +389,7 @@ describe('marketplace display group wiring', () => {
     mock.module('@douyinfe/semi-icons', () => ({
       IconCoinMoneyStroked: () => h('span', null, 'coin'),
     }));
-    mock.module('../src/helpers/index.js', () => ({
+    mock.module('../classic/src/helpers/index.js', () => ({
       calculateModelPrice: ({ selectedGroup }) => ({
         inputPrice: `${selectedGroup}-input`,
         outputPrice: `${selectedGroup}-output`,
@@ -406,7 +406,7 @@ describe('marketplace display group wiring', () => {
     }));
 
     const { default: ModelPricingTable } = await importFresh(
-      '../src/components/table/model-pricing/modal/components/ModelPricingTable.jsx',
+      '../classic/src/components/table/model-pricing/modal/components/ModelPricingTable.jsx',
       'model-pricing-table',
     );
 
@@ -513,10 +513,10 @@ describe('marketplace display group wiring', () => {
 
   test('PricingPage and detail sheet use displayGroups without legacy marketplace props', () => {
     const sheetSource = readSource(
-      '../src/components/table/model-pricing/modal/ModelDetailSideSheet.jsx',
+      '../classic/src/components/table/model-pricing/modal/ModelDetailSideSheet.jsx',
     );
     const pageSource = readSource(
-      '../src/components/table/model-pricing/layout/PricingPage.jsx',
+      '../classic/src/components/table/model-pricing/layout/PricingPage.jsx',
     );
 
     expect(sheetSource).toMatch(/displayGroups/);
@@ -527,10 +527,10 @@ describe('marketplace display group wiring', () => {
 
   test('model admin source uses marketplace display terminology for modal and table copy', () => {
     const editModalSource = readSource(
-      '../src/components/table/models/modals/EditModelModal.jsx',
+      '../classic/src/components/table/models/modals/EditModelModal.jsx',
     );
     const columnDefsSource = readSource(
-      '../src/components/table/models/ModelsColumnDefs.jsx',
+      '../classic/src/components/table/models/ModelsColumnDefs.jsx',
     );
 
     expect(editModalSource).toMatch(/label=\{t\('模型广场展示'\)\}/);

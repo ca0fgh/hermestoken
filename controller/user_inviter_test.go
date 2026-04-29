@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/model"
 )
 
 func TestUpdateUserRejectsReferralCycle(t *testing.T) {
@@ -23,15 +23,15 @@ func TestUpdateUserRejectsReferralCycle(t *testing.T) {
 	child := seedSubscriptionReferralControllerUser(t, "child-user", parent.Id, dto.UserSetting{})
 
 	body := map[string]interface{}{
-		"id":         parent.Id,
-		"username":   parent.Username,
-		"password":   "",
+		"id":           parent.Id,
+		"username":     parent.Username,
+		"password":     "",
 		"display_name": parent.DisplayName,
-		"group":      parent.Group,
-		"quota":      parent.Quota,
-		"role":       parent.Role,
-		"status":     parent.Status,
-		"inviter_id": child.Id,
+		"group":        parent.Group,
+		"quota":        parent.Quota,
+		"role":         parent.Role,
+		"status":       parent.Status,
+		"inviter_id":   child.Id,
 	}
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/user/", body, root.Id)

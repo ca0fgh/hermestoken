@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(testDir, '../src/i18n/locales');
+const root = path.resolve(testDir, '../classic/src/i18n/locales');
 const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'fr', 'ru', 'vi'];
 const localizedTask4Keys = [
   '规则说明',

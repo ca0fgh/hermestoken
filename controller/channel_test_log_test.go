@@ -6,12 +6,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/constant"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/service"
+	"github.com/ca0fgh/hermestoken/types"
 )
 
 func TestChannelTestRecordsConsumeLog(t *testing.T) {
@@ -81,8 +81,8 @@ func TestChannelTestRecordsConsumeLog(t *testing.T) {
 	if result.localErr != nil {
 		t.Fatalf("testChannel returned local error: %v", result.localErr)
 	}
-	if result.newAPIError != nil {
-		t.Fatalf("testChannel returned api error: %v", result.newAPIError)
+	if result.hermesTokenError != nil {
+		t.Fatalf("testChannel returned api error: %v", result.hermesTokenError)
 	}
 
 	var logEntry model.Log
@@ -172,8 +172,8 @@ func TestChannelTestErrorLogUsesTestTokenAndGroups(t *testing.T) {
 	if result.localErr != nil {
 		t.Fatalf("testChannel returned local error: %v", result.localErr)
 	}
-	if result.newAPIError != nil {
-		t.Fatalf("testChannel returned api error: %v", result.newAPIError)
+	if result.hermesTokenError != nil {
+		t.Fatalf("testChannel returned api error: %v", result.hermesTokenError)
 	}
 
 	apiErr := types.NewOpenAIError(

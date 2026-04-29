@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   createInviteeDetailRequestGuard,
   resolveInviteeSelectionAfterPageRefresh,
-} from '../src/helpers/inviteeDetailRequestGuard.js';
+} from '../classic/src/helpers/inviteeDetailRequestGuard.js';
 
 test('createInviteeDetailRequestGuard ignores stale invitee detail responses', async () => {
   const guard = createInviteeDetailRequestGuard();

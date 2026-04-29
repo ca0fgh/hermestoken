@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const pageLayoutPath = new URL('../src/components/layout/PageLayout.jsx', import.meta.url);
+const pageLayoutPath = new URL('../classic/src/components/layout/PageLayout.jsx', import.meta.url);
 const statusFetchModePath = new URL(
-  '../src/components/layout/pageLayoutStatusFetch.js',
+  '../classic/src/components/layout/pageLayoutStatusFetch.js',
   import.meta.url,
 );
-const publicAppPath = new URL('../src/bootstrap/publicApp.jsx', import.meta.url);
+const publicAppPath = new URL('../classic/src/bootstrap/publicApp.jsx', import.meta.url);
 const consoleAppPath = new URL(
-  '../src/bootstrap/consoleApp.jsx',
+  '../classic/src/bootstrap/consoleApp.jsx',
   import.meta.url,
 );
 

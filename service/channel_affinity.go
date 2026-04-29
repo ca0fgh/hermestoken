@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/pkg/cachex"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/pkg/cachex"
+	"github.com/ca0fgh/hermestoken/setting/operation_setting"
+	"github.com/ca0fgh/hermestoken/types"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/hot"
 	"github.com/tidwall/gjson"
@@ -28,8 +28,8 @@ const (
 	ginKeyChannelAffinityCacheHit   = "channel_affinity_cache_hit"
 	ginKeyChannelAffinityRetryReady = "channel_affinity_retry_ready"
 
-	channelAffinityCacheNamespace           = "new-api:channel_affinity:v1"
-	channelAffinityUsageCacheStatsNamespace = "new-api:channel_affinity_usage_cache_stats:v1"
+	channelAffinityCacheNamespace           = "hermestoken:channel_affinity:v1"
+	channelAffinityUsageCacheStatsNamespace = "hermestoken:channel_affinity_usage_cache_stats:v1"
 )
 
 var (
@@ -650,20 +650,20 @@ func GetPreferredChannelByAffinity(c *gin.Context, modelName string, usingGroup 
 			RequestPath:    path,
 		})
 
-			cache := getChannelAffinityCache()
-			channelID, found, err := cache.Get(cacheKeySuffix)
-			if err != nil {
-				common.SysError(fmt.Sprintf("channel affinity cache get failed: key=%s, err=%v", cacheKeyFull, err))
-				return 0, false
-			}
-			if found {
-				if c != nil {
-					c.Set(ginKeyChannelAffinityCacheHit, true)
-				}
-				return channelID, true
-			}
+		cache := getChannelAffinityCache()
+		channelID, found, err := cache.Get(cacheKeySuffix)
+		if err != nil {
+			common.SysError(fmt.Sprintf("channel affinity cache get failed: key=%s, err=%v", cacheKeyFull, err))
 			return 0, false
 		}
+		if found {
+			if c != nil {
+				c.Set(ginKeyChannelAffinityCacheHit, true)
+			}
+			return channelID, true
+		}
+		return 0, false
+	}
 	return 0, false
 }
 

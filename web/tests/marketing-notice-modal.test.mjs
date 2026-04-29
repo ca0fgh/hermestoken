@@ -3,12 +3,12 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const marketingHeaderBarPath = new URL(
-  '../src/components/layout/MarketingHeaderBar.jsx',
+  '../classic/src/components/layout/MarketingHeaderBar.jsx',
   import.meta.url,
 );
-const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
+const homePath = new URL('../classic/src/pages/Home/index.jsx', import.meta.url);
 const marketingNoticeModalPath = new URL(
-  '../src/components/layout/MarketingNoticeModal.jsx',
+  '../classic/src/components/layout/MarketingNoticeModal.jsx',
   import.meta.url,
 );
 

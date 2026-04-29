@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const editTokenModalPath = new URL(
-  '../src/components/table/tokens/modals/EditTokenModal.jsx',
+  '../classic/src/components/table/tokens/modals/EditTokenModal.jsx',
   import.meta.url,
 );
-const tokenHookPath = new URL('../src/hooks/tokens/useTokensData.jsx', import.meta.url);
+const tokenHookPath = new URL('../classic/src/hooks/tokens/useTokensData.jsx', import.meta.url);
 
 const load = async (path) => readFile(path, 'utf8');
 

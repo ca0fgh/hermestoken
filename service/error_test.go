@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/types"
+	"github.com/ca0fgh/hermestoken/types"
 	"github.com/stretchr/testify/require"
 )
 
@@ -47,11 +47,11 @@ func TestResetStatusCode(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			newAPIError := &types.NewAPIError{
+			hermesTokenError := &types.HermesTokenError{
 				StatusCode: tc.statusCode,
 			}
-			ResetStatusCode(newAPIError, tc.statusCodeConfig)
-			require.Equal(t, tc.expectedCode, newAPIError.StatusCode)
+			ResetStatusCode(hermesTokenError, tc.statusCodeConfig)
+			require.Equal(t, tc.expectedCode, hermesTokenError.StatusCode)
 		})
 	}
 }

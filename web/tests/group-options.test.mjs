@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildGroupOption,
   buildGroupOptions,
-} from '../src/helpers/groupOptions.js';
+} from '../classic/src/helpers/groupOptions.js';
 
 test('buildGroupOption keeps group name as visible label when description is empty', () => {
   const option = buildGroupOption('claude-code-oups4.6', {

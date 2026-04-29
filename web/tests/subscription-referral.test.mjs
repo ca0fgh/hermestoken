@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import test from 'node:test';
@@ -26,7 +24,7 @@ import {
   clampInviteeRateBps,
   buildReferralRateSummary,
   formatRateBpsPercent,
-} from '../src/helpers/subscriptionReferral.js';
+} from '../classic/src/helpers/subscriptionReferral.js';
 
 test('clampInviteeRateBps caps invitee rate to total rate', () => {
   assert.equal(clampInviteeRateBps(2600, 2000), 2000);
@@ -159,7 +157,7 @@ test('buildInvitationDraftPercentInputs preserves the saving group draft when pe
 
 test('InvitationCard does not reference removed referralSavingGroup state', () => {
   const invitationCardSource = readFileSync(
-    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
@@ -168,7 +166,7 @@ test('InvitationCard does not reference removed referralSavingGroup state', () =
 
 test('InvitationCard no longer imports grouped subscription referral helpers', () => {
   const invitationCardSource = readFileSync(
-    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
@@ -180,7 +178,7 @@ test('InvitationCard no longer imports grouped subscription referral helpers', (
 
 test('InvitationCard no longer renders grouped subscription referral controls in wallet view', () => {
   const invitationCardSource = readFileSync(
-    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
@@ -191,7 +189,7 @@ test('InvitationCard no longer renders grouped subscription referral controls in
 
 test('wallet invitation card keeps invite stats and link but removes subscription referral management', () => {
   const invitationCardSource = readFileSync(
-    new URL('../src/components/topup/InvitationCard.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
@@ -205,7 +203,7 @@ test('wallet invitation card keeps invite stats and link but removes subscriptio
 
 test('TopUp no longer fetches or wires wallet subscription referral management state', () => {
   const topUpSource = readFileSync(
-    new URL('../src/components/topup/index.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/index.jsx', import.meta.url),
     'utf8',
   );
 
@@ -227,7 +225,7 @@ test('TopUp no longer fetches or wires wallet subscription referral management s
 
 test('OperationSetting no longer mounts the global subscription referral settings card', () => {
   const operationSettingSource = readFileSync(
-    new URL('../src/components/settings/OperationSetting.jsx', import.meta.url),
+    new URL('../classic/src/components/settings/OperationSetting.jsx', import.meta.url),
     'utf8',
   );
 
@@ -243,7 +241,7 @@ test('OperationSetting no longer mounts the global subscription referral setting
 
 test('topup wallet view no longer keeps grouped referral summary refresh logic', () => {
   const topupSource = readFileSync(
-    new URL('../src/components/topup/index.jsx', import.meta.url),
+    new URL('../classic/src/components/topup/index.jsx', import.meta.url),
     'utf8',
   );
 
@@ -255,14 +253,14 @@ test('topup wallet view no longer keeps grouped referral summary refresh logic',
 test('invite rebate UI no longer describes inviter-authorized splits as platform default rules', () => {
   const defaultRuleSource = readFileSync(
     new URL(
-      '../src/components/invite-rebate/InviteDefaultRuleSection.jsx',
+      '../classic/src/components/invite-rebate/InviteDefaultRuleSection.jsx',
       import.meta.url,
     ),
     'utf8',
   );
   const inviteeOverrideSource = readFileSync(
     new URL(
-      '../src/components/invite-rebate/InviteeOverridePanel.jsx',
+      '../classic/src/components/invite-rebate/InviteeOverridePanel.jsx',
       import.meta.url,
     ),
     'utf8',

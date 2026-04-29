@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const editTokenModalPath = new URL(
-  '../src/components/table/tokens/modals/EditTokenModal.jsx',
+  '../classic/src/components/table/tokens/modals/EditTokenModal.jsx',
   import.meta.url,
 );
 

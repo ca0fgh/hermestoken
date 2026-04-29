@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const publicBootstrapRefreshModulePath = new URL(
-  '../src/pages/Home/publicBootstrapRefresh.js',
+  '../classic/src/pages/Home/publicBootstrapRefresh.js',
   import.meta.url,
 );
 

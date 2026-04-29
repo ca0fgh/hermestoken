@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const footerPath = new URL(
-  '../src/components/layout/Footer.jsx',
+  '../classic/src/components/layout/Footer.jsx',
   import.meta.url,
 );
-const dataPath = new URL('../src/helpers/data.js', import.meta.url);
+const dataPath = new URL('../classic/src/helpers/data.js', import.meta.url);
 
 const load = async (path) => readFile(path, 'utf8');
 

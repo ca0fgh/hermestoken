@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const appPath = new URL('../src/App.jsx', import.meta.url);
-const consoleRoutesPath = new URL('../src/routes/ConsoleRoutes.jsx', import.meta.url);
-const publicRoutesPath = new URL('../src/routes/PublicRoutes.jsx', import.meta.url);
+const appPath = new URL('../classic/src/App.jsx', import.meta.url);
+const consoleRoutesPath = new URL('../classic/src/routes/ConsoleRoutes.jsx', import.meta.url);
+const publicRoutesPath = new URL('../classic/src/routes/PublicRoutes.jsx', import.meta.url);
 
 test('route groups keep auth screens and console pages behind lazy retry recovery boundaries', async () => {
   const appSource = await readFile(appPath, 'utf8');
@@ -43,7 +43,7 @@ test('route groups keep auth screens and console pages behind lazy retry recover
 
 test('lazy route recovery reloads once for chunk fetch failures and then clears the retry flag', async () => {
   const { createLazyImportRecovery, isRecoverableLazyError } = await import(
-    '../src/helpers/lazyWithRetry.js'
+    '../classic/src/helpers/lazyWithRetry.js'
   );
 
   assert.equal(

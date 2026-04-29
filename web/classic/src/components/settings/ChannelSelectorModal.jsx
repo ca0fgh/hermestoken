@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, {
@@ -38,9 +36,10 @@ import { createUnifiedPaginationProps } from '../../helpers/utils';
 
 const OFFICIAL_RATIO_PRESET_ID = -100;
 const MODELS_DEV_PRESET_ID = -101;
-const OFFICIAL_RATIO_PRESET_NAME = '官方倍率预设';
+const OFFICIAL_RATIO_PRESET_NAME = 'HermesToken 倍率预设';
 const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设';
-const OFFICIAL_RATIO_PRESET_BASE_URL = 'https://basellm.github.io';
+const OFFICIAL_RATIO_PRESET_BASE_URL =
+  import.meta.env.VITE_OFFICIAL_RATIO_PRESET_BASE_URL || '';
 const MODELS_DEV_PRESET_BASE_URL = 'https://models.dev';
 
 const ChannelSelectorModal = forwardRef(

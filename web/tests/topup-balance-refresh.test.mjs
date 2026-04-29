@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const topupSource = readFileSync(
-  new URL('../src/components/topup/index.jsx', import.meta.url),
+  new URL('../classic/src/components/topup/index.jsx', import.meta.url),
   'utf8',
 );
 

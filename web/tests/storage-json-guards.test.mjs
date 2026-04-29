@@ -2,19 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const storageJsonPath = new URL('../src/helpers/storageJson.js', import.meta.url);
-const authPath = new URL('../src/helpers/auth.jsx', import.meta.url);
-const tokenPagePath = new URL('../src/components/table/tokens/index.jsx', import.meta.url);
-const tokenHookPath = new URL('../src/hooks/tokens/useTokensData.jsx', import.meta.url);
-const tokenColumnsPath = new URL('../src/components/table/tokens/TokensColumnDefs.jsx', import.meta.url);
-const ccSwitchModalPath = new URL('../src/components/table/tokens/modals/CCSwitchModal.jsx', import.meta.url);
-const notificationsHookPath = new URL('../src/hooks/common/useNotifications.js', import.meta.url);
-const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
+const storageJsonPath = new URL('../classic/src/helpers/storageJson.js', import.meta.url);
+const authPath = new URL('../classic/src/helpers/auth.jsx', import.meta.url);
+const tokenPagePath = new URL('../classic/src/components/table/tokens/index.jsx', import.meta.url);
+const tokenHookPath = new URL('../classic/src/hooks/tokens/useTokensData.jsx', import.meta.url);
+const tokenColumnsPath = new URL('../classic/src/components/table/tokens/TokensColumnDefs.jsx', import.meta.url);
+const ccSwitchModalPath = new URL('../classic/src/components/table/tokens/modals/CCSwitchModal.jsx', import.meta.url);
+const notificationsHookPath = new URL('../classic/src/hooks/common/useNotifications.js', import.meta.url);
+const homePath = new URL('../classic/src/pages/Home/index.jsx', import.meta.url);
 const marketingNoticeModalPath = new URL(
-  '../src/components/layout/MarketingNoticeModal.jsx',
+  '../classic/src/components/layout/MarketingNoticeModal.jsx',
   import.meta.url,
 );
-const noticeModalPath = new URL('../src/components/layout/NoticeModal.jsx', import.meta.url);
+const noticeModalPath = new URL('../classic/src/components/layout/NoticeModal.jsx', import.meta.url);
 
 function readSource(url) {
   return readFileSync(url, 'utf8');

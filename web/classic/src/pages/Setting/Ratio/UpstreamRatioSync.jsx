@@ -13,8 +13,6 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
@@ -52,10 +50,11 @@ import {
 import ChannelSelectorModal from '../../../components/settings/ChannelSelectorModal';
 
 const OFFICIAL_RATIO_PRESET_ID = -100;
-const OFFICIAL_RATIO_PRESET_NAME = '官方倍率预设';
-const OFFICIAL_RATIO_PRESET_BASE_URL = 'https://basellm.github.io';
+const OFFICIAL_RATIO_PRESET_NAME = 'HermesToken 倍率预设';
+const OFFICIAL_RATIO_PRESET_BASE_URL =
+  import.meta.env.VITE_OFFICIAL_RATIO_PRESET_BASE_URL || '';
 const OFFICIAL_RATIO_PRESET_ENDPOINT =
-  '/llm-metadata/api/newapi/ratio_config-v1-base.json';
+  import.meta.env.VITE_OFFICIAL_RATIO_PRESET_ENDPOINT || '';
 const MODELS_DEV_PRESET_ID = -101;
 const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设';
 const MODELS_DEV_PRESET_BASE_URL = 'https://models.dev';
@@ -167,6 +166,7 @@ export default function UpstreamRatioSync(props) {
             const base = channel._originalData?.base_url || '';
             const name = channel.label || '';
             const channelType = channel._originalData?.type;
+            const presetEndpoint = channel._originalData?.endpoint || '';
             const isOfficialRatioPreset =
               id === OFFICIAL_RATIO_PRESET_ID ||
               base === OFFICIAL_RATIO_PRESET_BASE_URL ||
@@ -177,9 +177,11 @@ export default function UpstreamRatioSync(props) {
               name === MODELS_DEV_PRESET_NAME;
             const isOpenRouter = channelType === 20;
             if (!merged[id]) {
-              if (isModelsDevPreset) {
+              if (presetEndpoint) {
+                merged[id] = presetEndpoint;
+              } else if (isModelsDevPreset) {
                 merged[id] = MODELS_DEV_PRESET_ENDPOINT;
-              } else if (isOfficialRatioPreset) {
+              } else if (isOfficialRatioPreset && OFFICIAL_RATIO_PRESET_ENDPOINT) {
                 merged[id] = OFFICIAL_RATIO_PRESET_ENDPOINT;
               } else if (isOpenRouter) {
                 merged[id] = 'openrouter';

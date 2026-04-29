@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 test('withdrawal settings are only rendered inside the payment general tab', () => {
   const source = readFileSync(
-    new URL('../src/components/settings/PaymentSetting.jsx', import.meta.url),
+    new URL('../classic/src/components/settings/PaymentSetting.jsx', import.meta.url),
     'utf8',
   );
 

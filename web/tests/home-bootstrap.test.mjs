@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const homePath = new URL('../src/pages/Home/index.jsx', import.meta.url);
+const homePath = new URL('../classic/src/pages/Home/index.jsx', import.meta.url);
 
 test('home page prefers public bootstrap content before network fetches', async () => {
   const source = await readFile(homePath, 'utf8');

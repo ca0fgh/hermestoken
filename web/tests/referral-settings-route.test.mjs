@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { normalizeReferralTemplateItems } from '../src/helpers/referralTemplate.js';
+import { normalizeReferralTemplateItems } from '../classic/src/helpers/referralTemplate.js';
 
 test('settings page exposes a referral tab and settings surface', () => {
   const source = fs.readFileSync('web/src/pages/Setting/index.jsx', 'utf8');

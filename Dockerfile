@@ -107,7 +107,7 @@ RUN set -eux; \
     if [ -z "$version" ]; then \
       version="${APP_VERSION:-dev}"; \
     fi; \
-    go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=${version}'" -o new-api
+    go build -ldflags "-s -w -X 'github.com/ca0fgh/hermestoken/common.Version=${version}'" -o hermestoken
 
 FROM mirror.gcr.io/library/debian:bookworm-slim
 
@@ -116,7 +116,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
-COPY --from=builder2 /build/new-api /
+COPY --from=builder2 /build/hermestoken /
 EXPOSE 3000
 WORKDIR /data
-ENTRYPOINT ["/new-api"]
+ENTRYPOINT ["/hermestoken"]

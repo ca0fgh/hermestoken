@@ -651,7 +651,7 @@ class ProdLauncherTests(unittest.TestCase):
                     "-f",
                     str(compose_file),
                     "restart",
-                    "new-api",
+                    "hermestoken",
                 ],
                 check=True,
                 stream_output=True,

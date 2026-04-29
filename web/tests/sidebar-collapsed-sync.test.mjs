@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const hookPath = new URL(
-  '../src/hooks/common/useSidebarCollapsed.js',
+  '../classic/src/hooks/common/useSidebarCollapsed.js',
   import.meta.url,
 );
 

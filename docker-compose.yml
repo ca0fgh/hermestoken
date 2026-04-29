@@ -1,4 +1,4 @@
-# New-API Docker Compose Configuration
+# HermesToken Docker Compose Configuration
 #
 # Quick Start:
 #   1. Build the frontend on the host, or run `python3 scripts/local.py` to automate it
@@ -18,7 +18,7 @@
 name: hermestoken-local
 
 services:
-  new-api:
+  hermestoken:
     build:
       context: .
       dockerfile: Dockerfile
@@ -26,7 +26,7 @@ services:
         WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}
         APP_VERSION: ${APP_VERSION:-}
     image: hermestoken-local:latest
-    container_name: new-api
+    container_name: hermestoken
     restart: always
     command: --log-dir /app/logs
     ports:
@@ -35,8 +35,8 @@ services:
       - ./data:/data
       - ./logs:/app/logs
     environment:
-      - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # ⚠️ IMPORTANT: Change the password in production!
-#      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api  # Point to the mysql service, uncomment if using MySQL
+      - SQL_DSN=postgresql://root:123456@postgres:5432/hermestoken # ⚠️ IMPORTANT: Change the password in production!
+#      - SQL_DSN=root:123456@tcp(mysql:3306)/hermestoken  # Point to the mysql service, uncomment if using MySQL
       - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ IMPORTANT: Change the password in production!
       - TZ=Asia/Shanghai
       - GLOBAL_WEB_RATE_LIMIT_ENABLE=false # 本地调试关闭网页限流，避免 localhost 频繁刷新被 429
@@ -45,7 +45,7 @@ services:
       - SEARCH_RATE_LIMIT_ENABLE=false # 本地/外网联调环境关闭搜索限流，避免列表页高频筛选被 429 打断
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
-      - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
+      - NODE_NAME=hermestoken-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
 #      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
 #      - SESSION_SECRET=random_string  # 多机部署时设置，必须修改这个随机字符串！！ （multi-node deployment, set this to a random string!!!!!!!）
 #      - SYNC_FREQUENCY=60  # Uncomment if regular database syncing is needed
@@ -61,7 +61,7 @@ services:
 #      mysql:
 #        condition: service_started  # Uncomment if using MySQL
     networks:
-      - new-api-network
+      - hermestoken-network
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
@@ -75,7 +75,7 @@ services:
     restart: always
     command: ["redis-server", "--requirepass", "123456"]  # ⚠️ IMPORTANT: Change this password in production!
     networks:
-      - new-api-network
+      - hermestoken-network
 
   postgres:
     image: postgres:latest
@@ -85,13 +85,13 @@ services:
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
-      POSTGRES_DB: new-api
+      POSTGRES_DB: hermestoken
     volumes:
       - pg_data:/var/lib/postgresql
     networks:
-      - new-api-network
+      - hermestoken-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d new-api"]
+      test: ["CMD-SHELL", "pg_isready -U root -d hermestoken"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -104,11 +104,11 @@ services:
 #    restart: always
 #    environment:
 #      MYSQL_ROOT_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
-#      MYSQL_DATABASE: new-api
+#      MYSQL_DATABASE: hermestoken
 #    volumes:
 #      - mysql_data:/var/lib/mysql
 #    networks:
-#      - new-api-network
+#      - hermestoken-network
 #    ports:
 #      - "3306:3306"  # Uncomment if you need to access MySQL from outside Docker
 
@@ -119,5 +119,5 @@ volumes:
 #  mysql_data:
 
 networks:
-  new-api-network:
+  hermestoken-network:
     driver: bridge

@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const startupBootstrapModulePath = new URL(
-  '../src/pages/Home/startupBootstrap.js',
+  '../classic/src/pages/Home/startupBootstrap.js',
   import.meta.url,
 );
 const publicStartupCacheModulePath = new URL(
-  '../src/helpers/publicStartupCache.js',
+  '../classic/src/helpers/publicStartupCache.js',
   import.meta.url,
 );
 
