@@ -32,19 +32,21 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 - Fixed-route orders snapshot the purchase-time pricing, expiry, and quota terms.
 - Order-pool usage and other buyers' fixed-route purchases must not reduce or cancel an existing fixed-route order.
 - Seller credential quota exhaustion can stop new fixed-route purchases and order-pool routing, but it must not retroactively consume a fixed-route order's remaining quota.
-- A fixed-route order can fail to serve only when its own quota/expiry is invalid, the bound credential is technically unavailable, or platform risk controls block it.
+- A fixed-route order can fail to serve only when its own quota/expiry is invalid, the bound credential is disabled, the bound credential is technically unavailable, or platform risk controls block it.
 - Seller edits after purchase affect new order-list display and pool routing; existing fixed-route orders keep their snapshots.
-- Seller unlisting stops new purchases and pool routing, but it should not stop already purchased fixed-route orders unless the key is technically unavailable or risk-paused.
+- Seller unlisting stops new purchases and pool routing, but it should not stop already purchased fixed-route orders unless the key is disabled, technically unavailable, or risk-paused.
+- Seller disabling stops new purchases, pool routing, and fixed-route serving through that credential until it is enabled again. It does not consume, reduce, or cancel existing fixed-route order quota.
 - Seller credential deletion must be blocked while active fixed-route orders exist, or converted into an unlisted no-new-sales state until those orders end.
 - Seller income is created from actual successful usage, not from unused fixed-route quota.
 - Fixed-route purchase affects seller credential state as sold exposure, not as inventory removal.
 - Successful fixed-route and pool calls affect seller credential usage state.
+- Every credential state/configuration change must be recorded in that credential's history, including seller actions, admin actions, system health/capacity changes, and buyer-caused usage or order changes.
 
 ## Actors
 
 - Seller: any existing user who escrows an AI API key.
 - Buyer: any existing user who buys fixed-route quota or uses the order pool.
-- Admin: operator who can pause credentials, review risk, freeze settlements, and manage withdrawals.
+- Admin: operator who can unlist, disable, review risk, freeze settlements, and manage withdrawals.
 - Platform: stores encrypted credentials, proxies requests, calculates official-price-based charges, and settles income.
 
 ## Seller Escrow Flow
@@ -76,7 +78,11 @@ After escrow, seller lifecycle operations are:
 
 - List: make a healthy credential available for new fixed-route purchases and pool routing.
 - Unlist: stop new fixed-route purchases and pool routing without breaking existing fixed-route orders.
+- Enable: allow the credential to serve marketplace requests when other eligibility checks pass.
+- Disable: stop new purchases, pool routing, and fixed-route serving through this credential until re-enabled.
 - Edit: update supported models, quota mode, multiplier, concurrency, or replace the API key after validation.
+
+Each lifecycle operation must write a credential history event.
 
 Seller-escrowed API keys do not have seller-configured expiry time. Expiry exists on fixed-route orders, not on the seller credential itself.
 
@@ -89,7 +95,7 @@ Quota mode:
 - `unlimited` means the platform does not apply a seller-declared marketplace quota cap.
 - `limited` means successful marketplace usage increments the credential's used quota against the seller-declared cap.
 - Fixed-route purchases increase sold exposure and active order count, but they do not subtract from a sellable inventory field.
-- When the seller-declared cap is exhausted, the credential stops accepting new fixed-route purchases and pool routing. Existing fixed-route orders keep their own remaining quota and can continue while the credential is technically usable and not risk-paused.
+- When the seller-declared cap is exhausted, the credential stops accepting new fixed-route purchases and pool routing. Existing fixed-route orders keep their own remaining quota and can continue while the credential is enabled, technically usable, and not risk-paused.
 
 This keeps the user's "no inventory" rule intact while still letting order-list purchases and pool usage dynamically affect seller credential status, sorting, risk, and new-sale eligibility.
 
@@ -129,7 +135,8 @@ The buyer selects the purchased quota amount at purchase time. The fixed-order e
 The order pool is automatic routing. Buyers choose a marketplace model and optional filtering preferences. The router selects from eligible seller credentials using:
 
 - Model match.
-- Seller status.
+- Listing status.
+- Service status.
 - Health status.
 - Risk status.
 - Capacity status.
@@ -157,6 +164,7 @@ An existing fixed-route order is affected only by:
 
 - Its own remaining quota.
 - Its own expiry.
+- The bound credential being disabled.
 - The bound credential becoming technically unavailable.
 - Platform risk controls.
 - Upstream provider outage or refusal.
@@ -190,6 +198,7 @@ External buyer-facing display should show success rate, not both success rate an
 Suggested status dimensions:
 
 - Listing status: listed or unlisted.
+- Service status: enabled or disabled.
 - Health status: healthy, degraded, or failed.
 - Capacity status: available, busy, or exhausted.
 - Risk status: normal, watching, or risk_paused.
@@ -200,11 +209,26 @@ Runtime state affects:
 - Order pool routing weight.
 - Order list sorting.
 - Whether new purchases are allowed.
-- Whether the key is shown as busy, degraded, exhausted, unlisted, or risk-paused.
+- Whether the key is shown as busy, degraded, exhausted, unlisted, disabled, or risk-paused.
 
-Runtime state should not retroactively cancel valid fixed-route orders unless the key is technically unavailable or risk-paused.
+Runtime state should not retroactively cancel valid fixed-route orders unless the key is disabled, technically unavailable, or risk-paused.
 
-Seller-configured quota limits and unlisting affect market availability for new purchases and pool routing. Existing fixed-route orders use their own snapshots and are not consumed by pool usage. If the seller key later becomes invalid, rate-limited, revoked, or blocked by risk controls, fixed-route calls may fail only when the platform can no longer proxy through that key or risk controls require blocking it.
+Seller-configured quota limits and unlisting affect market availability for new purchases and pool routing. Existing fixed-route orders use their own snapshots and are not consumed by pool usage. If the seller key later becomes disabled, invalid, rate-limited, revoked, or blocked by risk controls, fixed-route calls may fail only while the platform cannot or must not proxy through that key.
+
+## Credential History
+
+Each seller-escrowed AI API key needs a credential-level history timeline. The history is the audit trail for why the key's market state changed and which user or system action caused it.
+
+History must record:
+
+- Seller actions: list, unlist, enable, disable, edit configuration, replace key, test key.
+- Admin actions: force unlist, force disable, risk pause, risk resume, settlement block or release if tied to the credential.
+- System actions: validation result, health status change, capacity status change, quota exhausted, quota recovered, stats aggregation changes that affect eligibility.
+- Buyer-caused actions: fixed-route order purchase, fixed-route usage, order-pool usage, fixed-route order exhaustion, fixed-route order expiry, refund/reversal exceptions.
+
+Buyer-caused history should be visible under the seller credential without exposing buyer private data. Seller views can show event type, order/fill reference, model, quota delta, status impact, and timestamp. Admin views can include buyer user IDs and reconciliation details.
+
+High-volume call details still live in `marketplace_fixed_order_fills` and `marketplace_pool_fills`. The credential history should reference those rows and record the state delta that matters to the credential, such as used quota, sold exposure, active order count, health status, capacity status, or service eligibility.
 
 ## Pricing
 
@@ -297,6 +321,7 @@ quota_limit
 multiplier
 concurrency_limit
 listing_status
+service_status
 health_status
 capacity_status
 risk_status
@@ -328,6 +353,65 @@ last_success_at
 last_failed_at
 last_failed_reason
 updated_at
+```
+
+### marketplace_credential_events
+
+Credential-level history for seller, buyer, admin, and system-caused state changes.
+
+```text
+id
+credential_id
+event_type
+event_source
+actor_user_id
+buyer_user_id
+source_type
+source_id
+old_state_snapshot
+new_state_snapshot
+delta_snapshot
+changed_fields
+reason
+seller_visible
+admin_visible
+created_at
+```
+
+Event source values:
+
+```text
+seller
+buyer
+admin
+system
+reconciliation
+```
+
+Event types should include at least:
+
+```text
+credential_listed
+credential_unlisted
+credential_enabled
+credential_disabled
+credential_edited
+credential_key_replaced
+credential_tested
+health_changed
+capacity_changed
+quota_exhausted
+quota_recovered
+fixed_order_purchased
+fixed_order_used
+fixed_order_exhausted
+fixed_order_expired
+fixed_order_refunded
+pool_used
+risk_paused
+risk_resumed
+settlement_blocked
+settlement_released
 ```
 
 ### marketplace_fixed_orders
@@ -434,6 +518,9 @@ PUT    /api/marketplace/seller/credentials/:id
 POST   /api/marketplace/seller/credentials/:id/test
 POST   /api/marketplace/seller/credentials/:id/list
 POST   /api/marketplace/seller/credentials/:id/unlist
+POST   /api/marketplace/seller/credentials/:id/enable
+POST   /api/marketplace/seller/credentials/:id/disable
+GET    /api/marketplace/seller/credentials/:id/events
 GET    /api/marketplace/seller/income
 GET    /api/marketplace/seller/settlements
 ```
@@ -470,7 +557,10 @@ Without a fixed-order ID, the request uses order-pool routing.
 
 ```text
 GET  /api/marketplace/admin/credentials
-POST /api/marketplace/admin/credentials/:id/pause
+GET  /api/marketplace/admin/credentials/:id/events
+POST /api/marketplace/admin/credentials/:id/unlist
+POST /api/marketplace/admin/credentials/:id/disable
+POST /api/marketplace/admin/credentials/:id/enable
 POST /api/marketplace/admin/credentials/:id/risk-pause
 POST /api/marketplace/admin/credentials/:id/resume
 GET  /api/marketplace/admin/fixed-orders
@@ -515,11 +605,13 @@ Suggested backend packages:
 
 ```text
 model/marketplace_credential.go
+model/marketplace_credential_event.go
 model/marketplace_fixed_order.go
 model/marketplace_fill.go
 model/marketplace_settlement.go
 model/marketplace_setting.go
 service/marketplace_crypto.go
+service/marketplace_credential_event.go
 service/marketplace_pricing.go
 service/marketplace_router.go
 service/marketplace_settlement.go
@@ -587,6 +679,7 @@ Credential state is represented by multiple dimensions instead of one overloaded
 
 ```text
 listing_status: listed -> unlisted -> listed
+service_status: enabled -> disabled -> enabled
 health_status: untested -> healthy -> degraded -> failed -> healthy
 capacity_status: available -> busy -> exhausted -> available
 risk_status: normal -> watching -> risk_paused -> normal
@@ -594,10 +687,10 @@ risk_status: normal -> watching -> risk_paused -> normal
 
 Eligibility rules:
 
-- Order-list display requires listed status, risk normal or watching, and supported models.
+- Order-list display requires listed status, enabled service status, risk normal or watching, and supported models.
 - New fixed-route purchase additionally requires health healthy or degraded and capacity not exhausted.
 - Pool routing additionally requires current concurrency below limit.
-- Existing fixed-route call can proceed when the fixed order is valid and the credential is technically usable, unless risk is `risk_paused`.
+- Existing fixed-route call can proceed when the fixed order is valid and the credential is enabled and technically usable, unless risk is `risk_paused`.
 
 Seller key replacement should be staged: the existing encrypted key remains serving until the replacement key passes validation for the same model vendor, compatible models, and endpoint policy. A failed replacement must not break active fixed-route orders.
 
@@ -633,7 +726,8 @@ Fixed-route purchase must be atomic:
 4. Deduct buyer quota into fixed-order escrow.
 5. Create fixed order with purchase and fee snapshots.
 6. Increment seller credential fixed-route sold exposure.
-7. Write buyer-facing balance log.
+7. Write credential event `fixed_order_purchased`.
+8. Write buyer-facing balance log.
 
 Fixed-route call settlement must be idempotent:
 
@@ -646,6 +740,7 @@ Fixed-route call settlement must be idempotent:
 7. Create fill record.
 8. Create settlement row with fee snapshot.
 9. Update credential stats and used seller quota.
+10. Write credential event `fixed_order_used` and any resulting capacity or quota status event.
 
 Pool call settlement must be idempotent:
 
@@ -658,6 +753,7 @@ Pool call settlement must be idempotent:
 7. Create pool fill record.
 8. Create settlement row with fee snapshot.
 9. Update credential stats and used seller quota.
+10. Write credential event `pool_used` and any resulting capacity or quota status event.
 
 All fill and settlement writes need a unique request id or idempotency key. Retried client requests and retry-after-upstream-success paths must not double-charge buyers or double-create seller income.
 
@@ -672,6 +768,7 @@ Hard filters:
 - Model supported.
 - Relay mode supported by the model vendor type for the marketplace endpoint.
 - Credential listed.
+- Credential enabled.
 - Risk not paused.
 - Credential not exhausted.
 - Current concurrency below limit.
@@ -695,6 +792,7 @@ For MVP, fixed-route calls should have priority over pool calls when a credentia
 Required jobs:
 
 - Credential health check: test active credentials and update health status.
+- Credential history retention or compaction job if event volume grows too large.
 - Fixed-order expiry check: mark expired orders, persist expired quota, and invalidate unused quota without refund.
 - Settlement release: move pending seller income to available after the hold period.
 - Stats aggregation: refresh success rate, latency, request counts, and failure counters.
@@ -705,7 +803,8 @@ Required jobs:
 Seller:
 
 - Escrow key form: model vendor, models, limit mode, multiplier, concurrency.
-- Seller credential list: masked key fingerprint, models, multiplier, health, used quota, sold fixed-route exposure, active orders, pool usage, income.
+- Seller credential list: masked key fingerprint, listing status, service status, models, multiplier, health, used quota, sold fixed-route exposure, active orders, pool usage, income.
+- Seller credential detail: state-change history including seller actions, system changes, and buyer-caused order/usage effects.
 - Seller income page: pending, available, withdrawn, blocked.
 
 Buyer:
@@ -720,6 +819,7 @@ Admin:
 - Marketplace settings.
 - Enabled model vendor allowlist.
 - Credential risk review.
+- Credential full history review.
 - Fixed-order review.
 - Fill and settlement audit.
 - Reconciliation queue.
@@ -741,6 +841,8 @@ Admin:
 - Raw seller API keys are encrypted at rest, masked in logs, and never returned by APIs.
 - Unsupported model vendor types are rejected even if they exist in the project's create-channel type selector.
 - Seller quota limits stop new sales and pool routing after exhaustion, but they do not remove or reduce already purchased fixed-route quota.
+- Seller credentials support list, unlist, enable, disable, and edit actions.
+- Each seller credential has a state-change history that includes seller, admin, system, and buyer-caused events.
 
 ## Security Requirements
 
@@ -756,6 +858,7 @@ Admin:
 - Custom, localhost, private-network, and seller-supplied arbitrary base URLs should be disabled for marketplace escrow until a separate SSRF and credential-exfiltration review explicitly enables them.
 - Settlement writes must be idempotent.
 - Logs must mask API keys and sensitive upstream URLs.
+- Credential event history must not store raw API keys, request bodies, response bodies, or buyer private data in seller-visible fields.
 - Admin access must be required for risk overrides and settlement blocking.
 
 ## Open Decisions Before Implementation
