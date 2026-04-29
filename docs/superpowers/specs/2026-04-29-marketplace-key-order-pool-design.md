@@ -49,7 +49,7 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 
 The seller creates one escrow record with:
 
-- Provider, such as OpenAI, Claude, Gemini, or OpenRouter.
+- Provider/channel type, selected from the project's existing channel types.
 - API key, stored encrypted and never returned in plaintext.
 - Supported models.
 - Limit mode: unlimited or limited.
@@ -58,6 +58,8 @@ The seller creates one escrow record with:
 - Concurrency limit.
 
 Provider endpoint configuration should be system-controlled or allowlisted. The MVP should not let sellers submit arbitrary base URLs.
+
+The marketplace should support the project's existing channel types instead of inventing marketplace-only provider identifiers. Each supported channel type still needs marketplace-specific validation, key handling, pricing compatibility, and safe endpoint policy before it is enabled.
 
 After submission:
 
@@ -206,7 +208,7 @@ Fixed-route order purchase:
 - Buyer prepays quota from the buyer's platform balance into the fixed order.
 - The prepaid quota remains attached to that fixed order.
 - Seller income is released by actual usage, not immediately at purchase.
-- Unused fixed-route quota is not seller income. On expiry or refund, remaining quota follows the platform refund/expiry policy and must not generate settlement rows.
+- Unused fixed-route quota is not seller income. When a fixed-route order expires, unused quota expires and is not refunded.
 
 Fixed-route call:
 
@@ -216,6 +218,8 @@ buyer_charge = official_cost * multiplier_snapshot
 fixed_order.remaining_quota -= buyer_charge
 seller_income = buyer_charge - platform_fee
 ```
+
+Platform fee is globally configurable for the marketplace. The global fee rate is applied consistently to fixed-route and pool settlements.
 
 Pool call:
 
@@ -253,6 +257,7 @@ Seller escrowed key and seller-configured attributes.
 id
 seller_user_id
 provider
+channel_type
 encrypted_api_key
 key_fingerprint
 models
@@ -449,6 +454,7 @@ Reuse:
 - Existing withdrawal flows, extended with marketplace income source.
 - Existing official pricing data where suitable.
 - Existing upstream adapter code where it can be safely reused without registering marketplace credentials as normal channels.
+- Existing channel type definitions for marketplace provider selection, with marketplace-specific validation before enablement.
 
 Keep separate:
 
@@ -469,16 +475,14 @@ Do not place marketplace keys into the normal `channels`, `abilities`, or `auto`
 - Seller key replacement should not expose old key material.
 - Marketplace calls must verify buyer token ownership and fixed-order ownership.
 - Marketplace router must validate provider and base URL against a safe provider policy.
+- Marketplace router must reject any existing channel type that has not been explicitly enabled for marketplace escrow.
 - Settlement writes must be idempotent.
 - Logs must mask API keys and sensitive upstream URLs.
 - Admin access must be required for risk overrides and settlement blocking.
 
 ## Open Decisions Before Implementation
 
-- Fixed-route unused quota policy: expire unused quota, refund to buyer balance, or allow admin-configured behavior.
 - Seller income hold period: default pending duration before income becomes available.
-- Platform fee policy: global fee rate, provider-specific fee rate, or seller-tier-based fee rate.
-- Provider allowlist: which providers are enabled for seller escrow in the first release.
 - Pool routing policy: default balance between lower multiplier, lower latency, higher success rate, and fair seller distribution.
 - Concurrency priority: whether fixed-route calls receive priority over pool calls when a credential is near its concurrency limit.
 - Abuse limits: global minimum/maximum fixed-route purchase amount and per-buyer/per-seller rate limits.
