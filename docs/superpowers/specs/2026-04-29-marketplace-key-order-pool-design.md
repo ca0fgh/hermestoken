@@ -467,6 +467,234 @@ Keep separate:
 
 Do not place marketplace keys into the normal `channels`, `abilities`, or `auto` route unless a future design explicitly adds a safe bridge.
 
+## Implementation Blueprint
+
+### Module Boundaries
+
+The marketplace should be implemented as a separate domain module, even though it reuses existing identity, quota, pricing, channel type, and withdrawal capabilities.
+
+Suggested backend packages:
+
+```text
+model/marketplace_credential.go
+model/marketplace_fixed_order.go
+model/marketplace_fill.go
+model/marketplace_settlement.go
+model/marketplace_setting.go
+service/marketplace_crypto.go
+service/marketplace_pricing.go
+service/marketplace_router.go
+service/marketplace_settlement.go
+controller/marketplace_seller.go
+controller/marketplace_buyer.go
+controller/marketplace_admin.go
+controller/marketplace_relay.go
+```
+
+The marketplace relay can reuse existing provider adaptors, but it should build a marketplace-specific relay context instead of creating or mutating normal `Channel` records. This prevents seller credentials from leaking into existing channel selection, channel testing, ability sync, and auto-routing behavior.
+
+### Global Settings
+
+Use the existing option system for operator-configurable marketplace policy:
+
+```text
+MarketplaceEnabled
+MarketplaceEnabledChannelTypes
+MarketplaceFeeRate
+MarketplaceSellerIncomeHoldSeconds
+MarketplaceMinFixedOrderQuota
+MarketplaceMaxFixedOrderQuota
+MarketplaceMaxSellerMultiplier
+MarketplaceMaxCredentialConcurrency
+MarketplaceCredentialEncryptionEnabled
+```
+
+`MarketplaceFeeRate` is the global transaction fee. It should be snapshotted onto every settlement row.
+
+`MarketplaceEnabledChannelTypes` should store existing `constant.ChannelType*` integer values. A channel type appearing in this list only means the marketplace may accept that type; the implementation must still have explicit validation and relay support for it.
+
+The API-key encryption secret should not be stored in options. It must come from environment or secret manager configuration.
+
+### Pricing Contract
+
+Marketplace pricing is:
+
+```text
+official_cost_quota = official model usage converted to platform quota
+buyer_charge = official_cost_quota * seller_multiplier
+platform_fee = buyer_charge * global_fee_rate
+seller_income = buyer_charge - platform_fee
+```
+
+The existing `ratio_setting`, `billing_setting`, `types.PriceData`, and `common.QuotaPerUnit` can be reused to obtain official model cost and unit conversion. The marketplace pricing helper must not accidentally apply the buyer's normal group ratio on top of seller multiplier. If an existing helper always includes group ratio, create a marketplace-specific helper that extracts official/base cost before buyer group pricing.
+
+Snapshots required on purchase and fill:
+
+- Price source: price map, ratio map, or tiered expression.
+- Price version or config hash.
+- Official/base price fields.
+- Seller multiplier.
+- Global fee rate.
+- Final buyer charge.
+
+### State Transitions
+
+Credential state is represented by multiple dimensions instead of one overloaded status:
+
+```text
+seller_status: active -> paused -> active
+health_status: untested -> healthy -> degraded -> failed -> healthy
+capacity_status: available -> busy -> exhausted -> available
+capacity_status: available -> expired
+risk_status: normal -> watching -> risk_paused -> normal
+```
+
+Eligibility rules:
+
+- Order-list display requires seller active, risk normal or watching, not expired, and supported models.
+- New fixed-route purchase additionally requires health healthy or degraded and capacity not exhausted.
+- Pool routing additionally requires current concurrency below limit.
+- Existing fixed-route call can proceed when the fixed order is valid and the credential is technically usable, unless risk is `risk_paused`.
+
+Fixed-route order state:
+
+```text
+active -> exhausted
+active -> expired
+active -> suspended
+suspended -> active
+suspended -> refunded
+```
+
+`expired` means unused quota is invalid and not refunded. `refunded` is only for operator or risk exception handling, not normal expiry.
+
+Settlement state:
+
+```text
+pending -> available -> withdrawn
+pending -> blocked -> available
+pending -> blocked -> reversed
+```
+
+`blocked` and `reversed` are operator/risk states. They should not exist in the normal happy path, but they are needed for abuse, upstream disputes, and reconciliation.
+
+### Transaction Boundaries
+
+Fixed-route purchase must be atomic:
+
+1. Lock buyer balance.
+2. Verify buyer has enough quota.
+3. Verify credential is eligible for new purchase.
+4. Deduct buyer quota into fixed-order escrow.
+5. Create fixed order with purchase snapshots.
+6. Write buyer-facing balance log.
+
+Fixed-route call settlement must be idempotent:
+
+1. Validate buyer token and fixed-order ownership.
+2. Lock fixed order and credential capacity.
+3. Reserve estimated fixed-order quota if pre-consume is required.
+4. Proxy through the encrypted seller credential.
+5. Calculate actual official cost and buyer charge.
+6. Adjust fixed-order remaining quota.
+7. Create fill record.
+8. Create settlement row with fee snapshot.
+9. Update credential stats.
+
+Pool call settlement must be idempotent:
+
+1. Validate buyer token.
+2. Select and lock a credential candidate.
+3. Reserve estimated buyer quota if pre-consume is required.
+4. Proxy through the encrypted seller credential.
+5. Calculate actual official cost and buyer charge.
+6. Adjust buyer quota.
+7. Create pool fill record.
+8. Create settlement row with fee snapshot.
+9. Update credential stats.
+
+All fill and settlement writes need a unique request id or idempotency key. Retried client requests and retry-after-upstream-success paths must not double-charge buyers or double-create seller income.
+
+### Pool Router
+
+The router should use a two-step process: hard filtering first, scoring second.
+
+Hard filters:
+
+- Marketplace enabled.
+- Channel type enabled for marketplace.
+- Model supported.
+- Seller active.
+- Risk not paused.
+- Credential not expired.
+- Credential not exhausted.
+- Current concurrency below limit.
+- Provider endpoint policy valid.
+
+Suggested score:
+
+```text
+score =
+  price_weight * normalized_low_multiplier +
+  latency_weight * normalized_low_latency +
+  success_weight * success_rate +
+  fairness_weight * seller_fairness_score -
+  load_penalty * current_concurrency_ratio
+```
+
+For MVP, fixed-route calls should have priority over pool calls when a credential is near its concurrency limit. This protects buyers who already prepaid fixed-route quota.
+
+### Background Jobs
+
+Required jobs:
+
+- Credential health check: test active credentials and update health status.
+- Credential expiry check: mark expired seller-limited keys and stop new sales/routing.
+- Fixed-order expiry check: mark expired orders and invalidate unused quota without refund.
+- Settlement release: move pending seller income to available after the hold period.
+- Stats aggregation: refresh success rate, latency, request counts, and failure counters.
+- Reconciliation: repair requests that succeeded upstream but failed before local billing completed.
+
+### UI Surfaces
+
+Seller:
+
+- Escrow key form: channel type, models, limit mode, time mode, multiplier, concurrency.
+- Seller credential list: masked key fingerprint, models, multiplier, health, active orders, pool usage, income.
+- Seller income page: pending, available, withdrawn, blocked.
+
+Buyer:
+
+- Order list: filters based on seller configuration and runtime status.
+- Fixed-order purchase modal: choose quota amount within global guardrails, show effective price snapshot.
+- Fixed-order list: remaining quota, expiry, status, bound credential health.
+- Pool page: model selection, optional filters, estimated effective price range.
+
+Admin:
+
+- Marketplace settings.
+- Enabled channel type allowlist.
+- Credential risk review.
+- Fixed-order review.
+- Fill and settlement audit.
+- Reconciliation queue.
+
+## Acceptance Criteria
+
+- A seller can escrow one supported channel-type API key and never see the plaintext key again.
+- The same escrowed key appears in order-list and pool candidates when eligible.
+- A buyer can buy fixed-route quota for part of a seller key without removing the key from the market.
+- Fixed-route usage deducts only that order's remaining quota.
+- Pool usage deducts the buyer's normal quota balance.
+- Other buyers' usage never reduces an existing fixed-route order.
+- Fixed-route unused quota expires without refund at order expiry.
+- Seller income is created only after successful usage.
+- Platform fee uses the global marketplace fee setting and is snapshotted per settlement.
+- Buyer-facing price equals official/base cost times seller multiplier.
+- Buyer-facing stats show success rate, not both success rate and error rate.
+- Raw seller API keys are encrypted at rest, masked in logs, and never returned by APIs.
+- Unsupported channel types are rejected even if they exist in the project's global channel constants.
+
 ## Security Requirements
 
 - Raw seller API keys must be encrypted at rest.
@@ -482,10 +710,9 @@ Do not place marketplace keys into the normal `channels`, `abilities`, or `auto`
 
 ## Open Decisions Before Implementation
 
-- Seller income hold period: default pending duration before income becomes available.
-- Pool routing policy: default balance between lower multiplier, lower latency, higher success rate, and fair seller distribution.
-- Concurrency priority: whether fixed-route calls receive priority over pool calls when a credential is near its concurrency limit.
-- Abuse limits: global minimum/maximum fixed-route purchase amount and per-buyer/per-seller rate limits.
+- Seller income hold period: exact default pending duration before income becomes available.
+- Pool routing weights: exact weight values for lower multiplier, lower latency, higher success rate, fair seller distribution, and load penalty.
+- Abuse limit values: global minimum/maximum fixed-route purchase amount and per-buyer/per-seller rate limits.
 
 ## MVP Phases
 
