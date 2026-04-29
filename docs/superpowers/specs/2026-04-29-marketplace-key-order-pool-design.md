@@ -12,7 +12,7 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 ## Goals
 
 - Let sellers escrow one AI API key and configure its sellable attributes once.
-- Automatically make eligible escrowed keys visible in the order list, and make unlimited-time eligible keys available to the order pool.
+- Automatically make eligible escrowed keys visible in both the order list and order pool.
 - Let buyers filter by seller-configured attributes such as model, limit mode, time mode, multiplier, latency, success rate, and health.
 - Keep fixed-route orders and pool routing separate at the buyer experience level while sharing the same seller credential state.
 - Charge buyers from platform-controlled balances or fixed-order quota, not by exposing seller keys.
@@ -31,8 +31,7 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 - Seller escrow configuration is a filter and pricing source, not a buyer-editable package template.
 - Fixed-route orders snapshot the purchase-time pricing, expiry, and quota terms.
 - Order-pool usage and other buyers' fixed-route purchases must not reduce or cancel an existing fixed-route order.
-- Seller credential quota exhaustion can stop new fixed-route purchases and order-pool routing, but it must not retroactively consume a fixed-route order's remaining quota.
-- Seller-limited-time credentials are excluded from order-pool routing and can only be sold through fixed-route orders.
+- Seller credential quota/time exhaustion can stop new fixed-route purchases and order-pool routing, but it must not retroactively consume a fixed-route order's remaining quota.
 - A fixed-route order can fail to serve only when its own quota/expiry is invalid, the bound credential is technically unavailable, or platform risk controls block it.
 - Seller edits after purchase affect new order-list display and pool routing; existing fixed-route orders keep their snapshots.
 - Seller pause stops new purchases and pool routing, but it should not stop already purchased fixed-route orders unless the key is technically unavailable or risk-paused.
@@ -40,8 +39,6 @@ Seller configuration is the source of buyer filtering and pricing. Buyers do not
 - Seller income is created from actual successful usage, not from unused fixed-route quota.
 - Fixed-route purchase affects seller credential state as sold exposure, not as inventory removal.
 - Successful fixed-route and pool calls affect seller credential usage state.
-- The order pool routes seller escrow credentials, not fixed-route orders.
-- Only seller escrow credentials with unlimited time mode can enter the order pool.
 
 ## Actors
 
@@ -72,8 +69,7 @@ After submission:
 2. The API key is encrypted and stored.
 3. The platform tests the key against selected channel type and model rules.
 4. A dynamic stats record is initialized.
-5. If healthy, the key becomes visible in the order list.
-6. If healthy and time mode is unlimited, the key is eligible for order pool routing.
+5. If healthy, the key becomes visible in the order list and eligible for order pool routing.
 
 The seller does not configure separate switches for order-list display or pool participation. Those surfaces are derived from the same escrow configuration and runtime status.
 
@@ -91,11 +87,9 @@ Quota mode:
 Time mode:
 
 - `unlimited` means no seller-declared marketplace expiry.
-- `unlimited` is required for order-pool participation.
 - `limited` means the credential has an `expires_at` market cutoff.
-- `limited` credentials can appear in the order list for fixed-route purchases, but they cannot enter the order pool.
 - New fixed-route orders snapshot an effective expiry at purchase time. The effective expiry cannot be later than the seller credential's `expires_at` when the seller time mode is limited.
-- Pool routing is never enabled for seller-limited-time credentials. If an unlimited-time credential is later changed to limited-time, it must be removed from pool routing immediately.
+- Pool routing stops once the seller credential expires.
 - Existing fixed-route orders expire at their own snapshotted `expires_at`.
 
 This keeps the user's "no inventory" rule intact while still letting order-list purchases and pool usage dynamically affect seller credential status, sorting, risk, and new-sale eligibility.
@@ -134,7 +128,7 @@ The buyer selects the purchased quota amount at purchase time. Seller-configured
 
 ### Order Pool
 
-The order pool is automatic routing. Buyers choose a marketplace model and optional filtering preferences. The router selects from eligible unlimited-time seller credentials using:
+The order pool is automatic routing. Buyers choose a marketplace model and optional filtering preferences. The router selects from eligible seller credentials using:
 
 - Model match.
 - Seller status.
@@ -142,7 +136,6 @@ The order pool is automatic routing. Buyers choose a marketplace model and optio
 - Risk status.
 - Capacity status.
 - Expiry status.
-- Time mode.
 - Seller limit status.
 - Current concurrency.
 - Multiplier.
@@ -214,7 +207,7 @@ Runtime state affects:
 
 Runtime state should not retroactively cancel valid fixed-route orders unless the key is technically unavailable or risk-paused.
 
-Seller-configured quota limits affect market availability for new purchases and pool routing. Seller-configured time limits affect new fixed-route purchase availability, but any seller-limited-time credential is excluded from pool routing. Existing fixed-route orders use their own snapshots and are not consumed by pool usage. If the seller key later becomes invalid, rate-limited, revoked, or blocked by risk controls, fixed-route calls may fail because the platform can no longer proxy through that key.
+Seller-configured quota and time limits affect market availability for new purchases and pool routing. Existing fixed-route orders use their own snapshots and are not consumed by pool usage. If the seller key later becomes invalid, rate-limited, revoked, or blocked by risk controls, fixed-route calls may fail because the platform can no longer proxy through that key.
 
 ## Pricing
 
@@ -608,7 +601,7 @@ Eligibility rules:
 
 - Order-list display requires seller active, risk normal or watching, not expired, and supported models.
 - New fixed-route purchase additionally requires health healthy or degraded and capacity not exhausted.
-- Pool routing additionally requires unlimited time mode and current concurrency below limit.
+- Pool routing additionally requires current concurrency below limit.
 - Existing fixed-route call can proceed when the fixed order is valid and the credential is technically usable, unless risk is `risk_paused`.
 
 Seller key replacement should be staged: the existing encrypted key remains serving until the replacement key passes validation for the same channel type, compatible models, and endpoint policy. A failed replacement must not break active fixed-route orders.
@@ -683,7 +676,6 @@ Hard filters:
 - Channel type enabled for marketplace.
 - Model supported.
 - Relay mode supported by the channel type for the marketplace endpoint.
-- Time mode is unlimited.
 - Seller active.
 - Risk not paused.
 - Credential not expired.
@@ -709,8 +701,7 @@ For MVP, fixed-route calls should have priority over pool calls when a credentia
 Required jobs:
 
 - Credential health check: test active credentials and update health status.
-- Credential expiry check: mark expired seller-limited keys and stop new fixed-route sales.
-- Pool eligibility check: remove any credential from pool candidates if its time mode is not unlimited.
+- Credential expiry check: mark expired seller-limited keys and stop new sales/routing.
 - Fixed-order expiry check: mark expired orders, persist expired quota, and invalidate unused quota without refund.
 - Settlement release: move pending seller income to available after the hold period.
 - Stats aggregation: refresh success rate, latency, request counts, and failure counters.
@@ -743,9 +734,7 @@ Admin:
 ## Acceptance Criteria
 
 - A seller can escrow one supported channel-type API key and never see the plaintext key again.
-- Eligible escrowed keys appear in the order list when healthy.
-- Only unlimited-time eligible escrowed keys appear in order-pool candidates.
-- Limited-time escrowed keys can be purchased from the order list but never enter the order pool.
+- The same escrowed key appears in order-list and pool candidates when eligible.
 - A buyer can buy fixed-route quota for part of a seller key without removing the key from the market.
 - Fixed-route usage deducts only that order's remaining quota.
 - Pool usage deducts the buyer's normal quota balance.
