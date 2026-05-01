@@ -95,6 +95,18 @@ POST /api/token_verification/tasks
 }
 ```
 
+接口受 `CriticalRateLimit` 保护，短时间内重复触发会被限流。
+
+常见错误响应：
+
+| 场景 | 返回 `message` |
+| --- | --- |
+| `token_id` 缺失或非正整数 | `请选择要检测的 Token` |
+| `token_id` 不属于当前用户 | `record not found` 类（来自 GORM） |
+| 命中限流 | 由限流中间件返回 |
+
+返回 HTTP 状态恒为 `200`，调用方需以 `success` 字段为准。
+
 ### 查询检测任务列表
 
 ```http
@@ -103,8 +115,10 @@ GET /api/token_verification/tasks
 
 支持项目通用分页参数：
 
-- `p`
-- `page_size`
+- `p`：页码，从 1 开始，默认 1
+- `page_size`：每页条数，默认 `ItemsPerPage`，**上限 100**，超过会被截断
+
+列表按任务 `id` 倒序返回，仅展示当前用户自己的任务。
 
 返回分页结构：
 
@@ -126,6 +140,10 @@ GET /api/token_verification/tasks
 ```http
 GET /api/token_verification/tasks/:id
 ```
+
+`:id` 为创建任务时返回的 `id`。仅可查询当前用户自己的任务，他人任务返回 `record not found`。
+
+任务在 `pending` 或 `running` 状态时，`results` 可能为空数组，`report` 为 `null`。仅 `success` 状态下才会有完整聚合报告。
 
 返回内容包含：
 
@@ -167,7 +185,15 @@ GET /api/token_verification/tasks/:id
 GET /api/token_verification/reports/:id
 ```
 
-`:id` 是检测任务 ID。
+`:id` 是检测任务 ID（即创建任务时返回的 `id`），不是独立的报告 ID。
+
+如果任务尚未完成或报告尚未生成，返回：
+
+```json
+{ "success": false, "message": "检测报告尚未生成" }
+```
+
+仅当任务 `status === "success"` 时才会有可用报告。如果只是想拿到任务最新状态 + 完整报告，建议使用「查询检测任务详情」接口轮询，本接口仅在"已知任务已完成、只想拿报告"时使用。
 
 返回示例：
 
@@ -272,6 +298,80 @@ GET /api/token_verification/reports/:id
 | `model_identity` | 模型身份一致性 |
 | `stream_support` | 流式输出能力 |
 | `json_stability` | JSON 输出稳定性 |
+
+### 前端调用示例
+
+下面是最小可用的浏览器调用片段，仅作参考，实际接入建议使用项目内 `web/src/helpers/api.js` 的 axios 实例以保持鉴权与拦截器一致。
+
+```js
+// 1. 创建检测任务
+const create = await fetch('/api/token_verification/tasks', {
+  method: 'POST',
+  credentials: 'include', // 必须，携带登录 cookie
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    token_id: 123,
+    models: ['gpt-4o-mini', 'gpt-4o'], // 可选,最多 10 个
+    providers: ['openai'],             // 可选,默认 ['openai']
+  }),
+}).then(r => r.json());
+
+if (!create.success) throw new Error(create.message);
+const taskId = create.data.id;
+
+// 2. 轮询任务详情直到结束
+async function pollTask() {
+  const res = await fetch(`/api/token_verification/tasks/${taskId}`, {
+    credentials: 'include',
+  }).then(r => r.json());
+  if (!res.success) throw new Error(res.message);
+
+  const { task, report } = res.data;
+  if (task.status === 'success') return { task, report };
+  if (task.status === 'failed') throw new Error(task.fail_reason || '检测失败');
+
+  await new Promise(r => setTimeout(r, 1500));
+  return pollTask();
+}
+
+const { task, report } = await pollTask();
+// 用 report.final_rating / report.dimensions / report.model_identity 渲染 UI
+```
+
+字段使用要点：
+
+- 创建任务时**只传 `token_id`，不传明文 Token Key**。明文 Token 由后端按 `token_id` + 当前用户 ID 自行查库。
+- `providers` 仅接受 `openai` 和 `anthropic`，其它值会被静默过滤；过滤后为空时回退为 `["openai"]`。
+- `models` 超过 10 个会截断；不传时按 Token 的 `ModelLimits` 自动取前 5 个，仍为空则回退为 `gpt-4o-mini`。
+- 轮询期间 `report` 字段可能为 `null`，渲染前需判空。
+
+### 轮询节奏与超时建议
+
+| 项 | 建议值 |
+| --- | --- |
+| 轮询间隔 | 1.5 ~ 2 秒一次 |
+| 前端兜底超时 | 3 分钟未完成提示用户超时 |
+| 后端硬超时 | 5 分钟（任务 ctx 上限），超时后任务会被标记 `failed` |
+
+任务一旦终止（`success` 或 `failed`），立即停止轮询。检测过程中后端会按 `provider × model × {availability, model_access, model_identity, stream_support, json_stability}` 的矩阵串行执行 curl 请求，模型越多耗时越长，UI 上建议提示"正在检测中，可能需要 1~3 分钟"。
+
+### 错误响应汇总
+
+所有接口在出错时 HTTP 状态仍为 `200`，需通过 `success === false` 判断。常见 `message` 文本：
+
+| 场景 | 来源接口 | `message` |
+| --- | --- | --- |
+| `token_id` 缺失或非正 | `POST /tasks` | `请选择要检测的 Token` |
+| token 不属于当前用户 | `POST /tasks`、`GET /tasks/:id`、`GET /reports/:id` | `record not found` |
+| 任务 ID 非法 | `GET /tasks/:id`、`GET /reports/:id` | `无效的检测任务ID` |
+| 任务尚未完成 | `GET /reports/:id` | `检测报告尚未生成` |
+| 命中创建任务限流 | `POST /tasks` | 由 `CriticalRateLimit` 中间件返回 |
+
+任务自身失败（已创建、但执行过程中报错）不会通过上面的接口错误抛出，而是在 `task.status === "failed"` + `task.fail_reason` 中体现，例如：
+
+- `token verifier base url is empty`：未配置 `TOKEN_VERIFIER_BASE_URL` 且系统 `ServerAddress` 为空。
+- `curl failed: <stderr>`：服务器执行 curl 出错（curl 不存在 / 网络异常等）。
+- DB 写入失败：极少见，通常表示后端存储异常。
 
 ## 内部 curl 验证方式
 
