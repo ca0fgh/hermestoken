@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -152,7 +151,7 @@ func loadTokenVerificationReportSummary(taskID int64) any {
 		return nil
 	}
 	var summary any
-	if err := json.Unmarshal([]byte(report.Summary), &summary); err != nil {
+	if err := common.UnmarshalJsonStr(report.Summary, &summary); err != nil {
 		return report.Summary
 	}
 	return summary

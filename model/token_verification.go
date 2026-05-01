@@ -1,10 +1,10 @@
 package model
 
 import (
-	"encoding/json"
 	"errors"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
 
@@ -32,7 +32,7 @@ type TokenVerificationTask struct {
 }
 
 func (t *TokenVerificationTask) SetModels(models []string) {
-	data, _ := json.Marshal(models)
+	data, _ := common.Marshal(models)
 	t.Models = string(data)
 }
 
@@ -41,14 +41,14 @@ func (t *TokenVerificationTask) GetModels() []string {
 		return nil
 	}
 	var models []string
-	if err := json.Unmarshal([]byte(t.Models), &models); err != nil {
+	if err := common.UnmarshalJsonStr(t.Models, &models); err != nil {
 		return nil
 	}
 	return models
 }
 
 func (t *TokenVerificationTask) SetProviders(providers []string) {
-	data, _ := json.Marshal(providers)
+	data, _ := common.Marshal(providers)
 	t.Providers = string(data)
 }
 
@@ -57,7 +57,7 @@ func (t *TokenVerificationTask) GetProviders() []string {
 		return nil
 	}
 	var providers []string
-	if err := json.Unmarshal([]byte(t.Providers), &providers); err != nil {
+	if err := common.UnmarshalJsonStr(t.Providers, &providers); err != nil {
 		return nil
 	}
 	return providers

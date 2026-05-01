@@ -2,7 +2,6 @@ package token_verifier
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -63,7 +62,7 @@ func RunTask(ctx context.Context, taskID int64) error {
 	}
 
 	report := BuildReport(results)
-	summaryBytes, _ := json.Marshal(report)
+	summaryBytes, _ := common.Marshal(report)
 	if err := model.UpsertTokenVerificationReport(&model.TokenVerificationReport{
 		TaskID:  taskID,
 		UserID:  task.UserID,
@@ -124,7 +123,7 @@ func (r Runner) checkModelsList(ctx context.Context, executor *CurlExecutor, pro
 		return httpFailedResult(CheckModelsList, "", resp.StatusCode, resp.Body, resp.LatencyMs)
 	}
 	var decoded map[string]any
-	_ = json.Unmarshal(resp.Body, &decoded)
+	_ = common.Unmarshal(resp.Body, &decoded)
 	return CheckResult{
 		CheckKey:  CheckModelsList,
 		Success:   true,
@@ -166,7 +165,7 @@ func (r Runner) checkChat(ctx context.Context, executor *CurlExecutor, modelName
 	if jsonMode {
 		body["response_format"] = map[string]string{"type": "json_object"}
 	}
-	payload, _ := json.Marshal(body)
+	payload, _ := common.Marshal(body)
 	headers := providerHeaders(ProviderOpenAI, r.Token)
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/chat/completions"), headers, payload)
@@ -177,7 +176,7 @@ func (r Runner) checkChat(ctx context.Context, executor *CurlExecutor, modelName
 		return httpFailedResult(checkKey, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(resp.Body, &decoded); err != nil {
+	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
 		return CheckResult{
 			CheckKey:  checkKey,
 			ModelName: modelName,
@@ -227,7 +226,7 @@ func (r Runner) checkAnthropicMessage(ctx context.Context, executor *CurlExecuto
 	if stream {
 		body["stream"] = true
 	}
-	payload, _ := json.Marshal(body)
+	payload, _ := common.Marshal(body)
 	headers := providerHeaders(ProviderAnthropic, r.Token)
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/messages"), headers, payload)
@@ -238,7 +237,7 @@ func (r Runner) checkAnthropicMessage(ctx context.Context, executor *CurlExecuto
 		return httpFailedResult(checkKey, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
 	}
 	var decoded map[string]any
-	if err := json.Unmarshal(resp.Body, &decoded); err != nil {
+	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
 		return CheckResult{
 			CheckKey:  checkKey,
 			ModelName: modelName,
@@ -289,7 +288,7 @@ func (r Runner) checkStream(ctx context.Context, executor *CurlExecutor, provide
 		"max_tokens": 64,
 		"stream":     true,
 	}
-	payload, _ := json.Marshal(body)
+	payload, _ := common.Marshal(body)
 	headers := providerHeaders(ProviderOpenAI, r.Token)
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/chat/completions"), headers, payload)
@@ -311,7 +310,7 @@ func (r Runner) checkAnthropicStream(ctx context.Context, executor *CurlExecutor
 			{"role": "user", "content": "Count from 1 to 20 separated by spaces."},
 		},
 	}
-	payload, _ := json.Marshal(body)
+	payload, _ := common.Marshal(body)
 	headers := providerHeaders(ProviderAnthropic, r.Token)
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/messages"), headers, payload)
@@ -600,7 +599,7 @@ func modelFamilyAndTier(provider string, modelName string) (string, int) {
 func toModelResults(taskID int64, results []CheckResult) []*model.TokenVerificationResult {
 	out := make([]*model.TokenVerificationResult, 0, len(results))
 	for _, result := range results {
-		rawBytes, _ := json.Marshal(result.Raw)
+		rawBytes, _ := common.Marshal(result.Raw)
 		out = append(out, &model.TokenVerificationResult{
 			TaskID:             taskID,
 			Provider:           result.Provider,
@@ -726,7 +725,7 @@ func httpFailedResult(checkKey CheckKey, modelName string, statusCode int, body 
 
 func extractErrorMessageFromBytes(body []byte) string {
 	var decoded map[string]any
-	if err := json.Unmarshal(body, &decoded); err != nil {
+	if err := common.Unmarshal(body, &decoded); err != nil {
 		return ""
 	}
 	return extractErrorMessage(decoded)
@@ -769,7 +768,7 @@ func extractErrorMessage(decoded map[string]any) string {
 			}
 		}
 	}
-	data, _ := json.Marshal(errValue)
+	data, _ := common.Marshal(errValue)
 	return string(data)
 }
 
