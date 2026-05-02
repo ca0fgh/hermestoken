@@ -2,6 +2,8 @@ package token_verifier
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -18,6 +20,9 @@ const (
 	defaultVerifierModel       = "gpt-4o-mini"
 	defaultAnthropicModel      = "claude-3-5-haiku-latest"
 	defaultVerifierHTTPTimeout = 40 * time.Second
+
+	reproducibilitySeed   = 42
+	reproducibilityPrompt = "Reply with this exact string and nothing else: STABLE_PING_9F3"
 )
 
 type Runner struct {
@@ -111,6 +116,7 @@ func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {
 			results = append(results, buildModelIdentityResult(provider, modelName, chatResult))
 			results = append(results, withProvider(r.checkStream(ctx, executor, provider, modelName), provider))
 			results = append(results, r.checkJSON(ctx, executor, provider, modelName))
+			results = append(results, r.checkReproducibility(ctx, executor, provider, modelName))
 		}
 	}
 	return results, nil
@@ -819,6 +825,154 @@ func ValidateBaseURL(rawURL string) error {
 		return errors.New("base url host is empty")
 	}
 	return nil
+}
+
+// checkReproducibility issues two identical seeded probes against the same model and
+// returns a CheckResult signalling whether the upstream produced the same response twice.
+// Anthropic is skipped (Messages API does not expose a `seed` parameter).
+func (r Runner) checkReproducibility(ctx context.Context, executor *CurlExecutor, provider string, modelName string) CheckResult {
+	if provider == ProviderAnthropic {
+		return CheckResult{
+			Provider:  provider,
+			CheckKey:  CheckReproducibility,
+			ModelName: modelName,
+			Skipped:   true,
+			Success:   true,
+			Score:     0,
+			ErrorCode: "skipped",
+			Message:   "Anthropic Messages API 不支持 seed 参数，跳过复现性检查",
+		}
+	}
+
+	fp1, hash1, err := r.runSeededProbe(ctx, executor, modelName)
+	if err != nil {
+		return failedResult(CheckReproducibility, modelName, err, 0)
+	}
+	fp2, hash2, err := r.runSeededProbe(ctx, executor, modelName)
+	if err != nil {
+		return failedResult(CheckReproducibility, modelName, err, 0)
+	}
+
+	consistent, method := decideReproducibility(fp1, fp2, hash1, hash2)
+	score := 100
+	message := "两次相同 seed/temperature=0 请求结果一致"
+	switch {
+	case consistent && method == ConsistencyMethodSystemFingerprint:
+		message = "两次请求 system_fingerprint 一致"
+	case consistent && method == ConsistencyMethodContentHash:
+		message = "system_fingerprint 缺失，但两次响应内容哈希一致"
+	case !consistent && method == ConsistencyMethodSystemFingerprintChanged:
+		score = 30
+		message = "两次请求 system_fingerprint 不一致，疑似路由或模型变更"
+	case !consistent && method == ConsistencyMethodContentDiverged:
+		score = 30
+		message = "两次响应内容不一致"
+	case !consistent && method == ConsistencyMethodInsufficientData:
+		score = 50
+		message = "复现性数据不足，无法判定（无 system_fingerprint 且响应为空）"
+	}
+
+	return CheckResult{
+		Provider:          provider,
+		CheckKey:          CheckReproducibility,
+		ModelName:         modelName,
+		Consistent:        consistent,
+		ConsistencyMethod: method,
+		Success:           consistent,
+		Score:             score,
+		Message:           message,
+		Raw: map[string]any{
+			"fingerprint_1":  fp1,
+			"fingerprint_2":  fp2,
+			"content_hash_1": hash1,
+			"content_hash_2": hash2,
+			"method":         method,
+			"prompt":         reproducibilityPrompt,
+			"seed":           reproducibilitySeed,
+		},
+	}
+}
+
+// runSeededProbe sends a single non-stream chat completion with temperature=0 and a fixed seed,
+// returning system_fingerprint (when present) and a sha256 hex of the assistant content.
+func (r Runner) runSeededProbe(ctx context.Context, executor *CurlExecutor, modelName string) (string, string, error) {
+	body := map[string]any{
+		"model": modelName,
+		"messages": []map[string]string{
+			{"role": "user", "content": reproducibilityPrompt},
+		},
+		"max_tokens":  32,
+		"temperature": 0,
+		"seed":        reproducibilitySeed,
+		"stream":      false,
+	}
+	payload, _ := common.Marshal(body)
+	headers := providerHeaders(ProviderOpenAI, r.Token)
+	headers["Content-Type"] = "application/json"
+	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/chat/completions"), headers, payload)
+	if err != nil {
+		return "", "", err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(string(resp.Body), 128))
+	}
+	var decoded map[string]any
+	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
+		return "", "", err
+	}
+	fingerprint, _ := decoded["system_fingerprint"].(string)
+	content := extractAssistantContent(decoded)
+	hash := ""
+	if strings.TrimSpace(content) != "" {
+		hash = sha256Hex(content)
+	}
+	return strings.TrimSpace(fingerprint), hash, nil
+}
+
+// decideReproducibility picks the strongest available consistency signal.
+// system_fingerprint matches/differences trump content hash because the fingerprint is
+// emitted by the upstream and is hard to spoof at a relay layer.
+func decideReproducibility(fp1, fp2, hash1, hash2 string) (bool, string) {
+	switch {
+	case fp1 != "" && fp2 != "" && fp1 == fp2:
+		return true, ConsistencyMethodSystemFingerprint
+	case fp1 != "" && fp2 != "" && fp1 != fp2:
+		return false, ConsistencyMethodSystemFingerprintChanged
+	case hash1 != "" && hash2 != "" && hash1 == hash2:
+		return true, ConsistencyMethodContentHash
+	case hash1 != "" && hash2 != "" && hash1 != hash2:
+		return false, ConsistencyMethodContentDiverged
+	default:
+		return false, ConsistencyMethodInsufficientData
+	}
+}
+
+func extractAssistantContent(decoded map[string]any) string {
+	if decoded == nil {
+		return ""
+	}
+	choices, ok := decoded["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		return ""
+	}
+	first, ok := choices[0].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if message, ok := first["message"].(map[string]any); ok {
+		if content, ok := message["content"].(string); ok {
+			return content
+		}
+	}
+	if content, ok := first["text"].(string); ok {
+		return content
+	}
+	return ""
+}
+
+func sha256Hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
 
 func init() {
