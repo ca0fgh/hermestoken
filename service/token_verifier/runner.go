@@ -64,9 +64,11 @@ func RunTask(ctx context.Context, taskID int64) error {
 	report := BuildReport(results)
 	summaryBytes, _ := common.Marshal(report)
 	if err := model.UpsertTokenVerificationReport(&model.TokenVerificationReport{
-		TaskID:  taskID,
-		UserID:  task.UserID,
-		Summary: string(summaryBytes),
+		TaskID:         taskID,
+		UserID:         task.UserID,
+		Summary:        string(summaryBytes),
+		ScoringVersion: report.ScoringVersion,
+		BaselineSource: report.BaselineSource,
 	}); err != nil {
 		_ = model.FailTokenVerificationTask(taskID, err.Error())
 		return err

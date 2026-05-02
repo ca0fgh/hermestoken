@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
 	cryptoPayment "github.com/QuantumNous/new-api/service/crypto_payment"
+	tokenVerifier "github.com/QuantumNous/new-api/service/token_verifier"
 	_ "github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -105,6 +106,9 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 	cryptoPayment.StartCryptoPaymentScanners()
+
+	// Artificial Analysis baseline auto-refresh (no-op when AA_API_KEY unset)
+	tokenVerifier.StartAABaselineAutoRefreshTask()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {

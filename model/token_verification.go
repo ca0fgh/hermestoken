@@ -85,11 +85,13 @@ type TokenVerificationResult struct {
 }
 
 type TokenVerificationReport struct {
-	ID        int64  `json:"id" gorm:"primaryKey"`
-	TaskID    int64  `json:"task_id" gorm:"uniqueIndex"`
-	UserID    int    `json:"user_id" gorm:"index"`
-	Summary   string `json:"summary" gorm:"type:json"`
-	CreatedAt int64  `json:"created_at" gorm:"index"`
+	ID             int64  `json:"id" gorm:"primaryKey"`
+	TaskID         int64  `json:"task_id" gorm:"uniqueIndex"`
+	UserID         int    `json:"user_id" gorm:"index"`
+	Summary        string `json:"summary" gorm:"type:json"`
+	ScoringVersion string `json:"scoring_version" gorm:"type:varchar(16);index"`
+	BaselineSource string `json:"baseline_source" gorm:"type:varchar(32)"`
+	CreatedAt      int64  `json:"created_at" gorm:"index"`
 }
 
 func CreateTokenVerificationTask(userID int, token *Token, models []string, providers []string) (*TokenVerificationTask, error) {
@@ -214,8 +216,10 @@ func UpsertTokenVerificationReport(report *TokenVerificationReport) error {
 	return DB.Model(&TokenVerificationReport{}).
 		Where("task_id = ?", report.TaskID).
 		Updates(map[string]any{
-			"summary":    report.Summary,
-			"created_at": report.CreatedAt,
+			"summary":         report.Summary,
+			"scoring_version": report.ScoringVersion,
+			"baseline_source": report.BaselineSource,
+			"created_at":      report.CreatedAt,
 		}).Error
 }
 

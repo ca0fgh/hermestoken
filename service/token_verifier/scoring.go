@@ -2,6 +2,29 @@ package token_verifier
 
 import "strings"
 
+const (
+	// ScoringVersionV2 marks reports produced after the AA-baseline-aware scoring landed.
+	// Earlier reports (no scoring_version field) are implicitly v1.
+	ScoringVersionV2 = "v2"
+
+	BaselineSourceAA       = "artificial_analysis"
+	BaselineSourceFallback = "fallback_absolute"
+	BaselineSourceMixed    = "mixed"
+	BaselineSourceNone     = "none"
+)
+
+type modelPerfKey struct {
+	provider string
+	model    string
+}
+
+type modelPerfData struct {
+	streamTTFTMs   int64
+	streamLatency  int64
+	streamTokensPS float64
+	hasStream      bool
+}
+
 func BuildReport(results []CheckResult) ReportSummary {
 	dimensions := map[string]int{
 		"availability":   0,
@@ -29,6 +52,7 @@ func BuildReport(results []CheckResult) ReportSummary {
 	risks := make([]string, 0)
 	checklist := make([]ChecklistItem, 0, len(results))
 	modelIdentity := make([]ModelIdentitySummary, 0)
+	perf := make(map[modelPerfKey]*modelPerfData)
 
 	for _, result := range results {
 		checklist = append(checklist, buildChecklistItem(result))
@@ -83,6 +107,14 @@ func BuildReport(results []CheckResult) ReportSummary {
 		case CheckStream:
 			if result.Success {
 				dimensions["stream"] = 10
+				key := modelPerfKey{provider: result.Provider, model: result.ModelName}
+				if _, ok := perf[key]; !ok {
+					perf[key] = &modelPerfData{}
+				}
+				perf[key].streamTTFTMs = result.TTFTMs
+				perf[key].streamLatency = result.LatencyMs
+				perf[key].streamTokensPS = result.TokensPS
+				perf[key].hasStream = true
 			}
 		case CheckJSON:
 			if result.Success {
@@ -112,21 +144,10 @@ func BuildReport(results []CheckResult) ReportSummary {
 	if totalChecks > 0 {
 		dimensions["stability"] = int(float64(successChecks) / float64(totalChecks) * 15)
 	}
-	if latencyCount > 0 {
-		avgLatency := latencyTotal / int64(latencyCount)
-		switch {
-		case avgLatency <= 1500:
-			dimensions["performance"] = 15
-		case avgLatency <= 3000:
-			dimensions["performance"] = 12
-		case avgLatency <= 6000:
-			dimensions["performance"] = 9
-		case avgLatency <= 10000:
-			dimensions["performance"] = 6
-		default:
-			dimensions["performance"] = 3
-		}
-	}
+
+	enrichModelsWithPerfAndBaseline(models, perf)
+	perfScore, baselineSource, perfMetrics := computePerformanceDimension(models, latencyTotal, latencyCount)
+	dimensions["performance"] = perfScore
 
 	score := 0
 	for _, value := range dimensions {
@@ -147,19 +168,24 @@ func BuildReport(results []CheckResult) ReportSummary {
 	if tokensPSCount > 0 {
 		metrics["avg_tokens_per_second"] = tokensPSTotal / float64(tokensPSCount)
 	}
+	for k, v := range perfMetrics {
+		metrics[k] = v
+	}
 
 	uniqueRisks := uniqueStrings(risks)
 	conclusion := conclusionForGrade(grade)
 	return ReportSummary{
-		Score:         score,
-		Grade:         grade,
-		Conclusion:    conclusion,
-		Dimensions:    dimensions,
-		Checklist:     checklist,
-		Models:        models,
-		ModelIdentity: modelIdentity,
-		Metrics:       metrics,
-		Risks:         uniqueRisks,
+		Score:          score,
+		Grade:          grade,
+		Conclusion:     conclusion,
+		Dimensions:     dimensions,
+		Checklist:      checklist,
+		Models:         models,
+		ModelIdentity:  modelIdentity,
+		Metrics:        metrics,
+		Risks:          uniqueRisks,
+		ScoringVersion: ScoringVersionV2,
+		BaselineSource: baselineSource,
 		FinalRating: FinalRating{
 			Score:      score,
 			Grade:      grade,
@@ -167,6 +193,165 @@ func BuildReport(results []CheckResult) ReportSummary {
 			Dimensions: dimensions,
 			Risks:      uniqueRisks,
 		},
+	}
+}
+
+// enrichModelsWithPerfAndBaseline mutates models in place: attaches stream-derived TTFT/TPS metrics
+// and looks up the AA baseline for each model when available.
+func enrichModelsWithPerfAndBaseline(models []ModelSummary, perf map[modelPerfKey]*modelPerfData) {
+	for i := range models {
+		key := modelPerfKey{provider: models[i].Provider, model: models[i].ModelName}
+		if data, ok := perf[key]; ok && data.hasStream {
+			models[i].StreamTTFTMs = data.streamTTFTMs
+			models[i].StreamTokensPS = data.streamTokensPS
+		}
+		baseline := LookupAABaseline(models[i].ModelName)
+		if baseline == nil {
+			continue
+		}
+		ref := &ModelBaselineRef{
+			Source:         BaselineSourceAA,
+			Slug:           baseline.Slug,
+			BaselineTTFTMs: int64(baseline.TTFTSec * 1000),
+			BaselineTPS:    baseline.OutputTPS,
+		}
+		if models[i].StreamTTFTMs > 0 && ref.BaselineTTFTMs > 0 {
+			ref.TTFTRatio = float64(models[i].StreamTTFTMs) / float64(ref.BaselineTTFTMs)
+		}
+		if models[i].StreamTokensPS > 0 && ref.BaselineTPS > 0 {
+			ref.TPSRatio = models[i].StreamTokensPS / ref.BaselineTPS
+		}
+		if ref.TTFTRatio == 0 && ref.TPSRatio == 0 {
+			ref.Note = "未采集到流式性能数据，基线仅供参考"
+		}
+		models[i].Baseline = ref
+	}
+}
+
+// computePerformanceDimension produces the performance dimension score in [0,15] plus a baseline source label.
+// When at least one tested model has an AA baseline AND stream perf data, scoring is ratio-based.
+// Otherwise it falls back to the legacy absolute-latency ladder.
+func computePerformanceDimension(models []ModelSummary, latencyTotal int64, latencyCount int) (int, string, map[string]float64) {
+	metrics := make(map[string]float64)
+	withBaseline := 0
+	withoutBaseline := 0
+	scoreSum := 0.0
+	ttftRatioSum := 0.0
+	ttftRatioCount := 0
+	tpsRatioSum := 0.0
+	tpsRatioCount := 0
+
+	for _, m := range models {
+		if m.Baseline == nil || m.Baseline.Source != BaselineSourceAA {
+			if m.LatencyMs > 0 || m.StreamTTFTMs > 0 {
+				withoutBaseline++
+			}
+			continue
+		}
+		if m.Baseline.TTFTRatio == 0 && m.Baseline.TPSRatio == 0 {
+			withoutBaseline++
+			continue
+		}
+		withBaseline++
+		scoreSum += scorePerModelAgainstBaseline(m.Baseline)
+		if m.Baseline.TTFTRatio > 0 {
+			ttftRatioSum += m.Baseline.TTFTRatio
+			ttftRatioCount++
+		}
+		if m.Baseline.TPSRatio > 0 {
+			tpsRatioSum += m.Baseline.TPSRatio
+			tpsRatioCount++
+		}
+	}
+
+	if ttftRatioCount > 0 {
+		metrics["aa_ttft_ratio_avg"] = ttftRatioSum / float64(ttftRatioCount)
+	}
+	if tpsRatioCount > 0 {
+		metrics["aa_tps_ratio_avg"] = tpsRatioSum / float64(tpsRatioCount)
+	}
+
+	if withBaseline > 0 {
+		avg := scoreSum / float64(withBaseline)
+		score := int(avg + 0.5)
+		if score > 15 {
+			score = 15
+		}
+		if score < 0 {
+			score = 0
+		}
+		source := BaselineSourceAA
+		if withoutBaseline > 0 {
+			source = BaselineSourceMixed
+		}
+		return score, source, metrics
+	}
+
+	if latencyCount == 0 {
+		return 0, BaselineSourceNone, metrics
+	}
+	avgLatency := latencyTotal / int64(latencyCount)
+	return ladderPerformanceScore(avgLatency), BaselineSourceFallback, metrics
+}
+
+// scorePerModelAgainstBaseline maps TTFT and TPS ratios to a per-model score in [0,15].
+// TTFT is weighted equally with TPS (7.5 each).
+func scorePerModelAgainstBaseline(ref *ModelBaselineRef) float64 {
+	return ttftSubScore(ref.TTFTRatio) + tpsSubScore(ref.TPSRatio)
+}
+
+func ttftSubScore(ratio float64) float64 {
+	if ratio <= 0 {
+		return 0
+	}
+	switch {
+	case ratio <= 1.0:
+		return 7.5
+	case ratio <= 1.15:
+		return 6.5
+	case ratio <= 1.5:
+		return 5.0
+	case ratio <= 2.0:
+		return 3.5
+	case ratio <= 3.0:
+		return 2.0
+	default:
+		return 1.0
+	}
+}
+
+func tpsSubScore(ratio float64) float64 {
+	if ratio <= 0 {
+		return 0
+	}
+	switch {
+	case ratio >= 1.0:
+		return 7.5
+	case ratio >= 0.85:
+		return 6.5
+	case ratio >= 0.7:
+		return 5.0
+	case ratio >= 0.5:
+		return 3.5
+	case ratio >= 0.3:
+		return 2.0
+	default:
+		return 1.0
+	}
+}
+
+func ladderPerformanceScore(avgLatency int64) int {
+	switch {
+	case avgLatency <= 1500:
+		return 15
+	case avgLatency <= 3000:
+		return 12
+	case avgLatency <= 6000:
+		return 9
+	case avgLatency <= 10000:
+		return 6
+	default:
+		return 3
 	}
 }
 
