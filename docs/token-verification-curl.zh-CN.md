@@ -741,6 +741,18 @@ AA 测试机在 GCP us-central1，国内/香港部署的网关测出的 TTFT 会
 2. 记录每个模型的 `aa_ttft_ratio_avg`，得到本地"网关固有偏移"基准。
 3. 后续任何 token 的 `ttft_ratio` 都应该和该基准在 ±15% 内；显著高出说明上游有问题，不是基线偏差。
 
+仓库提供了一键校准脚本 `scripts/calibrate-aa-baseline.sh`，需 `curl`、`jq`、`awk`。用法：
+
+```bash
+scripts/calibrate-aa-baseline.sh \
+  --gateway https://api.example.com \
+  --token-id 42 \
+  --access-token <user_access_token> \
+  --user-id 7
+```
+
+`access_token` 从 `GET /api/user/token` 获取；`user-id` 即当前登录用户的数字 id。脚本会创建一次校验任务、轮询完成、按模型打印 TTFT/TPS 实测/基线/比值，并给出该网关 region 推荐的"正常区间"和"异常告警"阈值。脚本退出码：`0` 校准成功，`1` 调用失败，`2` 命中 fallback（基线不可用）。
+
 ### 健康检查（手工）
 
 AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=<n>` 确认。如果连续多个刷新周期没看到这条，需检查：
