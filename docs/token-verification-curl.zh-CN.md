@@ -26,7 +26,13 @@
   - `system_fingerprint` 由上游模型提供商生成，中转站做模型替换时几乎无法伪造一致 fingerprint。
   - Anthropic Messages API 不支持 `seed`，自动跳过，不影响该 provider 评分。
 
-要骗过整条链需要：响应 model 名 ✓ + `system_fingerprint` 一致 ✓ + 响应内容字节级一致 —— 中转站做不到这三件齐活。
+- **Layer C — 工具调用协议指纹**（`tool_call_protocol` check）：
+  - 对每个被测模型发一次带零参数 `get_current_time` 工具的 chat completion，按请求 provider 的 schema 规范构造请求体（OpenAI 用 `tools[{type:function,function:{...}}]`、Anthropic 用 `tools[{name, input_schema}]`）。
+  - 解析响应：识别 `tool_calls[]` / `finish_reason=tool_calls`（OpenAI 信号）vs `content[].type=tool_use` / `stop_reason=tool_use`（Anthropic 信号）。
+  - 跨家族替换几乎必然暴露——OpenAI 和 Anthropic 的工具调用协议字段位置、命名、stop 语义全部不同；中转站要伪造一致 schema 需要整段重写响应 JSON。
+  - 模型未调用工具（如某些老模型不支持 tool-calling）时结果为 `inconclusive`，不计入稳定性也不入风险。
+
+要骗过整条链需要：响应 model 名 ✓ + `system_fingerprint` 一致 ✓ + 响应内容字节级一致 ✓ + 工具调用 schema 与 provider 一致 —— 中转站做不到这四件齐活。
 
 ## 支持协议
 
@@ -307,6 +313,7 @@ GET /api/token_verification/reports/:id
 | `stream_support` | 流式输出能力 |
 | `json_stability` | JSON 输出稳定性 |
 | `reproducibility` | 复现性指纹（同 seed/temperature=0 两次请求是否得到相同响应） |
+| `tool_call_protocol` | 工具调用协议指纹（响应是否符合请求 provider 的 tool-call schema） |
 
 ### 前端调用示例
 
@@ -483,6 +490,7 @@ curl -sS --no-buffer --max-time 40 \
 | `stream_support` | 流式输出能力 | 验证 SSE `data:` 流是否有数据块 |
 | `json_stability` | JSON 输出稳定性 | 要求模型返回 JSON 对象 |
 | `reproducibility` | 复现性指纹 | 同 seed/temperature=0 两次请求；优先比对 `system_fingerprint`，其次比对响应内容哈希 |
+| `tool_call_protocol` | 工具调用协议指纹 | 用 `get_current_time` 工具触发 tool-call，比对响应 schema 家族是否符合请求 provider |
 
 每个检查项返回：
 
@@ -578,7 +586,7 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
   "score": 88,
   "grade": "A",
   "conclusion": "稳定可用，适合日常调用",
-  "scoring_version": "v3",
+  "scoring_version": "v4",
   "baseline_source": "artificial_analysis",
   "dimensions": {
     "availability": 20,
@@ -636,6 +644,26 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
       "message": "Anthropic Messages API 不支持 seed 参数，跳过复现性检查"
     }
   ],
+  "tool_calls": [
+    {
+      "provider": "openai",
+      "model_name": "gpt-4o-mini",
+      "expected_family": "openai",
+      "detected_family": "openai",
+      "schema_matches": true,
+      "inconclusive": false,
+      "message": "工具调用 schema 与请求 provider 一致"
+    },
+    {
+      "provider": "anthropic",
+      "model_name": "claude-3-5-haiku-latest",
+      "expected_family": "anthropic",
+      "detected_family": "none",
+      "schema_matches": false,
+      "inconclusive": true,
+      "message": "模型未调用工具，无法判定 schema 家族（结果不计入稳定性）"
+    }
+  ],
   "metrics": {
     "avg_latency_ms": 1120.5,
     "avg_ttft_ms": 450,
@@ -658,7 +686,7 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `scoring_version` | string | 评分算法版本。历史无该字段的报告隐含为 `"v1"`；`"v2"` 引入 AA 基线；`"v3"` 加入复现性指纹对 stability/risks 的影响 |
+| `scoring_version` | string | 评分算法版本。历史无该字段的报告隐含为 `"v1"`；`"v2"` 引入 AA 基线；`"v3"` 加入复现性指纹；`"v4"` 加入工具调用协议指纹 |
 | `baseline_source` | string | `artificial_analysis`（全部模型命中 AA 基线）/ `mixed`（部分命中）/ `fallback_absolute`（无命中，回退绝对阶梯）/ `none`（无任何性能数据） |
 | `models[].stream_ttft_ms` | int | 流式检查测得的首 token 时间，毫秒 |
 | `models[].stream_tokens_ps` | float | 流式检查估算的 tokens/s |
@@ -671,6 +699,11 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
 | `reproducibility[].consistent` | bool | 两次相同 seed/temp=0 请求是否得到一致响应 |
 | `reproducibility[].method` | string | 一致性判定方法：`system_fingerprint` / `system_fingerprint_changed` / `content_hash` / `content_diverged` / `insufficient_data` |
 | `reproducibility[].skipped` | bool | 该 provider 不支持 seed（Anthropic）时为 `true`，本条不参与稳定性评分 |
+| `tool_calls[]` | array | 每个被测模型一条，记录工具调用协议指纹检查结果 |
+| `tool_calls[].expected_family` | string | 按请求 provider 推算应得的 schema 家族：`openai` / `anthropic` |
+| `tool_calls[].detected_family` | string | 实测响应识别到的 schema 家族：`openai` / `anthropic` / `ambiguous` / `none` / `unknown` |
+| `tool_calls[].schema_matches` | bool | `expected_family == detected_family` 时为 `true` |
+| `tool_calls[].inconclusive` | bool | `detected_family` 为 `none` 或 `unknown` 时为 `true`，本条不参与稳定性评分 |
 
 `scoring_version` 同时落到 `token_verification_reports` 表的独立列，方便后续按版本筛选历史任务做趋势分析。
 
@@ -851,6 +884,98 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 - 每被测的 OpenAI 系模型多 2 次 chat completion 调用（`max_tokens=32`，token 消耗极少）
 - 单模型增加耗时约 1–3 秒
 - Anthropic 模型零额外开销
+
+## 工具调用协议指纹（tool_call_protocol）
+
+`tool_call_protocol` 是模型身份判定的**第三层证据**，专门捕捉跨家族模型替换。OpenAI 与 Anthropic 的 tool-call 协议字段位置、命名、stop 语义完全不同，相互替换时几乎不可能伪造一致 schema。
+
+### 检测原理
+
+每个被测模型发一次 chat completion，按请求 provider 的 schema 规范定义一个零参数 `get_current_time` 工具：
+
+**OpenAI 请求（`POST /v1/chat/completions`）**：
+
+```jsonc
+{
+  "model": "<被测模型>",
+  "max_tokens": 64,
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "get_current_time",
+      "description": "Returns the current ISO timestamp in UTC.",
+      "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+  }],
+  "tool_choice": "auto",
+  "messages": [{"role": "user", "content": "Use the get_current_time tool to look up the current UTC ISO timestamp, then reply with just the timestamp."}]
+}
+```
+
+**Anthropic 请求（`POST /v1/messages`）**：
+
+```jsonc
+{
+  "model": "<被测模型>",
+  "max_tokens": 64,
+  "tools": [{
+    "name": "get_current_time",
+    "description": "Returns the current ISO timestamp in UTC.",
+    "input_schema": {"type": "object", "properties": {}, "required": []}
+  }],
+  "messages": [{"role": "user", "content": "Use the get_current_time tool to look up the current UTC ISO timestamp, then reply with just the timestamp."}]
+}
+```
+
+### Schema 家族识别
+
+| 家族 | 触发信号（任一命中即归类） |
+| --- | --- |
+| `openai` | `choices[0].message.tool_calls[]` 非空 **或** `choices[0].finish_reason == "tool_calls"` |
+| `anthropic` | 任意 `content[*].type == "tool_use"` **或** `stop_reason == "tool_use"` |
+| `ambiguous` | 上述两类信号同时出现（中转层混合） |
+| `none` | 响应外层是 OpenAI/Anthropic 形态但模型未触发 tool（返回纯文本） |
+| `unknown` | 响应整体不像任一家族 |
+
+### 评分映射
+
+| `detected_family` 与 `expected_family` 关系 | `success` | `skipped` | `score` | 进入 `risks`？ |
+| --- | --- | --- | --- | --- |
+| 一致（如 openai-openai） | true | false | 100 | 否 |
+| 跨家族不一致（openai-anthropic 或反之） | **false** | false | 0 | **是**："工具调用响应 schema 与请求 provider 不一致，疑似跨家族模型替换" |
+| `ambiguous` | false | false | 30 | 否（视为异常但不能直接判替换） |
+| `none`（模型未调用工具） | true | **true** | 0 | 否（不计入 stability 分母） |
+| `unknown` | true | true | 0 | 否 |
+
+### 信号强度对比
+
+| 检测 | 中转站伪造难度 |
+| --- | --- |
+| `model_identity`（响应 model 字段） | 低 — 改一个字符串 |
+| `reproducibility` 内容哈希 | 中 — 需缓存第一次响应 |
+| `reproducibility` `system_fingerprint` | 高 — fingerprint 由上游真模型生成 |
+| `tool_call_protocol` 跨家族判定 | **极高** — 需要逐字段重写整个工具调用 schema 还要 stop 语义自洽 |
+
+### 跳过 / 不计分场景
+
+- **模型不支持 tool-calling**（如老的 gpt-3.5-turbo-0301、claude 2 系列）：上游通常返回 HTTP 400 + 错误信息 "tools not supported"，本检查标 `success=false` 并入失败检查（同其它 check 处理）
+- **模型支持但拒绝调用**：detected = `none`，标 `skipped=true`，**不计入 stability 分母**
+- **响应解析失败**：标 `success=false`，错误进 `risks`
+
+### 评分影响
+
+`scoring_version=v4` 中本检查通过两个间接路径影响总分：
+
+1. **stability 维度**：成功的 tool-call 检查给 stability 加分；失败的扣分；skipped/unknown 不参与。
+2. **risks**：跨家族不一致时，自动追加 `"工具调用响应 schema 与请求 provider 不一致，疑似跨家族模型替换"` 风险条目。
+
+未来若实测发现误报率足够低，可把跨家族失败信号直接折入 `model_identity` 的 `identity_confidence`，触发 `suspected_downgrade=true`。
+
+### 成本
+
+- 每个被测模型多 1 次 chat completion 调用（`max_tokens=64`）
+- 单模型增加耗时约 1–2 秒
+- Anthropic 模型同样收费、同样耗时（不像 reproducibility 检查跳过它）
 
 ## Prometheus 指标（observability）
 

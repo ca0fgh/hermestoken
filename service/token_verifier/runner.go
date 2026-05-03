@@ -248,6 +248,7 @@ func (r Runner) runModelChecks(ctx context.Context, executor *CurlExecutor, job 
 		withProvider(r.checkStream(ctx, executor, job.provider, job.model), job.provider),
 		r.checkJSON(ctx, executor, job.provider, job.model),
 		r.checkReproducibility(ctx, executor, job.provider, job.model),
+		r.checkToolCall(ctx, executor, job.provider, job.model),
 	)
 	return out
 }
