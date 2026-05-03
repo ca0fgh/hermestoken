@@ -566,20 +566,13 @@ func modelAliasMatches(claimed string, observed string) bool {
 	return false
 }
 
+// modelFamilyAndTier classifies a model name into a family + ordinal tier.
+// Name-based detection takes precedence so cross-family substitutions (e.g.
+// anthropic provider returning a gpt-4o-mini) are correctly recognized as
+// different families. Provider is only used as a tiebreaker for unknown names.
 func modelFamilyAndTier(provider string, modelName string) (string, int) {
 	value := canonicalModelName(modelName)
-	if provider == ProviderAnthropic || strings.HasPrefix(value, "claude-") {
-		switch {
-		case strings.Contains(value, "opus"):
-			return "claude", 40
-		case strings.Contains(value, "sonnet"):
-			return "claude", 30
-		case strings.Contains(value, "haiku"):
-			return "claude", 20
-		default:
-			return "claude", 10
-		}
-	}
+
 	switch {
 	case strings.Contains(value, "gpt-5"):
 		return "openai", 50
@@ -599,9 +592,36 @@ func modelFamilyAndTier(provider string, modelName string) (string, int) {
 		return "openai", 36
 	case strings.Contains(value, "gpt-3.5"):
 		return "openai", 15
-	default:
-		return "", 0
+	case strings.HasPrefix(value, "chatgpt-"):
+		return "openai", 30
 	}
+
+	if strings.HasPrefix(value, "claude-") {
+		switch {
+		case strings.Contains(value, "opus"):
+			return "claude", 40
+		case strings.Contains(value, "sonnet"):
+			return "claude", 30
+		case strings.Contains(value, "haiku"):
+			return "claude", 20
+		default:
+			return "claude", 10
+		}
+	}
+
+	if provider == ProviderAnthropic {
+		switch {
+		case strings.Contains(value, "opus"):
+			return "claude", 40
+		case strings.Contains(value, "sonnet"):
+			return "claude", 30
+		case strings.Contains(value, "haiku"):
+			return "claude", 20
+		default:
+			return "claude", 10
+		}
+	}
+	return "", 0
 }
 
 func toModelResults(taskID int64, results []CheckResult) []*model.TokenVerificationResult {
