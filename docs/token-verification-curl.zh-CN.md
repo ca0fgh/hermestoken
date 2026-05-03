@@ -252,7 +252,7 @@ GET /api/token_verification/reports/:id
 
 - 浏览器前端使用当前登录态即可。
 - 请求需要携带 cookie/session。
-- 如果使用用户 access token 调接口，需要额外带 `Authorization` 和 `New-Api-User`，遵循项目现有用户 API 鉴权规则。
+- 如果使用用户 access token 调接口，需要额外带 `Authorization` 和 `HermesToken-User`，遵循项目现有用户 API 鉴权规则。
 
 任务状态：
 

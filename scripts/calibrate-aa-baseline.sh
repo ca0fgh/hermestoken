@@ -85,7 +85,7 @@ echo "    providers: $PROVIDERS"
 
 create_resp=$(curl -sS -X POST "$GATEWAY/api/token_verification/tasks" \
   -H "Authorization: $ACCESS_TOKEN" \
-  -H "New-Api-User: $USER_ID" \
+  -H "HermesToken-User: $USER_ID" \
   -H "Content-Type: application/json" \
   -d "$body")
 
@@ -101,7 +101,7 @@ detail=""
 while :; do
   detail=$(curl -sS "$GATEWAY/api/token_verification/tasks/$task_id" \
     -H "Authorization: $ACCESS_TOKEN" \
-    -H "New-Api-User: $USER_ID")
+    -H "HermesToken-User: $USER_ID")
   if [[ "$(jq -r '.success' <<<"$detail")" != "true" ]]; then
     echo "Poll failed: $(jq -r '.message // "unknown"' <<<"$detail")" >&2
     exit 1
