@@ -34,6 +34,13 @@ type Runner struct {
 }
 
 func RunTask(ctx context.Context, taskID int64) error {
+	startedAt := time.Now()
+	var report *ReportSummary
+	var finalStatus = "failed"
+	defer func() {
+		observeTaskCompleted(finalStatus, time.Since(startedAt), report)
+	}()
+
 	task, err := model.GetTokenVerificationTaskByID(taskID)
 	if err != nil {
 		return err
@@ -66,19 +73,24 @@ func RunTask(ctx context.Context, taskID int64) error {
 		return err
 	}
 
-	report := BuildReport(results)
-	summaryBytes, _ := common.Marshal(report)
+	built := BuildReport(results)
+	report = &built
+	summaryBytes, _ := common.Marshal(built)
 	if err := model.UpsertTokenVerificationReport(&model.TokenVerificationReport{
 		TaskID:         taskID,
 		UserID:         task.UserID,
 		Summary:        string(summaryBytes),
-		ScoringVersion: report.ScoringVersion,
-		BaselineSource: report.BaselineSource,
+		ScoringVersion: built.ScoringVersion,
+		BaselineSource: built.BaselineSource,
 	}); err != nil {
 		_ = model.FailTokenVerificationTask(taskID, err.Error())
 		return err
 	}
-	return model.CompleteTokenVerificationTask(taskID, report.Score, report.Grade)
+	if err := model.CompleteTokenVerificationTask(taskID, built.Score, built.Grade); err != nil {
+		return err
+	}
+	finalStatus = "success"
+	return nil
 }
 
 func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {

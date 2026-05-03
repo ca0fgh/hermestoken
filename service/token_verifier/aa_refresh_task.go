@@ -61,11 +61,14 @@ func runAABaselineRefreshOnce() {
 	snap, err := FetchAABaseline(ctx)
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("AA baseline refresh failed: %v", err))
+		observeAARefresh("failed")
 		return
 	}
 	if err := StoreAABaselineSnapshot(snap); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("AA baseline store failed: %v", err))
+		observeAARefresh("failed")
 		return
 	}
 	logger.LogInfo(ctx, fmt.Sprintf("AA baseline refreshed: models=%d", len(snap.Models)))
+	observeAARefresh("success")
 }

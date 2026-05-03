@@ -1,24 +1,32 @@
 # Token 质量检测：curl 黑盒验证方案
 
-本文档描述 HermesToken 的 Token 质量检测 MVP。当前版本只支持 OpenAI 兼容协议和 Anthropic 兼容协议，检测方式为服务端执行 curl 命令，对本机 `/v1` 中转接口做真实黑盒请求。
+本文档描述 HermesToken 的 Token 质量检测系统。当前支持 OpenAI 兼容协议和 Anthropic 兼容协议；检测方式为服务端执行 curl 命令，对本机 `/v1` 中转接口做真实黑盒请求；评分锚定到 [Artificial Analysis](https://artificialanalysis.ai/) 公开 P50；模型身份通过响应字段 + `system_fingerprint` 双层证据校验。
+
+> 系统由三层校准互补保证质量：**Layer-1**（`go test TestCalibrationMatrix`）防算法回归；**Layer-2**（`scripts/run-calibration-e2e.sh`）防部署漂移；**Layer-3**（Prometheus 指标）防长尾异常。详见末尾「Prometheus 指标 → 与三层校准的关系」。
 
 ## 目标
 
 检测模块要回答三个问题：
 
 1. Token 是否真实可用。
-2. Token 是否能调用用户预期的模型。
+2. Token 是否能调用用户预期的模型，并验证不被中转站偷换为低档模型。
 3. Token 的基础质量如何，包括模型访问、流式能力、JSON 输出、延迟、首字节时间和输出速度。
 
-当前版本不做模型身份的强证明。黑盒 API 无法 100% 证明模型身份，只能通过协议一致性、响应模型名、能力边界和性能指纹给出风险判断。
+黑盒 API 无法 100% 证明模型身份，但通过以下两层证据组合可显著提升中转站伪造成本：
 
-当前已实现轻量模型身份检测：
+- **Layer A — 响应模型字段一致性**（`model_identity` check）：
+  - 从 `model_access` 的真实响应里读取 `observed_model`，与请求的 `claimed_model` 做一致性判断。
+  - 对官方别名、日期版本、同系列同档位做宽松匹配。
+  - 响应模型明显低于声明模型档位时标记 `suspected_downgrade=true`。
+  - 输出 `identity_confidence` 并纳入评分。
+  - 信号特点：成本低，但中转站可任意改写响应 JSON 的 `model` 字段（伪造难度低）。
 
-- 从 `model_access` 的真实响应里读取 `observed_model`。
-- 将用户请求的 `claimed_model` 与 `observed_model` 做一致性判断。
-- 对官方别名、日期版本、同系列同档位做宽松匹配。
-- 如果响应模型明显低于声明模型档位，标记 `suspected_downgrade=true`。
-- 输出 `identity_confidence`，并纳入最终评分。
+- **Layer B — Seeded probe 复现性指纹**（`reproducibility` check）：
+  - 对每个被测 OpenAI 系模型发两次 `temperature=0 + seed=42` 请求，比对 `system_fingerprint`（强信号）或响应内容哈希（弱信号）。
+  - `system_fingerprint` 由上游模型提供商生成，中转站做模型替换时几乎无法伪造一致 fingerprint。
+  - Anthropic Messages API 不支持 `seed`，自动跳过，不影响该 provider 评分。
+
+要骗过整条链需要：响应 model 名 ✓ + `system_fingerprint` 一致 ✓ + 响应内容字节级一致 —— 中转站做不到这三件齐活。
 
 ## 支持协议
 
@@ -696,15 +704,15 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
 
 ## 真实模型身份验证后续方案
 
-后续要进一步判断“是否为预期模型”，建议新增：
+已落地的两层身份证据见上文「目标」一节。下一阶段可继续叠加更难伪造的信号：
 
-- `behavior_fingerprint_score`：隐藏题库行为指纹得分。
-- `official_baseline_similarity`：与官方基准输出的相似度。
-- `long_context_score`：长上下文能力得分。
-- `tool_call_score`：工具调用协议稳定性得分。
-- `multi_period_consistency`：多时段复测一致性。
+- `behavior_fingerprint_score`：**未实现**——隐藏题库行为指纹得分（特定 prompt 引出模型特定行为）。
+- `official_baseline_similarity`：**部分实现**——通过 Artificial Analysis 基线接入实现了**性能指标**（TTFT / 输出速度）的 P50 对照（详见「Artificial Analysis 基线接入」章节），但**未实现**输出文本相似度对照（需要官方权威输出参考集）。
+- `long_context_score`：**未实现**——长上下文 needle-in-haystack 探针得分。
+- `tool_call_score`：**未实现**——工具调用协议字段顺序与命名稳定性得分（跨家族转换时几乎必崩，是强指纹）。
+- `multi_period_consistency`：**部分实现**——layer-2 e2e 校准矩阵（`scripts/run-calibration-e2e.sh`）支持每日 cron 跑同一组场景产出趋势数据，但还未做基于多次结果的方差告警。
 
-下一阶段可加入隐藏题库、官方基准输出对照、长上下文探针、工具调用探针和多时段复测。
+按"伪造成本"排序，下一个最值得做的是 **`tool_call_score`**：工具调用 schema 是上游协议层产物，中转站做模型替换时跨家族 finish_reason / tool_use_id 命名差异几乎必然暴露。
 
 ## Artificial Analysis 基线接入
 
@@ -843,3 +851,121 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 - 每被测的 OpenAI 系模型多 2 次 chat completion 调用（`max_tokens=32`，token 消耗极少）
 - 单模型增加耗时约 1–3 秒
 - Anthropic 模型零额外开销
+
+## Prometheus 指标（observability）
+
+Token 校验子系统通过 Prometheus 标准 exposition 格式暴露关键指标，用于做趋势分析、SLO 监控和异常告警。
+
+### 端点
+
+```
+GET /api/performance/metrics
+```
+
+复用 `performance` 路由组，**鉴权使用 `RootAuth()`**。Prometheus job 配置时需要带 admin user access token 和 `HermesToken-User` header（与项目其他 admin API 一致）。
+
+示例 `prometheus.yml`：
+
+```yaml
+scrape_configs:
+  - job_name: hermestoken
+    metrics_path: /api/performance/metrics
+    scheme: https
+    static_configs:
+      - targets: ['gateway.example.com']
+    authorization:
+      type: Bearer
+      credentials: <ADMIN_ACCESS_TOKEN>
+    params:
+      _: []
+    # HermesToken-User 通过 relabel 注入
+    relabel_configs:
+      - target_label: __param_x   # placeholder
+```
+
+由于 `HermesToken-User` 是 HermesToken 自定义 header 不在 Prometheus 标准 scrape 选项里，建议用一个**反向代理**（nginx/traefik）在前面注入这个 header；或者部署一个内部 sidecar 把 `/metrics` 转发出来不带认证（仅在内网 access 受控时可行）。
+
+### 指标列表
+
+所有指标以 `hermestoken_token_verification_` 为前缀。
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `tasks_total` | Counter | `status` (`success` / `failed`) | 检测任务终态计数 |
+| `tasks_by_grade_total` | Counter | `grade` (`S` / `A` / `B` / `C` / `D` / `Fail`) | 成功完成任务的等级分布 |
+| `task_duration_seconds` | Histogram | `baseline_source` | 任务端到端耗时（s）；buckets: 1..300s |
+| `downgrade_detected_total` | Counter | — | 累计 `suspected_downgrade=true` 的 (provider, model) 条数 |
+| `aa_refresh_total` | Counter | `result` (`success` / `failed`) | AA 基线同步任务的执行结果 |
+| `aa_baseline_models` | Gauge | — | 当前 AA 缓存中模型数；`-1` 表示无快照 |
+| `aa_baseline_age_seconds` | Gauge | — | 距离上次 AA 同步的秒数；`-1` 表示无快照 |
+| `aa_ttft_ratio` | Histogram | — | 实测 TTFT / AA 基线 TTFT 比值分布；越低越好；buckets: 0.5..10 |
+| `aa_tps_ratio` | Histogram | — | 实测 tokens/s / 基线 tokens/s 比值分布；越高越好；buckets: 0.1..2.0 |
+
+### 推荐告警规则
+
+```yaml
+groups:
+  - name: hermestoken_token_verification
+    rules:
+      # AA 同步连续 2 个周期失败 (考虑默认 24h 间隔)
+      - alert: HermestokenAARefreshFailing
+        expr: increase(hermestoken_token_verification_aa_refresh_total{result="failed"}[2d]) >= 2
+        for: 1h
+        annotations:
+          summary: "AA baseline 同步失败 ≥ 2 次"
+          description: "检查 AA_API_KEY、出网到 artificialanalysis.ai 的连通性、是否撞 1000 req/day 限额"
+
+      # AA 缓存超过 3 天未刷新
+      - alert: HermestokenAABaselineStale
+        expr: hermestoken_token_verification_aa_baseline_age_seconds > 3 * 24 * 3600
+        for: 30m
+        annotations:
+          summary: "AA baseline 缓存陈旧 (>3 天)"
+
+      # 任务失败率 > 30%（5 分钟窗口）
+      - alert: HermestokenVerificationFailureRateHigh
+        expr: |
+          rate(hermestoken_token_verification_tasks_total{status="failed"}[5m])
+          / on()
+          rate(hermestoken_token_verification_tasks_total[5m]) > 0.3
+        for: 10m
+        annotations:
+          summary: "Token 校验失败率 > 30%"
+
+      # TTFT 比值 p90 偏离基线超过 2.0（可能上游路由问题）
+      - alert: HermestokenAATTFTRatioHigh
+        expr: |
+          histogram_quantile(0.9,
+            rate(hermestoken_token_verification_aa_ttft_ratio_bucket[15m])
+          ) > 2.0
+        for: 15m
+        annotations:
+          summary: "实测 TTFT 比 AA 基线慢 ≥ 2x（p90）"
+          description: "注意：网关跨 region 时 baseline ≈ 1.2-1.5 是正常，单纯 > 2 也可能是地理偏差，需结合校准基线判断"
+
+      # 降级事件率突增
+      - alert: HermestokenDowngradeSpike
+        expr: rate(hermestoken_token_verification_downgrade_detected_total[1h]) > 0.1
+        for: 30m
+        annotations:
+          summary: "1h 内每分钟检测到 > 0.1 起模型降级"
+```
+
+### 关键 Grafana 面板建议
+
+1. **任务量与成功率**：`rate(tasks_total{status="success"}[5m]) / rate(tasks_total[5m])`
+2. **Grade 分布**：`sum by (grade) (rate(tasks_by_grade_total[1h]))` 堆叠面积图
+3. **任务耗时 p50/p90/p99**：`histogram_quantile(0.9, rate(task_duration_seconds_bucket[5m]))`
+4. **AA TTFT/TPS 比值热力图**：直接用 histogram 数据出 heatmap
+5. **降级事件时序**：`increase(downgrade_detected_total[1h])` 柱状图
+6. **AA baseline 健康**：`aa_baseline_age_seconds` 折线 + 阈值线 24h/72h
+
+### 与三层校准的关系
+
+| 层 | 工具 | 验证粒度 | 频率 |
+| --- | --- | --- | --- |
+| Layer-1 算法测试 | `go test TestCalibrationMatrix` | 输入→输出映射 | 每次 CI |
+| Layer-2 端到端 | `scripts/run-calibration-e2e.sh` | 真上游+真打分 | 日级 cron |
+| Layer-3 持续观测 | Prometheus metrics | 全量真实流量 | 实时（5–15s 抓取） |
+
+三层互补：layer-1 防代码回归，layer-2 防部署漂移，layer-3 防长尾异常。生产建议同时启用 layer-2 和 layer-3：layer-2 给出"已知场景下基线"，layer-3 给出"真实负载下趋势"。
