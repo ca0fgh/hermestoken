@@ -357,6 +357,15 @@ func SetApiRouter(router *gin.Engine) {
 			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
 		}
 
+		tokenVerificationRoute := apiRouter.Group("/token_verification")
+		tokenVerificationRoute.Use(middleware.UserAuth())
+		{
+			tokenVerificationRoute.POST("/tasks", middleware.CriticalRateLimit(), controller.CreateTokenVerificationTask)
+			tokenVerificationRoute.GET("/tasks", controller.ListTokenVerificationTasks)
+			tokenVerificationRoute.GET("/tasks/:id", controller.GetTokenVerificationTask)
+			tokenVerificationRoute.GET("/reports/:id", controller.GetTokenVerificationReport)
+		}
+
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
