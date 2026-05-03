@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/ca0fgh/hermestoken/common"
 	"gorm.io/gorm"
 )
 

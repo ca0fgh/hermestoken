@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-	tokenverifier "github.com/QuantumNous/new-api/service/token_verifier"
+	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/model"
+	tokenverifier "github.com/ca0fgh/hermestoken/service/token_verifier"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
