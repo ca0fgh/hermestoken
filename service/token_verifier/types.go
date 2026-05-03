@@ -136,3 +136,18 @@ type ReportSummary struct {
 	ScoringVersion  string                   `json:"scoring_version"`
 	BaselineSource  string                   `json:"baseline_source"`
 }
+
+type DirectProbeRequest struct {
+	BaseURL  string
+	APIKey   string
+	Provider string
+	Model    string
+}
+
+type DirectProbeResponse struct {
+	BaseURL  string        `json:"base_url"`
+	Provider string        `json:"provider"`
+	Model    string        `json:"model"`
+	Results  []CheckResult `json:"results"`
+	Report   ReportSummary `json:"report"`
+}

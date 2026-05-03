@@ -1,0 +1,164 @@
+.token-verification-page {
+  margin-top: 64px;
+  padding: 16px 16px 32px;
+}
+
+.token-verification-page__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.token-verification-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.token-verification-header h3 {
+  margin-bottom: 6px;
+}
+
+.token-verification-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.token-verification-panel {
+  min-height: 360px;
+}
+
+.token-verification-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.token-verification-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.token-verification-dimensions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.token-verification-secret-note {
+  line-height: 1.5;
+}
+
+.token-verification-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-1);
+}
+
+.token-verification-alert--warn {
+  border-color: var(--semi-color-warning-light-default);
+  background: var(--semi-color-warning-light-hover);
+}
+
+.token-verification-alert--error {
+  border-color: var(--semi-color-danger-light-default);
+  background: var(--semi-color-danger-light-hover);
+}
+
+.token-verification-report {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.token-verification-loading {
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.token-verification-score {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-1);
+}
+
+.token-verification-score__value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--semi-color-text-0);
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.token-verification-score__value span {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.token-verification-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.token-verification-result-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.token-verification-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+}
+
+.token-verification-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.token-verification-section h5 {
+  margin: 0;
+}
+
+@media (max-width: 920px) {
+  .token-verification-header,
+  .token-verification-score {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .token-verification-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .token-verification-metrics {
+    grid-template-columns: 1fr;
+  }
+}

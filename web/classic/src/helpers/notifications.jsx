@@ -19,6 +19,11 @@ import React from 'react';
 import { toast } from 'react-toastify';
 import { toastConstants } from '../constants';
 import { MOBILE_BREAKPOINT } from '../hooks/common/useIsMobile';
+import {
+  getHttpStatusFromError,
+  isUnauthorizedError,
+  redirectToLoginWhenExpired,
+} from './authError';
 import { matchesMediaQuery } from './mediaQuery';
 
 const HTMLToastContent = ({ htmlContent }) => {
@@ -44,32 +49,27 @@ if (isMobileScreen) {
 
 export function showError(error) {
   console.error(error);
-  if (error?.message) {
-    if (error.name === 'AxiosError') {
-      switch (error.response.status) {
-        case 401:
-          localStorage.removeItem('user');
-          window.location.href = '/login?expired=true';
-          break;
-        case 429:
-          toast.error('错误：请求次数过多，请稍后再试！', showErrorOptions);
-          break;
-        case 500:
-          toast.error('错误：服务器内部错误，请联系管理员！', showErrorOptions);
-          break;
-        case 405:
-          toast.info('本站仅作演示之用，无服务端！', showInfoOptions);
-          break;
-        default:
-          toast.error(`错误：${error.message}`, showErrorOptions);
-      }
-      return;
-    }
-    toast.error(`错误：${error.message}`, showErrorOptions);
+  if (isUnauthorizedError(error)) {
+    redirectToLoginWhenExpired();
     return;
   }
 
-  toast.error(`错误：${error}`, showErrorOptions);
+  switch (getHttpStatusFromError(error)) {
+    case 429:
+      toast.error('错误：请求次数过多，请稍后再试！', showErrorOptions);
+      return;
+    case 500:
+      toast.error('错误：服务器内部错误，请联系管理员！', showErrorOptions);
+      return;
+    case 405:
+      toast.info('本站仅作演示之用，无服务端！', showInfoOptions);
+      return;
+    default:
+      break;
+  }
+
+  const message = typeof error === 'string' ? error : error?.message;
+  toast.error(`错误：${message || error}`, showErrorOptions);
 }
 
 export function showWarning(message) {

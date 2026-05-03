@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"os/exec"
-	"strconv"
+	"io"
+	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"time"
 )
-
-const curlMetaMarker = "\n__TOKEN_VERIFIER_CURL_META__"
 
 type CurlExecutor struct {
 	Timeout time.Duration
@@ -34,79 +32,68 @@ func NewCurlExecutor(timeout time.Duration) *CurlExecutor {
 
 func (e *CurlExecutor) Do(ctx context.Context, method string, targetURL string, headers map[string]string, body []byte) (*CurlResponse, error) {
 	if strings.TrimSpace(targetURL) == "" {
-		return nil, errors.New("curl target url is empty")
+		return nil, errors.New("http target url is empty")
 	}
 	timeout := e.Timeout
 	if timeout <= 0 {
 		timeout = defaultVerifierHTTPTimeout
 	}
-	args := []string{
-		"-sS",
-		"--no-buffer",
-		"--max-time", strconv.FormatFloat(timeout.Seconds(), 'f', 0, 64),
-		"-X", method,
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, targetURL, bodyReader)
+	if err != nil {
+		return nil, err
 	}
 	for key, value := range headers {
 		if strings.TrimSpace(key) == "" {
 			continue
 		}
-		args = append(args, "-H", key+": "+value)
-	}
-	if body != nil {
-		args = append(args, "--data-binary", "@-")
-	}
-	args = append(args,
-		"-w", curlMetaMarker+"%{http_code}|%{time_total}|%{time_starttransfer}|%{size_download}",
-		targetURL,
-	)
-
-	cmd := exec.CommandContext(ctx, "curl", args...)
-	if body != nil {
-		cmd.Stdin = bytes.NewReader(body)
-	}
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
-		if message == "" {
-			message = err.Error()
+		if strings.ContainsAny(key, "\r\n") || strings.ContainsAny(value, "\r\n") {
+			return nil, errors.New("http header contains invalid newline")
 		}
-		return nil, fmt.Errorf("curl failed: %s", message)
+		request.Header.Set(key, value)
 	}
-	return parseCurlOutput(stdout.Bytes())
-}
+	request.ContentLength = int64(len(body))
 
-func parseCurlOutput(output []byte) (*CurlResponse, error) {
-	idx := bytes.LastIndex(output, []byte(curlMetaMarker))
-	if idx < 0 {
-		return nil, errors.New("curl output missing metadata")
+	startedAt := time.Now()
+	firstByteAt := time.Time{}
+	trace := &httptrace.ClientTrace{
+		GotFirstResponseByte: func() {
+			if firstByteAt.IsZero() {
+				firstByteAt = time.Now()
+			}
+		},
 	}
-	body := bytes.TrimSuffix(output[:idx], []byte("\n"))
-	meta := strings.TrimSpace(string(output[idx+len(curlMetaMarker):]))
-	parts := strings.Split(meta, "|")
-	if len(parts) != 4 {
-		return nil, fmt.Errorf("invalid curl metadata: %s", meta)
+	request = request.WithContext(httptrace.WithClientTrace(request.Context(), trace))
+	client := &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
-	statusCode, err := strconv.Atoi(parts[0])
+	response, err := client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("invalid curl http code: %w", err)
+		return nil, err
 	}
-	totalSeconds, err := strconv.ParseFloat(parts[1], 64)
+	defer response.Body.Close()
+	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("invalid curl total time: %w", err)
+		return nil, err
 	}
-	ttftSeconds, err := strconv.ParseFloat(parts[2], 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid curl start transfer time: %w", err)
+	if firstByteAt.IsZero() {
+		firstByteAt = time.Now()
 	}
-	downloadBytes, _ := strconv.ParseInt(parts[3], 10, 64)
 	return &CurlResponse{
-		StatusCode:    statusCode,
-		Body:          append([]byte(nil), body...),
-		LatencyMs:     int64(totalSeconds * 1000),
-		TTFTMs:        int64(ttftSeconds * 1000),
-		DownloadBytes: downloadBytes,
+		StatusCode:    response.StatusCode,
+		Body:          responseBody,
+		LatencyMs:     time.Since(startedAt).Milliseconds(),
+		TTFTMs:        firstByteAt.Sub(startedAt).Milliseconds(),
+		DownloadBytes: int64(len(responseBody)),
 	}, nil
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -37,6 +37,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { DateTimePicker } from '@/components/datetime-picker'
 import { MultiSelect } from '@/components/multi-select'
+import { marketplaceStatusLabel } from '@/features/marketplace/lib'
 import {
   createApiKey,
   updateApiKey,
@@ -145,13 +146,25 @@ export function ApiKeysMutateDrawer({
   })
 
   const models = modelsData?.data || []
-  const marketplaceFixedOrders = fixedOrdersData?.success
-    ? (fixedOrdersData.data?.items ?? [])
-    : []
-  const marketplaceFixedOrderOptions = marketplaceFixedOrders.map((order) => ({
-    label: `#${order.id} · ${t('Credential')} #${order.credential_id} · ${t(order.status)} · ${formatQuota(order.remaining_quota)}`,
-    value: String(order.id),
-  }))
+  const marketplaceFixedOrders = useMemo(
+    () =>
+      fixedOrdersData?.success ? (fixedOrdersData.data?.items ?? []) : [],
+    [fixedOrdersData?.data?.items, fixedOrdersData?.success]
+  )
+  const marketplaceFixedOrderOptions = useMemo(
+    () =>
+      marketplaceFixedOrders
+        .filter((order) => order.status === 'active')
+        .map((order) => ({
+          label: `#${order.id} · ${t('Credential')} #${order.credential_id} · ${t(marketplaceStatusLabel(order.status))} · ${formatQuota(order.remaining_quota)}`,
+          value: String(order.id),
+        })),
+    [marketplaceFixedOrders, t]
+  )
+  const marketplaceFixedOrderOptionValues = useMemo(
+    () => new Set(marketplaceFixedOrderOptions.map((option) => option.value)),
+    [marketplaceFixedOrderOptions]
+  )
   const groupsRaw = groupsData?.data || {}
   const groups: ApiKeyGroupOption[] = Object.entries(groupsRaw).map(
     ([key, info]) => ({
@@ -179,6 +192,26 @@ export function ApiKeysMutateDrawer({
     }
   }, [open, form, groups])
 
+  useEffect(() => {
+    if (!open || !fixedOrdersData?.success) return
+
+    const currentIds = form.getValues('marketplace_fixed_order_ids') ?? []
+    const visibleIds = currentIds.filter((id) =>
+      marketplaceFixedOrderOptionValues.has(String(id))
+    )
+    const changed =
+      currentIds.length !== visibleIds.length ||
+      currentIds.some((id, index) => id !== visibleIds[index])
+
+    if (!changed) return
+    form.setValue('marketplace_fixed_order_ids', visibleIds, {
+      shouldDirty: false,
+    })
+    form.setValue('marketplace_fixed_order_id', visibleIds[0] ?? 0, {
+      shouldDirty: false,
+    })
+  }, [fixedOrdersData?.success, form, marketplaceFixedOrderOptionValues, open])
+
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
@@ -197,7 +230,16 @@ export function ApiKeysMutateDrawer({
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
     try {
-      const basePayload = transformFormDataToPayload(data)
+      const visibleFixedOrderIds = fixedOrdersData?.success
+        ? (data.marketplace_fixed_order_ids ?? []).filter((id) =>
+            marketplaceFixedOrderOptionValues.has(String(id))
+          )
+        : (data.marketplace_fixed_order_ids ?? [])
+      const basePayload = transformFormDataToPayload({
+        ...data,
+        marketplace_fixed_order_id: visibleFixedOrderIds[0] ?? 0,
+        marketplace_fixed_order_ids: visibleFixedOrderIds,
+      })
 
       if (isUpdate && currentRow) {
         const result = await updateApiKey({
@@ -390,7 +432,11 @@ export function ApiKeysMutateDrawer({
                   <FormControl>
                     <MultiSelect
                       options={marketplaceFixedOrderOptions}
-                      selected={(field.value ?? []).map(String)}
+                      selected={(field.value ?? [])
+                        .map(String)
+                        .filter((value) =>
+                          marketplaceFixedOrderOptionValues.has(value)
+                        )}
                       onChange={(values) => {
                         const fixedOrderIds = values
                           .map((value) => Number(value))

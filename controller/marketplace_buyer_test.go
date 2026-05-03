@@ -1110,6 +1110,36 @@ func TestBuyerSaveMarketplacePoolFiltersStoresTokenScopedFilters(t *testing.T) {
 	assert.Equal(t, model.MarketplaceTimeModeLimited, saved.TimeMode)
 }
 
+func TestBuyerResetMarketplacePoolFiltersClearsTokenScopedFilters(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	buyerID := 20
+	seedMarketplaceUser(t, db, buyerID, 10000)
+	token := seedToken(t, db, buyerID, "pool-filter-reset-token", "poolfilterreset123")
+	token.MarketplaceRouteEnabled = model.NewMarketplaceRouteEnabled([]string{
+		model.MarketplaceRouteGroup,
+		model.MarketplaceRoutePool,
+	})
+	token.MarketplacePoolFiltersEnabled = true
+	token.MarketplacePoolFilters = model.NewMarketplacePoolFilters(model.MarketplacePoolFilterValues{
+		Model:         "gpt-4o-mini",
+		MaxMultiplier: 1.2,
+	})
+	require.NoError(t, token.Update())
+
+	body := map[string]any{"token_id": token.Id}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/pool/token-filters", body, buyerID)
+	BuyerResetMarketplacePoolFilters(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	var stored model.Token
+	require.NoError(t, db.First(&stored, "id = ? AND user_id = ?", token.Id, buyerID).Error)
+	require.False(t, stored.MarketplacePoolFiltersEnabled)
+	assert.Empty(t, stored.MarketplacePoolFilters.Values())
+	assert.Equal(t, []string{model.MarketplaceRouteGroup, model.MarketplaceRoutePool}, stored.MarketplaceRouteEnabledList())
+}
+
 func TestBuyerSaveMarketplacePoolFiltersRejectsUnownedToken(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	seedMarketplaceUser(t, db, 20, 10000)

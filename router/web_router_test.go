@@ -61,6 +61,7 @@ func TestMarketplaceUIAPIRoutesAreRegisteredBeforeAuth(t *testing.T) {
 		{http.MethodGet, "/api/marketplace/pool/models"},
 		{http.MethodGet, "/api/marketplace/pool/candidates"},
 		{http.MethodPost, "/api/marketplace/pool/token-filters"},
+		{http.MethodDelete, "/api/marketplace/pool/token-filters"},
 		{http.MethodPost, "/api/marketplace/seller/credentials"},
 		{http.MethodGet, "/api/marketplace/seller/credentials"},
 		{http.MethodPost, "/api/marketplace/seller/credentials/fetch-models"},

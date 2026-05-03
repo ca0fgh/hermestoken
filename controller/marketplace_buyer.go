@@ -243,6 +243,32 @@ func BuyerSaveMarketplacePoolFilters(c *gin.Context) {
 	common.ApiSuccess(c, buildMaskedTokenResponse(token))
 }
 
+func BuyerResetMarketplacePoolFilters(c *gin.Context) {
+	userID := c.GetInt("id")
+	var req marketplacePoolFiltersSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.TokenID <= 0 {
+		common.ApiError(c, errors.New("token_id is required"))
+		return
+	}
+
+	token, err := model.GetTokenByIds(req.TokenID, userID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token.MarketplacePoolFiltersEnabled = false
+	token.MarketplacePoolFilters = ""
+	if err := token.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, buildMaskedTokenResponse(token))
+}
+
 func MarketplaceListPricing(c *gin.Context) {
 	common.ApiSuccess(c, service.ListMarketplacePricingItems())
 }

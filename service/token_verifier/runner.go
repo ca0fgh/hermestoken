@@ -81,6 +81,33 @@ func RunTask(ctx context.Context, taskID int64) error {
 	return model.CompleteTokenVerificationTask(taskID, report.Score, report.Grade)
 }
 
+func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbeResponse, error) {
+	providers := resolveProviders([]string{strings.TrimSpace(input.Provider)})
+	models := normalizeModels([]string{strings.TrimSpace(input.Model)})
+	if len(models) == 0 {
+		models = []string{defaultVerifierModel}
+	}
+	apiKey := strings.TrimSpace(input.APIKey)
+	runner := Runner{
+		BaseURL:   strings.TrimSpace(input.BaseURL),
+		Token:     apiKey,
+		Models:    models,
+		Providers: providers,
+		Executor:  NewCurlExecutor(defaultVerifierHTTPTimeout),
+	}
+	results, err := runner.Run(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return RedactDirectProbeResponse(&DirectProbeResponse{
+		BaseURL:  runner.BaseURL,
+		Provider: providers[0],
+		Model:    models[0],
+		Results:  results,
+		Report:   BuildReport(results),
+	}, apiKey), nil
+}
+
 func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {
 	if strings.TrimSpace(r.BaseURL) == "" {
 		return nil, errors.New("token verifier base url is empty")
@@ -570,6 +597,10 @@ func modelFamilyAndTier(provider string, modelName string) (string, int) {
 	value := canonicalModelName(modelName)
 	if provider == ProviderAnthropic || strings.HasPrefix(value, "claude-") {
 		switch {
+		case strings.Contains(value, "opus-4-7"):
+			return "claude", 47
+		case strings.Contains(value, "opus-4-6"):
+			return "claude", 46
 		case strings.Contains(value, "opus"):
 			return "claude", 40
 		case strings.Contains(value, "sonnet"):
@@ -581,6 +612,10 @@ func modelFamilyAndTier(provider string, modelName string) (string, int) {
 		}
 	}
 	switch {
+	case strings.Contains(value, "gpt-5.5"):
+		return "openai", 55
+	case strings.Contains(value, "gpt-5.4"):
+		return "openai", 54
 	case strings.Contains(value, "gpt-5"):
 		return "openai", 50
 	case strings.Contains(value, "gpt-4.5"):

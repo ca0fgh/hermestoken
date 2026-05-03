@@ -9,6 +9,7 @@ import { Command, CommandGroup, CommandItem } from '@/components/ui/command'
 export type Option = {
   label: string
   value: string
+  disabled?: boolean
 }
 
 interface MultiSelectProps {
@@ -51,7 +52,7 @@ export function MultiSelect({
   }
 
   const selectables = options.filter(
-    (option) => !selected.includes(option.value)
+    (option) => !option.disabled && !selected.includes(option.value)
   )
 
   return (

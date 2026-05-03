@@ -48,6 +48,7 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
     keyConstantsSource,
     keyFormSource,
     keyGroupComboboxSource,
+    multiSelectSource,
   ] = await Promise.all([
     readDefaultSource("routes/_authenticated/marketplace/index.tsx"),
     readDefaultSource("hooks/use-sidebar-data.ts"),
@@ -79,6 +80,7 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
     readDefaultSource("features/keys/constants.ts"),
     readDefaultSource("features/keys/lib/api-key-form.ts"),
     readDefaultSource("features/keys/components/api-key-group-combobox.tsx"),
+    readDefaultSource("components/multi-select.tsx"),
   ]);
 
   assert.match(
@@ -300,6 +302,25 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(keyApiSource, /\/api\/marketplace\/fixed-orders/);
   assert.match(keyDrawerSource, /Marketplace fixed order binding/);
   assert.match(keyDrawerSource, /marketplace_fixed_order_ids/);
+  assert.match(keyDrawerSource, /marketplaceStatusLabel/);
+  assert.match(
+    keyDrawerSource,
+    /\.filter\(\(order\) => order\.status === 'active'\)/,
+  );
+  assert.match(keyDrawerSource, /marketplaceFixedOrderOptionValues/);
+  assert.match(
+    keyDrawerSource,
+    /selected=\{\(field\.value \?\? \[\]\)[\s\S]*?marketplaceFixedOrderOptionValues\.has\(value\)/,
+  );
+  assert.match(
+    keyDrawerSource,
+    /visibleIds = currentIds\.filter\(\(id\) =>[\s\S]*?marketplaceFixedOrderOptionValues\.has\(String\(id\)\)/,
+  );
+  assert.match(multiSelectSource, /disabled\?: boolean/);
+  assert.match(
+    multiSelectSource,
+    /!option\.disabled && !selected\.includes\(option\.value\)/,
+  );
   assert.match(keyDrawerSource, /Token route priority/);
   assert.match(keyDrawerSource, /marketplace_route_order/);
   assert.match(keyDrawerSource, /marketplace_route_enabled/);
@@ -550,14 +571,23 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
     assert.match(poolTabSource, /取消激活中/);
     assert.match(poolTabSource, /激活中/);
     assert.match(poolTabSource, /保存条件/);
+    assert.match(poolTabSource, /重置条件/);
     assert.match(poolTabSource, /poolActivated/);
     assert.match(poolTabSource, /saveMarketplacePoolFiltersForToken/);
+    assert.match(poolTabSource, /resetMarketplacePoolFiltersForToken/);
     assert.match(poolTabSource, /activateMarketplacePoolForToken/);
     assert.match(poolTabSource, /deactivateMarketplacePoolForToken/);
     assert.match(poolTabSource, /\/api\/marketplace\/pool\/token-filters/);
+    assert.match(
+      poolTabSource,
+      /API\.delete\('\/api\/marketplace\/pool\/token-filters'/,
+    );
     assert.match(poolTabSource, /tokenWithMarketplacePoolRoute/);
     assert.match(poolTabSource, /tokenWithoutMarketplacePoolRoute/);
     assert.match(poolTabSource, /savedPoolFilters \?\? defaultFilters/);
+    assert.match(poolTabSource, /showResetButton=\{false\}/);
+    assert.match(poolTabSource, /marketplace_pool_filters_enabled:\s*false/);
+    assert.match(poolTabSource, /marketplace_pool_filters:\s*null/);
     assert.match(
       poolTabSource,
       /disabled=\{!selectedBuyerToken \|\| activatingPool\}/,
@@ -568,6 +598,11 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
       poolTabSource.indexOf("<FilterBar") <
         poolTabSource.indexOf("className='marketplace-pool-activation'"),
       "pool filters should render before the activation control",
+    );
+    assert.ok(
+      poolTabSource.indexOf("onClick={resetMarketplacePoolFiltersForToken}") <
+        poolTabSource.indexOf("onClick={saveMarketplacePoolFiltersForToken}"),
+      "reset and save condition actions should be grouped in the activation control",
     );
     assert.doesNotMatch(
       poolTabSource,

@@ -58,6 +58,14 @@ function App() {
     return normalizeHeaderNavModules(statusState.status.HeaderNavModules)
       .marketplace;
   }, [statusState?.status, statusState?.status?.HeaderNavModules]);
+  const verificationEnabled = useMemo(() => {
+    if (!statusState?.status) {
+      return true;
+    }
+
+    return normalizeHeaderNavModules(statusState.status.HeaderNavModules)
+      .verification;
+  }, [statusState?.status, statusState?.status?.HeaderNavModules]);
   const isConsoleRoute = location.pathname.startsWith('/console');
   const isHomeRoute = location.pathname === '/';
   const RoutesComponent = isConsoleRoute
@@ -76,6 +84,7 @@ function App() {
           pricingEnabled={pricingConfig.enabled}
           pricingRequireAuth={pricingConfig.requireAuth}
           marketplaceEnabled={marketplaceEnabled}
+          verificationEnabled={verificationEnabled}
         />
       </Suspense>
     </SetupCheck>

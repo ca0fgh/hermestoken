@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import { buildGroupOptions } from './groupOptions';
 import { showError } from './notifications';
+import { isUnauthorizedError, redirectToLoginWhenExpired } from './authError';
 import { getUserIdFromLocalStorage } from './session';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
@@ -182,6 +183,11 @@ export function updateAPI() {
 API.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (isUnauthorizedError(error)) {
+      redirectToLoginWhenExpired();
+      return Promise.reject(error);
+    }
+
     // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
     if (error.config && error.config.skipErrorHandler) {
       return Promise.reject(error);

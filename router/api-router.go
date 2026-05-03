@@ -210,6 +210,7 @@ func SetApiRouter(router *gin.Engine) {
 			marketplaceBuyerRoute.GET("/pool/models", controller.BuyerListMarketplacePoolModels)
 			marketplaceBuyerRoute.GET("/pool/candidates", controller.BuyerListMarketplacePoolCandidates)
 			marketplaceBuyerRoute.POST("/pool/token-filters", controller.BuyerSaveMarketplacePoolFilters)
+			marketplaceBuyerRoute.DELETE("/pool/token-filters", controller.BuyerResetMarketplacePoolFilters)
 		}
 
 		// Subscription billing (plans, purchase, admin management)
@@ -360,6 +361,7 @@ func SetApiRouter(router *gin.Engine) {
 		tokenVerificationRoute := apiRouter.Group("/token_verification")
 		tokenVerificationRoute.Use(middleware.UserAuth())
 		{
+			tokenVerificationRoute.POST("/probe", middleware.CriticalRateLimit(), controller.CreateTokenVerificationProbe)
 			tokenVerificationRoute.POST("/tasks", middleware.CriticalRateLimit(), controller.CreateTokenVerificationTask)
 			tokenVerificationRoute.GET("/tasks", controller.ListTokenVerificationTasks)
 			tokenVerificationRoute.GET("/tasks/:id", controller.GetTokenVerificationTask)

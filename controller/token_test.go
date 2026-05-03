@@ -31,14 +31,19 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID                       int      `json:"id"`
-	Name                     string   `json:"name"`
-	Key                      string   `json:"key"`
-	Status                   int      `json:"status"`
-	MarketplaceFixedOrderID  int      `json:"marketplace_fixed_order_id"`
-	MarketplaceFixedOrderIDs []int    `json:"marketplace_fixed_order_ids"`
-	MarketplaceRouteOrder    []string `json:"marketplace_route_order"`
-	MarketplaceRouteEnabled  []string `json:"marketplace_route_enabled"`
+	ID                            int      `json:"id"`
+	Name                          string   `json:"name"`
+	Key                           string   `json:"key"`
+	Status                        int      `json:"status"`
+	MarketplaceFixedOrderID       int      `json:"marketplace_fixed_order_id"`
+	MarketplaceFixedOrderIDs      []int    `json:"marketplace_fixed_order_ids"`
+	MarketplaceRouteOrder         []string `json:"marketplace_route_order"`
+	MarketplaceRouteEnabled       []string `json:"marketplace_route_enabled"`
+	MarketplacePoolFiltersEnabled bool     `json:"marketplace_pool_filters_enabled"`
+	MarketplacePoolFilters        struct {
+		Model         string  `json:"model"`
+		MaxMultiplier float64 `json:"max_multiplier"`
+	} `json:"marketplace_pool_filters"`
 }
 
 type tokenKeyResponse struct {
@@ -287,6 +292,42 @@ func TestGetTokenMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("detail response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestGetTokenReturnsMarketplacePoolFilterSavedState(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "pool-filter-detail-token", "pooldetail123456")
+	token.MarketplacePoolFiltersEnabled = true
+	token.MarketplacePoolFilters = model.NewMarketplacePoolFilters(model.MarketplacePoolFilterValues{
+		Model:         "gpt-4o-mini",
+		MaxMultiplier: 1.2,
+	})
+	if err := token.Update(); err != nil {
+		t.Fatalf("failed to seed token pool filters: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/token/"+strconv.Itoa(token.Id), nil, 1)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(token.Id)}}
+	GetToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var detail tokenResponseItem
+	if err := common.Unmarshal(response.Data, &detail); err != nil {
+		t.Fatalf("failed to decode token detail response: %v", err)
+	}
+	if !detail.MarketplacePoolFiltersEnabled {
+		t.Fatalf("expected saved pool filter flag in token detail response")
+	}
+	if detail.MarketplacePoolFilters.Model != "gpt-4o-mini" {
+		t.Fatalf("expected saved pool filter model, got %q", detail.MarketplacePoolFilters.Model)
+	}
+	if detail.MarketplacePoolFilters.MaxMultiplier != 1.2 {
+		t.Fatalf("expected saved pool filter max multiplier, got %v", detail.MarketplacePoolFilters.MaxMultiplier)
 	}
 }
 

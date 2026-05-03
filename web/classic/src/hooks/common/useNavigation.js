@@ -38,6 +38,11 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         to: '/marketplace',
       },
       {
+        text: t('检测'),
+        itemKey: 'verification',
+        to: '/token-verification',
+      },
+      {
         text: t('控制台'),
         itemKey: 'console',
         to: '/console',
@@ -78,6 +83,12 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         return (
           hasLoadedHeaderModules &&
           isHeaderNavModuleEnabled(modules, 'marketplace')
+        );
+      }
+      if (link.itemKey === 'verification') {
+        return (
+          hasLoadedHeaderModules &&
+          isHeaderNavModuleEnabled(modules, 'verification')
         );
       }
       return isHeaderNavModuleEnabled(modules, link.itemKey);

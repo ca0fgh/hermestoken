@@ -57,6 +57,7 @@ import {
   IconTreeTriangleDown,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import {
   CHANNEL_OPTIONS,
   MODEL_FETCHABLE_CHANNEL_TYPES,
@@ -137,6 +138,21 @@ function marketplacePoolFilterPayload(filters = {}) {
 }
 
 const MARKETPLACE_ROUTE_ORDER_VALUES = ['fixed_order', 'group', 'pool'];
+const MARKETPLACE_TAB_VALUES = ['pool', 'orders', 'fixed', 'seller'];
+const MARKETPLACE_TAB_ALIASES = {
+  pool: 'pool',
+  marketplace_pool: 'pool',
+  order_pool: 'pool',
+  orders: 'orders',
+  order_list: 'orders',
+  marketplace_orders: 'orders',
+  fixed_order: 'orders',
+  fixed_orders: 'orders',
+  marketplace_fixed_order: 'orders',
+  fixed: 'fixed',
+  my_fixed_orders: 'fixed',
+  seller: 'seller',
+};
 const MARKETPLACE_ROUTE_ALIASES = {
   fixed_order: 'fixed_order',
   marketplace_fixed_order: 'fixed_order',
@@ -150,6 +166,11 @@ const MARKETPLACE_ROUTE_ALIASES = {
   marketplace_pool: 'pool',
   order_pool: 'pool',
 };
+
+function normalizeMarketplaceTab(value) {
+  const tab = MARKETPLACE_TAB_ALIASES[String(value || '').trim()];
+  return MARKETPLACE_TAB_VALUES.includes(tab) ? tab : 'pool';
+}
 
 const defaultCredentialForm = {
   vendor_type: 1,
@@ -2230,6 +2251,7 @@ function FilterBar({
   filterRanges,
   onChange,
   onReset,
+  showResetButton = true,
   showQuotaTimeFilters = true,
 }) {
   const { t } = useTranslation();
@@ -2322,20 +2344,22 @@ function FilterBar({
               </>
             ) : null}
           </div>
-          <div className='marketplace-filter-actions'>
-            <Space wrap>
-              <Button
-                theme='light'
-                type='tertiary'
-                icon={<IconRefresh />}
-                className='marketplace-filter-action-button marketplace-filter-reset-button'
-                aria-label={t('重置')}
-                onClick={onReset}
-              >
-                {t('重置')}
-              </Button>
-            </Space>
-          </div>
+          {showResetButton && onReset ? (
+            <div className='marketplace-filter-actions'>
+              <Space wrap>
+                <Button
+                  theme='light'
+                  type='tertiary'
+                  icon={<IconRefresh />}
+                  className='marketplace-filter-action-button marketplace-filter-reset-button'
+                  aria-label={t('重置')}
+                  onClick={onReset}
+                >
+                  {t('重置')}
+                </Button>
+              </Space>
+            </div>
+          ) : null}
         </div>
         <div className='marketplace-filter-range-row'>
           {showQuotaTimeFilters
@@ -2591,6 +2615,7 @@ function PoolTab({
   const [filters, setFilters] = useState(defaultFilters);
   const [activatingPool, setActivatingPool] = useState(false);
   const [savingPoolFilters, setSavingPoolFilters] = useState(false);
+  const [resettingPoolFilters, setResettingPoolFilters] = useState(false);
   const filterRanges = useMarketplaceFilterRanges(filters);
   const [models, setModels] = useState([]);
   const [candidates, setCandidates] = useState([]);
@@ -2669,6 +2694,38 @@ function PoolTab({
       showError(error.message || t('保存订单池条件失败'));
     } finally {
       setSavingPoolFilters(false);
+    }
+  };
+
+  const resetMarketplacePoolFiltersForToken = async () => {
+    if (!selectedBuyerToken) return;
+    setResettingPoolFilters(true);
+    try {
+      const response = await API.delete('/api/marketplace/pool/token-filters', {
+        data: { token_id: selectedBuyerToken.id },
+      });
+      const { success, message, data } = response.data;
+      if (!success) {
+        showError(t(message || '重置订单池条件失败'));
+        return;
+      }
+      const updatedToken = {
+        ...selectedBuyerToken,
+        ...(data || {}),
+        marketplace_pool_filters_enabled: false,
+        marketplace_pool_filters: null,
+      };
+      onBuyerTokensChange((currentTokens) =>
+        currentTokens.map((token) =>
+          token.id === updatedToken.id ? updatedToken : token,
+        ),
+      );
+      setFilters(defaultFilters);
+      showSuccess(t('订单池条件已重置'));
+    } catch (error) {
+      showError(error.message || t('重置订单池条件失败'));
+    } finally {
+      setResettingPoolFilters(false);
     }
   };
 
@@ -2753,7 +2810,7 @@ function PoolTab({
         filters={filters}
         filterRanges={filterRanges}
         onChange={setFilters}
-        onReset={() => setFilters(defaultFilters)}
+        showResetButton={false}
         showQuotaTimeFilters={false}
       />
       <div className='marketplace-pool-activation'>
@@ -2765,8 +2822,22 @@ function PoolTab({
           <Space wrap>
             <Button
               theme='light'
+              type='tertiary'
+              icon={<IconRefresh />}
+              loading={resettingPoolFilters}
+              disabled={
+                !selectedBuyerToken || resettingPoolFilters || savingPoolFilters
+              }
+              onClick={resetMarketplacePoolFiltersForToken}
+            >
+              {t('重置条件')}
+            </Button>
+            <Button
+              theme='light'
               loading={savingPoolFilters}
-              disabled={!selectedBuyerToken || savingPoolFilters}
+              disabled={
+                !selectedBuyerToken || savingPoolFilters || resettingPoolFilters
+              }
               onClick={saveMarketplacePoolFiltersForToken}
             >
               {t('保存条件')}
@@ -4157,8 +4228,20 @@ function SellerTab() {
 
 export default function Marketplace() {
   const { t } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedMarketplaceTab = normalizeMarketplaceTab(
+    searchParams.get('tab'),
+  );
+  const requestedBuyerTokenId = Number(searchParams.get('token_id')) || 0;
+  const [activeMarketplaceTab, setActiveMarketplaceTab] = useState(
+    requestedMarketplaceTab,
+  );
   const [buyerTokens, setBuyerTokens] = useState([]);
   const [selectedBuyerTokenId, setSelectedBuyerTokenId] = useState();
+
+  useEffect(() => {
+    setActiveMarketplaceTab(requestedMarketplaceTab);
+  }, [requestedMarketplaceTab]);
 
   useEffect(() => {
     let mounted = true;
@@ -4171,10 +4254,6 @@ export default function Marketplace() {
         const tokens = response?.data?.data?.items || [];
         if (!mounted) return;
         setBuyerTokens(tokens);
-        const firstEnabled = tokens.find((token) => token.status === 1);
-        if (firstEnabled) {
-          setSelectedBuyerTokenId((current) => current || firstEnabled.id);
-        }
       } catch (error) {
         showError(error.message);
       }
@@ -4184,6 +4263,48 @@ export default function Marketplace() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (buyerTokens.length === 0) return;
+    setSelectedBuyerTokenId((current) => {
+      const requestedToken = buyerTokens.find(
+        (token) => token.status === 1 && token.id === requestedBuyerTokenId,
+      );
+      if (requestedToken) return requestedToken.id;
+
+      const currentToken = buyerTokens.find(
+        (token) => token.status === 1 && token.id === current,
+      );
+      if (currentToken) return current;
+
+      return buyerTokens.find((token) => token.status === 1)?.id;
+    });
+  }, [buyerTokens, requestedBuyerTokenId]);
+
+  const handleMarketplaceTabChange = (tab) => {
+    const nextTab = normalizeMarketplaceTab(tab);
+    setActiveMarketplaceTab(nextTab);
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', nextTab);
+    if (nextTab === 'pool' && selectedBuyerTokenId) {
+      params.set('token_id', String(selectedBuyerTokenId));
+    } else {
+      params.delete('token_id');
+    }
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleBuyerTokenChange = (tokenId) => {
+    setSelectedBuyerTokenId(tokenId);
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', 'pool');
+    if (tokenId) {
+      params.set('token_id', String(tokenId));
+    } else {
+      params.delete('token_id');
+    }
+    setSearchParams(params, { replace: true });
+  };
 
   return (
     <div className='marketplace-page mt-[60px] px-3 pb-6'>
@@ -4270,12 +4391,17 @@ export default function Marketplace() {
             <ManageTokenButton />
           </div>
         </div>
-        <Tabs type='line' keepDOM={false}>
+        <Tabs
+          type='line'
+          keepDOM={false}
+          activeKey={activeMarketplaceTab}
+          onChange={handleMarketplaceTabChange}
+        >
           <Tabs.TabPane tab={t('订单池')} itemKey='pool'>
             <PoolTab
               buyerTokens={buyerTokens}
               selectedBuyerTokenId={selectedBuyerTokenId}
-              onBuyerTokenChange={setSelectedBuyerTokenId}
+              onBuyerTokenChange={handleBuyerTokenChange}
               onBuyerTokensChange={setBuyerTokens}
             />
           </Tabs.TabPane>

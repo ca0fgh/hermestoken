@@ -2,6 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"net"
+	neturl "net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +22,14 @@ type createTokenVerificationTaskRequest struct {
 	TokenID   int      `json:"token_id"`
 	Models    []string `json:"models"`
 	Providers []string `json:"providers"`
+}
+
+type createTokenVerificationProbeRequest struct {
+	URL      string `json:"url"`
+	BaseURL  string `json:"base_url"`
+	APIKey   string `json:"api_key"`
+	Model    string `json:"model"`
+	Provider string `json:"provider"`
 }
 
 type tokenVerificationTaskView struct {
@@ -41,6 +53,8 @@ type tokenVerificationDetailView struct {
 	Results []*model.TokenVerificationResult `json:"results"`
 	Report  any                              `json:"report,omitempty"`
 }
+
+var runDirectTokenVerificationProbe = tokenverifier.RunDirectProbe
 
 func CreateTokenVerificationTask(c *gin.Context) {
 	userID := c.GetInt("id")
@@ -73,6 +87,49 @@ func CreateTokenVerificationTask(c *gin.Context) {
 		}
 	})
 	common.ApiSuccess(c, toTokenVerificationTaskView(task))
+}
+
+func CreateTokenVerificationProbe(c *gin.Context) {
+	var req createTokenVerificationProbeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	baseURL, err := normalizeTokenVerificationProbeBaseURL(firstNonEmptyString(req.URL, req.BaseURL))
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	apiKey, err := normalizeTokenVerificationProbeAPIKey(req.APIKey)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	modelName, err := normalizeTokenVerificationProbeModel(req.Model)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	provider, err := normalizeTokenVerificationProbeProvider(req.Provider)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	defer cancel()
+	result, err := runDirectTokenVerificationProbe(ctx, tokenverifier.DirectProbeRequest{
+		BaseURL:  baseURL,
+		APIKey:   apiKey,
+		Model:    modelName,
+		Provider: provider,
+	})
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	common.ApiSuccess(c, tokenverifier.RedactDirectProbeResponse(result, apiKey))
 }
 
 func ListTokenVerificationTasks(c *gin.Context) {
@@ -129,6 +186,131 @@ func GetTokenVerificationReport(c *gin.Context) {
 		"task":   toTokenVerificationTaskView(task),
 		"report": report,
 	})
+}
+
+func normalizeTokenVerificationProbeBaseURL(rawURL string) (string, error) {
+	value := strings.TrimSpace(rawURL)
+	if value == "" {
+		return "", errors.New("请输入检测 URL")
+	}
+	if len(value) > 2048 {
+		return "", errors.New("检测 URL 过长")
+	}
+	parsed, err := neturl.Parse(value)
+	if err != nil || parsed == nil || parsed.Host == "" {
+		return "", errors.New("请输入有效的检测 URL")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", errors.New("检测 URL 必须以 http:// 或 https:// 开头")
+	}
+	if parsed.User != nil {
+		return "", errors.New("检测 URL 不能包含用户名或密码")
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	if host == "" {
+		return "", errors.New("检测 URL 缺少主机名")
+	}
+	if !allowPrivateTokenVerificationProbeURL() {
+		if err := rejectPrivateTokenVerificationProbeHost(host); err != nil {
+			return "", err
+		}
+	}
+
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	if strings.EqualFold(parsed.Path, "/v1") {
+		parsed.Path = ""
+	} else if strings.HasSuffix(strings.ToLower(parsed.Path), "/v1") {
+		parsed.Path = parsed.Path[:len(parsed.Path)-len("/v1")]
+	}
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func normalizeTokenVerificationProbeAPIKey(rawAPIKey string) (string, error) {
+	value := strings.TrimSpace(rawAPIKey)
+	if value == "" {
+		return "", errors.New("请输入 API Key")
+	}
+	if len(value) > 8192 {
+		return "", errors.New("API Key 过长")
+	}
+	if strings.ContainsAny(value, "\r\n") {
+		return "", errors.New("API Key 不能包含换行")
+	}
+	return value, nil
+}
+
+func normalizeTokenVerificationProbeModel(rawModel string) (string, error) {
+	value := strings.TrimSpace(rawModel)
+	if value == "" {
+		return "", errors.New("请输入检测模型")
+	}
+	if len(value) > 191 {
+		return "", errors.New("检测模型名称过长")
+	}
+	if strings.ContainsAny(value, "\r\n,，") {
+		return "", errors.New("一次检测只支持一个模型")
+	}
+	return value, nil
+}
+
+func normalizeTokenVerificationProbeProvider(rawProvider string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(rawProvider))
+	if value == "" {
+		return tokenverifier.ProviderOpenAI, nil
+	}
+	if value != tokenverifier.ProviderOpenAI && value != tokenverifier.ProviderAnthropic {
+		return "", errors.New("检测协议仅支持 OpenAI 或 Anthropic")
+	}
+	return value, nil
+}
+
+func rejectPrivateTokenVerificationProbeHost(host string) error {
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return errors.New("检测 URL 不能指向本机地址")
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if isUnsafeTokenVerificationProbeIP(ip) {
+			return errors.New("检测 URL 不能指向内网或本机地址")
+		}
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addresses, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil || len(addresses) == 0 {
+		return errors.New("检测 URL 无法解析")
+	}
+	for _, address := range addresses {
+		if isUnsafeTokenVerificationProbeIP(address.IP) {
+			return errors.New("检测 URL 不能解析到内网或本机地址")
+		}
+	}
+	return nil
+}
+
+func isUnsafeTokenVerificationProbeIP(ip net.IP) bool {
+	return ip.IsLoopback() ||
+		ip.IsPrivate() ||
+		ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() ||
+		ip.IsUnspecified()
+}
+
+func allowPrivateTokenVerificationProbeURL() bool {
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("TOKEN_VERIFIER_ALLOW_PRIVATE_URLS")), "true")
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func getUserVerificationTaskFromParam(c *gin.Context) (*model.TokenVerificationTask, bool) {

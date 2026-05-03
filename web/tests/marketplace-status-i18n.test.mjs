@@ -50,4 +50,5 @@ test("classic marketplace status tags translate status values", async () => {
   assert.match(enLocale, /"已上架":\s*"Listed"/);
   assert.match(enLocale, /"已启用":\s*"Enabled"/);
   assert.match(enLocale, /"可用":\s*"Available"/);
+  assert.match(enLocale, /"托管Key":\s*"Credential"/);
 });

@@ -135,6 +135,11 @@ export default function SettingsHeaderNavModules(props) {
       description: t('控制是否显示市场入口'),
     },
     {
+      key: 'verification',
+      title: t('检测'),
+      description: t('控制是否显示 Token 质量黑盒检测入口'),
+    },
+    {
       key: 'console',
       title: t('控制台'),
       description: t('用户控制面板，管理账户'),

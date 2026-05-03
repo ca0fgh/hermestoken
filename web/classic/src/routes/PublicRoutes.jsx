@@ -60,6 +60,10 @@ const Marketplace = lazyWithRetry(
   () => import('../pages/Marketplace'),
   'marketplace-route',
 );
+const TokenVerification = lazyWithRetry(
+  () => import('../pages/TokenVerification'),
+  'token-verification-route',
+);
 const OAuth2Callback = lazyWithRetry(
   () => import('../components/auth/OAuth2Callback'),
   'oauth-callback-route',
@@ -82,6 +86,7 @@ function PublicRoutes({
   pricingEnabled = false,
   pricingRequireAuth = false,
   marketplaceEnabled = false,
+  verificationEnabled = false,
 }) {
   const location = useLocation();
   const renderWithSuspense = (element, key = location.pathname) => (
@@ -160,6 +165,18 @@ function PublicRoutes({
             <PrivateRoute>{renderWithSuspense(<Marketplace />)}</PrivateRoute>
           ) : (
             renderWithSuspense(<NotFound />, 'marketplace-not-found')
+          )
+        }
+      />
+      <Route
+        path='/token-verification'
+        element={
+          verificationEnabled ? (
+            <PrivateRoute>
+              {renderWithSuspense(<TokenVerification />)}
+            </PrivateRoute>
+          ) : (
+            renderWithSuspense(<NotFound />, 'token-verification-not-found')
           )
         }
       />

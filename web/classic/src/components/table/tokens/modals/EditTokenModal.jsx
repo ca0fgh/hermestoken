@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, { useEffect, useState, useContext, useRef, useMemo } from 'react';
 import {
   API,
   processGroupsData,
@@ -57,6 +57,7 @@ import {
   IconChevronDown,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { StatusContext } from '../../../../context/Status';
 
 const { Text, Title } = Typography;
@@ -68,6 +69,17 @@ const MARKETPLACE_ROUTE_ORDER_LABELS = {
   fixed_order: '市场买断订单',
   group: '普通分组订单',
   pool: '订单池',
+};
+const MARKETPLACE_ROUTE_TARGET_TABS = {
+  fixed_order: 'orders',
+  pool: 'pool',
+};
+const MARKETPLACE_ROUTE_JUMP_LABELS = {
+  fixed_order: '跳转到市场订单列表',
+  pool: '跳转到订单池',
+};
+const MARKETPLACE_FIXED_ORDER_STATUS_LABELS = {
+  active: '生效',
 };
 const MARKETPLACE_ROUTE_ALIASES = {
   fixed_order: 'fixed_order',
@@ -130,6 +142,7 @@ const normalizeMarketplaceRouteEnabled = (value) => {
 
 const EditTokenModal = (props) => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [statusState, statusDispatch] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
@@ -137,12 +150,18 @@ const EditTokenModal = (props) => {
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
   const [marketplaceFixedOrders, setMarketplaceFixedOrders] = useState([]);
+  const [marketplaceFixedOrdersLoaded, setMarketplaceFixedOrdersLoaded] =
+    useState(false);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const [marketplaceRouteOrderValue, setMarketplaceRouteOrderValue] = useState([
     ...DEFAULT_MARKETPLACE_ROUTE_ORDER,
   ]);
   const [marketplaceRouteEnabledValue, setMarketplaceRouteEnabledValue] =
     useState([...DEFAULT_MARKETPLACE_ROUTE_ENABLED]);
+  const [
+    marketplaceRoutePoolFiltersSaved,
+    setMarketplaceRoutePoolFiltersSaved,
+  ] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
   const normalizeTokenGroupInputs = (inputs) => {
     const group = inputs.group || DEFAULT_TOKEN_GROUP;
@@ -195,9 +214,24 @@ const EditTokenModal = (props) => {
       MARKETPLACE_ROUTE_ORDER_VALUES.filter((item) => current.has(item)),
     );
   };
+  const handleMarketplaceRouteJump = (route) => {
+    const targetTab = MARKETPLACE_ROUTE_TARGET_TABS[route];
+    if (!targetTab) return;
+
+    const params = new URLSearchParams();
+    params.set('tab', targetTab);
+    const tokenId = Number(props.editingToken.id);
+    if (route === 'pool' && Number.isFinite(tokenId) && tokenId > 0) {
+      params.set('token_id', String(tokenId));
+    }
+
+    props.handleClose();
+    navigate(`/marketplace?${params.toString()}`);
+  };
   const resetMarketplaceRouteFormValues = () => {
     applyMarketplaceRouteOrderToForm(DEFAULT_MARKETPLACE_ROUTE_ORDER);
     applyMarketplaceRouteEnabledToForm(DEFAULT_MARKETPLACE_ROUTE_ENABLED);
+    setMarketplaceRoutePoolFiltersSaved(false);
   };
 
   const getInitValues = () => ({
@@ -213,6 +247,8 @@ const EditTokenModal = (props) => {
     cross_group_retry: false,
     marketplace_fixed_order_id: 0,
     marketplace_fixed_order_ids: [],
+    marketplace_pool_filters_enabled: false,
+    marketplace_pool_filters: null,
     marketplace_route_order: [...DEFAULT_MARKETPLACE_ROUTE_ORDER],
     marketplace_route_enabled: [...DEFAULT_MARKETPLACE_ROUTE_ENABLED],
     marketplace_route_order_0: DEFAULT_MARKETPLACE_ROUTE_ORDER[0],
@@ -249,10 +285,13 @@ const EditTokenModal = (props) => {
       : inputs.marketplace_fixed_order_id
         ? [Number(inputs.marketplace_fixed_order_id)]
         : [];
+    const visibleFixedOrderIds = marketplaceFixedOrdersLoaded
+      ? fixedOrderIds.filter((id) => activeMarketplaceFixedOrderIds.has(id))
+      : fixedOrderIds;
     return {
       ...inputs,
-      marketplace_fixed_order_id: fixedOrderIds[0] || 0,
-      marketplace_fixed_order_ids: Array.from(new Set(fixedOrderIds)),
+      marketplace_fixed_order_id: visibleFixedOrderIds[0] || 0,
+      marketplace_fixed_order_ids: Array.from(new Set(visibleFixedOrderIds)),
     };
   };
   const normalizeMarketplaceRouteOrderInputs = (inputs) => {
@@ -332,6 +371,7 @@ const EditTokenModal = (props) => {
   };
 
   const loadMarketplaceFixedOrders = async () => {
+    setMarketplaceFixedOrdersLoaded(false);
     try {
       const res = await API.get(`/api/marketplace/fixed-orders`, {
         params: { p: 1, page_size: 100 },
@@ -340,6 +380,8 @@ const EditTokenModal = (props) => {
       setMarketplaceFixedOrders(success ? data?.items || [] : []);
     } catch {
       setMarketplaceFixedOrders([]);
+    } finally {
+      setMarketplaceFixedOrdersLoaded(true);
     }
   };
 
@@ -383,6 +425,9 @@ const EditTokenModal = (props) => {
       );
       setMarketplaceRouteOrderValue(data.marketplace_route_order);
       setMarketplaceRouteEnabledValue(data.marketplace_route_enabled);
+      setMarketplaceRoutePoolFiltersSaved(
+        Boolean(data.marketplace_pool_filters_enabled),
+      );
       data.marketplace_route_order_0 = data.marketplace_route_order[0];
       data.marketplace_route_order_1 = data.marketplace_route_order[1];
       data.marketplace_route_order_2 = data.marketplace_route_order[2];
@@ -437,7 +482,12 @@ const EditTokenModal = (props) => {
   const submit = async (values) => {
     setLoading(true);
     if (isEdit) {
-      let { tokenCount: _tc, ...localInputs } = values;
+      let {
+        tokenCount: _tc,
+        marketplace_pool_filters_enabled: _poolFiltersEnabled,
+        marketplace_pool_filters: _poolFilters,
+        ...localInputs
+      } = values;
       localInputs.remain_quota = localInputs.unlimited_quota
         ? 0
         : displayAmountToQuota(localInputs.remain_amount);
@@ -480,7 +530,12 @@ const EditTokenModal = (props) => {
       const count = parseInt(values.tokenCount, 10) || 1;
       let successCount = 0;
       for (let i = 0; i < count; i++) {
-        let { tokenCount: _tc, ...localInputs } = values;
+        let {
+          tokenCount: _tc,
+          marketplace_pool_filters_enabled: _poolFiltersEnabled,
+          marketplace_pool_filters: _poolFilters,
+          ...localInputs
+        } = values;
         const baseName =
           values.name.trim() === '' ? 'default' : values.name.trim();
         if (i !== 0 || values.name.trim() === '') {
@@ -535,14 +590,50 @@ const EditTokenModal = (props) => {
     resetMarketplaceRouteFormValues();
   };
 
-  const marketplaceFixedOrderOptions = [
-    ...marketplaceFixedOrders.map((order) => ({
-      label: `#${order.id} · ${t('托管Key')} #${order.credential_id} · ${t(
-        order.status,
-      )} · ${renderQuota(order.remaining_quota || 0)}`,
+  const marketplaceFixedOrderStatusLabel = (status) =>
+    t(MARKETPLACE_FIXED_ORDER_STATUS_LABELS[status] || status || '');
+  const activeMarketplaceFixedOrders = useMemo(
+    () => marketplaceFixedOrders.filter((order) => order.status === 'active'),
+    [marketplaceFixedOrders],
+  );
+  const activeMarketplaceFixedOrderIds = useMemo(
+    () => new Set(activeMarketplaceFixedOrders.map((order) => Number(order.id))),
+    [activeMarketplaceFixedOrders],
+  );
+  const marketplaceFixedOrderLabel = (order) =>
+    `#${order.id} · ${t('托管Key')} #${order.credential_id} · ${marketplaceFixedOrderStatusLabel(order.status)} · ${renderQuota(order.remaining_quota || 0)}`;
+  const marketplaceFixedOrderOptions = activeMarketplaceFixedOrders.map(
+    (order) => ({
+      label: marketplaceFixedOrderLabel(order),
       value: order.id,
-    })),
-  ];
+    }),
+  );
+
+  useEffect(() => {
+    if (!marketplaceFixedOrdersLoaded || !formApiRef.current) return;
+
+    const currentValue =
+      formApiRef.current.getValue('marketplace_fixed_order_ids') || [];
+    const currentIds = Array.isArray(currentValue)
+      ? currentValue
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      : [];
+    const visibleIds = currentIds.filter((id) =>
+      activeMarketplaceFixedOrderIds.has(id),
+    );
+    const changed =
+      currentIds.length !== visibleIds.length ||
+      currentIds.some((id, index) => id !== visibleIds[index]);
+
+    if (!changed) return;
+    formApiRef.current.setValue('marketplace_fixed_order_ids', visibleIds);
+    formApiRef.current.setValue('marketplace_fixed_order_id', visibleIds[0] || 0);
+  }, [
+    activeMarketplaceFixedOrderIds,
+    marketplaceFixedOrdersLoaded,
+    marketplaceFixedOrders,
+  ]);
   return (
     <SideSheet
       placement={isEdit ? 'right' : 'left'}
@@ -691,6 +782,8 @@ const EditTokenModal = (props) => {
                               const enabledRoutes =
                                 marketplaceRouteEnabledValue;
                               const enabled = enabledRoutes.includes(route);
+                              const targetTab =
+                                MARKETPLACE_ROUTE_TARGET_TABS[route];
 
                               return (
                                 <div
@@ -705,8 +798,52 @@ const EditTokenModal = (props) => {
                                     {index + 1}
                                   </div>
                                   <div className='min-w-0 flex-1'>
-                                    <div className='truncate text-sm font-medium'>
-                                      {t(MARKETPLACE_ROUTE_ORDER_LABELS[route])}
+                                    <div className='flex min-w-0 flex-wrap items-center gap-2'>
+                                      {targetTab ? (
+                                        <button
+                                          type='button'
+                                          className='inline-flex min-w-0 items-center gap-1 rounded border-0 bg-transparent p-0 text-left text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline'
+                                          onClick={() =>
+                                            handleMarketplaceRouteJump(route)
+                                          }
+                                          aria-label={t(
+                                            MARKETPLACE_ROUTE_JUMP_LABELS[
+                                              route
+                                            ],
+                                          )}
+                                        >
+                                          <span className='truncate'>
+                                            {t(
+                                              MARKETPLACE_ROUTE_ORDER_LABELS[
+                                                route
+                                              ],
+                                            )}
+                                          </span>
+                                          <IconLink size={14} />
+                                        </button>
+                                      ) : (
+                                        <div className='truncate text-sm font-medium'>
+                                          {t(
+                                            MARKETPLACE_ROUTE_ORDER_LABELS[
+                                              route
+                                            ],
+                                          )}
+                                        </div>
+                                      )}
+                                      {route === 'pool' && (
+                                        <Tag
+                                          color={
+                                            marketplaceRoutePoolFiltersSaved
+                                              ? 'green'
+                                              : 'grey'
+                                          }
+                                          size='small'
+                                        >
+                                          {marketplaceRoutePoolFiltersSaved
+                                            ? t('已保存条件')
+                                            : t('未保存条件')}
+                                        </Tag>
+                                      )}
                                     </div>
                                   </div>
                                   <Switch

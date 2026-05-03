@@ -6,6 +6,10 @@ const editTokenModalPath = new URL(
   "../classic/src/components/table/tokens/modals/EditTokenModal.jsx",
   import.meta.url,
 );
+const classicMarketplacePath = new URL(
+  "../classic/src/pages/Marketplace/index.jsx",
+  import.meta.url,
+);
 
 const load = async (path) => readFile(path, "utf8");
 
@@ -72,4 +76,59 @@ test("edit token modal submits configurable marketplace route order", async () =
     source,
     /已启用路由会按列表顺序尝试。默认顺序：市场买断订单、普通分组订单、订单池/,
   );
+});
+
+test("edit token modal only offers active marketplace fixed orders for new binding", async () => {
+  const source = await load(editTokenModalPath);
+
+  assert.match(
+    source,
+    /activeMarketplaceFixedOrders = useMemo\(\s*\(\) => marketplaceFixedOrders\.filter\(\(order\) => order\.status === 'active'\)/,
+  );
+  assert.match(source, /activeMarketplaceFixedOrderIds/);
+  assert.match(
+    source,
+    /visibleIds = currentIds\.filter\(\(id\) =>\s*activeMarketplaceFixedOrderIds\.has\(id\)/,
+  );
+  assert.match(source, /marketplaceFixedOrderStatusLabel/);
+  assert.match(source, /MARKETPLACE_FIXED_ORDER_STATUS_LABELS/);
+  assert.match(source, /t\('托管Key'\)/);
+  assert.doesNotMatch(source, /t\(\s*order\.status\s*\)/);
+  assert.doesNotMatch(source, /renderMarketplaceFixedOrderSelectedItem/);
+});
+
+test("edit token modal links marketplace routes to the matching marketplace tabs", async () => {
+  const [modalSource, marketplaceSource] = await Promise.all([
+    load(editTokenModalPath),
+    load(classicMarketplacePath),
+  ]);
+
+  assert.match(modalSource, /useNavigate/);
+  assert.match(
+    modalSource,
+    /MARKETPLACE_ROUTE_TARGET_TABS\s*=\s*\{\s*fixed_order:\s*'orders',\s*pool:\s*'pool',\s*\}/,
+  );
+  assert.match(modalSource, /handleMarketplaceRouteJump/);
+  assert.match(modalSource, /handleMarketplaceRouteJump\(route\)/);
+  assert.match(modalSource, /navigate\(`\/marketplace\?\$\{params\.toString\(\)\}`\)/);
+  assert.match(modalSource, /params\.set\('token_id'/);
+  assert.match(modalSource, /marketplace_pool_filters_enabled:\s*false/);
+  assert.match(modalSource, /marketplace_pool_filters:\s*null/);
+  assert.match(modalSource, /setMarketplaceRoutePoolFiltersSaved/);
+  assert.match(
+    modalSource,
+    /setMarketplaceRoutePoolFiltersSaved\(\s*Boolean\(data\.marketplace_pool_filters_enabled\),\s*\)/,
+  );
+  assert.match(modalSource, /t\('已保存条件'\)/);
+  assert.match(modalSource, /t\('未保存条件'\)/);
+
+  assert.match(marketplaceSource, /useSearchParams/);
+  assert.match(marketplaceSource, /searchParams\.get\('tab'\)/);
+  assert.match(marketplaceSource, /searchParams\.get\('token_id'\)/);
+  assert.match(
+    marketplaceSource,
+    /marketplace_fixed_order:\s*'orders'/,
+  );
+  assert.match(marketplaceSource, /activeKey=\{activeMarketplaceTab\}/);
+  assert.match(marketplaceSource, /onChange=\{handleMarketplaceTabChange\}/);
 });
