@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/model"
@@ -66,7 +65,7 @@ func CreateTokenVerificationTask(c *gin.Context) {
 		return
 	}
 	gopool.Go(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), tokenverifier.TaskTimeout())
 		defer cancel()
 		if err := tokenverifier.RunTask(ctx, task.ID); err != nil {
 			common.SysLog("token verification task failed: " + err.Error())

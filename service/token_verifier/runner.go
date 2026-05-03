@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ca0fgh/hermestoken/common"
@@ -23,7 +25,53 @@ const (
 
 	reproducibilitySeed   = 42
 	reproducibilityPrompt = "Reply with this exact string and nothing else: STABLE_PING_9F3"
+
+	defaultModelCheckConcurrency = 3
+	maxModelCheckConcurrency     = 16
+
+	defaultTaskTimeout = 5 * time.Minute
+	minTaskTimeout     = 60 * time.Second
+	maxTaskTimeout     = 30 * time.Minute
 )
+
+// modelCheckConcurrency returns the bounded parallelism for per-model checks.
+// Configurable via TOKEN_VERIFIER_MODEL_CONCURRENCY; clamped to [1, 16].
+func modelCheckConcurrency() int {
+	raw := strings.TrimSpace(os.Getenv("TOKEN_VERIFIER_MODEL_CONCURRENCY"))
+	if raw == "" {
+		return defaultModelCheckConcurrency
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return defaultModelCheckConcurrency
+	}
+	if n > maxModelCheckConcurrency {
+		return maxModelCheckConcurrency
+	}
+	return n
+}
+
+// TaskTimeout returns the per-task overall ctx timeout enforced by the
+// controller. Configurable via TOKEN_VERIFIER_TASK_TIMEOUT_SEC; clamped to
+// [60, 1800] seconds (default 300).
+func TaskTimeout() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("TOKEN_VERIFIER_TASK_TIMEOUT_SEC"))
+	if raw == "" {
+		return defaultTaskTimeout
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return defaultTaskTimeout
+	}
+	d := time.Duration(n) * time.Second
+	if d < minTaskTimeout {
+		return minTaskTimeout
+	}
+	if d > maxTaskTimeout {
+		return maxTaskTimeout
+	}
+	return d
+}
 
 type Runner struct {
 	BaseURL   string
@@ -93,6 +141,15 @@ func RunTask(ctx context.Context, taskID int64) error {
 	return nil
 }
 
+// modelJob is one (provider, model) tuple worth of checks. isFirst marks the
+// model whose model_access result must be cloned as the CheckAvailability
+// row for the report (preserves pre-parallelization semantics).
+type modelJob struct {
+	provider string
+	model    string
+	isFirst  bool
+}
+
 func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {
 	if strings.TrimSpace(r.BaseURL) == "" {
 		return nil, errors.New("token verifier base url is empty")
@@ -110,28 +167,89 @@ func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {
 	}
 
 	providers := resolveProviders(r.Providers)
-	results := make([]CheckResult, 0, len(providers)*(2+len(models)*4))
+
+	// models_list runs once per provider; cheap, kept sequential for simplicity.
+	listResults := make([]CheckResult, 0, len(providers))
+	for _, provider := range providers {
+		listResults = append(listResults, withProvider(r.checkModelsList(ctx, executor, provider), provider))
+	}
+
+	jobs := buildModelJobs(providers, models)
+
+	// Execute jobs concurrently with bounded parallelism. Output is gathered
+	// in input order so report ordering is stable across runs.
+	jobResults := make([][]CheckResult, len(jobs))
+	concurrency := modelCheckConcurrency()
+	if concurrency > len(jobs) {
+		concurrency = len(jobs)
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+	for i := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(idx int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			jobResults[idx] = r.runModelChecks(ctx, executor, jobs[idx])
+		}(i)
+	}
+	wg.Wait()
+
+	totalChecks := len(listResults)
+	for _, jr := range jobResults {
+		totalChecks += len(jr)
+	}
+	results := make([]CheckResult, 0, totalChecks)
+	results = append(results, listResults...)
+	for _, jr := range jobResults {
+		results = append(results, jr...)
+	}
+	return results, nil
+}
+
+// buildModelJobs expands (providers × models) into a flat job list,
+// preserving original ordering. Includes the small heuristic where a
+// default OpenAI model gets swapped for the default Anthropic one when
+// the provider is anthropic and the user did not specify any model.
+func buildModelJobs(providers, models []string) []modelJob {
+	jobs := make([]modelJob, 0, len(providers)*len(models))
 	for _, provider := range providers {
 		providerModels := models
 		if len(providerModels) == 1 && provider == ProviderAnthropic && providerModels[0] == defaultVerifierModel {
 			providerModels = []string{defaultAnthropicModel}
 		}
-		results = append(results, withProvider(r.checkModelsList(ctx, executor, provider), provider))
 		for i, modelName := range providerModels {
-			chatResult := r.checkModelAccess(ctx, executor, provider, modelName)
-			if i == 0 {
-				availability := chatResult
-				availability.CheckKey = CheckAvailability
-				results = append(results, availability)
-			}
-			results = append(results, chatResult)
-			results = append(results, buildModelIdentityResult(provider, modelName, chatResult))
-			results = append(results, withProvider(r.checkStream(ctx, executor, provider, modelName), provider))
-			results = append(results, r.checkJSON(ctx, executor, provider, modelName))
-			results = append(results, r.checkReproducibility(ctx, executor, provider, modelName))
+			jobs = append(jobs, modelJob{provider: provider, model: modelName, isFirst: i == 0})
 		}
 	}
-	return results, nil
+	return jobs
+}
+
+// runModelChecks runs the full per-model check sequence (access → identity →
+// stream → json → reproducibility, plus availability copy when isFirst). The
+// checks within a single model stay sequential because identity is derived
+// from access and the order matters for readability of the per-model section
+// in the resulting report.
+func (r Runner) runModelChecks(ctx context.Context, executor *CurlExecutor, job modelJob) []CheckResult {
+	chatResult := r.checkModelAccess(ctx, executor, job.provider, job.model)
+	out := make([]CheckResult, 0, 6)
+	if job.isFirst {
+		availability := chatResult
+		availability.CheckKey = CheckAvailability
+		out = append(out, availability)
+	}
+	out = append(out,
+		chatResult,
+		buildModelIdentityResult(job.provider, job.model, chatResult),
+		withProvider(r.checkStream(ctx, executor, job.provider, job.model), job.provider),
+		r.checkJSON(ctx, executor, job.provider, job.model),
+		r.checkReproducibility(ctx, executor, job.provider, job.model),
+	)
+	return out
 }
 
 func (r Runner) checkModelsList(ctx context.Context, executor *CurlExecutor, provider string) CheckResult {
@@ -856,14 +974,30 @@ func (r Runner) checkReproducibility(ctx context.Context, executor *CurlExecutor
 		}
 	}
 
-	fp1, hash1, err := r.runSeededProbe(ctx, executor, modelName)
-	if err != nil {
-		return withProvider(failedResult(CheckReproducibility, modelName, err, 0), provider)
+	type probeResult struct {
+		fp   string
+		hash string
+		err  error
 	}
-	fp2, hash2, err := r.runSeededProbe(ctx, executor, modelName)
-	if err != nil {
-		return withProvider(failedResult(CheckReproducibility, modelName, err, 0), provider)
+	var p1, p2 probeResult
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		p1.fp, p1.hash, p1.err = r.runSeededProbe(ctx, executor, modelName)
+	}()
+	go func() {
+		defer wg.Done()
+		p2.fp, p2.hash, p2.err = r.runSeededProbe(ctx, executor, modelName)
+	}()
+	wg.Wait()
+	if p1.err != nil {
+		return withProvider(failedResult(CheckReproducibility, modelName, p1.err, 0), provider)
 	}
+	if p2.err != nil {
+		return withProvider(failedResult(CheckReproducibility, modelName, p2.err, 0), provider)
+	}
+	fp1, hash1, fp2, hash2 := p1.fp, p1.hash, p2.fp, p2.hash
 
 	consistent, method := decideReproducibility(fp1, fp2, hash1, hash2)
 	score := 100
