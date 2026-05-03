@@ -843,3 +843,45 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 - 每被测的 OpenAI 系模型多 2 次 chat completion 调用（`max_tokens=32`，token 消耗极少）
 - 单模型增加耗时约 1–3 秒
 - Anthropic 模型零额外开销
+
+## 评分校准矩阵（calibration matrix）
+
+为了证明评分系统在已知场景下输出符合预期，仓库内置一组**确定性集成测试**：用手工构造的 `CheckResult` 切片模拟 10 种典型场景，断言 `BuildReport` 输出的 `grade` / `dimensions` / `model_identity` / `risks` / `baseline_source`。无需真实上游 token，CI 可直接跑。
+
+### 场景清单
+
+| Case ID | 场景描述 | 关键断言 |
+| --- | --- | --- |
+| `OFFICIAL-OPENAI-01` | 直连官方 gpt-4o，TTFT/TPS 接近 AA P50 | grade ≥ A，`baseline_source = artificial_analysis`，`performance` ≥ 13 |
+| `OFFICIAL-OPENAI-02` | 直连官方 gpt-5，旗舰模型全绿 | grade = S |
+| `OFFICIAL-ANTHROPIC-01` | 直连 Anthropic claude-opus-4-5；reproducibility skipped | grade ≥ A，stability = 15（skipped 不计入分母） |
+| `DOWNGRADE-01` | 请求 gpt-4o 但响应 gpt-4o-mini（同家族降级） | `suspected_downgrade=true`，`identity_confidence ≤ 35` |
+| `DOWNGRADE-02` | 请求 claude-opus-4-5 但响应 gpt-4o-mini（跨家族替换） | `suspected_downgrade=true`，`identity_confidence ≤ 25` |
+| `FAKE-MODEL-01` | 请求不存在的模型（gpt-9-ultra），HTTP 404 | grade ≤ C，`availability = 0` |
+| `EXPIRED-KEY-01` | 失效 key，HTTP 401 | grade ≤ C，`availability = 0` |
+| `QUOTA-EXHAUSTED-01` | 余额耗尽，`insufficient_quota` | grade ≤ C，`risks` 含「额度」 |
+| `STREAM-OFF-01` | 上游不支持流式（部分 Azure 部署） | `stream = 0`，其它维度仍健康 |
+| `FINGERPRINT-CHANGED-01` | 两次 seed 请求 system_fingerprint 不一致 | `risks` 含 `system_fingerprint`，reproducibility 标记 method=`system_fingerprint_changed` |
+
+### 运行
+
+```bash
+go test ./service/token_verifier/... -run TestCalibrationMatrix -v
+```
+
+每个 case 都是 `t.Run` 的子测试，CI 失败时能精确定位是哪条断言挂了。
+
+### 这套矩阵实际抓到的 bug
+
+`DOWNGRADE-02` 在首次落地时直接挂了：`modelFamilyAndTier` 用 `provider == anthropic` 作为家族判定的主条件，导致 anthropic 上下文里返回的 `gpt-4o-mini` 被错误归为 claude 家族，`identity_confidence` 输出 35 而不是预期的 ≤ 25。修复后改为名字优先、provider 仅作 tiebreaker，所有 case 通过。这正是校准矩阵的价值——把"分数是否符合直觉"从口头评判变成可审计的断言。
+
+### 与真实端到端的关系
+
+本矩阵覆盖**评分逻辑**正确性，不覆盖**真实上游行为**。两层互补：
+
+| 层 | 工具 | 需要真 key | 跑在哪 |
+| --- | --- | --- | --- |
+| 1. 评分逻辑（这一节） | `go test TestCalibrationMatrix` | 否 | CI / 本地 |
+| 2. 真实端到端校准 | `scripts/calibrate-aa-baseline.sh` | 是 | 部署机器 |
+
+所有 layer 1 场景应该永远绿——任何一条挂掉都说明 scoring 改动产生了非预期的回归。layer 2 是用真 token 验证"这个网关 region 在真实负载下的 baseline 长什么样"。
