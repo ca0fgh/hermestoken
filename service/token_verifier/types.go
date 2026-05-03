@@ -33,11 +33,27 @@ type CheckResult struct {
 }
 
 type ModelSummary struct {
-	Provider  string `json:"provider"`
-	ModelName string `json:"model_name"`
-	Available bool   `json:"available"`
-	LatencyMs int64  `json:"latency_ms,omitempty"`
-	Message   string `json:"message,omitempty"`
+	Provider       string            `json:"provider"`
+	ModelName      string            `json:"model_name"`
+	Available      bool              `json:"available"`
+	LatencyMs      int64             `json:"latency_ms,omitempty"`
+	StreamTTFTMs   int64             `json:"stream_ttft_ms,omitempty"`
+	StreamTokensPS float64           `json:"stream_tokens_ps,omitempty"`
+	Message        string            `json:"message,omitempty"`
+	Baseline       *ModelBaselineRef `json:"baseline,omitempty"`
+}
+
+// ModelBaselineRef captures comparison against an external public baseline (Artificial Analysis P50).
+// TTFTRatio = measured_ttft / baseline_ttft (lower is better).
+// TPSRatio  = measured_tps  / baseline_tps  (higher is better).
+type ModelBaselineRef struct {
+	Source         string  `json:"source"`
+	Slug           string  `json:"slug,omitempty"`
+	BaselineTTFTMs int64   `json:"baseline_ttft_ms"`
+	BaselineTPS    float64 `json:"baseline_tokens_ps"`
+	TTFTRatio      float64 `json:"ttft_ratio,omitempty"`
+	TPSRatio       float64 `json:"tps_ratio,omitempty"`
+	Note           string  `json:"note,omitempty"`
 }
 
 type ChecklistItem struct {
@@ -77,14 +93,16 @@ type FinalRating struct {
 }
 
 type ReportSummary struct {
-	Score         int                    `json:"score"`
-	Grade         string                 `json:"grade"`
-	Conclusion    string                 `json:"conclusion"`
-	Dimensions    map[string]int         `json:"dimensions"`
-	Checklist     []ChecklistItem        `json:"checklist"`
-	Models        []ModelSummary         `json:"models"`
-	ModelIdentity []ModelIdentitySummary `json:"model_identity"`
-	Metrics       map[string]float64     `json:"metrics"`
-	Risks         []string               `json:"risks"`
-	FinalRating   FinalRating            `json:"final_rating"`
+	Score          int                    `json:"score"`
+	Grade          string                 `json:"grade"`
+	Conclusion     string                 `json:"conclusion"`
+	Dimensions     map[string]int         `json:"dimensions"`
+	Checklist      []ChecklistItem        `json:"checklist"`
+	Models         []ModelSummary         `json:"models"`
+	ModelIdentity  []ModelIdentitySummary `json:"model_identity"`
+	Metrics        map[string]float64     `json:"metrics"`
+	Risks          []string               `json:"risks"`
+	FinalRating    FinalRating            `json:"final_rating"`
+	ScoringVersion string                 `json:"scoring_version"`
+	BaselineSource string                 `json:"baseline_source"`
 }

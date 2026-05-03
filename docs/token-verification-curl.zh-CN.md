@@ -504,11 +504,51 @@ curl -sS --no-buffer --max-time 40 \
 | 模型调用可用性 | `model_access` | 20 | 指定模型成功率 |
 | 模型身份一致性 | `model_identity` | 15 | 响应模型与声明模型的一致性置信度 |
 | 稳定性 | `stability` | 15 | 所有检查项成功率 |
-| 性能 | `performance` | 15 | 平均响应耗时分档评分 |
+| 性能 | `performance` | 15 | 实测 TTFT / 输出速度 vs Artificial Analysis P50 的比值，无基线时回退到绝对耗时分档 |
 | 流式输出能力 | `stream` | 10 | stream 检查是否成功 |
 | JSON 输出稳定性 | `json` | 5 | JSON 检查是否成功 |
 
 `models_list` 进入检查清单，但当前不单独占评分权重。
+
+### performance 维度详解（v2 / AA 基线）
+
+`performance` 满分 15，由 TTFT 子分和输出速度子分各 7.5 分组成。当被测模型在 Artificial Analysis 缓存中能找到基线，且至少采集到一项流式性能数据时，按比值打分；否则回退到绝对耗时阶梯。
+
+TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
+
+| 比值 | 子分 |
+| --- | ---: |
+| ≤ 1.00 | 7.5 |
+| ≤ 1.15 | 6.5 |
+| ≤ 1.50 | 5.0 |
+| ≤ 2.00 | 3.5 |
+| ≤ 3.00 | 2.0 |
+| > 3.00 | 1.0 |
+
+输出速度子分（`measured_stream_tokens_ps / baseline_tokens_ps`，越高越好）：
+
+| 比值 | 子分 |
+| --- | ---: |
+| ≥ 1.00 | 7.5 |
+| ≥ 0.85 | 6.5 |
+| ≥ 0.70 | 5.0 |
+| ≥ 0.50 | 3.5 |
+| ≥ 0.30 | 2.0 |
+| < 0.30 | 1.0 |
+
+多个模型时取每模型分数的算术平均后四舍五入到整数。
+
+回退到绝对耗时阶梯时（`baseline_source = "fallback_absolute"`），仍沿用旧逻辑：
+
+| 平均延迟 (`avg_latency_ms`) | 子分 |
+| --- | ---: |
+| ≤ 1500 ms | 15 |
+| ≤ 3000 ms | 12 |
+| ≤ 6000 ms | 9 |
+| ≤ 10000 ms | 6 |
+| > 10000 ms | 3 |
+
+> 注意：Artificial Analysis 测试机部署在 GCP `us-central1-a`，TTFT 含网络 RTT。如果网关落在国内/香港，实测 TTFT 会系统性偏高，需要做地理校准（详见后文「Artificial Analysis 基线接入」）。
 
 ## 最终评级
 
@@ -528,6 +568,8 @@ curl -sS --no-buffer --max-time 40 \
   "score": 88,
   "grade": "A",
   "conclusion": "稳定可用，适合日常调用",
+  "scoring_version": "v2",
+  "baseline_source": "artificial_analysis",
   "dimensions": {
     "availability": 20,
     "model_access": 18,
@@ -538,7 +580,24 @@ curl -sS --no-buffer --max-time 40 \
     "json": 5
   },
   "checklist": [],
-  "models": [],
+  "models": [
+    {
+      "provider": "openai",
+      "model_name": "gpt-4o",
+      "available": true,
+      "latency_ms": 920,
+      "stream_ttft_ms": 480,
+      "stream_tokens_ps": 72.5,
+      "baseline": {
+        "source": "artificial_analysis",
+        "slug": "gpt-4o",
+        "baseline_ttft_ms": 420,
+        "baseline_tokens_ps": 88.5,
+        "ttft_ratio": 1.143,
+        "tps_ratio": 0.819
+      }
+    }
+  ],
   "model_identity": [
     {
       "provider": "openai",
@@ -552,7 +611,9 @@ curl -sS --no-buffer --max-time 40 \
   "metrics": {
     "avg_latency_ms": 1120.5,
     "avg_ttft_ms": 450,
-    "avg_tokens_per_second": 38.2
+    "avg_tokens_per_second": 38.2,
+    "aa_ttft_ratio_avg": 1.143,
+    "aa_tps_ratio_avg": 0.819
   },
   "risks": [],
   "final_rating": {
@@ -564,6 +625,22 @@ curl -sS --no-buffer --max-time 40 \
   }
 }
 ```
+
+新增字段语义：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `scoring_version` | string | 评分算法版本。引入 AA 基线后为 `"v2"`；历史无该字段的报告隐含为 `"v1"` |
+| `baseline_source` | string | `artificial_analysis`（全部模型命中 AA 基线）/ `mixed`（部分命中）/ `fallback_absolute`（无命中，回退绝对阶梯）/ `none`（无任何性能数据） |
+| `models[].stream_ttft_ms` | int | 流式检查测得的首 token 时间，毫秒 |
+| `models[].stream_tokens_ps` | float | 流式检查估算的 tokens/s |
+| `models[].baseline` | object | 该模型的 AA 基线及与实测的比值；命中时存在，否则缺省 |
+| `models[].baseline.ttft_ratio` | float | 实测 TTFT / 基线 TTFT，**越低越好**，可直接用于前端展示 |
+| `models[].baseline.tps_ratio` | float | 实测输出速度 / 基线输出速度，**越高越好** |
+| `metrics.aa_ttft_ratio_avg` | float | 命中基线的所有模型 `ttft_ratio` 平均，便于一眼看出整体性能水平 |
+| `metrics.aa_tps_ratio_avg` | float | 同上，输出速度比值平均 |
+
+`scoring_version` 同时落到 `token_verification_reports` 表的独立列，方便后续按版本筛选历史任务做趋势分析。
 
 ## 当前模型身份检测原理
 
@@ -604,3 +681,82 @@ curl -sS --no-buffer --max-time 40 \
 - `multi_period_consistency`：多时段复测一致性。
 
 下一阶段可加入隐藏题库、官方基准输出对照、长上下文探针、工具调用探针和多时段复测。
+
+## Artificial Analysis 基线接入
+
+Token 校验的 `performance` 维度对接 [Artificial Analysis](https://artificialanalysis.ai/) 公开的 LLM 性能数据，用作"标杆"。基线只用于打分参照，不会替代我们自己的真实 curl 测量。
+
+### 数据源
+
+| 项 | 值 |
+| --- | --- |
+| 接口 | `GET https://artificialanalysis.ai/api/v2/data/llms/models` |
+| 鉴权 | HTTP header `x-api-key: <AA_API_KEY>` |
+| 单次返回 | 约 1 KB/模型 × 数十个主流模型，含 `slug`、`median_time_to_first_token_seconds`、`median_output_tokens_per_second` |
+| 限流 | 1000 req / day |
+| 测量位置 | GCP `us-central1-a`（含网络 RTT） |
+| AA 自身聚合窗口 | 中位 P50，按 prompt 长度分组（详见 [methodology](https://artificialanalysis.ai/methodology/performance-benchmarking)） |
+
+### 配置项（环境变量）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `AA_API_KEY` | （空） | 必填，未配置时 `baseline_source` 永远是 `fallback_absolute` |
+| `AA_BASELINE_ENABLED` | （空 → 取决于 key） | 显式 `false` 可在 key 已配置时强制关闭基线评分 |
+| `AA_REFRESH_INTERVAL_HOURS` | `24` | 同步周期；最小 1 小时 |
+
+### 同步与缓存
+
+- 启动时立即拉取一次；之后按 `AA_REFRESH_INTERVAL_HOURS` 周期性刷新。
+- 仅 master 节点跑同步任务（沿用 `common.IsMasterNode` 约定）。
+- 命中 Redis 时落 key `token_verifier:aa_baseline`，TTL 14 天；未启用 Redis 则只放进程内存。
+- 同步失败、API 5xx、限流时不会清空旧数据；缓存自然过期前继续生效。
+
+### 模型名匹配
+
+AA 用 `slug`（如 `gpt-4o`、`claude-3-5-haiku`）作为标识。匹配时复用 `canonicalModelName`：
+
+- 大小写、`_`/`-` 归一化
+- 去掉 `-latest` / `-preview` 后缀
+- 去掉日期后缀（`gpt-4o-2024-05-13` → `gpt-4o`）
+
+因此用户填 `gpt-4o-2024-05-13`、`gpt_4o`、`GPT-4o` 等变体都能命中同一个 AA 基线。命中失败的模型在该任务里走 fallback 阶梯。
+
+### 失败回退路径
+
+任意一个条件满足都会让 `performance` 走 `fallback_absolute`：
+
+- AA 未配置或被关闭
+- 同步从未成功，缓存为空
+- 用户测的模型在 AA 列表中找不到（长尾模型常见）
+- 流式 check 失败导致没有可用的实测 TTFT / tokens-per-second
+
+混合场景（部分模型命中、部分未命中）走 `mixed`，命中部分用比值评分，未命中部分不影响最终的性能子分。
+
+### 地理校准建议
+
+AA 测试机在 GCP us-central1，国内/香港部署的网关测出的 TTFT 会系统性偏高（典型 +200~400 ms）。建议生产前跑一次校准基线：
+
+1. 用直连官方 endpoint 的 token，从同一台部署机器上测主流模型（`gpt-4o`、`gpt-4o-mini`、`claude-3-5-haiku-latest`、`claude-opus-4-5`）。
+2. 记录每个模型的 `aa_ttft_ratio_avg`，得到本地"网关固有偏移"基准。
+3. 后续任何 token 的 `ttft_ratio` 都应该和该基准在 ±15% 内；显著高出说明上游有问题，不是基线偏差。
+
+仓库提供了一键校准脚本 `scripts/calibrate-aa-baseline.sh`，需 `curl`、`jq`、`awk`。用法：
+
+```bash
+scripts/calibrate-aa-baseline.sh \
+  --gateway https://api.example.com \
+  --token-id 42 \
+  --access-token <user_access_token> \
+  --user-id 7
+```
+
+`access_token` 从 `GET /api/user/token` 获取；`user-id` 即当前登录用户的数字 id。脚本会创建一次校验任务、轮询完成、按模型打印 TTFT/TPS 实测/基线/比值，并给出该网关 region 推荐的"正常区间"和"异常告警"阈值。脚本退出码：`0` 校准成功，`1` 调用失败，`2` 命中 fallback（基线不可用）。
+
+### 健康检查（手工）
+
+AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=<n>` 确认。如果连续多个刷新周期没看到这条，需检查：
+
+- `AA_API_KEY` 是否正确（401 会出现在 warn 日志）
+- 容器是否能出网到 `artificialanalysis.ai`
+- 是否撞 1000 req/day 限流
