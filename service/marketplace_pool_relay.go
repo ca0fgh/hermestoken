@@ -42,12 +42,13 @@ type MarketplacePoolRelayPreparation struct {
 }
 
 type MarketplacePoolRelaySession struct {
-	buyerUserID             int
-	sellerUserID            int
-	credentialID            int
-	model                   string
-	requestID               string
-	multiplierSnapshot      float64
+	buyerUserID        int
+	sellerUserID       int
+	credentialID       int
+	model              string
+	requestID          string
+	multiplierSnapshot float64
+	// Buyer calls use the global fee rate captured when the call is prepared.
 	platformFeeRateSnapshot float64
 	startTime               time.Time
 
@@ -146,7 +147,7 @@ func PrepareMarketplacePoolRelay(input MarketplacePoolRelayInput) (*MarketplaceP
 				model:                   input.Model,
 				requestID:               input.RequestID,
 				multiplierSnapshot:      selected.Multiplier,
-				platformFeeRateSnapshot: 0,
+				platformFeeRateSnapshot: marketplaceFeeRateSnapshot(),
 				startTime:               time.Now(),
 			},
 		}
@@ -169,8 +170,12 @@ func (s *MarketplacePoolBillingSession) Settle(actualQuota int) error {
 	if s == nil {
 		return nil
 	}
+	buyerCharge := actualQuota
+	if s.pool != nil {
+		buyerCharge = marketplaceBuyerChargeWithFee(int64(actualQuota), s.pool.platformFeeRateSnapshot)
+	}
 	if s.funding != nil {
-		if err := s.funding.Settle(actualQuota); err != nil {
+		if err := s.funding.Settle(buyerCharge); err != nil {
 			if s.pool != nil {
 				s.pool.Release(nil)
 			}
@@ -180,7 +185,7 @@ func (s *MarketplacePoolBillingSession) Settle(actualQuota int) error {
 	if s.pool == nil {
 		return nil
 	}
-	return s.pool.Settle(actualQuota)
+	return s.pool.Settle(buyerCharge)
 }
 
 func (s *MarketplacePoolBillingSession) Refund(c *gin.Context) {
@@ -213,7 +218,21 @@ func (s *MarketplacePoolBillingSession) Reserve(targetQuota int) error {
 	if s == nil || s.funding == nil {
 		return nil
 	}
-	return s.funding.Reserve(targetQuota)
+	return s.funding.Reserve(s.BuyerChargeForQuota(targetQuota))
+}
+
+func (s *MarketplacePoolBillingSession) BuyerChargeForQuota(quota int) int {
+	if s == nil || s.pool == nil {
+		return quota
+	}
+	return s.pool.BuyerChargeForQuota(quota)
+}
+
+func (s *MarketplacePoolRelaySession) BuyerChargeForQuota(quota int) int {
+	if s == nil {
+		return quota
+	}
+	return marketplaceBuyerChargeWithFee(int64(quota), s.platformFeeRateSnapshot)
 }
 
 func (s *MarketplacePoolRelaySession) Settle(buyerCharge int) error {
@@ -241,7 +260,10 @@ func (s *MarketplacePoolRelaySession) Settle(buyerCharge int) error {
 			stats.CurrentConcurrency--
 		}
 
-		officialCost := marketplaceOfficialCostFromBuyerCharge(int64(buyerCharge), s.multiplierSnapshot)
+		buyerChargeInt64 := int64(buyerCharge)
+		platformFee := marketplacePlatformFeeFromBuyerCharge(buyerChargeInt64, s.platformFeeRateSnapshot)
+		sellerIncome := buyerChargeInt64 - platformFee
+		officialCost := marketplaceOfficialCostFromBuyerCharge(sellerIncome, s.multiplierSnapshot)
 		latencyMS := time.Since(s.startTime).Milliseconds()
 		if latencyMS < 0 {
 			latencyMS = 0
@@ -254,7 +276,7 @@ func (s *MarketplacePoolRelaySession) Settle(buyerCharge int) error {
 			Model:              s.model,
 			OfficialCost:       officialCost,
 			MultiplierSnapshot: s.multiplierSnapshot,
-			BuyerCharge:        int64(buyerCharge),
+			BuyerCharge:        buyerChargeInt64,
 			Status:             model.MarketplaceFillStatusSucceeded,
 			LatencyMS:          latencyMS,
 		}
@@ -262,7 +284,6 @@ func (s *MarketplacePoolRelaySession) Settle(buyerCharge int) error {
 			return err
 		}
 
-		platformFee := marketplacePlatformFee(int64(buyerCharge), s.platformFeeRateSnapshot)
 		settlement := &model.MarketplaceSettlement{
 			RequestID:               s.requestID,
 			BuyerUserID:             s.buyerUserID,
@@ -270,10 +291,10 @@ func (s *MarketplacePoolRelaySession) Settle(buyerCharge int) error {
 			CredentialID:            s.credentialID,
 			SourceType:              marketplaceSettlementSourcePoolFill,
 			SourceID:                strconv.Itoa(fill.ID),
-			BuyerCharge:             int64(buyerCharge),
+			BuyerCharge:             buyerChargeInt64,
 			PlatformFee:             platformFee,
 			PlatformFeeRateSnapshot: s.platformFeeRateSnapshot,
-			SellerIncome:            int64(buyerCharge) - platformFee,
+			SellerIncome:            sellerIncome,
 			OfficialCost:            officialCost,
 			MultiplierSnapshot:      s.multiplierSnapshot,
 			AvailableAt:             common.GetTimestamp(),

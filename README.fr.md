@@ -19,7 +19,7 @@ make dev-api
 make dev-web
 ```
 
-Le backend se trouve a la racine du projet Go. Le frontend par defaut est dans `web/default`, et le frontend classique dans `web/classic`.
+Le backend se trouve a la racine du projet Go. Le frontend classique dans `web/classic` est le frontend par defaut pour `make dev-web` et `make build-frontend`; le frontend de compatibilite reste dans `web/default` et peut etre lance avec `make dev-web-default`.
 
 ## Licence
 

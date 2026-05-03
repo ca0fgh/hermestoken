@@ -36,6 +36,7 @@ const vendorTypesSchema = z.string().refine((value) => {
 const marketplaceSchema = z.object({
   MarketplaceEnabled: z.boolean(),
   MarketplaceEnabledVendorTypes: vendorTypesSchema,
+  MarketplaceFeeRate: z.coerce.number().min(0),
   MarketplaceSellerIncomeHoldSeconds: z.coerce.number().int().min(0),
   MarketplaceMinFixedOrderQuota: z.coerce.number().int().min(0),
   MarketplaceMaxFixedOrderQuota: z.coerce.number().int().min(0),
@@ -63,6 +64,13 @@ type MarketplaceNumberField = {
 }
 
 const numberFields: MarketplaceNumberField[] = [
+  {
+    name: 'MarketplaceFeeRate',
+    label: 'Buyer transaction fee rate',
+    description: 'Charged on every marketplace buyer call; 0.05 means 5%',
+    min: 0,
+    step: 0.0001,
+  },
   {
     name: 'MarketplaceSellerIncomeHoldSeconds',
     label: 'Income hold seconds',

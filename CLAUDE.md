@@ -7,7 +7,8 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 ## Tech Stack
 
 - **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
-- **Frontend**: React 19, TypeScript, Rsbuild, Radix UI, Tailwind CSS
+- **Frontend primary UI**: Classic frontend (`web/classic/`) — React 18, Vite, Semi Design
+- **Frontend compatibility UI**: New frontend (`web/default/`) — React 19, TypeScript, Rsbuild, Radix UI, Tailwind CSS
 - **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache
 - **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, etc.)
@@ -34,7 +35,7 @@ i18n/          — Backend internationalization (go-i18n, en/zh)
 oauth/         — OAuth provider implementations
 pkg/           — Internal packages (cachex, ionet)
 web/             — Frontend themes container
-  web/default/   — Default frontend (React 19, Rsbuild, Radix UI, Tailwind)
+  web/default/   — Compatibility frontend (React 19, Rsbuild, Radix UI, Tailwind)
   web/classic/   — Classic frontend (React 18, Vite, Semi Design)
   web/default/src/i18n/ — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
 ```
@@ -94,11 +95,10 @@ All database code MUST be fully compatible with all three databases simultaneous
 
 ### Rule 3: Frontend — Prefer Bun
 
-Use `bun` as the preferred package manager and script runner for the frontend (`web/default/` directory):
-- `bun install` for dependency installation
-- `bun run dev` for development server
-- `bun run build` for production build
-- `bun run i18n:*` for i18n tooling
+Use `bun` as the preferred package manager and script runner for both frontends. Classic (`web/classic/`) is the default UI:
+- `make dev-web` / `make build-frontend` for the classic frontend
+- `make dev-web-default` / `make build-frontend-default` only when explicitly working on `web/default/`
+- `bun run i18n:*` from `web/default/` for `web/default/` i18n tooling
 
 ### Rule 4: New Channel StreamOptions Support
 

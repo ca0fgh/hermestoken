@@ -206,12 +206,17 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(pageSource, /to='\/keys'/);
   assert.match(pageSource, /Manage console tokens/);
   assert.match(poolTabSource, /BuyerTokenPanel/);
-  assert.match(poolTabSource, /CallSnippet/);
+  assert.doesNotMatch(poolTabSource, /CallSnippet/);
   assert.match(poolTabSource, /Activate order pool/);
+  assert.match(poolTabSource, /Deactivate order pool/);
   assert.match(poolTabSource, /poolActivated/);
   assert.match(poolTabSource, /updateApiKey/);
   assert.match(poolTabSource, /marketplace_route_enabled/);
   assert.match(poolTabSource, /Order pool activated for this token/);
+  assert.match(poolTabSource, /Order pool deactivated for this token/);
+  assert.match(poolTabSource, /tokenWithoutMarketplacePoolRoute/);
+  assert.match(poolTabSource, /PowerOff/);
+  assert.match(poolTabSource, /setFilters\(savedPoolFilters \?\? defaultFilters\)/);
   assert.doesNotMatch(poolTabSource, /MARKETPLACE_POOL_RELAY_ENDPOINT/);
   assert.match(buyerTokenPanelSource, /getApiKeys/);
   assert.match(buyerTokenPanelSource, /to='\/keys'/);
@@ -221,11 +226,12 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(buyerTokenPanelSource, /Copy Key/);
   assert.match(buyerTokenPanelSource, /Copy Connection Info/);
   assert.match(buyerTokenPanelSource, /encodeConnectionString/);
-  assert.match(buyerTokenPanelSource, /getServerAddress/);
+  assert.match(buyerTokenPanelSource, /getConfiguredConnectionURL/);
+  assert.match(buyerTokenPanelSource, /useStatus/);
   assert.match(buyerTokenPanelSource, /copySelectedTokenConnectionInfo/);
   assert.match(
     buyerTokenPanelSource,
-    /marketplaceRelayBaseURL\(getServerAddress\(\)\)/,
+    /encodeConnectionString\(key,\s*getConfiguredConnectionURL\(status\)\)/,
   );
   assert.match(buyerTokenPanelSource, /function tokenKeyLabel/);
   assert.match(
@@ -256,10 +262,11 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(fixedOrdersTabSource, /Copy Key/);
   assert.match(fixedOrdersTabSource, /Copy Connection Info/);
   assert.match(fixedOrdersTabSource, /encodeConnectionString/);
-  assert.match(fixedOrdersTabSource, /getServerAddress/);
+  assert.match(fixedOrdersTabSource, /getConfiguredConnectionURL/);
+  assert.match(fixedOrdersTabSource, /useStatus/);
   assert.match(
     fixedOrdersTabSource,
-    /marketplaceRelayBaseURL\(getServerAddress\(\)\)/,
+    /encodeConnectionString\(key,\s*getConfiguredConnectionURL\(status\)\)/,
   );
   assert.match(fixedOrdersTabSource, /onCopyConnectionInfo/);
   assert.match(fixedOrdersTabSource, /function tokenKeyLabel/);
@@ -315,19 +322,31 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(ordersTabSource, /Buy fixed amount/);
   assert.match(ordersTabSource, /purchased_amount_usd/);
   assert.match(ordersTabSource, /Purchase amount \(USD\)/);
+  assert.match(ordersTabSource, /getSystemOptions/);
+  assert.match(ordersTabSource, /MarketplaceFeeRate/);
+  assert.match(ordersTabSource, /marketplaceBuyerPaymentUSD/);
+  assert.match(ordersTabSource, /Buyer transaction fee \{\{rate\}\}/);
+  assert.match(
+    ordersTabSource,
+    /final fixed order balance and deduction include the global buyer transaction fee/,
+  );
   assert.doesNotMatch(ordersTabSource, /Equivalent fixed quota/);
   assert.match(ordersTabSource, /Official price/);
   assert.match(ordersTabSource, /Multiplied price/);
   assert.doesNotMatch(ordersTabSource, /Own escrow/);
   assert.doesNotMatch(ordersTabSource, /disabled=\{isOwnOrder\}/);
-  assert.match(poolTabSource, /CallSnippet/);
+  assert.doesNotMatch(poolTabSource, /CallSnippet/);
   assert.match(poolTabSource, /Activate order pool/);
   assert.match(poolTabSource, /updateApiKey/);
   assert.doesNotMatch(poolTabSource, /MARKETPLACE_POOL_RELAY_ENDPOINT/);
   assert.match(`${pageSource}\n${libSource}`, /\/v1\/chat\/completions/);
   assert.match(libSource, /min_concurrency_limit/);
   assert.match(generalRegistrySource, /id:\s*'marketplace'/);
+  assert.match(generalRegistrySource, /MarketplaceFeeRate:\s*settings\.MarketplaceFeeRate/);
   assert.match(marketplaceSettingsSource, /MarketplaceFeeRate/);
+  assert.match(marketplaceSettingsSource, /Buyer transaction fee rate/);
+  assert.match(marketplaceSettingsSource, /0\.05 means 5%/);
+  assert.match(marketplaceSettingsSource, /MarketplaceMaxSellerMultiplier/);
   assert.match(marketplaceSettingsSource, /MarketplaceEnabledVendorTypes/);
   assert.doesNotMatch(
     `${pageSource}\n${typesSource}\n${sellerSource}`,
@@ -398,7 +417,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.match(pageSource, /marketplace-filter-range-row/);
   assert.match(
     pageStyleSource,
-    /\.marketplace-filter-range-row\s*\{[\s\S]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+    /\.marketplace-filter-range-row\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*240px\),\s*1fr\)\)/,
   );
   assert.match(pageStyleSource, /marketplace-filter-quota-range/);
   assert.match(pageStyleSource, /marketplace-filter-time-range/);
@@ -421,7 +440,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   );
   assert.match(pageSource, /aria-label=\{t\('厂商模型级联筛选'\)\}/);
   assert.match(pageSource, /insetLabel=\{t\('厂商 \/ 模型'\)\}/);
-  assert.match(pageSource, /dropdownStyle=\{\{ minWidth:\s*360/);
+  assert.match(pageSource, /dropdownStyle=\{\{ maxHeight:\s*360/);
   assert.doesNotMatch(pageSource, /\ssearchable\b/);
   assert.match(pageSource, /separator=' -> '/);
   assert.match(pageSource, /return selected\.join\(' -> '\)/);
@@ -459,7 +478,6 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.match(pageSource, /复制连接信息/);
   assert.match(pageSource, /encodeChannelConnectionString/);
   assert.match(pageSource, /getServerAddress/);
-  assert.match(pageSource, /marketplaceRelayUrl/);
   assert.match(pageSource, /\/v1\/chat\/completions/);
   assert.doesNotMatch(
     pageSource,
@@ -476,7 +494,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
     assert.match(buyerTokenPanelSource, /复制连接信息/);
     assert.match(buyerTokenPanelSource, /copySelectedTokenConnectionInfo/);
     assert.match(buyerTokenPanelSource, /encodeChannelConnectionString/);
-    assert.match(buyerTokenPanelSource, /marketplaceRelayUrl/);
+    assert.match(buyerTokenPanelSource, /getServerAddress/);
     assert.match(
       buyerTokenPanelSource,
       /tokenKeyLabel\(\s*token,\s*token\.id === selectedToken\?\.id && selectedTokenDisplayKey/,
@@ -528,16 +546,24 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
     assert.doesNotMatch(poolTabSource, /<ManageTokenButton \/>/);
     assert.doesNotMatch(poolTabSource, /管理令牌/);
     assert.match(poolTabSource, /激活使用/);
-    assert.match(poolTabSource, /停止激活/);
+    assert.match(poolTabSource, /取消激活/);
+    assert.match(poolTabSource, /取消激活中/);
+    assert.match(poolTabSource, /激活中/);
+    assert.match(poolTabSource, /保存条件/);
     assert.match(poolTabSource, /poolActivated/);
-    assert.match(poolTabSource, /toggleMarketplacePoolForToken/);
+    assert.match(poolTabSource, /saveMarketplacePoolFiltersForToken/);
+    assert.match(poolTabSource, /activateMarketplacePoolForToken/);
+    assert.match(poolTabSource, /deactivateMarketplacePoolForToken/);
+    assert.match(poolTabSource, /\/api\/marketplace\/pool\/token-filters/);
     assert.match(poolTabSource, /tokenWithMarketplacePoolRoute/);
     assert.match(poolTabSource, /tokenWithoutMarketplacePoolRoute/);
-    assert.match(poolTabSource, /该令牌已停止使用订单池/);
-    assert.doesNotMatch(
+    assert.match(poolTabSource, /savedPoolFilters \?\? defaultFilters/);
+    assert.match(
       poolTabSource,
-      /disabled=\{!selectedBuyerToken \|\| poolActivated/,
+      /disabled=\{!selectedBuyerToken \|\| activatingPool\}/,
     );
+    assert.doesNotMatch(poolTabSource, /停止激活/);
+    assert.doesNotMatch(poolTabSource, /该令牌已停止使用订单池/);
     assert.ok(
       poolTabSource.indexOf("<FilterBar") <
         poolTabSource.indexOf("className='marketplace-pool-activation'"),
@@ -545,7 +571,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
     );
     assert.doesNotMatch(
       poolTabSource,
-      /<CallSnippet[\s\S]*filters=\{filters\}/,
+      /<CallSnippet/,
     );
     assert.doesNotMatch(pageStyleSource, /marketplace-pool-call-snippet/);
   }
@@ -616,7 +642,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.match(sellerTabSource, /pricedModelsReady/);
   assert.match(
     sellerTabSource,
-    /key=\{pricedModelsReady \? 'priced-models-ready' : 'priced-models-loading'\}/,
+    /key=\{\s*pricedModelsReady[\s\S]*?'priced-models-ready'[\s\S]*?'priced-models-loading'[\s\S]*?\}/,
   );
   assert.match(sellerTabSource, /position='bottomLeft'/);
   assert.match(sellerTabSource, /autoAdjustOverflow=\{false\}/);
@@ -737,6 +763,11 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.match(pageSource, /买断金额/);
   assert.match(pageSource, /purchased_amount_usd/);
   assert.match(pageSource, /买断金额 \(USD\)/);
+  assert.match(pageSource, /MarketplaceFeeRate/);
+  assert.match(pageSource, /marketplaceBuyerPaymentUSD/);
+  assert.match(pageSource, /formatMarketplaceFeePercent/);
+  assert.match(pageSource, /预计实际扣除 \{\{amount\}\}/);
+  assert.match(pageSource, /填写的是基础调用额度/);
   assert.doesNotMatch(pageSource, /折算固定额度/);
   assert.doesNotMatch(pageSource, /dataIndex:\s*'purchased_quota'/);
   assert.doesNotMatch(pageSource, /dataIndex:\s*'remaining_quota'/);

@@ -109,7 +109,7 @@ test("classic marketplace filters use order-derived order ranges", async () => {
   );
   assert.match(pageSource, /aria-label=\{t\('厂商模型级联筛选'\)\}/);
   assert.match(pageSource, /insetLabel=\{t\('厂商 \/ 模型'\)\}/);
-  assert.match(pageSource, /dropdownStyle=\{\{ minWidth:\s*360/);
+  assert.match(pageSource, /dropdownStyle=\{\{[\s\S]*?minWidth:\s*360/);
   assert.doesNotMatch(pageSource, /\ssearchable\b/);
   assert.match(pageSource, /separator=' -> '/);
   assert.match(pageSource, /return selected\.join\(' -> '\)/);

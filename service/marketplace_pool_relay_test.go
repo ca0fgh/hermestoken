@@ -11,6 +11,7 @@ import (
 	"github.com/ca0fgh/hermestoken/dto"
 	"github.com/ca0fgh/hermestoken/model"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -207,6 +208,61 @@ func TestMarketplacePoolRelayBillingSessionSettleChargesWalletAndWritesSettlemen
 	assert.Equal(t, int64(1), stats.TotalRequestCount)
 	assert.Equal(t, int64(640), stats.QuotaUsed)
 	assert.Equal(t, int64(1), stats.SuccessCount)
+}
+
+func TestMarketplacePoolRelayBillingSessionSettleChargesWalletWithTransactionFee(t *testing.T) {
+	fixture := newMarketplacePoolRelayFixture(t)
+	setting.MarketplaceFeeRate = 0.05
+
+	preparation, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
+		BuyerUserID: fixture.BuyerUserID,
+		Model:       "gpt-4o-mini",
+		RequestID:   "pool-settle-fee",
+	})
+	require.NoError(t, err)
+
+	normalBilling := newMarketplacePoolNormalBilling(t, fixture, 1050)
+	poolBilling := NewMarketplacePoolBillingSession(normalBilling, preparation.Session)
+	require.NoError(t, poolBilling.Settle(800))
+
+	var buyer model.User
+	require.NoError(t, fixture.DB.First(&buyer, fixture.BuyerUserID).Error)
+	assert.Equal(t, 9160, buyer.Quota)
+
+	var token model.Token
+	require.NoError(t, fixture.DB.First(&token, fixture.Token.Id).Error)
+	assert.Equal(t, 9160, token.RemainQuota)
+
+	var fill model.MarketplacePoolFill
+	require.NoError(t, fixture.DB.First(&fill, "request_id = ?", "pool-settle-fee").Error)
+	assert.Equal(t, int64(840), fill.BuyerCharge)
+	assert.Equal(t, int64(640), fill.OfficialCost)
+
+	var settlement model.MarketplaceSettlement
+	require.NoError(t, fixture.DB.First(&settlement, "request_id = ?", "pool-settle-fee").Error)
+	assert.Equal(t, int64(840), settlement.BuyerCharge)
+	assert.Equal(t, int64(40), settlement.PlatformFee)
+	assert.Equal(t, 0.05, settlement.PlatformFeeRateSnapshot)
+	assert.Equal(t, int64(800), settlement.SellerIncome)
+
+	var seller model.User
+	require.NoError(t, fixture.DB.First(&seller, fixture.SellerUserID).Error)
+	assert.Equal(t, 800, seller.Quota)
+}
+
+func TestMarketplacePoolRelayBuyerChargeForQuotaIncludesTransactionFee(t *testing.T) {
+	fixture := newMarketplacePoolRelayFixture(t)
+	setting.MarketplaceFeeRate = 0.05
+
+	preparation, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
+		BuyerUserID: fixture.BuyerUserID,
+		Model:       "gpt-4o-mini",
+		RequestID:   "pool-charge-preview-fee",
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, 1050, preparation.Session.BuyerChargeForQuota(1000))
+	assert.Equal(t, 840, preparation.Session.BuyerChargeForQuota(800))
 }
 
 func TestMarketplacePoolRelayBillingSessionRefundRestoresWalletAndReleasesConcurrency(t *testing.T) {

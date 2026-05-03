@@ -60,6 +60,7 @@ func TestMarketplaceUIAPIRoutesAreRegisteredBeforeAuth(t *testing.T) {
 		{http.MethodPost, "/api/marketplace/fixed-orders/1/bind-tokens"},
 		{http.MethodGet, "/api/marketplace/pool/models"},
 		{http.MethodGet, "/api/marketplace/pool/candidates"},
+		{http.MethodPost, "/api/marketplace/pool/token-filters"},
 		{http.MethodPost, "/api/marketplace/seller/credentials"},
 		{http.MethodGet, "/api/marketplace/seller/credentials"},
 		{http.MethodPost, "/api/marketplace/seller/credentials/fetch-models"},
@@ -118,6 +119,42 @@ func TestInternalPublicHomeEndpointReturnsNoCacheHTML(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `id="hermes-public-bootstrap"`) {
 		t.Fatalf("body = %s, want public bootstrap script tag", rec.Body.String())
+	}
+}
+
+func TestWebFallbackUsesClassicIndexByDefault(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	originalTheme := common.GetTheme()
+	if originalTheme != "classic" {
+		t.Fatalf("theme = %q, want classic default", originalTheme)
+	}
+	t.Cleanup(func() {
+		common.SetTheme(originalTheme)
+	})
+
+	r := gin.New()
+	SetWebRouter(r, ThemeAssets{
+		DefaultBuildFS:   embed.FS{},
+		DefaultIndexPage: []byte(`<!doctype html><html><body>default-index</body></html>`),
+		ClassicBuildFS:   embed.FS{},
+		ClassicIndexPage: []byte(`<!doctype html><html><body>classic-index</body></html>`),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "classic-index") {
+		t.Fatalf("body = %s, want classic index", body)
+	}
+	if strings.Contains(body, "default-index") {
+		t.Fatalf("body = %s, want classic index without default index", body)
 	}
 }
 

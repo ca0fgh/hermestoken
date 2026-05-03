@@ -63,6 +63,13 @@ function compactRangeFallbackParams(params: MarketplaceOrderFilters = {}) {
   return compactParams(rangeParams)
 }
 
+function compactPoolTokenFilterParams(params: MarketplaceOrderFilters = {}) {
+  const filterParams = { ...params }
+  delete filterParams.p
+  delete filterParams.page_size
+  return compactParams(filterParams)
+}
+
 export async function listMarketplaceOrders(params: MarketplaceOrderFilters) {
   const res = await api.get<
     ApiResponse<MarketplacePage<MarketplaceOrderListItem>>
@@ -287,6 +294,20 @@ export async function listMarketplacePoolCandidates(
   const res = await api.get<
     ApiResponse<MarketplacePage<MarketplacePoolCandidate>>
   >('/api/marketplace/pool/candidates', { params: compactParams(params) })
+  return res.data
+}
+
+export async function saveMarketplacePoolTokenFilters(request: {
+  token_id: number
+  filters: MarketplaceOrderFilters
+}) {
+  const res = await api.post<ApiResponse<ApiKey>>(
+    '/api/marketplace/pool/token-filters',
+    {
+      token_id: request.token_id,
+      filters: compactPoolTokenFilterParams(request.filters),
+    }
+  )
   return res.data
 }
 

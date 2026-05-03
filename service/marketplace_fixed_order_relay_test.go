@@ -78,7 +78,7 @@ func setupMarketplaceFixedOrderRelayTestDB(t *testing.T) *gorm.DB {
 	model.InitOptionMap()
 	setting.MarketplaceEnabled = true
 	setting.MarketplaceEnabledVendorTypes = []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic}
-	setting.MarketplaceFeeRate = 0.05
+	setting.MarketplaceFeeRate = 0
 	setting.MarketplaceSellerIncomeHoldSeconds = 3600
 	setting.MarketplaceMinFixedOrderQuota = 100
 	setting.MarketplaceMaxFixedOrderQuota = 100000
@@ -114,9 +114,23 @@ func setupMarketplaceFixedOrderRelayTestDB(t *testing.T) *gorm.DB {
 }
 
 func newMarketplaceFixedOrderRelayFixture(t *testing.T, purchasedQuota int64) marketplaceFixedOrderRelayFixture {
+	return newMarketplaceFixedOrderRelayFixtureWithFee(t, purchasedQuota, 0)
+}
+
+func newMarketplaceFixedOrderRelayFixtureWithFee(t *testing.T, purchasedQuota int64, feeRate float64) marketplaceFixedOrderRelayFixture {
 	t.Helper()
 
 	db := setupMarketplaceFixedOrderRelayTestDB(t)
+	setting.MarketplaceFeeRate = feeRate
+	buyerQuota := 10000
+	if chargedQuota, err := marketplaceBuyerChargeQuotaWithFee(purchasedQuota, feeRate); err == nil {
+		if setting.MarketplaceMaxFixedOrderQuota > 0 && chargedQuota > int64(setting.MarketplaceMaxFixedOrderQuota) {
+			setting.MarketplaceMaxFixedOrderQuota = int(chargedQuota)
+		}
+		if chargedQuota > int64(buyerQuota) {
+			buyerQuota = int(chargedQuota) + 10000
+		}
+	}
 	buyerID := 20
 	sellerID := 10
 	require.NoError(t, db.Create(&model.User{
@@ -126,7 +140,7 @@ func newMarketplaceFixedOrderRelayFixture(t *testing.T, purchasedQuota int64) ma
 		Role:     common.RoleCommonUser,
 		Status:   common.UserStatusEnabled,
 		Group:    "default",
-		Quota:    10000,
+		Quota:    buyerQuota,
 		AffCode:  "relay_buyer",
 	}).Error)
 	require.NoError(t, db.Create(&model.User{
@@ -271,6 +285,163 @@ func TestMarketplaceFixedOrderRelaySettleWritesFillStatsAndRealtimeSellerSettlem
 	require.NoError(t, fixture.DB.First(&sellerLog, "user_id = ? AND type = ?", fixture.SellerUserID, model.LogTypeSystem).Error)
 	assert.Contains(t, sellerLog.Content, "市场买断收益实时结算")
 	assert.Contains(t, sellerLog.Content, "＄0.001600")
+}
+
+func TestMarketplaceFixedOrderRelaySettleDeductsTransactionFeeFromBuyoutQuota(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixtureWithFee(t, 2500, 0.05)
+
+	preparation, err := PrepareMarketplaceFixedOrderRelay(MarketplaceFixedOrderRelayInput{
+		BuyerUserID:    fixture.BuyerUserID,
+		FixedOrderID:   fixture.Order.ID,
+		Model:          "gpt-4o-mini",
+		EstimatedQuota: 1000,
+		RequestID:      "req-settle-fee",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1050, preparation.Session.GetPreConsumedQuota())
+
+	var reservedOrder model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&reservedOrder, fixture.Order.ID).Error)
+	assert.Equal(t, int64(1575), reservedOrder.RemainingQuota)
+	assert.Equal(t, int64(1050), reservedOrder.SpentQuota)
+
+	require.NoError(t, preparation.Session.Settle(800))
+
+	var order model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&order, fixture.Order.ID).Error)
+	assert.Equal(t, int64(1785), order.RemainingQuota)
+	assert.Equal(t, int64(840), order.SpentQuota)
+
+	var fill model.MarketplaceFixedOrderFill
+	require.NoError(t, fixture.DB.First(&fill, "request_id = ?", "req-settle-fee").Error)
+	assert.Equal(t, int64(840), fill.BuyerCharge)
+	assert.Equal(t, int64(640), fill.OfficialCost)
+
+	var settlement model.MarketplaceSettlement
+	require.NoError(t, fixture.DB.First(&settlement, "request_id = ?", "req-settle-fee").Error)
+	assert.Equal(t, int64(840), settlement.BuyerCharge)
+	assert.Equal(t, int64(40), settlement.PlatformFee)
+	assert.Equal(t, 0.05, settlement.PlatformFeeRateSnapshot)
+	assert.Equal(t, int64(800), settlement.SellerIncome)
+
+	var seller model.User
+	require.NoError(t, fixture.DB.First(&seller, fixture.SellerUserID).Error)
+	assert.Equal(t, 800, seller.Quota)
+}
+
+func TestMarketplaceFixedOrderRelayUsesBuyoutQuotaThatIncludesCreationFee(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixtureWithFee(t, 30*int64(common.QuotaPerUnit), 0.05)
+
+	preparation, err := PrepareMarketplaceFixedOrderRelay(MarketplaceFixedOrderRelayInput{
+		BuyerUserID:    fixture.BuyerUserID,
+		FixedOrderID:   fixture.Order.ID,
+		Model:          "gpt-4o-mini",
+		EstimatedQuota: 30 * int(common.QuotaPerUnit),
+		RequestID:      "req-buyout-30-fee",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 15750000, preparation.Session.GetPreConsumedQuota())
+
+	require.NoError(t, preparation.Session.Settle(30*int(common.QuotaPerUnit)))
+
+	var order model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&order, fixture.Order.ID).Error)
+	assert.Equal(t, int64(15750000), order.PurchasedQuota)
+	assert.Equal(t, int64(0), order.RemainingQuota)
+	assert.Equal(t, int64(15750000), order.SpentQuota)
+	assert.Equal(t, 0.05, order.PlatformFeeRateSnapshot)
+	assert.Equal(t, model.MarketplaceFixedOrderStatusExhausted, order.Status)
+
+	var settlement model.MarketplaceSettlement
+	require.NoError(t, fixture.DB.First(&settlement, "request_id = ?", "req-buyout-30-fee").Error)
+	assert.Equal(t, int64(15750000), settlement.BuyerCharge)
+	assert.Equal(t, int64(750000), settlement.PlatformFee)
+	assert.Equal(t, int64(15000000), settlement.SellerIncome)
+	assert.Equal(t, 0.05, settlement.PlatformFeeRateSnapshot)
+}
+
+func TestMarketplaceFixedOrderRelayUsesOrderFeeSnapshotAfterGlobalRateChanges(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixtureWithFee(t, 30*int64(common.QuotaPerUnit), 0.05)
+	setting.MarketplaceFeeRate = 0.10
+
+	preparation, err := PrepareMarketplaceFixedOrderRelay(MarketplaceFixedOrderRelayInput{
+		BuyerUserID:    fixture.BuyerUserID,
+		FixedOrderID:   fixture.Order.ID,
+		Model:          "gpt-4o-mini",
+		EstimatedQuota: 30 * int(common.QuotaPerUnit),
+		RequestID:      "req-buyout-rate-changed",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 15750000, preparation.Session.GetPreConsumedQuota())
+
+	require.NoError(t, preparation.Session.Settle(30*int(common.QuotaPerUnit)))
+
+	var order model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&order, fixture.Order.ID).Error)
+	assert.Equal(t, int64(0), order.RemainingQuota)
+	assert.Equal(t, int64(15750000), order.SpentQuota)
+	assert.Equal(t, 0.05, order.PlatformFeeRateSnapshot)
+
+	var settlement model.MarketplaceSettlement
+	require.NoError(t, fixture.DB.First(&settlement, "request_id = ?", "req-buyout-rate-changed").Error)
+	assert.Equal(t, int64(15750000), settlement.BuyerCharge)
+	assert.Equal(t, int64(750000), settlement.PlatformFee)
+	assert.Equal(t, int64(15000000), settlement.SellerIncome)
+	assert.Equal(t, 0.05, settlement.PlatformFeeRateSnapshot)
+}
+
+func TestMarketplaceFixedOrderRelayReserveUsesTransactionFeeForTargetComparison(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixtureWithFee(t, 2500, 0.05)
+
+	preparation, err := PrepareMarketplaceFixedOrderRelay(MarketplaceFixedOrderRelayInput{
+		BuyerUserID:    fixture.BuyerUserID,
+		FixedOrderID:   fixture.Order.ID,
+		Model:          "gpt-4o-mini",
+		EstimatedQuota: 1000,
+		RequestID:      "req-reserve-fee-target",
+	})
+	require.NoError(t, err)
+	require.NoError(t, preparation.Session.Reserve(1020))
+	assert.Equal(t, 1071, preparation.Session.GetPreConsumedQuota())
+
+	var order model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&order, fixture.Order.ID).Error)
+	assert.Equal(t, int64(1554), order.RemainingQuota)
+	assert.Equal(t, int64(1071), order.SpentQuota)
+}
+
+func TestMarketplaceFixedOrderRelaySettleCapsBaseChargeWhenFeeConsumesBuyoutQuota(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixtureWithFee(t, 1000, 0.05)
+
+	preparation, err := PrepareMarketplaceFixedOrderRelay(MarketplaceFixedOrderRelayInput{
+		BuyerUserID:    fixture.BuyerUserID,
+		FixedOrderID:   fixture.Order.ID,
+		Model:          "gpt-4o-mini",
+		EstimatedQuota: 700,
+		RequestID:      "req-exhaust-fee",
+	})
+	require.NoError(t, err)
+	require.NoError(t, preparation.Session.Settle(1500))
+
+	var order model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&order, fixture.Order.ID).Error)
+	assert.Equal(t, int64(0), order.RemainingQuota)
+	assert.Equal(t, int64(1050), order.SpentQuota)
+	assert.Equal(t, model.MarketplaceFixedOrderStatusExhausted, order.Status)
+
+	var fill model.MarketplaceFixedOrderFill
+	require.NoError(t, fixture.DB.First(&fill, "request_id = ?", "req-exhaust-fee").Error)
+	assert.Equal(t, int64(1050), fill.BuyerCharge)
+
+	var settlement model.MarketplaceSettlement
+	require.NoError(t, fixture.DB.First(&settlement, "request_id = ?", "req-exhaust-fee").Error)
+	assert.Equal(t, int64(1050), settlement.BuyerCharge)
+	assert.Equal(t, int64(50), settlement.PlatformFee)
+	assert.Equal(t, int64(1000), settlement.SellerIncome)
+
+	var seller model.User
+	require.NoError(t, fixture.DB.First(&seller, fixture.SellerUserID).Error)
+	assert.Equal(t, 1000, seller.Quota)
 }
 
 func TestMarketplaceFixedOrderPurchaseRejectsOwnCredential(t *testing.T) {

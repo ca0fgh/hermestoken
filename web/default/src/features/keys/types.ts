@@ -90,6 +90,21 @@ export function normalizeMarketplaceRouteEnabled(
 
 const marketplaceRouteOrderItemSchema = z.enum(MARKETPLACE_ROUTE_ORDER_VALUES)
 
+const marketplacePoolFiltersSchema = z.object({
+  vendor_type: z.number().optional(),
+  model: z.string().optional(),
+  quota_mode: z.enum(['unlimited', 'limited']).or(z.literal('')).optional(),
+  time_mode: z.enum(['unlimited', 'limited']).or(z.literal('')).optional(),
+  min_quota_limit: z.number().optional(),
+  max_quota_limit: z.number().optional(),
+  min_time_limit_seconds: z.number().optional(),
+  max_time_limit_seconds: z.number().optional(),
+  min_multiplier: z.number().optional(),
+  max_multiplier: z.number().optional(),
+  min_concurrency_limit: z.number().optional(),
+  max_concurrency_limit: z.number().optional(),
+})
+
 export const apiKeySchema = z.object({
   id: z.number(),
   name: z.string(),
@@ -138,6 +153,20 @@ export const apiKeySchema = z.object({
       z.array(marketplaceRouteOrderItemSchema)
     )
     .default(() => [...DEFAULT_MARKETPLACE_ROUTE_ENABLED]),
+  marketplace_pool_filters_enabled: z.boolean().optional().default(false),
+  marketplace_pool_filters: z
+    .preprocess((value) => {
+      if (value && typeof value === 'object') return value
+      if (typeof value === 'string' && value.trim()) {
+        try {
+          return JSON.parse(value)
+        } catch {
+          return {}
+        }
+      }
+      return {}
+    }, marketplacePoolFiltersSchema)
+    .default({}),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>

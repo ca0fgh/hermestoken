@@ -11,6 +11,7 @@ import (
 	"github.com/ca0fgh/hermestoken/constant"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/service"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -656,6 +657,49 @@ func TestBuyerMarketplaceFixedOrderPurchaseAcceptsUSDAmount(t *testing.T) {
 	assert.Equal(t, 10000-int(expectedQuota), buyer.Quota)
 }
 
+func TestBuyerMarketplaceFixedOrderPurchaseUSDAmountIncludesTransactionFee(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	buyerID := 20
+	seedMarketplaceUser(t, db, buyerID, 20000000)
+	credential := createHealthyMarketplaceCredential(t, db, 10, "test-key-usd-fee")
+	originalFeeRate := setting.MarketplaceFeeRate
+	originalMaxFixedOrderQuota := setting.MarketplaceMaxFixedOrderQuota
+	setting.MarketplaceFeeRate = 0.05
+	setting.MarketplaceMaxFixedOrderQuota = 20000000
+	t.Cleanup(func() {
+		setting.MarketplaceFeeRate = originalFeeRate
+		setting.MarketplaceMaxFixedOrderQuota = originalMaxFixedOrderQuota
+	})
+
+	body := map[string]any{
+		"credential_id":        credential.ID,
+		"purchased_amount_usd": 30.0,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/fixed-orders", body, buyerID)
+	BuyerCreateMarketplaceFixedOrder(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	baseQuota := int64(30 * common.QuotaPerUnit)
+	expectedBuyerCharge := baseQuota + int64(1.5*common.QuotaPerUnit)
+	var order marketplaceFixedOrderResponse
+	require.NoError(t, json.Unmarshal(response.Data, &order))
+	assert.Equal(t, expectedBuyerCharge, order.PurchasedQuota)
+	assert.Equal(t, expectedBuyerCharge, order.RemainingQuota)
+	assert.Equal(t, 0.05, order.PlatformFeeRateSnapshot)
+
+	var buyer model.User
+	require.NoError(t, db.First(&buyer, buyerID).Error)
+	assert.Equal(t, 20000000-int(expectedBuyerCharge), buyer.Quota)
+
+	var stats model.MarketplaceCredentialStats
+	require.NoError(t, db.First(&stats, "credential_id = ?", credential.ID).Error)
+	assert.Equal(t, expectedBuyerCharge, stats.FixedOrderSoldQuota)
+	assert.Equal(t, int64(1), stats.ActiveFixedOrderCount)
+	assert.Equal(t, int64(15750000), expectedBuyerCharge)
+}
+
 func TestBuyerMarketplaceFixedOrderPurchaseRejectsOwnCredential(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	buyerID := 20
@@ -1024,6 +1068,68 @@ func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t
 	assert.Greater(t, candidatesByID[available.ID].RouteScore, 0.0)
 	assert.InDelta(t, 0.9, candidatesByID[available.ID].SuccessRate, 0.000001)
 	assert.Equal(t, 0.0, candidatesByID[available.ID].LoadRatio)
+}
+
+func TestBuyerSaveMarketplacePoolFiltersStoresTokenScopedFilters(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	buyerID := 20
+	seedMarketplaceUser(t, db, buyerID, 10000)
+	token := seedToken(t, db, buyerID, "pool-filter-token", "poolfiltertoken123")
+
+	body := map[string]any{
+		"token_id": token.Id,
+		"filters": map[string]any{
+			"vendor_type":            constant.ChannelTypeOpenAI,
+			"model":                  "gpt-4o-mini",
+			"max_multiplier":         1.2,
+			"min_concurrency_limit":  2,
+			"max_concurrency_limit":  5,
+			"min_time_limit_seconds": 60,
+			"max_time_limit_seconds": 3600,
+			"min_quota_limit":        100,
+			"max_quota_limit":        1000,
+			"quota_mode":             model.MarketplaceQuotaModeLimited,
+			"time_mode":              model.MarketplaceTimeModeLimited,
+		},
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/pool/token-filters", body, buyerID)
+	BuyerSaveMarketplacePoolFilters(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	var stored model.Token
+	require.NoError(t, db.First(&stored, "id = ? AND user_id = ?", token.Id, buyerID).Error)
+	require.True(t, stored.MarketplacePoolFiltersEnabled)
+	saved := stored.MarketplacePoolFilters.Values()
+	assert.Equal(t, constant.ChannelTypeOpenAI, saved.VendorType)
+	assert.Equal(t, "gpt-4o-mini", saved.Model)
+	assert.Equal(t, 1.2, saved.MaxMultiplier)
+	assert.Equal(t, 2, saved.MinConcurrencyLimit)
+	assert.Equal(t, model.MarketplaceQuotaModeLimited, saved.QuotaMode)
+	assert.Equal(t, model.MarketplaceTimeModeLimited, saved.TimeMode)
+}
+
+func TestBuyerSaveMarketplacePoolFiltersRejectsUnownedToken(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	seedMarketplaceUser(t, db, 20, 10000)
+	seedMarketplaceUser(t, db, 21, 10000)
+	token := seedToken(t, db, 21, "other-pool-token", "otherpooltoken123")
+
+	body := map[string]any{
+		"token_id": token.Id,
+		"filters":  map[string]any{"max_multiplier": 1.2},
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/pool/token-filters", body, 20)
+	BuyerSaveMarketplacePoolFilters(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+
+	var stored model.Token
+	require.NoError(t, db.First(&stored, token.Id).Error)
+	assert.False(t, stored.MarketplacePoolFiltersEnabled)
+	assert.Empty(t, stored.MarketplacePoolFilters.Values())
 }
 
 func seedMarketplaceUser(t *testing.T, db *gorm.DB, userID int, quota int) {

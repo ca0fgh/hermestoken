@@ -119,10 +119,12 @@ export function MarketplaceFilters({
   filters,
   filterRanges,
   onChange,
+  showQuotaTimeFilters = true,
 }: {
   filters: MarketplaceOrderFilters
   filterRanges?: MarketplaceOrderFilterRanges
   onChange: (filters: MarketplaceOrderFilters) => void
+  showQuotaTimeFilters?: boolean
 }) {
   const { t } = useTranslation()
   const quotaOptions = buildMarketplaceFilterOptions('quota', t)
@@ -131,10 +133,16 @@ export function MarketplaceFilters({
   const updateFilter = (patch: MarketplaceOrderFilters) => {
     onChange({ ...filters, ...patch, p: 1 })
   }
+  const containerClassName = showQuotaTimeFilters
+    ? 'flex flex-col gap-3 rounded-md border p-3 lg:flex-row lg:items-end'
+    : 'flex flex-col gap-3 rounded-md border p-3 lg:inline-flex lg:w-fit lg:max-w-full lg:flex-row lg:items-end lg:self-start'
+  const gridClassName = showQuotaTimeFilters
+    ? 'grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-7'
+    : 'grid gap-3 sm:grid-cols-2 lg:w-[760px] lg:max-w-full lg:grid-cols-[minmax(180px,220px)_minmax(220px,1fr)_minmax(180px,220px)_minmax(180px,220px)]'
 
   return (
-    <div className='flex flex-col gap-3 rounded-md border p-3 lg:flex-row lg:items-end'>
-      <div className='grid flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-7'>
+    <div className={containerClassName}>
+      <div className={gridClassName}>
         <div className='space-y-1.5'>
           <Label>{t('Vendor')}</Label>
           <Select
@@ -168,74 +176,78 @@ export function MarketplaceFilters({
             onChange={(event) => updateFilter({ model: event.target.value })}
           />
         </div>
-        <div className='space-y-1.5'>
-          <Label>{t('Quota mode')}</Label>
-          <Select
-            value={filters.quota_mode || ALL_VALUE}
-            onValueChange={(value) => {
-              const quotaMode =
-                value === ALL_VALUE
-                  ? ''
-                  : (value as MarketplaceOrderFilters['quota_mode'])
-              updateFilter({
-                quota_mode: quotaMode,
-                ...(quotaMode === 'limited'
-                  ? {}
-                  : clearMarketplaceQuotaRangeFilters()),
-              })
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {quotaOptions.map((option) => (
-                <SelectItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={option.disabled}
-                >
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {renderQuotaRangeInputs(filters, filterRanges, updateFilter, t)}
-        <div className='space-y-1.5'>
-          <Label>{t('Time mode')}</Label>
-          <Select
-            value={filters.time_mode || ALL_VALUE}
-            onValueChange={(value) => {
-              const timeMode =
-                value === ALL_VALUE
-                  ? ''
-                  : (value as MarketplaceOrderFilters['time_mode'])
-              updateFilter({
-                time_mode: timeMode,
-                ...(timeMode === 'limited'
-                  ? {}
-                  : clearMarketplaceTimeRangeFilters()),
-              })
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {timeOptions.map((option) => (
-                <SelectItem
-                  key={option.value}
-                  value={option.value}
-                  disabled={option.disabled}
-                >
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {renderTimeRangeInputs(filters, filterRanges, updateFilter, t)}
+        {showQuotaTimeFilters ? (
+          <>
+            <div className='space-y-1.5'>
+              <Label>{t('Quota mode')}</Label>
+              <Select
+                value={filters.quota_mode || ALL_VALUE}
+                onValueChange={(value) => {
+                  const quotaMode =
+                    value === ALL_VALUE
+                      ? ''
+                      : (value as MarketplaceOrderFilters['quota_mode'])
+                  updateFilter({
+                    quota_mode: quotaMode,
+                    ...(quotaMode === 'limited'
+                      ? {}
+                      : clearMarketplaceQuotaRangeFilters()),
+                  })
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {quotaOptions.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.disabled}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {renderQuotaRangeInputs(filters, filterRanges, updateFilter, t)}
+            <div className='space-y-1.5'>
+              <Label>{t('Time mode')}</Label>
+              <Select
+                value={filters.time_mode || ALL_VALUE}
+                onValueChange={(value) => {
+                  const timeMode =
+                    value === ALL_VALUE
+                      ? ''
+                      : (value as MarketplaceOrderFilters['time_mode'])
+                  updateFilter({
+                    time_mode: timeMode,
+                    ...(timeMode === 'limited'
+                      ? {}
+                      : clearMarketplaceTimeRangeFilters()),
+                  })
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {timeOptions.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={option.disabled}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {renderTimeRangeInputs(filters, filterRanges, updateFilter, t)}
+          </>
+        ) : null}
         {renderMultiplierRangeInputs(filters, filterRanges, updateFilter, t)}
         {renderConcurrencyRangeInputs(filters, filterRanges, updateFilter, t)}
       </div>
@@ -316,7 +328,9 @@ function formatMarketplaceConcurrencyRange(
   )
 }
 
-function quotaRangeDisplayValue(value: MarketplaceOrderFilters['min_quota_limit']) {
+function quotaRangeDisplayValue(
+  value: MarketplaceOrderFilters['min_quota_limit']
+) {
   const numeric = Number(value) || 0
   return numeric > 0 ? marketplaceQuotaToDisplayAmount(numeric) : ''
 }
@@ -525,7 +539,7 @@ function RangeSlider({
               )
             )
           }
-          className='pointer-events-none absolute inset-x-0 top-1 h-6 w-full appearance-none bg-transparent accent-primary [&::-webkit-slider-thumb]:pointer-events-auto'
+          className='accent-primary pointer-events-none absolute inset-x-0 top-1 h-6 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto'
         />
         <input
           type='range'
@@ -544,7 +558,7 @@ function RangeSlider({
               )
             )
           }
-          className='pointer-events-none absolute inset-x-0 top-1 h-6 w-full appearance-none bg-transparent accent-primary [&::-webkit-slider-thumb]:pointer-events-auto'
+          className='accent-primary pointer-events-none absolute inset-x-0 top-1 h-6 w-full appearance-none bg-transparent [&::-webkit-slider-thumb]:pointer-events-auto'
         />
       </div>
       <div className='text-muted-foreground flex items-center justify-between gap-3 text-xs'>
@@ -583,7 +597,9 @@ function renderQuotaRangeInputs(
       max={maxDisplayValue}
       step={Number(marketplaceQuotaInputStep())}
       emptyLabel={t('No quota ranges')}
-      formatValue={(value) => formatMarketplaceQuotaUSD(marketplaceDisplayAmountToQuota(value))}
+      formatValue={(value) =>
+        formatMarketplaceQuotaUSD(marketplaceDisplayAmountToQuota(value))
+      }
       onChange={([minValue, maxValue]) =>
         updateFilter({
           min_quota_limit: marketplaceDisplayAmountToQuota(minValue),
@@ -619,7 +635,9 @@ function renderTimeRangeInputs(
       max={maxValue}
       step={1}
       emptyLabel={t('No time ranges')}
-      formatValue={(value) => formatMarketplaceTimeValue(Math.round(value * 60), t)}
+      formatValue={(value) =>
+        formatMarketplaceTimeValue(Math.round(value * 60), t)
+      }
       onChange={([minValue, maxValue]) =>
         updateFilter({
           min_time_limit_seconds: Math.round(minValue * 60),

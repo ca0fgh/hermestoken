@@ -25,6 +25,11 @@ type marketplaceFixedOrderBindTokensRequest struct {
 	TokenIDs []int `json:"token_ids"`
 }
 
+type marketplacePoolFiltersSaveRequest struct {
+	TokenID int                               `json:"token_id"`
+	Filters model.MarketplacePoolFilterValues `json:"filters"`
+}
+
 func BuyerListMarketplaceOrders(c *gin.Context) {
 	userID := c.GetInt("id")
 	filter, err := marketplaceOrderListFilter(c)
@@ -210,6 +215,32 @@ func BuyerListMarketplacePoolCandidates(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(candidates)
 	common.ApiSuccess(c, pageInfo)
+}
+
+func BuyerSaveMarketplacePoolFilters(c *gin.Context) {
+	userID := c.GetInt("id")
+	var req marketplacePoolFiltersSaveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.TokenID <= 0 {
+		common.ApiError(c, errors.New("token_id is required"))
+		return
+	}
+
+	token, err := model.GetTokenByIds(req.TokenID, userID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token.MarketplacePoolFiltersEnabled = true
+	token.MarketplacePoolFilters = model.NewMarketplacePoolFilters(req.Filters)
+	if err := token.Update(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, buildMaskedTokenResponse(token))
 }
 
 func MarketplaceListPricing(c *gin.Context) {

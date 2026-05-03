@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, CheckCircle2, Loader2, Power, Store } from 'lucide-react'
+import {
+  Activity,
+  CheckCircle2,
+  Loader2,
+  Power,
+  PowerOff,
+  Save,
+  Store,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatNumber } from '@/lib/format'
@@ -17,6 +25,7 @@ import {
   listMarketplaceOrderFilterRanges,
   listMarketplacePoolCandidates,
   listMarketplacePoolModels,
+  saveMarketplacePoolTokenFilters,
 } from '../api'
 import { formatMarketplacePricePoint } from '../lib'
 import type {
@@ -25,7 +34,6 @@ import type {
   MarketplacePoolModel,
 } from '../types'
 import { BuyerTokenPanel } from './buyer-token-panel'
-import { CallSnippet } from './call-snippet'
 import {
   EmptyLine,
   ListFooter,
@@ -50,6 +58,22 @@ function tokenWithMarketplacePoolRoute(token: ApiKey): ApiKey {
     normalizeMarketplaceRouteEnabled(token.marketplace_route_enabled)
   )
   enabledRoutes.add('pool')
+  return {
+    ...token,
+    marketplace_route_order: normalizeMarketplaceRouteOrder(
+      token.marketplace_route_order
+    ),
+    marketplace_route_enabled: MARKETPLACE_TOKEN_ROUTES.filter((route) =>
+      enabledRoutes.has(route)
+    ),
+  }
+}
+
+function tokenWithoutMarketplacePoolRoute(token: ApiKey): ApiKey {
+  const enabledRoutes = new Set(
+    normalizeMarketplaceRouteEnabled(token.marketplace_route_enabled)
+  )
+  enabledRoutes.delete('pool')
   return {
     ...token,
     marketplace_route_order: normalizeMarketplaceRouteOrder(
@@ -87,6 +111,42 @@ function marketplacePoolTokenUpdatePayload(token: ApiKey): ApiKeyFormData & {
   }
 }
 
+function normalizeMarketplacePoolFilters(
+  filters?: Partial<MarketplaceOrderFilters> | null
+): MarketplaceOrderFilters {
+  return {
+    ...defaultFilters,
+    vendor_type: filters?.vendor_type,
+    model: filters?.model || '',
+    quota_mode: filters?.quota_mode || '',
+    time_mode: filters?.time_mode || '',
+    min_quota_limit: filters?.min_quota_limit || '',
+    max_quota_limit: filters?.max_quota_limit || '',
+    min_time_limit_seconds: filters?.min_time_limit_seconds || '',
+    max_time_limit_seconds: filters?.max_time_limit_seconds || '',
+    min_multiplier: filters?.min_multiplier || '',
+    max_multiplier: filters?.max_multiplier || '',
+    min_concurrency_limit: filters?.min_concurrency_limit || '',
+    max_concurrency_limit: filters?.max_concurrency_limit || '',
+    p: 1,
+  }
+}
+
+function serializeMarketplacePoolFilters(
+  filters: MarketplaceOrderFilters
+): ApiKey['marketplace_pool_filters'] {
+  return Object.fromEntries(
+    Object.entries(normalizeMarketplacePoolFilters(filters)).filter(
+      ([key, value]) => {
+        if (key === 'p' || key === 'page_size') return false
+        if (value === undefined || value === null || value === '') return false
+        if (typeof value === 'number' && value <= 0) return false
+        return true
+      }
+    )
+  ) as ApiKey['marketplace_pool_filters']
+}
+
 export function PoolTab() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -96,6 +156,7 @@ export function PoolTab() {
     null
   )
   const [activatingPool, setActivatingPool] = useState(false)
+  const [savingPoolFilters, setSavingPoolFilters] = useState(false)
   const modelsQuery = useQuery({
     queryKey: ['marketplace', 'pool-models', filters],
     queryFn: () => listMarketplacePoolModels(filters),
@@ -111,17 +172,66 @@ export function PoolTab() {
     queryFn: () => listMarketplaceOrderFilterRanges(filters),
     placeholderData: (previous) => previous,
   })
-  const poolModels = modelsQuery.data?.data ?? []
+  const poolModels = useMemo(
+    () => modelsQuery.data?.data ?? [],
+    [modelsQuery.data?.data]
+  )
   const { items: candidates, total } = unwrapPage(candidatesQuery.data)
-  const selectedPoolModel = useMemo(
-    () => (filters.model || '').trim() || poolModels[0]?.model || 'gpt-4o-mini',
-    [filters.model, poolModels]
+  const savedPoolFilters = useMemo(
+    () =>
+      selectedBuyerToken?.marketplace_pool_filters_enabled
+        ? normalizeMarketplacePoolFilters(
+            selectedBuyerToken.marketplace_pool_filters
+          )
+        : null,
+    [selectedBuyerToken]
   )
   const poolActivated = marketplacePoolRouteEnabled(selectedBuyerToken)
 
   useEffect(() => {
     if (!selectedBuyerToken) setActivatingPool(false)
   }, [selectedBuyerToken])
+
+  useEffect(() => {
+    setFilters(savedPoolFilters ?? defaultFilters)
+  }, [savedPoolFilters])
+
+  const saveMarketplacePoolFiltersForToken = async () => {
+    if (!selectedBuyerToken) return
+    const nextFilters = normalizeMarketplacePoolFilters(filters)
+    setSavingPoolFilters(true)
+    try {
+      const response = await saveMarketplacePoolTokenFilters({
+        token_id: selectedBuyerToken.id,
+        filters: nextFilters,
+      })
+      if (!response.success) {
+        toast.error(
+          response.message || t('Failed to save order pool conditions')
+        )
+        return
+      }
+      setSelectedBuyerToken({
+        ...selectedBuyerToken,
+        ...(response.data ?? {}),
+        marketplace_pool_filters_enabled: true,
+        marketplace_pool_filters: serializeMarketplacePoolFilters(nextFilters),
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'buyer-console-tokens'],
+      })
+      await queryClient.invalidateQueries({ queryKey: ['keys'] })
+      toast.success(t('Order pool conditions saved'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to save order pool conditions')
+      )
+    } finally {
+      setSavingPoolFilters(false)
+    }
+  }
 
   const activateMarketplacePoolForToken = async () => {
     if (!selectedBuyerToken || poolActivated) return
@@ -157,6 +267,44 @@ export function PoolTab() {
     }
   }
 
+  const deactivateMarketplacePoolForToken = async () => {
+    if (!selectedBuyerToken || !poolActivated) return
+    const nextToken = tokenWithoutMarketplacePoolRoute(selectedBuyerToken)
+    setActivatingPool(true)
+    try {
+      const response = await updateApiKey(
+        marketplacePoolTokenUpdatePayload(nextToken)
+      )
+      if (!response.success) {
+        toast.error(response.message || t('Failed to deactivate order pool'))
+        return
+      }
+      setSelectedBuyerToken({
+        ...nextToken,
+        ...(response.data ?? {}),
+        marketplace_route_order: nextToken.marketplace_route_order,
+        marketplace_route_enabled: nextToken.marketplace_route_enabled,
+      })
+      await queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'buyer-console-tokens'],
+      })
+      await queryClient.invalidateQueries({ queryKey: ['keys'] })
+      toast.success(t('Order pool deactivated for this token'))
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to deactivate order pool')
+      )
+    } finally {
+      setActivatingPool(false)
+    }
+  }
+
+  const toggleMarketplacePoolForToken = poolActivated
+    ? deactivateMarketplacePoolForToken
+    : activateMarketplacePoolForToken
+
   return (
     <div className='space-y-4'>
       <BuyerTokenPanel
@@ -173,41 +321,53 @@ export function PoolTab() {
             )}
             {t('Order pool activation')}
           </div>
-          <Button
-            type='button'
-            size='sm'
-            disabled={!selectedBuyerToken || poolActivated || activatingPool}
-            onClick={activateMarketplacePoolForToken}
-            variant={poolActivated ? 'secondary' : 'default'}
-          >
-            {activatingPool ? (
-              <Loader2 className='size-4 animate-spin' />
-            ) : poolActivated ? (
-              <CheckCircle2 className='size-4' />
-            ) : (
-              <Power className='size-4' />
-            )}
-            {activatingPool
-              ? t('Activating order pool')
-              : poolActivated
-                ? t('Order pool activated')
-                : t('Activate order pool')}
-          </Button>
-        </div>
-        {poolActivated ? (
-          <div className='mt-3'>
-            <CallSnippet
-              filters={filters}
-              selectedToken={selectedBuyerToken}
-              model={selectedPoolModel}
-            />
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              disabled={!selectedBuyerToken || savingPoolFilters}
+              onClick={saveMarketplacePoolFiltersForToken}
+            >
+              {savingPoolFilters ? (
+                <Loader2 className='size-4 animate-spin' />
+              ) : (
+                <Save className='size-4' />
+              )}
+              {savingPoolFilters
+                ? t('Saving conditions')
+                : t('Save order pool conditions')}
+            </Button>
+            <Button
+              type='button'
+              size='sm'
+              disabled={!selectedBuyerToken || activatingPool}
+              onClick={toggleMarketplacePoolForToken}
+              variant={poolActivated ? 'destructive' : 'default'}
+            >
+              {activatingPool ? (
+                <Loader2 className='size-4 animate-spin' />
+              ) : poolActivated ? (
+                <PowerOff className='size-4' />
+              ) : (
+                <Power className='size-4' />
+              )}
+              {activatingPool
+                ? poolActivated
+                  ? t('Deactivating order pool')
+                  : t('Activating order pool')
+                : poolActivated
+                  ? t('Deactivate order pool')
+                  : t('Activate order pool')}
+            </Button>
           </div>
-        ) : null}
+        </div>
       </div>
       <MarketplaceFilters
         filters={filters}
         filterRanges={filterRangesQuery.data?.data}
         onChange={setFilters}
+        showQuotaTimeFilters={false}
       />
       <div className='grid gap-3 lg:grid-cols-2'>
         <PoolModelsPanel models={poolModels} />

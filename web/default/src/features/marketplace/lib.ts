@@ -134,6 +134,26 @@ export function formatMarketplaceUSD(value?: number | null) {
   return `$${fixed.replace(/\.?0+$/, '')}`
 }
 
+export function normalizeMarketplaceFeeRate(value?: number | string | null) {
+  const feeRate = Number(value)
+  return Number.isFinite(feeRate) && feeRate > 0 ? feeRate : 0
+}
+
+export function marketplaceBuyerPaymentUSD(
+  baseAmountUSD?: number | string | null,
+  feeRate?: number | string | null
+) {
+  const amount = Number(baseAmountUSD)
+  if (!Number.isFinite(amount) || amount <= 0) return 0
+  return amount * (1 + normalizeMarketplaceFeeRate(feeRate))
+}
+
+export function formatMarketplaceFeePercent(value?: number | string | null) {
+  const feeRate = normalizeMarketplaceFeeRate(value)
+  if (feeRate <= 0) return '0%'
+  return `${Number((feeRate * 100).toFixed(6))}%`
+}
+
 export function marketplaceQuotaToDisplayAmount(quota?: number | null) {
   const numeric = Number(quota)
   if (!Number.isFinite(numeric) || numeric <= 0) return 0

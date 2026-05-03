@@ -48,6 +48,7 @@ var (
 	ErrSubscriptionPlanStockNegative          = errors.New("库存不能为负数")
 	ErrSubscriptionWalletInsufficientBalance  = errors.New("账户余额不足")
 	ErrSubscriptionWalletQuotaInvalid         = errors.New("账户余额配置错误")
+	ErrSubscriptionQuotaInsufficient          = errors.New("subscription quota insufficient")
 )
 
 type SubscriptionPaymentVerification struct {
@@ -782,6 +783,59 @@ func downgradeUserGroupForSubscriptionTx(tx *gorm.DB, sub *UserSubscription, now
 		return "", err
 	}
 	return targetGroup, nil
+}
+
+func expireQuotaInsufficientSubscriptionsTx(tx *gorm.DB, subscriptions []UserSubscription, now int64) (string, error) {
+	if tx == nil {
+		return "", errors.New("tx is nil")
+	}
+	if len(subscriptions) == 0 {
+		return "", nil
+	}
+
+	expired := make([]UserSubscription, 0, len(subscriptions))
+	for _, sub := range subscriptions {
+		if sub.Id <= 0 || sub.AmountTotal <= 0 {
+			continue
+		}
+		if sub.AmountUsed < sub.AmountTotal {
+			sub.AmountUsed = sub.AmountTotal
+		}
+		sub.Status = "expired"
+		sub.UpdatedAt = now
+		if err := tx.Model(&UserSubscription{}).
+			Where("id = ? AND status = ?", sub.Id, "active").
+			Updates(map[string]interface{}{
+				"amount_used": sub.AmountUsed,
+				"status":      sub.Status,
+				"updated_at":  sub.UpdatedAt,
+			}).Error; err != nil {
+			return "", err
+		}
+		expired = append(expired, sub)
+	}
+	if len(expired) == 0 {
+		return "", nil
+	}
+
+	sort.SliceStable(expired, func(i, j int) bool {
+		if expired[i].EndTime == expired[j].EndTime {
+			return expired[i].Id > expired[j].Id
+		}
+		return expired[i].EndTime > expired[j].EndTime
+	})
+
+	cacheGroup := ""
+	for i := range expired {
+		targetGroup, err := downgradeUserGroupForSubscriptionTx(tx, &expired[i], now)
+		if err != nil {
+			return "", err
+		}
+		if targetGroup != "" {
+			cacheGroup = targetGroup
+		}
+	}
+	return cacheGroup, nil
 }
 
 func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string) (*UserSubscription, error) {
@@ -1701,6 +1755,8 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 	now := GetDBTimestamp()
 
 	returnValue := &SubscriptionPreConsumeResult{}
+	quotaInsufficient := false
+	cacheGroup := ""
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var existing SubscriptionPreConsumeRecord
@@ -1734,6 +1790,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
 		}
+		insufficientSubs := make([]UserSubscription, 0, len(subs))
 		for _, candidate := range subs {
 			sub := candidate
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId, true)
@@ -1747,6 +1804,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
+					insufficientSubs = append(insufficientSubs, sub)
 					continue
 				}
 			}
@@ -1783,10 +1841,24 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			return nil
 		}
-		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
+		targetGroup, err := expireQuotaInsufficientSubscriptionsTx(tx, insufficientSubs, now)
+		if err != nil {
+			return err
+		}
+		if targetGroup != "" {
+			cacheGroup = targetGroup
+		}
+		quotaInsufficient = true
+		return nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if cacheGroup != "" && userId > 0 {
+		_ = UpdateUserGroupCache(userId, cacheGroup)
+	}
+	if quotaInsufficient {
+		return nil, fmt.Errorf("%w, need=%d", ErrSubscriptionQuotaInsufficient, amount)
 	}
 	return returnValue, nil
 }

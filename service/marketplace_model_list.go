@@ -60,11 +60,33 @@ func appendMarketplaceTokenFixedOrderModels(models []string, input MarketplaceTo
 }
 
 func appendMarketplaceTokenPoolModels(models []string, input MarketplaceTokenModelListInput) ([]string, error) {
-	poolModels, err := ListMarketplacePoolRelayModels(MarketplaceOrderListInput{BuyerUserID: input.BuyerUserID})
+	filter := MarketplaceOrderListInput{BuyerUserID: input.BuyerUserID}
+	if input.Token.MarketplacePoolFiltersEnabled {
+		filter = marketplaceOrderListInputFromPoolFilters(input.BuyerUserID, input.Token.MarketplacePoolFilters.Values())
+	}
+	poolModels, err := ListMarketplacePoolRelayModels(filter)
 	if err != nil {
 		return nil, err
 	}
 	return appendMarketplaceModelNames(models, poolModels), nil
+}
+
+func marketplaceOrderListInputFromPoolFilters(buyerUserID int, values model.MarketplacePoolFilterValues) MarketplaceOrderListInput {
+	return MarketplaceOrderListInput{
+		BuyerUserID:         buyerUserID,
+		VendorType:          values.VendorType,
+		Model:               values.Model,
+		QuotaMode:           values.QuotaMode,
+		TimeMode:            values.TimeMode,
+		MinQuotaLimit:       values.MinQuotaLimit,
+		MaxQuotaLimit:       values.MaxQuotaLimit,
+		MinTimeLimitSeconds: values.MinTimeLimitSeconds,
+		MaxTimeLimitSeconds: values.MaxTimeLimitSeconds,
+		MinMultiplier:       values.MinMultiplier,
+		MaxMultiplier:       values.MaxMultiplier,
+		MinConcurrencyLimit: values.MinConcurrencyLimit,
+		MaxConcurrencyLimit: values.MaxConcurrencyLimit,
+	}
 }
 
 func marketplaceTokenGroupModels(input MarketplaceTokenModelListInput) []string {

@@ -505,6 +505,8 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	c.Set("token_marketplace_fixed_order_ids", token.MarketplaceFixedOrderIDList())
 	common.SetContextKey(c, constant.ContextKeyMarketplaceRouteOrder, token.MarketplaceRouteOrderList())
 	common.SetContextKey(c, constant.ContextKeyMarketplaceRouteEnabled, token.MarketplaceRouteEnabledList())
+	common.SetContextKey(c, constant.ContextKeyMarketplacePoolFiltersEnabled, token.MarketplacePoolFiltersEnabled)
+	common.SetContextKey(c, constant.ContextKeyMarketplacePoolFilters, token.MarketplacePoolFilters)
 	c.Set("token_unlimited_quota", token.UnlimitedQuota)
 	if !token.UnlimitedQuota {
 		c.Set("token_quota", token.RemainQuota)

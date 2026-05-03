@@ -2,7 +2,10 @@ package setting
 
 import (
 	"encoding/json"
+	"errors"
+	"math"
 	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/ca0fgh/hermestoken/common"
@@ -58,6 +61,26 @@ func UpdateMarketplaceEnabledVendorTypesByJSONString(jsonStr string) error {
 	defer marketplaceEnabledVendorTypesMutex.Unlock()
 	MarketplaceEnabledVendorTypes = append([]int(nil), vendorTypes...)
 	return nil
+}
+
+func UpdateMarketplaceFeeRate(value string) error {
+	feeRate, err := ValidateMarketplaceFeeRate(value)
+	if err != nil {
+		return err
+	}
+	MarketplaceFeeRate = feeRate
+	return nil
+}
+
+func ValidateMarketplaceFeeRate(value string) (float64, error) {
+	feeRate, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(feeRate) || math.IsInf(feeRate, 0) || feeRate < 0 {
+		return 0, errors.New("marketplace fee rate must be a non-negative finite number")
+	}
+	return feeRate, nil
 }
 
 func IsMarketplaceVendorTypeEnabled(vendorType int) bool {

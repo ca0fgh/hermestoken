@@ -209,6 +209,7 @@ func SetApiRouter(router *gin.Engine) {
 			marketplaceBuyerRoute.POST("/fixed-orders/:id/bind-tokens", controller.BuyerBindMarketplaceFixedOrderTokens)
 			marketplaceBuyerRoute.GET("/pool/models", controller.BuyerListMarketplacePoolModels)
 			marketplaceBuyerRoute.GET("/pool/candidates", controller.BuyerListMarketplacePoolCandidates)
+			marketplaceBuyerRoute.POST("/pool/token-filters", controller.BuyerSaveMarketplacePoolFilters)
 		}
 
 		// Subscription billing (plans, purchase, admin management)

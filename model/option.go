@@ -384,6 +384,9 @@ func SyncOptions(frequency int) {
 }
 
 func UpdateOption(key string, value string) error {
+	if err := validateOptionValue(key, value); err != nil {
+		return err
+	}
 	// Save to database first
 	option := Option{
 		Key: key,
@@ -399,6 +402,16 @@ func UpdateOption(key string, value string) error {
 	return updateOptionMap(key, value)
 }
 
+func validateOptionValue(key string, value string) error {
+	switch key {
+	case "MarketplaceFeeRate":
+		_, err := setting.ValidateMarketplaceFeeRate(value)
+		return err
+	default:
+		return nil
+	}
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
@@ -406,6 +419,10 @@ func updateOptionMap(key string, value string) (err error) {
 	if IsDeprecatedOptionKey(key) {
 		delete(common.OptionMap, key)
 		return nil
+	}
+
+	if err := validateOptionValue(key, value); err != nil {
+		return err
 	}
 
 	common.OptionMap[key] = value
@@ -727,7 +744,7 @@ func updateOptionMap(key string, value string) (err error) {
 	case "MarketplaceEnabledVendorTypes":
 		err = setting.UpdateMarketplaceEnabledVendorTypesByJSONString(value)
 	case "MarketplaceFeeRate":
-		setting.MarketplaceFeeRate, _ = strconv.ParseFloat(value, 64)
+		err = setting.UpdateMarketplaceFeeRate(value)
 	case "MarketplaceSellerIncomeHoldSeconds":
 		setting.MarketplaceSellerIncomeHoldSeconds, _ = strconv.Atoi(value)
 	case "MarketplaceMinFixedOrderQuota":

@@ -51,6 +51,7 @@ export default function GeneralSettings(props) {
     QuotaPerUnit: '',
     RetryTimes: '',
     USDExchangeRate: '',
+    MarketplaceFeeRate: '',
     DisplayTokenStatEnabled: false,
     DefaultCollapseSidebar: false,
     DemoSiteEnabled: false,
@@ -397,6 +398,28 @@ export default function GeneralSettings(props) {
                   )}
                   placeholder={'1000'}
                   onChange={handleFieldChange('token_setting.max_user_tokens')}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  label={t('市场买家交易手续费率')}
+                  field={'MarketplaceFeeRate'}
+                  min={0}
+                  step={0.01}
+                  precision={6}
+                  placeholder='0.05'
+                  extraText={t(
+                    '订单池会从买家余额扣调用费用 + 手续费；买断订单会从买断额度扣调用费用 + 手续费，所以买断额度需要包含手续费。0.05 表示 5%',
+                  )}
+                  onChange={(value) =>
+                    setInputs((inputs) => ({
+                      ...inputs,
+                      MarketplaceFeeRate:
+                        value === undefined || value === null
+                          ? ''
+                          : String(value),
+                    }))
+                  }
                 />
               </Col>
             </Row>

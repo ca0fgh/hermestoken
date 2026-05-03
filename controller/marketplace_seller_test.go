@@ -120,7 +120,7 @@ func setupMarketplaceSellerControllerTestDB(t *testing.T) *gorm.DB {
 	model.InitOptionMap()
 	setting.MarketplaceEnabled = true
 	setting.MarketplaceEnabledVendorTypes = []int{constant.ChannelTypeOpenAI, constant.ChannelTypeAnthropic}
-	setting.MarketplaceFeeRate = 0.05
+	setting.MarketplaceFeeRate = 0
 	setting.MarketplaceMinFixedOrderQuota = 100
 	setting.MarketplaceMaxFixedOrderQuota = 100000
 	setting.MarketplaceFixedOrderDefaultExpirySeconds = 3600

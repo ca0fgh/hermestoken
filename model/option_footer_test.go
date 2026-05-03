@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
@@ -56,6 +57,68 @@ func TestEnsureDefaultOptionRecordCreatesMissingFooterRow(t *testing.T) {
 	}
 	if option.Value != common.DefaultFooterHTML {
 		t.Fatalf("persisted Footer = %q, want default footer html", option.Value)
+	}
+}
+
+func TestUpdateOptionRejectsInvalidMarketplaceFeeRateBeforePersisting(t *testing.T) {
+	originalDB := DB
+	originalMap := common.OptionMap
+	originalFeeRate := setting.MarketplaceFeeRate
+	defer func() {
+		DB = originalDB
+		common.OptionMap = originalMap
+		setting.MarketplaceFeeRate = originalFeeRate
+	}()
+
+	tempDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open temp db: %v", err)
+	}
+	if err := tempDB.AutoMigrate(&Option{}); err != nil {
+		t.Fatalf("failed to migrate options table: %v", err)
+	}
+	DB = tempDB
+	common.OptionMap = map[string]string{"MarketplaceFeeRate": "0.05"}
+	setting.MarketplaceFeeRate = 0.05
+
+	if err := UpdateOption("MarketplaceFeeRate", "-0.01"); err == nil {
+		t.Fatal("expected invalid marketplace fee rate to fail")
+	}
+
+	var count int64
+	if err := DB.Model(&Option{}).Where("key = ?", "MarketplaceFeeRate").Count(&count).Error; err != nil {
+		t.Fatalf("failed to count marketplace fee option: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("MarketplaceFeeRate option rows = %d, want 0", count)
+	}
+	if common.OptionMap["MarketplaceFeeRate"] != "0.05" {
+		t.Fatalf("OptionMap fee rate = %q, want 0.05", common.OptionMap["MarketplaceFeeRate"])
+	}
+	if setting.MarketplaceFeeRate != 0.05 {
+		t.Fatalf("setting.MarketplaceFeeRate = %v, want 0.05", setting.MarketplaceFeeRate)
+	}
+}
+
+func TestUpdateOptionMapRejectsInvalidMarketplaceFeeRateWithoutChangingMemory(t *testing.T) {
+	originalMap := common.OptionMap
+	originalFeeRate := setting.MarketplaceFeeRate
+	defer func() {
+		common.OptionMap = originalMap
+		setting.MarketplaceFeeRate = originalFeeRate
+	}()
+
+	common.OptionMap = map[string]string{"MarketplaceFeeRate": "0.05"}
+	setting.MarketplaceFeeRate = 0.05
+
+	if err := updateOptionMap("MarketplaceFeeRate", "NaN"); err == nil {
+		t.Fatal("expected invalid marketplace fee rate to fail")
+	}
+	if common.OptionMap["MarketplaceFeeRate"] != "0.05" {
+		t.Fatalf("OptionMap fee rate = %q, want 0.05", common.OptionMap["MarketplaceFeeRate"])
+	}
+	if setting.MarketplaceFeeRate != 0.05 {
+		t.Fatalf("setting.MarketplaceFeeRate = %v, want 0.05", setting.MarketplaceFeeRate)
 	}
 }
 

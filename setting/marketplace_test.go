@@ -50,3 +50,16 @@ func TestUpdateMarketplaceEnabledVendorTypesRejectsInvalidJSON(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, original, MarketplaceEnabledVendorTypes)
 }
+
+func TestUpdateMarketplaceFeeRateValidatesValue(t *testing.T) {
+	original := MarketplaceFeeRate
+	t.Cleanup(func() { MarketplaceFeeRate = original })
+
+	require.NoError(t, UpdateMarketplaceFeeRate("0.05"))
+	assert.Equal(t, 0.05, MarketplaceFeeRate)
+
+	require.Error(t, UpdateMarketplaceFeeRate("-0.01"))
+	assert.Equal(t, 0.05, MarketplaceFeeRate)
+	require.Error(t, UpdateMarketplaceFeeRate("NaN"))
+	assert.Equal(t, 0.05, MarketplaceFeeRate)
+}

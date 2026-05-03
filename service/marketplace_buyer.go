@@ -186,12 +186,18 @@ func GetMarketplaceOrderFilterRanges(input MarketplaceOrderListInput) (Marketpla
 
 func CreateMarketplaceFixedOrder(input MarketplaceFixedOrderCreateInput) (*model.MarketplaceFixedOrder, error) {
 	input = normalizeMarketplaceFixedOrderCreateInput(input)
+	platformFeeRateSnapshot := marketplaceFeeRateSnapshot()
+	purchasedQuotaWithFee, err := marketplaceBuyerChargeQuotaWithFee(input.PurchasedQuota, platformFeeRateSnapshot)
+	if err != nil {
+		return nil, err
+	}
+	input.PurchasedQuota = purchasedQuotaWithFee
 	if err := validateMarketplaceFixedOrderInput(input); err != nil {
 		return nil, err
 	}
 
 	var createdOrder *model.MarketplaceFixedOrder
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		var credential model.MarketplaceCredential
 		if err := marketplaceForUpdate(tx).
 			Where("id = ?", input.CredentialID).
@@ -245,7 +251,7 @@ func CreateMarketplaceFixedOrder(input MarketplaceFixedOrderCreateInput) (*model
 			MultiplierSnapshot:      credential.Multiplier,
 			OfficialPriceSnapshot:   marshalMarketplaceOfficialPriceSnapshot(pricePreview),
 			BuyerPriceSnapshot:      marshalMarketplaceBuyerPriceSnapshot(pricePreview),
-			PlatformFeeRateSnapshot: 0,
+			PlatformFeeRateSnapshot: platformFeeRateSnapshot,
 			ExpiresAt:               marketplaceFixedOrderExpiresAt(credential),
 			Status:                  model.MarketplaceFixedOrderStatusActive,
 		}

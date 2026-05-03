@@ -42,6 +42,7 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
+		&SubscriptionPreConsumeRecord{},
 		&ReferralTemplate{},
 		&ReferralTemplateBinding{},
 		&ReferralInviteeShareOverride{},

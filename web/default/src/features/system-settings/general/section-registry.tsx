@@ -87,6 +87,7 @@ const GENERAL_SECTIONS = [
         defaultValues={{
           MarketplaceEnabled: settings.MarketplaceEnabled,
           MarketplaceEnabledVendorTypes: settings.MarketplaceEnabledVendorTypes,
+          MarketplaceFeeRate: settings.MarketplaceFeeRate,
           MarketplaceSellerIncomeHoldSeconds:
             settings.MarketplaceSellerIncomeHoldSeconds,
           MarketplaceMinFixedOrderQuota: settings.MarketplaceMinFixedOrderQuota,

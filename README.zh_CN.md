@@ -19,7 +19,7 @@ make dev-api
 make dev-web
 ```
 
-后端代码位于 Go 项目根目录；默认前端在 `web/default`，经典前端在 `web/classic`。
+后端代码位于 Go 项目根目录；经典前端 `web/classic` 现在是 `make dev-web` 和 `make build-frontend` 的默认入口；兼容前端保留在 `web/default`，可用 `make dev-web-default` 启动。
 
 ## 许可证
 

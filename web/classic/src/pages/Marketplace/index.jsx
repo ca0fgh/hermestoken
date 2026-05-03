@@ -54,7 +54,6 @@ import {
   IconKey,
   IconRoute,
   IconRefresh,
-  IconSearch,
   IconTreeTriangleDown,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
@@ -110,6 +109,32 @@ const defaultFilters = {
   min_concurrency_limit: '',
   max_concurrency_limit: '',
 };
+
+function normalizeMarketplacePoolFilters(filters = {}) {
+  return {
+    ...defaultFilters,
+    vendor_type: filters?.vendor_type || undefined,
+    model: filters?.model || '',
+    quota_mode: filters?.quota_mode || '',
+    time_mode: filters?.time_mode || '',
+    min_quota_limit: filters?.min_quota_limit || '',
+    max_quota_limit: filters?.max_quota_limit || '',
+    min_time_limit_seconds: filters?.min_time_limit_seconds || '',
+    max_time_limit_seconds: filters?.max_time_limit_seconds || '',
+    min_multiplier: filters?.min_multiplier || '',
+    max_multiplier: filters?.max_multiplier || '',
+    min_concurrency_limit: filters?.min_concurrency_limit || '',
+    max_concurrency_limit: filters?.max_concurrency_limit || '',
+    p: 1,
+  };
+}
+
+function marketplacePoolFilterPayload(filters = {}) {
+  const payload = compactParams(normalizeMarketplacePoolFilters(filters));
+  delete payload.p;
+  delete payload.page_size;
+  return payload;
+}
 
 const MARKETPLACE_ROUTE_ORDER_VALUES = ['fixed_order', 'group', 'pool'];
 const MARKETPLACE_ROUTE_ALIASES = {
@@ -203,6 +228,28 @@ function compactParams(params) {
       if (typeof value === 'number' && value <= 0) return false;
       return true;
     }),
+  );
+}
+
+const MARKETPLACE_RELAY_FILTER_KEYS = [
+  'vendor_type',
+  'quota_mode',
+  'time_mode',
+  'min_quota_limit',
+  'max_quota_limit',
+  'min_time_limit_seconds',
+  'max_time_limit_seconds',
+  'min_multiplier',
+  'max_multiplier',
+  'min_concurrency_limit',
+  'max_concurrency_limit',
+];
+
+function marketplaceRelayFilterParams(filters = {}) {
+  return compactParams(
+    Object.fromEntries(
+      MARKETPLACE_RELAY_FILTER_KEYS.map((key) => [key, filters[key]]),
+    ),
   );
 }
 
@@ -806,6 +853,23 @@ function formatMarketplaceQuotaUSD(quota) {
   const displayAmount = quotaToDisplayAmount(numeric);
   const digits = Math.abs(displayAmount) >= 1 ? 4 : 6;
   return renderQuota(numeric, digits);
+}
+
+function normalizeMarketplaceFeeRate(value) {
+  const feeRate = Number(value);
+  return Number.isFinite(feeRate) && feeRate > 0 ? feeRate : 0;
+}
+
+function marketplaceBuyerPaymentUSD(baseAmountUSD, feeRate) {
+  const amount = Number(baseAmountUSD);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return amount * (1 + normalizeMarketplaceFeeRate(feeRate));
+}
+
+function formatMarketplaceFeePercent(feeRate) {
+  const normalized = normalizeMarketplaceFeeRate(feeRate);
+  if (normalized <= 0) return '0%';
+  return `${Number((normalized * 100).toFixed(6))}%`;
 }
 
 function marketplaceQuotaDisplayLabel() {
@@ -1601,7 +1665,9 @@ function buildCurl(
   model = 'gpt-4o-mini',
   options = {},
 ) {
-  const query = new URLSearchParams(compactParams(filters)).toString();
+  const query = new URLSearchParams(
+    marketplaceRelayFilterParams(filters),
+  ).toString();
   const endpoint = `/v1/chat/completions${!orderId && query ? `?${query}` : ''}`;
   const headers =
     orderId && !options.fixedOrderBound
@@ -1794,6 +1860,11 @@ function marketplacePoolRouteEnabled(token) {
   return normalizeMarketplaceRouteEnabledForToken(
     token?.marketplace_route_enabled,
   ).includes('pool');
+}
+
+function marketplacePoolSavedFilters(token) {
+  if (!token?.marketplace_pool_filters_enabled) return null;
+  return normalizeMarketplacePoolFilters(token.marketplace_pool_filters);
 }
 
 function tokenWithMarketplacePoolRoute(token) {
@@ -2154,7 +2225,13 @@ function BuyerTokenPanel({ tokens, selectedTokenId, onChange }) {
   );
 }
 
-function FilterBar({ filters, filterRanges, onChange, onSearch, onReset }) {
+function FilterBar({
+  filters,
+  filterRanges,
+  onChange,
+  onReset,
+  showQuotaTimeFilters = true,
+}) {
   const { t } = useTranslation();
   const patch = (next) => onChange({ ...filters, ...next, p: 1 });
   const quotaOptions = buildMarketplaceFilterOptions('quota', filterRanges, t);
@@ -2164,9 +2241,15 @@ function FilterBar({ filters, filterRanges, onChange, onSearch, onReset }) {
     () => buildMarketplaceVendorModelTree(marketplaceModels, filters, t),
     [marketplaceModels, filters, t],
   );
+  const compactFilterClassName = showQuotaTimeFilters
+    ? ''
+    : ' marketplace-filter-card-compact';
 
   return (
-    <Card className='marketplace-filter-card' bodyStyle={{ padding: 12 }}>
+    <Card
+      className={`marketplace-filter-card${compactFilterClassName}`}
+      bodyStyle={{ padding: 12 }}
+    >
       <div className='marketplace-filter-grid'>
         <div className='marketplace-filter-main-row'>
           <div className='marketplace-filter-main-controls'>
@@ -2198,54 +2281,49 @@ function FilterBar({ filters, filterRanges, onChange, onSearch, onReset }) {
                 style={{ width: '100%' }}
               />
             </div>
-            <div className='marketplace-filter-item marketplace-filter-mode'>
-              <Select
-                value={filters.quota_mode || MARKETPLACE_FILTER_ALL_VALUE}
-                insetLabel={t('额度')}
-                onChange={(value) => {
-                  const quotaMode =
-                    value === MARKETPLACE_FILTER_ALL_VALUE ? '' : value;
-                  patch({
-                    quota_mode: quotaMode,
-                    ...(quotaMode === 'limited'
-                      ? {}
-                      : clearMarketplaceQuotaRangeFilters()),
-                  });
-                }}
-                optionList={quotaOptions}
-                style={{ width: '100%' }}
-              />
-            </div>
-            <div className='marketplace-filter-item marketplace-filter-mode'>
-              <Select
-                value={filters.time_mode || MARKETPLACE_FILTER_ALL_VALUE}
-                insetLabel={t('时间')}
-                onChange={(value) => {
-                  const timeMode =
-                    value === MARKETPLACE_FILTER_ALL_VALUE ? '' : value;
-                  patch({
-                    time_mode: timeMode,
-                    ...(timeMode === 'limited'
-                      ? {}
-                      : clearMarketplaceTimeRangeFilters()),
-                  });
-                }}
-                optionList={timeOptions}
-                style={{ width: '100%' }}
-              />
-            </div>
+            {showQuotaTimeFilters ? (
+              <>
+                <div className='marketplace-filter-item marketplace-filter-mode'>
+                  <Select
+                    value={filters.quota_mode || MARKETPLACE_FILTER_ALL_VALUE}
+                    insetLabel={t('额度')}
+                    onChange={(value) => {
+                      const quotaMode =
+                        value === MARKETPLACE_FILTER_ALL_VALUE ? '' : value;
+                      patch({
+                        quota_mode: quotaMode,
+                        ...(quotaMode === 'limited'
+                          ? {}
+                          : clearMarketplaceQuotaRangeFilters()),
+                      });
+                    }}
+                    optionList={quotaOptions}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div className='marketplace-filter-item marketplace-filter-mode'>
+                  <Select
+                    value={filters.time_mode || MARKETPLACE_FILTER_ALL_VALUE}
+                    insetLabel={t('时间')}
+                    onChange={(value) => {
+                      const timeMode =
+                        value === MARKETPLACE_FILTER_ALL_VALUE ? '' : value;
+                      patch({
+                        time_mode: timeMode,
+                        ...(timeMode === 'limited'
+                          ? {}
+                          : clearMarketplaceTimeRangeFilters()),
+                      });
+                    }}
+                    optionList={timeOptions}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
           <div className='marketplace-filter-actions'>
             <Space wrap>
-              <Button
-                type='primary'
-                icon={<IconSearch />}
-                className='marketplace-filter-action-button marketplace-filter-submit-button'
-                aria-label={t('筛选')}
-                onClick={onSearch}
-              >
-                {t('筛选')}
-              </Button>
               <Button
                 theme='light'
                 type='tertiary'
@@ -2260,20 +2338,24 @@ function FilterBar({ filters, filterRanges, onChange, onSearch, onReset }) {
           </div>
         </div>
         <div className='marketplace-filter-range-row'>
-          {renderMarketplaceQuotaRangeInputs(
-            filters,
-            filterRanges,
-            patch,
-            t,
-            'marketplace-filter-quota-range',
-          )}
-          {renderMarketplaceTimeRangeInputs(
-            filters,
-            filterRanges,
-            patch,
-            t,
-            'marketplace-filter-time-range',
-          )}
+          {showQuotaTimeFilters
+            ? renderMarketplaceQuotaRangeInputs(
+                filters,
+                filterRanges,
+                patch,
+                t,
+                'marketplace-filter-quota-range',
+              )
+            : null}
+          {showQuotaTimeFilters
+            ? renderMarketplaceTimeRangeInputs(
+                filters,
+                filterRanges,
+                patch,
+                t,
+                'marketplace-filter-time-range',
+              )
+            : null}
           {renderMarketplaceMultiplierRangeInputs(
             filters,
             filterRanges,
@@ -2303,6 +2385,12 @@ function OrdersTab() {
   const [loading, setLoading] = useState(false);
   const [buying, setBuying] = useState(null);
   const [buyAmountUSD, setBuyAmountUSD] = useState('');
+  const [marketplaceFeeRate, setMarketplaceFeeRate] = useState(0);
+  const buyFeeRate = normalizeMarketplaceFeeRate(marketplaceFeeRate);
+  const estimatedBuyerPaymentUSD = marketplaceBuyerPaymentUSD(
+    buyAmountUSD,
+    buyFeeRate,
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -2323,6 +2411,29 @@ function OrdersTab() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadMarketplaceFeeRate = async () => {
+      try {
+        const response = await API.get('/api/option/');
+        const feeRate = normalizeMarketplaceFeeRate(
+          readOptionValue(response?.data?.data, 'MarketplaceFeeRate', 0),
+        );
+        if (mounted) {
+          setMarketplaceFeeRate(feeRate);
+        }
+      } catch {
+        if (mounted) {
+          setMarketplaceFeeRate(0);
+        }
+      }
+    };
+    loadMarketplaceFeeRate();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const createFixedOrder = async () => {
     if (!buying) return;
@@ -2407,7 +2518,6 @@ function OrdersTab() {
         filters={filters}
         filterRanges={filterRanges}
         onChange={setFilters}
-        onSearch={load}
         onReset={() => setFilters(defaultFilters)}
       />
       <Table
@@ -2459,6 +2569,12 @@ function OrdersTab() {
             placeholder={t('请输入买断美元金额，例如 30')}
             onChange={setBuyAmountUSD}
           />
+          <Text type='secondary'>
+            {t('填写的是基础调用额度，创建时会额外收取买家交易手续费。当前费率 {{rate}}，预计实际扣除 {{amount}}。', {
+              rate: formatMarketplaceFeePercent(buyFeeRate),
+              amount: formatUSD(estimatedBuyerPaymentUSD),
+            })}
+          </Text>
         </Space>
       </Modal>
     </Space>
@@ -2474,6 +2590,7 @@ function PoolTab({
   const { t } = useTranslation();
   const [filters, setFilters] = useState(defaultFilters);
   const [activatingPool, setActivatingPool] = useState(false);
+  const [savingPoolFilters, setSavingPoolFilters] = useState(false);
   const filterRanges = useMarketplaceFilterRanges(filters);
   const [models, setModels] = useState([]);
   const [candidates, setCandidates] = useState([]);
@@ -2484,6 +2601,10 @@ function PoolTab({
         (token) => token.status === 1 && token.id === selectedBuyerTokenId,
       ),
     [buyerTokens, selectedBuyerTokenId],
+  );
+  const savedPoolFilters = useMemo(
+    () => marketplacePoolSavedFilters(selectedBuyerToken),
+    [selectedBuyerToken],
   );
   const poolActivated = marketplacePoolRouteEnabled(selectedBuyerToken);
 
@@ -2514,11 +2635,46 @@ function PoolTab({
     if (!selectedBuyerToken) setActivatingPool(false);
   }, [selectedBuyerToken]);
 
-  const toggleMarketplacePoolForToken = async () => {
+  useEffect(() => {
+    setFilters(savedPoolFilters ?? defaultFilters);
+  }, [savedPoolFilters]);
+
+  const saveMarketplacePoolFiltersForToken = async () => {
     if (!selectedBuyerToken) return;
-    const nextToken = poolActivated
-      ? tokenWithoutMarketplacePoolRoute(selectedBuyerToken)
-      : tokenWithMarketplacePoolRoute(selectedBuyerToken);
+    const nextFilters = normalizeMarketplacePoolFilters(filters);
+    setSavingPoolFilters(true);
+    try {
+      const response = await API.post('/api/marketplace/pool/token-filters', {
+        token_id: selectedBuyerToken.id,
+        filters: marketplacePoolFilterPayload(nextFilters),
+      });
+      const { success, message, data } = response.data;
+      if (!success) {
+        showError(t(message || '保存订单池条件失败'));
+        return;
+      }
+      const updatedToken = {
+        ...selectedBuyerToken,
+        ...(data || {}),
+        marketplace_pool_filters_enabled: true,
+        marketplace_pool_filters: marketplacePoolFilterPayload(nextFilters),
+      };
+      onBuyerTokensChange((currentTokens) =>
+        currentTokens.map((token) =>
+          token.id === updatedToken.id ? updatedToken : token,
+        ),
+      );
+      showSuccess(t('订单池条件已保存'));
+    } catch (error) {
+      showError(error.message || t('保存订单池条件失败'));
+    } finally {
+      setSavingPoolFilters(false);
+    }
+  };
+
+  const activateMarketplacePoolForToken = async () => {
+    if (!selectedBuyerToken || poolActivated) return;
+    const nextToken = tokenWithMarketplacePoolRoute(selectedBuyerToken);
     setActivatingPool(true);
     try {
       const response = await API.put(
@@ -2527,12 +2683,7 @@ function PoolTab({
       );
       const { success, message, data } = response.data;
       if (!success) {
-        showError(
-          t(
-            message ||
-              (poolActivated ? '停止激活订单池失败' : '激活订单池失败'),
-          ),
-        );
+        showError(t(message || '激活订单池失败'));
         return;
       }
       const updatedToken = {
@@ -2546,18 +2697,50 @@ function PoolTab({
           token.id === updatedToken.id ? updatedToken : token,
         ),
       );
-      showSuccess(
-        t(poolActivated ? '该令牌已停止使用订单池' : '该令牌已激活订单池'),
-      );
+      showSuccess(t('该令牌已激活订单池'));
     } catch (error) {
-      showError(
-        error.message ||
-          t(poolActivated ? '停止激活订单池失败' : '激活订单池失败'),
-      );
+      showError(error.message || t('激活订单池失败'));
     } finally {
       setActivatingPool(false);
     }
   };
+
+  const deactivateMarketplacePoolForToken = async () => {
+    if (!selectedBuyerToken || !poolActivated) return;
+    const nextToken = tokenWithoutMarketplacePoolRoute(selectedBuyerToken);
+    setActivatingPool(true);
+    try {
+      const response = await API.put(
+        '/api/token/',
+        marketplacePoolTokenUpdatePayload(nextToken),
+      );
+      const { success, message, data } = response.data;
+      if (!success) {
+        showError(t(message || '取消激活订单池失败'));
+        return;
+      }
+      const updatedToken = {
+        ...nextToken,
+        ...(data || {}),
+        marketplace_route_order: nextToken.marketplace_route_order,
+        marketplace_route_enabled: nextToken.marketplace_route_enabled,
+      };
+      onBuyerTokensChange((currentTokens) =>
+        currentTokens.map((token) =>
+          token.id === updatedToken.id ? updatedToken : token,
+        ),
+      );
+      showSuccess(t('该令牌已取消激活订单池'));
+    } catch (error) {
+      showError(error.message || t('取消激活订单池失败'));
+    } finally {
+      setActivatingPool(false);
+    }
+  };
+
+  const toggleMarketplacePoolForToken = poolActivated
+    ? deactivateMarketplacePoolForToken
+    : activateMarketplacePoolForToken;
 
   return (
     <Space vertical style={{ width: '100%' }}>
@@ -2570,8 +2753,8 @@ function PoolTab({
         filters={filters}
         filterRanges={filterRanges}
         onChange={setFilters}
-        onSearch={load}
         onReset={() => setFilters(defaultFilters)}
+        showQuotaTimeFilters={false}
       />
       <div className='marketplace-pool-activation'>
         <div className='marketplace-pool-activation-header'>
@@ -2579,15 +2762,27 @@ function PoolTab({
             <IconRoute />
             <Text strong>{t('订单池激活')}</Text>
           </Space>
-          <Button
-            type={poolActivated ? 'danger' : 'primary'}
-            theme={poolActivated ? 'light' : 'solid'}
-            loading={activatingPool}
-            disabled={!selectedBuyerToken || activatingPool}
-            onClick={toggleMarketplacePoolForToken}
-          >
-            {poolActivated ? t('停止激活') : t('激活使用')}
-          </Button>
+          <Space wrap>
+            <Button
+              theme='light'
+              loading={savingPoolFilters}
+              disabled={!selectedBuyerToken || savingPoolFilters}
+              onClick={saveMarketplacePoolFiltersForToken}
+            >
+              {t('保存条件')}
+            </Button>
+            <Button
+              type='primary'
+              theme={poolActivated ? 'light' : 'solid'}
+              loading={activatingPool}
+              disabled={!selectedBuyerToken || activatingPool}
+              onClick={toggleMarketplacePoolForToken}
+            >
+              {activatingPool
+                ? t(poolActivated ? '取消激活中' : '激活中')
+                : t(poolActivated ? '取消激活' : '激活使用')}
+            </Button>
+          </Space>
         </div>
       </div>
       <Table
@@ -4076,9 +4271,6 @@ export default function Marketplace() {
           </div>
         </div>
         <Tabs type='line' keepDOM={false}>
-          <Tabs.TabPane tab={t('订单列表')} itemKey='orders'>
-            <OrdersTab />
-          </Tabs.TabPane>
           <Tabs.TabPane tab={t('订单池')} itemKey='pool'>
             <PoolTab
               buyerTokens={buyerTokens}
@@ -4086,6 +4278,9 @@ export default function Marketplace() {
               onBuyerTokenChange={setSelectedBuyerTokenId}
               onBuyerTokensChange={setBuyerTokens}
             />
+          </Tabs.TabPane>
+          <Tabs.TabPane tab={t('订单列表')} itemKey='orders'>
+            <OrdersTab />
           </Tabs.TabPane>
           <Tabs.TabPane tab={t('我的买断订单')} itemKey='fixed'>
             <FixedOrdersTab

@@ -9,7 +9,7 @@ import {
 } from './section-registry.tsx'
 
 const defaultGeneralSettings: GeneralSettings = {
-  'theme.frontend': 'default',
+  'theme.frontend': 'classic',
   Notice: '',
   SystemName: 'HermesToken',
   Logo: '',

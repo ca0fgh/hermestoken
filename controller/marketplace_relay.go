@@ -484,22 +484,12 @@ func MarketplacePoolRelay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 	relayInfo.SetEstimatePromptTokens(tokens)
 
-	preparation, err := service.PrepareMarketplacePoolRelay(service.MarketplacePoolRelayInput{
-		BuyerUserID:         c.GetInt("id"),
-		VendorType:          marketplaceRelayIntQuery(c, "vendor_type"),
-		Model:               modelName,
-		QuotaMode:           c.Query("quota_mode"),
-		TimeMode:            c.Query("time_mode"),
-		MinQuotaLimit:       marketplaceRelayInt64Query(c, "min_quota_limit"),
-		MaxQuotaLimit:       marketplaceRelayInt64Query(c, "max_quota_limit"),
-		MinTimeLimitSeconds: marketplaceRelayInt64Query(c, "min_time_limit_seconds"),
-		MaxTimeLimitSeconds: marketplaceRelayInt64Query(c, "max_time_limit_seconds"),
-		MinMultiplier:       marketplaceRelayFloatQuery(c, "min_multiplier"),
-		MaxMultiplier:       marketplaceRelayFloatQuery(c, "max_multiplier"),
-		MinConcurrencyLimit: marketplaceRelayIntQuery(c, "min_concurrency_limit"),
-		MaxConcurrencyLimit: marketplaceRelayIntQuery(c, "max_concurrency_limit"),
-		RequestID:           relayInfo.RequestId,
-	})
+	poolInput, err := marketplacePoolRelayInputFromRequest(c, c.GetInt("id"), modelName, relayInfo.RequestId)
+	if err != nil {
+		hermesTokenError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithStatusCode(http.StatusBadRequest), types.ErrOptionWithSkipRetry())
+		return
+	}
+	preparation, err := service.PrepareMarketplacePoolRelay(poolInput)
 	if err != nil {
 		hermesTokenError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithStatusCode(http.StatusBadRequest), types.ErrOptionWithSkipRetry())
 		return
@@ -513,6 +503,10 @@ func MarketplacePoolRelay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 	applyMarketplaceMultiplier(&priceData, relayInfo, tokens, meta, preparation.Credential.Multiplier)
+
+	if calculator := marketplacePoolBuyerChargeCalculator(preparation.Session); calculator != nil {
+		priceData.QuotaToPreConsume = calculator.BuyerChargeForQuota(priceData.QuotaToPreConsume)
+	}
 	relayInfo.PriceData = priceData
 
 	if priceData.FreeModel {
@@ -558,6 +552,60 @@ func normalizeMarketplacePoolRelayPath(c *gin.Context) {
 
 func setupMarketplacePoolRelayChannelContext(c *gin.Context, preparation *service.MarketplacePoolRelayPreparation) {
 	setupMarketplaceRelayChannelContext(c, preparation.Credential, preparation.APIKey)
+}
+
+func marketplacePoolBuyerChargeCalculator(session *service.MarketplacePoolRelaySession) relaycommon.BuyerChargeCalculator {
+	if session == nil {
+		return nil
+	}
+	return session
+}
+
+func marketplacePoolRelayInputFromRequest(c *gin.Context, buyerUserID int, modelName string, requestID string) (service.MarketplacePoolRelayInput, error) {
+	input := service.MarketplacePoolRelayInput{
+		BuyerUserID:         buyerUserID,
+		VendorType:          marketplaceRelayIntQuery(c, "vendor_type"),
+		Model:               strings.TrimSpace(modelName),
+		QuotaMode:           c.Query("quota_mode"),
+		TimeMode:            c.Query("time_mode"),
+		MinQuotaLimit:       marketplaceRelayInt64Query(c, "min_quota_limit"),
+		MaxQuotaLimit:       marketplaceRelayInt64Query(c, "max_quota_limit"),
+		MinTimeLimitSeconds: marketplaceRelayInt64Query(c, "min_time_limit_seconds"),
+		MaxTimeLimitSeconds: marketplaceRelayInt64Query(c, "max_time_limit_seconds"),
+		MinMultiplier:       marketplaceRelayFloatQuery(c, "min_multiplier"),
+		MaxMultiplier:       marketplaceRelayFloatQuery(c, "max_multiplier"),
+		MinConcurrencyLimit: marketplaceRelayIntQuery(c, "min_concurrency_limit"),
+		MaxConcurrencyLimit: marketplaceRelayIntQuery(c, "max_concurrency_limit"),
+		RequestID:           requestID,
+	}
+	if !common.GetContextKeyBool(c, constant.ContextKeyMarketplacePoolFiltersEnabled) {
+		return input, nil
+	}
+	filters, ok := common.GetContextKeyType[model.MarketplacePoolFilters](c, constant.ContextKeyMarketplacePoolFilters)
+	if !ok {
+		return input, nil
+	}
+	values := filters.Values()
+	savedModel := strings.TrimSpace(values.Model)
+	if savedModel != "" && savedModel != strings.TrimSpace(modelName) {
+		return input, fmt.Errorf("request model %s does not match saved marketplace pool conditions model %s", modelName, savedModel)
+	}
+
+	input.VendorType = values.VendorType
+	if savedModel != "" {
+		input.Model = savedModel
+	}
+	input.QuotaMode = values.QuotaMode
+	input.TimeMode = values.TimeMode
+	input.MinQuotaLimit = values.MinQuotaLimit
+	input.MaxQuotaLimit = values.MaxQuotaLimit
+	input.MinTimeLimitSeconds = values.MinTimeLimitSeconds
+	input.MaxTimeLimitSeconds = values.MaxTimeLimitSeconds
+	input.MinMultiplier = values.MinMultiplier
+	input.MaxMultiplier = values.MaxMultiplier
+	input.MinConcurrencyLimit = values.MinConcurrencyLimit
+	input.MaxConcurrencyLimit = values.MaxConcurrencyLimit
+	return input, nil
 }
 
 func setupMarketplaceRelayChannelContext(c *gin.Context, credential *model.MarketplaceCredential, apiKey string) {

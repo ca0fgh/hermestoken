@@ -19,7 +19,7 @@ make dev-api
 make dev-web
 ```
 
-Backend code lives in the Go project root. The default frontend is in `web/default`, and the classic frontend is in `web/classic`.
+Backend code lives in the Go project root. The classic frontend in `web/classic` is the default for `make dev-web` and `make build-frontend`; the compatibility frontend remains in `web/default` and can be started with `make dev-web-default`.
 
 ## License
 

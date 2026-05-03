@@ -7,13 +7,15 @@ const (
 	ContextKeyPromptTokens    ContextKey = "prompt_tokens"
 	ContextKeyEstimatedTokens ContextKey = "estimated_tokens"
 
-	ContextKeyOriginalModel           ContextKey = "original_model"
-	ContextKeyRequestStartTime        ContextKey = "request_start_time"
-	ContextKeyMarketplaceUnifiedRelay ContextKey = "marketplace_unified_relay"
-	ContextKeyMarketplaceModelList    ContextKey = "marketplace_model_list"
-	ContextKeyMarketplaceRouteOrder   ContextKey = "marketplace_route_order"
-	ContextKeyMarketplaceRouteEnabled ContextKey = "marketplace_route_enabled"
-	ContextKeyMarketplaceSkipGroup    ContextKey = "marketplace_skip_group"
+	ContextKeyOriginalModel                 ContextKey = "original_model"
+	ContextKeyRequestStartTime              ContextKey = "request_start_time"
+	ContextKeyMarketplaceUnifiedRelay       ContextKey = "marketplace_unified_relay"
+	ContextKeyMarketplaceModelList          ContextKey = "marketplace_model_list"
+	ContextKeyMarketplaceRouteOrder         ContextKey = "marketplace_route_order"
+	ContextKeyMarketplaceRouteEnabled       ContextKey = "marketplace_route_enabled"
+	ContextKeyMarketplacePoolFiltersEnabled ContextKey = "marketplace_pool_filters_enabled"
+	ContextKeyMarketplacePoolFilters        ContextKey = "marketplace_pool_filters"
+	ContextKeyMarketplaceSkipGroup          ContextKey = "marketplace_skip_group"
 
 	/* token related keys */
 	ContextKeyTokenUnlimited         ContextKey = "token_unlimited_quota"

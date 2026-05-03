@@ -15,17 +15,23 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StatusBadge } from '@/components/status-badge'
+import { getSystemOptions } from '@/features/system-settings/api'
+import { getOptionValue } from '@/features/system-settings/hooks/use-system-options'
 import {
   createMarketplaceFixedOrder,
   listMarketplaceOrderFilterRanges,
   listMarketplaceOrders,
 } from '../api'
 import {
+  formatMarketplaceFeePercent,
   formatMarketplacePricePoint,
+  formatMarketplaceUSD,
+  marketplaceBuyerPaymentUSD,
   marketplaceQuotaText,
   marketplaceStatusLabel,
   marketplaceSuccessRate,
   marketplaceStatusVariant,
+  normalizeMarketplaceFeeRate,
 } from '../lib'
 import type {
   MarketplaceOrderFilters,
@@ -40,6 +46,10 @@ import {
   StatPill,
 } from './shared'
 import { defaultFilters, unwrapPage } from './shared-data'
+
+const MARKETPLACE_FEE_DEFAULTS = {
+  MarketplaceFeeRate: 0,
+}
 
 export function OrdersTab({
   onFixedOrderCreated,
@@ -65,6 +75,21 @@ export function OrdersTab({
     queryFn: () => listMarketplaceOrderFilterRanges(filters),
     placeholderData: (previous) => previous,
   })
+  const marketplaceSettingsQuery = useQuery({
+    queryKey: ['system-options'],
+    queryFn: getSystemOptions,
+    staleTime: 5 * 60 * 1000,
+  })
+  const marketplaceFeeRate = normalizeMarketplaceFeeRate(
+    getOptionValue(
+      marketplaceSettingsQuery.data?.data,
+      MARKETPLACE_FEE_DEFAULTS
+    ).MarketplaceFeeRate
+  )
+  const estimatedBuyerPaymentUSD = marketplaceBuyerPaymentUSD(
+    purchaseAmountUSD,
+    marketplaceFeeRate
+  )
 
   const purchaseMutation = useMutation({
     mutationFn: () =>
@@ -115,7 +140,7 @@ export function OrdersTab({
             <DialogTitle>{t('Buy fixed amount')}</DialogTitle>
             <DialogDescription>
               {t(
-                'Fixed orders route to this seller credential and spend only the fixed order balance.'
+                'Enter the base call amount. The final fixed order balance and deduction include the global buyer transaction fee.'
               )}
             </DialogDescription>
           </DialogHeader>
@@ -138,6 +163,15 @@ export function OrdersTab({
                 value={purchaseAmountUSD}
                 onChange={(event) => setPurchaseAmountUSD(event.target.value)}
               />
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'Buyer transaction fee {{rate}}. Estimated deduction {{amount}}.',
+                  {
+                    rate: formatMarketplaceFeePercent(marketplaceFeeRate),
+                    amount: formatMarketplaceUSD(estimatedBuyerPaymentUSD),
+                  }
+                )}
+              </p>
             </div>
           </div>
           <DialogFooter>

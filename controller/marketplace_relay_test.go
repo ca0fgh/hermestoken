@@ -109,3 +109,42 @@ func TestMarketplacePoolRelayRejectsDisabledTokenRoute(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, recorder.Code)
 	assert.Contains(t, recorder.Body.String(), "marketplace pool route is disabled")
 }
+
+func TestMarketplacePoolRelayInputUsesSavedTokenFilters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/marketplace/pool/v1/chat/completions?max_multiplier=9&vendor_type=2", nil)
+	common.SetContextKey(ctx, constant.ContextKeyMarketplacePoolFiltersEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyMarketplacePoolFilters, model.NewMarketplacePoolFilters(model.MarketplacePoolFilterValues{
+		VendorType:          1,
+		Model:               "gpt-4o-mini",
+		MaxMultiplier:       1.2,
+		MinConcurrencyLimit: 2,
+	}))
+
+	input, err := marketplacePoolRelayInputFromRequest(ctx, 20, "gpt-4o-mini", "saved-filter-request")
+
+	require.NoError(t, err)
+	assert.Equal(t, 20, input.BuyerUserID)
+	assert.Equal(t, 1, input.VendorType)
+	assert.Equal(t, "gpt-4o-mini", input.Model)
+	assert.Equal(t, 1.2, input.MaxMultiplier)
+	assert.Equal(t, 2, input.MinConcurrencyLimit)
+}
+
+func TestMarketplacePoolRelayInputRejectsSavedModelMismatch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/marketplace/pool/v1/chat/completions", nil)
+	common.SetContextKey(ctx, constant.ContextKeyMarketplacePoolFiltersEnabled, true)
+	common.SetContextKey(ctx, constant.ContextKeyMarketplacePoolFilters, model.NewMarketplacePoolFilters(model.MarketplacePoolFilterValues{
+		Model: "gpt-4o-mini",
+	}))
+
+	_, err := marketplacePoolRelayInputFromRequest(ctx, 20, "gpt-4.1-mini", "saved-filter-request")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "saved marketplace pool conditions")
+}

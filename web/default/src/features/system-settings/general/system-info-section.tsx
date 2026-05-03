@@ -65,7 +65,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
   const normalizedDefaults: SystemInfoFormValues = {
     theme: {
       frontend:
-        defaultValues.theme?.frontend === 'classic' ? 'classic' : 'default',
+        defaultValues.theme?.frontend === 'default' ? 'default' : 'classic',
     },
     Notice: normalizeValue(defaultValues.Notice),
     SystemName: normalizeValue(defaultValues.SystemName),
@@ -150,17 +150,17 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value='default'>
-                          {t('Default (New Frontend)')}
-                        </SelectItem>
                         <SelectItem value='classic'>
-                          {t('Classic (Legacy Frontend)')}
+                          {t('Classic (Default Frontend)')}
+                        </SelectItem>
+                        <SelectItem value='default'>
+                          {t('New Frontend')}
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
                       {t(
-                        'Switch between the new frontend and the classic frontend. Changes take effect after page reload.'
+                        'Classic is the default frontend. You can switch between classic and new frontend; changes take effect after page reload.'
                       )}
                     </FormDescription>
                     <FormMessage />

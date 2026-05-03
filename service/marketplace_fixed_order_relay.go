@@ -12,6 +12,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/logger"
 	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -168,13 +169,14 @@ func SelectBuyerMarketplaceFixedOrderForTokenBindings(input MarketplaceFixedOrde
 }
 
 type MarketplaceFixedOrderBillingSession struct {
-	orderID                 int
-	buyerUserID             int
-	sellerUserID            int
-	credentialID            int
-	model                   string
-	requestID               string
-	multiplierSnapshot      float64
+	orderID            int
+	buyerUserID        int
+	sellerUserID       int
+	credentialID       int
+	model              string
+	requestID          string
+	multiplierSnapshot float64
+	// Fixed orders spend the fee rate captured when the order was purchased.
 	platformFeeRateSnapshot float64
 	startTime               time.Time
 
@@ -262,11 +264,11 @@ func PrepareMarketplaceFixedOrderRelay(input MarketplaceFixedOrderRelayInput) (*
 			model:                   input.Model,
 			requestID:               input.RequestID,
 			multiplierSnapshot:      order.MultiplierSnapshot,
-			platformFeeRateSnapshot: 0,
+			platformFeeRateSnapshot: order.PlatformFeeRateSnapshot,
 			startTime:               time.Now(),
 		}
 		if input.EstimatedQuota > 0 {
-			if err := session.reserveTx(tx, input.EstimatedQuota); err != nil {
+			if err := session.reserveTx(tx, marketplaceBuyerChargeWithFee(int64(input.EstimatedQuota), session.platformFeeRateSnapshot)); err != nil {
 				return err
 			}
 			if err := tx.First(&order, order.ID).Error; err != nil {
@@ -308,8 +310,8 @@ func (s *MarketplaceFixedOrderBillingSession) Settle(actualQuota int) error {
 		if err := marketplaceForUpdate(tx).Where("id = ?", s.orderID).First(&order).Error; err != nil {
 			return err
 		}
-		actualQuota = marketplaceCapActualFixedOrderQuota(actualQuota, s.preConsumedQuota, order.RemainingQuota)
-		if delta := actualQuota - s.preConsumedQuota; delta > 0 {
+		buyerCharge := marketplaceCapActualFixedOrderBuyerCharge(actualQuota, s.preConsumedQuota, order.RemainingQuota, s.platformFeeRateSnapshot)
+		if delta := buyerCharge - s.preConsumedQuota; delta > 0 {
 			if err := s.reserveDeltaTx(tx, delta); err != nil {
 				return err
 			}
@@ -318,7 +320,7 @@ func (s *MarketplaceFixedOrderBillingSession) Settle(actualQuota int) error {
 				return err
 			}
 		}
-		s.preConsumedQuota = actualQuota
+		s.preConsumedQuota = buyerCharge
 
 		if err := marketplaceForUpdate(tx).Where("id = ?", s.orderID).First(&order).Error; err != nil {
 			return err
@@ -331,8 +333,10 @@ func (s *MarketplaceFixedOrderBillingSession) Settle(actualQuota int) error {
 			stats.CurrentConcurrency--
 		}
 
-		buyerCharge := int64(actualQuota)
-		officialCost := marketplaceOfficialCostFromBuyerCharge(buyerCharge, s.multiplierSnapshot)
+		buyerChargeInt64 := int64(buyerCharge)
+		platformFee := marketplacePlatformFeeFromBuyerCharge(buyerChargeInt64, s.platformFeeRateSnapshot)
+		sellerIncome := buyerChargeInt64 - platformFee
+		officialCost := marketplaceOfficialCostFromBuyerCharge(sellerIncome, s.multiplierSnapshot)
 		latencyMS := time.Since(s.startTime).Milliseconds()
 		if latencyMS < 0 {
 			latencyMS = 0
@@ -347,7 +351,7 @@ func (s *MarketplaceFixedOrderBillingSession) Settle(actualQuota int) error {
 			Model:              s.model,
 			OfficialCost:       officialCost,
 			MultiplierSnapshot: s.multiplierSnapshot,
-			BuyerCharge:        buyerCharge,
+			BuyerCharge:        buyerChargeInt64,
 			Status:             model.MarketplaceFillStatusSucceeded,
 			LatencyMS:          latencyMS,
 		}
@@ -355,8 +359,6 @@ func (s *MarketplaceFixedOrderBillingSession) Settle(actualQuota int) error {
 			return err
 		}
 
-		platformFeeRateSnapshot := 0.0
-		platformFee := marketplacePlatformFee(buyerCharge, platformFeeRateSnapshot)
 		settlement := &model.MarketplaceSettlement{
 			RequestID:               s.requestID,
 			BuyerUserID:             s.buyerUserID,
@@ -364,10 +366,10 @@ func (s *MarketplaceFixedOrderBillingSession) Settle(actualQuota int) error {
 			CredentialID:            s.credentialID,
 			SourceType:              marketplaceSettlementSourceFixedOrderFill,
 			SourceID:                strconv.Itoa(fill.ID),
-			BuyerCharge:             buyerCharge,
+			BuyerCharge:             buyerChargeInt64,
 			PlatformFee:             platformFee,
-			PlatformFeeRateSnapshot: platformFeeRateSnapshot,
-			SellerIncome:            buyerCharge - platformFee,
+			PlatformFeeRateSnapshot: s.platformFeeRateSnapshot,
+			SellerIncome:            sellerIncome,
 			OfficialCost:            officialCost,
 			MultiplierSnapshot:      s.multiplierSnapshot,
 			AvailableAt:             common.GetTimestamp(),
@@ -463,12 +465,20 @@ func (s *MarketplaceFixedOrderBillingSession) Reserve(targetQuota int) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.settled || s.refunded || targetQuota <= s.preConsumedQuota {
+	targetCharge := s.BuyerChargeForQuota(targetQuota)
+	if s.settled || s.refunded || targetCharge <= s.preConsumedQuota {
 		return nil
 	}
 	return model.DB.Transaction(func(tx *gorm.DB) error {
-		return s.reserveTx(tx, targetQuota)
+		return s.reserveTx(tx, targetCharge)
 	})
+}
+
+func (s *MarketplaceFixedOrderBillingSession) BuyerChargeForQuota(quota int) int {
+	if s == nil {
+		return quota
+	}
+	return marketplaceBuyerChargeWithFee(int64(quota), s.platformFeeRateSnapshot)
 }
 
 func (s *MarketplaceFixedOrderBillingSession) reserveTx(tx *gorm.DB, targetQuota int) error {
@@ -651,8 +661,8 @@ func settleMarketplaceFixedOrderFinalTx(tx *gorm.DB, order *model.MarketplaceFix
 	}
 
 	buyerCharge := order.ExpiredQuota
-	platformFeeRateSnapshot := 0.0
-	platformFee := marketplacePlatformFee(buyerCharge, platformFeeRateSnapshot)
+	platformFeeRateSnapshot := order.PlatformFeeRateSnapshot
+	platformFee := marketplacePlatformFeeFromBuyerCharge(buyerCharge, platformFeeRateSnapshot)
 	settlement := &model.MarketplaceSettlement{
 		RequestID:               marketplaceFixedOrderFinalSettlementRequestID(order.ID),
 		BuyerUserID:             order.BuyerUserID,
@@ -689,13 +699,63 @@ func marketplaceOfficialCostFromBuyerCharge(buyerCharge int64, multiplier float6
 	return officialCost
 }
 
-func marketplacePlatformFee(_ int64, _ float64) int64 {
-	return 0
+func marketplaceFeeRateSnapshot() float64 {
+	if math.IsNaN(setting.MarketplaceFeeRate) || math.IsInf(setting.MarketplaceFeeRate, 0) || setting.MarketplaceFeeRate < 0 {
+		return 0
+	}
+	return setting.MarketplaceFeeRate
 }
 
-func marketplaceCapActualFixedOrderQuota(actualQuota int, preConsumedQuota int, remainingQuota int64) int {
-	if actualQuota <= preConsumedQuota {
-		return actualQuota
+func marketplaceBuyerChargeWithFee(baseCharge int64, feeRate float64) int {
+	total, err := marketplaceBuyerChargeQuotaWithFee(baseCharge, feeRate)
+	if err != nil {
+		return int(^uint(0) >> 1)
+	}
+	return int(total)
+}
+
+func marketplaceBuyerChargeQuotaWithFee(baseCharge int64, feeRate float64) (int64, error) {
+	if baseCharge <= 0 {
+		return 0, nil
+	}
+	fee := marketplacePlatformFeeFromBaseCharge(baseCharge, feeRate)
+	total := baseCharge + fee
+	maxInt := int64(^uint(0) >> 1)
+	if total > maxInt {
+		return 0, errors.New("marketplace buyer charge exceeds supported user quota range")
+	}
+	return total, nil
+}
+
+func marketplacePlatformFeeFromBaseCharge(baseCharge int64, feeRate float64) int64 {
+	if baseCharge <= 0 || feeRate <= 0 || math.IsNaN(feeRate) || math.IsInf(feeRate, 0) {
+		return 0
+	}
+	fee := int64(math.Round(float64(baseCharge) * feeRate))
+	if fee < 0 {
+		return 0
+	}
+	return fee
+}
+
+func marketplacePlatformFeeFromBuyerCharge(buyerCharge int64, feeRate float64) int64 {
+	if buyerCharge <= 0 || feeRate <= 0 || math.IsNaN(feeRate) || math.IsInf(feeRate, 0) {
+		return 0
+	}
+	fee := int64(math.Round(float64(buyerCharge) * feeRate / (1 + feeRate)))
+	if fee < 0 {
+		return 0
+	}
+	if fee > buyerCharge {
+		return buyerCharge
+	}
+	return fee
+}
+
+func marketplaceCapActualFixedOrderBuyerCharge(actualQuota int, preConsumedQuota int, remainingQuota int64, feeRate float64) int {
+	targetCharge := marketplaceBuyerChargeWithFee(int64(actualQuota), feeRate)
+	if targetCharge <= preConsumedQuota {
+		return targetCharge
 	}
 	maxCharge := int64(preConsumedQuota) + remainingQuota
 	if maxCharge < 0 {
@@ -705,10 +765,10 @@ func marketplaceCapActualFixedOrderQuota(actualQuota int, preConsumedQuota int, 
 	if maxCharge > maxInt {
 		maxCharge = maxInt
 	}
-	if int64(actualQuota) > maxCharge {
+	if int64(targetCharge) > maxCharge {
 		return int(maxCharge)
 	}
-	return actualQuota
+	return targetCharge
 }
 
 func marketplaceNextAverageLatency(currentAvg int64, successCountAfterIncrement int64, latestLatency int64) int64 {

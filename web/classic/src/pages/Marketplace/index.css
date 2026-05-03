@@ -211,6 +211,25 @@
   gap: 10px;
 }
 
+.marketplace-filter-card-compact .marketplace-filter-grid {
+  gap: 8px;
+}
+
+.marketplace-filter-card-compact .marketplace-filter-main-row {
+  grid-template-columns: minmax(300px, 520px) max-content;
+  justify-content: start;
+}
+
+.marketplace-filter-card-compact .marketplace-filter-main-controls {
+  grid-template-columns: minmax(0, 1fr);
+  width: min(520px, 100%);
+}
+
+.marketplace-filter-card-compact .marketplace-filter-range-row {
+  grid-template-columns: repeat(2, minmax(230px, 260px));
+  justify-content: start;
+}
+
 .marketplace-filter-item {
   min-width: 0;
 }
@@ -387,8 +406,22 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .marketplace-filter-card-compact .marketplace-filter-main-row,
+  .marketplace-filter-card-compact .marketplace-filter-range-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .marketplace-filter-card-compact .marketplace-filter-main-controls {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .marketplace-filter-cascader {
     grid-column: span 2;
+  }
+
+  .marketplace-filter-card-compact .marketplace-filter-cascader {
+    grid-column: auto;
   }
 
   .marketplace-filter-actions {
