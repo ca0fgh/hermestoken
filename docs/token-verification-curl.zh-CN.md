@@ -843,3 +843,121 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 - 每被测的 OpenAI 系模型多 2 次 chat completion 调用（`max_tokens=32`，token 消耗极少）
 - 单模型增加耗时约 1–3 秒
 - Anthropic 模型零额外开销
+
+## Prometheus 指标（observability）
+
+Token 校验子系统通过 Prometheus 标准 exposition 格式暴露关键指标，用于做趋势分析、SLO 监控和异常告警。
+
+### 端点
+
+```
+GET /api/performance/metrics
+```
+
+复用 `performance` 路由组，**鉴权使用 `RootAuth()`**。Prometheus job 配置时需要带 admin user access token 和 `HermesToken-User` header（与项目其他 admin API 一致）。
+
+示例 `prometheus.yml`：
+
+```yaml
+scrape_configs:
+  - job_name: hermestoken
+    metrics_path: /api/performance/metrics
+    scheme: https
+    static_configs:
+      - targets: ['gateway.example.com']
+    authorization:
+      type: Bearer
+      credentials: <ADMIN_ACCESS_TOKEN>
+    params:
+      _: []
+    # HermesToken-User 通过 relabel 注入
+    relabel_configs:
+      - target_label: __param_x   # placeholder
+```
+
+由于 `HermesToken-User` 是 HermesToken 自定义 header 不在 Prometheus 标准 scrape 选项里，建议用一个**反向代理**（nginx/traefik）在前面注入这个 header；或者部署一个内部 sidecar 把 `/metrics` 转发出来不带认证（仅在内网 access 受控时可行）。
+
+### 指标列表
+
+所有指标以 `hermestoken_token_verification_` 为前缀。
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `tasks_total` | Counter | `status` (`success` / `failed`) | 检测任务终态计数 |
+| `tasks_by_grade_total` | Counter | `grade` (`S` / `A` / `B` / `C` / `D` / `Fail`) | 成功完成任务的等级分布 |
+| `task_duration_seconds` | Histogram | `baseline_source` | 任务端到端耗时（s）；buckets: 1..300s |
+| `downgrade_detected_total` | Counter | — | 累计 `suspected_downgrade=true` 的 (provider, model) 条数 |
+| `aa_refresh_total` | Counter | `result` (`success` / `failed`) | AA 基线同步任务的执行结果 |
+| `aa_baseline_models` | Gauge | — | 当前 AA 缓存中模型数；`-1` 表示无快照 |
+| `aa_baseline_age_seconds` | Gauge | — | 距离上次 AA 同步的秒数；`-1` 表示无快照 |
+| `aa_ttft_ratio` | Histogram | — | 实测 TTFT / AA 基线 TTFT 比值分布；越低越好；buckets: 0.5..10 |
+| `aa_tps_ratio` | Histogram | — | 实测 tokens/s / 基线 tokens/s 比值分布；越高越好；buckets: 0.1..2.0 |
+
+### 推荐告警规则
+
+```yaml
+groups:
+  - name: hermestoken_token_verification
+    rules:
+      # AA 同步连续 2 个周期失败 (考虑默认 24h 间隔)
+      - alert: HermestokenAARefreshFailing
+        expr: increase(hermestoken_token_verification_aa_refresh_total{result="failed"}[2d]) >= 2
+        for: 1h
+        annotations:
+          summary: "AA baseline 同步失败 ≥ 2 次"
+          description: "检查 AA_API_KEY、出网到 artificialanalysis.ai 的连通性、是否撞 1000 req/day 限额"
+
+      # AA 缓存超过 3 天未刷新
+      - alert: HermestokenAABaselineStale
+        expr: hermestoken_token_verification_aa_baseline_age_seconds > 3 * 24 * 3600
+        for: 30m
+        annotations:
+          summary: "AA baseline 缓存陈旧 (>3 天)"
+
+      # 任务失败率 > 30%（5 分钟窗口）
+      - alert: HermestokenVerificationFailureRateHigh
+        expr: |
+          rate(hermestoken_token_verification_tasks_total{status="failed"}[5m])
+          / on()
+          rate(hermestoken_token_verification_tasks_total[5m]) > 0.3
+        for: 10m
+        annotations:
+          summary: "Token 校验失败率 > 30%"
+
+      # TTFT 比值 p90 偏离基线超过 2.0（可能上游路由问题）
+      - alert: HermestokenAATTFTRatioHigh
+        expr: |
+          histogram_quantile(0.9,
+            rate(hermestoken_token_verification_aa_ttft_ratio_bucket[15m])
+          ) > 2.0
+        for: 15m
+        annotations:
+          summary: "实测 TTFT 比 AA 基线慢 ≥ 2x（p90）"
+          description: "注意：网关跨 region 时 baseline ≈ 1.2-1.5 是正常，单纯 > 2 也可能是地理偏差，需结合校准基线判断"
+
+      # 降级事件率突增
+      - alert: HermestokenDowngradeSpike
+        expr: rate(hermestoken_token_verification_downgrade_detected_total[1h]) > 0.1
+        for: 30m
+        annotations:
+          summary: "1h 内每分钟检测到 > 0.1 起模型降级"
+```
+
+### 关键 Grafana 面板建议
+
+1. **任务量与成功率**：`rate(tasks_total{status="success"}[5m]) / rate(tasks_total[5m])`
+2. **Grade 分布**：`sum by (grade) (rate(tasks_by_grade_total[1h]))` 堆叠面积图
+3. **任务耗时 p50/p90/p99**：`histogram_quantile(0.9, rate(task_duration_seconds_bucket[5m]))`
+4. **AA TTFT/TPS 比值热力图**：直接用 histogram 数据出 heatmap
+5. **降级事件时序**：`increase(downgrade_detected_total[1h])` 柱状图
+6. **AA baseline 健康**：`aa_baseline_age_seconds` 折线 + 阈值线 24h/72h
+
+### 与三层校准的关系
+
+| 层 | 工具 | 验证粒度 | 频率 |
+| --- | --- | --- | --- |
+| Layer-1 算法测试 | `go test TestCalibrationMatrix` | 输入→输出映射 | 每次 CI |
+| Layer-2 端到端 | `scripts/run-calibration-e2e.sh` | 真上游+真打分 | 日级 cron |
+| Layer-3 持续观测 | Prometheus metrics | 全量真实流量 | 实时（5–15s 抓取） |
+
+三层互补：layer-1 防代码回归，layer-2 防部署漂移，layer-3 防长尾异常。生产建议同时启用 layer-2 和 layer-3：layer-2 给出"已知场景下基线"，layer-3 给出"真实负载下趋势"。
