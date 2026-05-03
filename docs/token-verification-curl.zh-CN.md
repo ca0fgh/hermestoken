@@ -969,3 +969,36 @@ groups:
 | Layer-3 持续观测 | Prometheus metrics | 全量真实流量 | 实时（5–15s 抓取） |
 
 三层互补：layer-1 防代码回归，layer-2 防部署漂移，layer-3 防长尾异常。生产建议同时启用 layer-2 和 layer-3：layer-2 给出"已知场景下基线"，layer-3 给出"真实负载下趋势"。
+
+## 运行时性能调优
+
+检测任务的执行采用**三层并行 + 单层串行**结构：
+
+- **跨 (provider, model) 并行**（受限并发）— 默认 3 个模型同时跑
+- **单模型内 5 个 check 串行**（identity 依赖 access 结果，stream/json/repro 共享 access 上下文，保留可读顺序）
+- **复现性 check 内的 2 次 seeded probe 并行** — 单模型多省 ~1.5s
+
+可通过环境变量调优：
+
+| 变量 | 默认 | 范围 | 说明 |
+| --- | --- | --- | --- |
+| `TOKEN_VERIFIER_MODEL_CONCURRENCY` | `3` | `[1, 16]` | 单任务内同时跑几个模型；超出范围会被 clamp 到边界。增大可缩短 N-模型任务总耗时，但会瞬时给上游打更多并发。 |
+| `TOKEN_VERIFIER_TASK_TIMEOUT_SEC` | `300` | `[60, 1800]` | 单任务总超时秒数。多模型 + 慢上游需要适当上调。 |
+
+**预估耗时**（每 check ~2s 上游响应、`max_tokens` 都是 64 以下）：
+
+| 模型数 | 串行原版 | 并发=3（默认） | 并发=10 |
+| ---: | ---: | ---: | ---: |
+| 1 | ~12s | ~12s | ~12s |
+| 5 | ~60s | ~24s | ~12s |
+| 10 | ~120s | ~40s | ~24s |
+
+公式参考：`(provider × ceil(models / concurrency) × ~12s) + provider × 2s (models_list)`。
+
+> 注意：上游慢/限流时实际值会拉长。如果调高了 concurrency，请同步上调 `TOKEN_VERIFIER_TASK_TIMEOUT_SEC`，避免边并发边超时。
+
+### 调优建议
+
+- **常规生产**：默认值即可
+- **批量审计场景**（用户经常一次测 10+ 模型）：`TOKEN_VERIFIER_MODEL_CONCURRENCY=5` + `TOKEN_VERIFIER_TASK_TIMEOUT_SEC=600`
+- **上游已限流**：`TOKEN_VERIFIER_MODEL_CONCURRENCY=1`（退化为串行，避免雪上加霜）
