@@ -52,13 +52,16 @@ func BuildReport(results []CheckResult) ReportSummary {
 	risks := make([]string, 0)
 	checklist := make([]ChecklistItem, 0, len(results))
 	modelIdentity := make([]ModelIdentitySummary, 0)
+	reproducibility := make([]ReproducibilitySummary, 0)
 	perf := make(map[modelPerfKey]*modelPerfData)
 
 	for _, result := range results {
 		checklist = append(checklist, buildChecklistItem(result))
-		totalChecks++
-		if result.Success {
-			successChecks++
+		if !result.Skipped {
+			totalChecks++
+			if result.Success {
+				successChecks++
+			}
 		}
 		if result.LatencyMs > 0 {
 			latencyTotal += result.LatencyMs
@@ -120,6 +123,18 @@ func BuildReport(results []CheckResult) ReportSummary {
 			if result.Success {
 				dimensions["json"] = 5
 			}
+		case CheckReproducibility:
+			reproducibility = append(reproducibility, ReproducibilitySummary{
+				Provider:   result.Provider,
+				ModelName:  result.ModelName,
+				Consistent: result.Consistent,
+				Method:     result.ConsistencyMethod,
+				Skipped:    result.Skipped,
+				Message:    result.Message,
+			})
+			if !result.Skipped && !result.Consistent && result.ConsistencyMethod == ConsistencyMethodSystemFingerprintChanged {
+				risks = append(risks, "上游 system_fingerprint 在两次相同 seed 请求之间发生变化，疑似路由抖动或模型替换")
+			}
 		}
 
 		if !result.Success && result.Message != "" {
@@ -175,17 +190,18 @@ func BuildReport(results []CheckResult) ReportSummary {
 	uniqueRisks := uniqueStrings(risks)
 	conclusion := conclusionForGrade(grade)
 	return ReportSummary{
-		Score:          score,
-		Grade:          grade,
-		Conclusion:     conclusion,
-		Dimensions:     dimensions,
-		Checklist:      checklist,
-		Models:         models,
-		ModelIdentity:  modelIdentity,
-		Metrics:        metrics,
-		Risks:          uniqueRisks,
-		ScoringVersion: ScoringVersionV2,
-		BaselineSource: baselineSource,
+		Score:           score,
+		Grade:           grade,
+		Conclusion:      conclusion,
+		Dimensions:      dimensions,
+		Checklist:       checklist,
+		Models:          models,
+		ModelIdentity:   modelIdentity,
+		Reproducibility: reproducibility,
+		Metrics:         metrics,
+		Risks:           uniqueRisks,
+		ScoringVersion:  ScoringVersionV2,
+		BaselineSource:  baselineSource,
 		FinalRating: FinalRating{
 			Score:      score,
 			Grade:      grade,
@@ -357,7 +373,10 @@ func ladderPerformanceScore(avgLatency int64) int {
 
 func buildChecklistItem(result CheckResult) ChecklistItem {
 	status := "failed"
-	if result.Success {
+	switch {
+	case result.Skipped:
+		status = "skipped"
+	case result.Success:
 		status = "passed"
 	}
 	return ChecklistItem{
@@ -369,7 +388,10 @@ func buildChecklistItem(result CheckResult) ChecklistItem {
 		ObservedModel:      result.ObservedModel,
 		IdentityConfidence: result.IdentityConfidence,
 		SuspectedDowngrade: result.SuspectedDowngrade,
-		Passed:             result.Success,
+		Consistent:         result.Consistent,
+		ConsistencyMethod:  result.ConsistencyMethod,
+		Skipped:            result.Skipped,
+		Passed:             result.Success && !result.Skipped,
 		Status:             status,
 		Score:              result.Score,
 		LatencyMs:          result.LatencyMs,
@@ -394,6 +416,8 @@ func checkDisplayName(checkKey CheckKey) string {
 		return "流式输出能力"
 	case CheckJSON:
 		return "JSON 输出稳定性"
+	case CheckReproducibility:
+		return "复现性指纹"
 	default:
 		return string(checkKey)
 	}

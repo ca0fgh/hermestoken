@@ -298,6 +298,7 @@ GET /api/token_verification/reports/:id
 | `model_identity` | 模型身份一致性 |
 | `stream_support` | 流式输出能力 |
 | `json_stability` | JSON 输出稳定性 |
+| `reproducibility` | 复现性指纹（同 seed/temperature=0 两次请求是否得到相同响应） |
 
 ### 前端调用示例
 
@@ -473,6 +474,7 @@ curl -sS --no-buffer --max-time 40 \
 | `model_identity` | 模型身份一致性 | 对比请求模型与响应模型名 |
 | `stream_support` | 流式输出能力 | 验证 SSE `data:` 流是否有数据块 |
 | `json_stability` | JSON 输出稳定性 | 要求模型返回 JSON 对象 |
+| `reproducibility` | 复现性指纹 | 同 seed/temperature=0 两次请求；优先比对 `system_fingerprint`，其次比对响应内容哈希 |
 
 每个检查项返回：
 
@@ -608,6 +610,24 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
       "message": "响应模型名与声明模型属于同一官方别名或日期版本"
     }
   ],
+  "reproducibility": [
+    {
+      "provider": "openai",
+      "model_name": "gpt-4o-mini",
+      "consistent": true,
+      "method": "system_fingerprint",
+      "skipped": false,
+      "message": "两次请求 system_fingerprint 一致"
+    },
+    {
+      "provider": "anthropic",
+      "model_name": "claude-3-5-haiku-latest",
+      "consistent": false,
+      "method": "",
+      "skipped": true,
+      "message": "Anthropic Messages API 不支持 seed 参数，跳过复现性检查"
+    }
+  ],
   "metrics": {
     "avg_latency_ms": 1120.5,
     "avg_ttft_ms": 450,
@@ -639,6 +659,10 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
 | `models[].baseline.tps_ratio` | float | 实测输出速度 / 基线输出速度，**越高越好** |
 | `metrics.aa_ttft_ratio_avg` | float | 命中基线的所有模型 `ttft_ratio` 平均，便于一眼看出整体性能水平 |
 | `metrics.aa_tps_ratio_avg` | float | 同上，输出速度比值平均 |
+| `reproducibility[]` | array | 每个被测模型一条，记录复现性检查结果 |
+| `reproducibility[].consistent` | bool | 两次相同 seed/temp=0 请求是否得到一致响应 |
+| `reproducibility[].method` | string | 一致性判定方法：`system_fingerprint` / `system_fingerprint_changed` / `content_hash` / `content_diverged` / `insufficient_data` |
+| `reproducibility[].skipped` | bool | 该 provider 不支持 seed（Anthropic）时为 `true`，本条不参与稳定性评分 |
 
 `scoring_version` 同时落到 `token_verification_reports` 表的独立列，方便后续按版本筛选历史任务做趋势分析。
 
@@ -760,3 +784,62 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 - `AA_API_KEY` 是否正确（401 会出现在 warn 日志）
 - 容器是否能出网到 `artificialanalysis.ai`
 - 是否撞 1000 req/day 限流
+
+## 复现性指纹检测（reproducibility）
+
+`reproducibility` 是模型身份判定的"第二证据层"。`model_identity` 只看响应里的 `model` 字段，中转站可以任意改写；本检查通过两次相同请求的稳定性给出**中转站难以伪造**的旁证。
+
+### 检测原理
+
+对每个被测模型（OpenAI 系，Anthropic 跳过），后端串行发两次完全相同的 chat completion：
+
+```jsonc
+{
+  "model": "<被测模型>",
+  "messages": [{"role":"user","content":"Reply with this exact string and nothing else: STABLE_PING_9F3"}],
+  "max_tokens": 32,
+  "temperature": 0,
+  "seed": 42,
+  "stream": false
+}
+```
+
+然后按以下优先级判定一致性：
+
+| 优先级 | 判定 | `method` 取值 | 含义 |
+| --- | --- | --- | --- |
+| 1 | 两次都返回了 `system_fingerprint` 且相等 | `system_fingerprint` | 强一致：上游确认两次走的是同一模型同一配置 |
+| 2 | 两次都返回了 `system_fingerprint` 但不等 | `system_fingerprint_changed` | **强不一致**：模型/路由/配置发生变化，自动加入 `risks` |
+| 3 | 缺 `system_fingerprint`，但响应内容哈希相等 | `content_hash` | 弱一致：seed 生效，至少响应可复现 |
+| 4 | 缺 `system_fingerprint`，响应内容哈希不等 | `content_diverged` | 弱不一致：seed 未真正生效或上游有抖动 |
+| 5 | 两类信号都缺失 | `insufficient_data` | 数据不够，不下结论 |
+
+### 信号强度对比
+
+| 检测 | 中转站伪造难度 | 备注 |
+| --- | --- | --- |
+| `model_identity`（响应 model 字段） | 低 | 中转站可任意改写响应 JSON 的 `model` 字段 |
+| `reproducibility` 内容哈希 | 中 | 中转站需缓存第一次响应才能保证两次一致；增加成本 |
+| `reproducibility` `system_fingerprint` | 高 | 中转站若做模型替换，伪造一致 fingerprint 几乎不可能；除非完全照搬上游字段 |
+
+二者结合后，要骗过整条链需要：响应 model 名 ✓ + system_fingerprint ✓ + 内容字节级一致 —— 中转站做不到这三件齐活。
+
+### 跳过条件
+
+- **Anthropic**：Messages API 不支持 `seed` 参数。结果以 `skipped=true` 标记，**不参与 stability 维度评分**（既不计入分子也不计入分母）。
+- **请求失败**：第二次探测失败时整个 check 标 `success=false`，与其他失败 check 同等待遇。
+
+### 评分影响
+
+当前版本（v2）该检查不单独占评分维度，但通过两个间接路径影响总分：
+
+1. **stability 维度**：成功的复现性检查给 stability 加分，失败的扣分。
+2. **risks**：当 `method == system_fingerprint_changed` 时，自动在 `report.risks` 加一条 `"上游 system_fingerprint 在两次相同 seed 请求之间发生变化，疑似路由抖动或模型替换"`。
+
+后续若实测显示 fingerprint-changed 的 false-positive 率足够低（< 5%），可考虑把该信号直接折入 `model_identity` 的 `identity_confidence`，进一步收紧降级判定。
+
+### 成本
+
+- 每被测的 OpenAI 系模型多 2 次 chat completion 调用（`max_tokens=32`，token 消耗极少）
+- 单模型增加耗时约 1–3 秒
+- Anthropic 模型零额外开销

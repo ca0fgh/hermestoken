@@ -6,12 +6,22 @@ const (
 	ProviderOpenAI    = "openai"
 	ProviderAnthropic = "anthropic"
 
-	CheckAvailability  CheckKey = "availability"
-	CheckModelAccess   CheckKey = "model_access"
-	CheckStream        CheckKey = "stream_support"
-	CheckJSON          CheckKey = "json_stability"
-	CheckModelsList    CheckKey = "models_list"
-	CheckModelIdentity CheckKey = "model_identity"
+	CheckAvailability    CheckKey = "availability"
+	CheckModelAccess     CheckKey = "model_access"
+	CheckStream          CheckKey = "stream_support"
+	CheckJSON            CheckKey = "json_stability"
+	CheckModelsList      CheckKey = "models_list"
+	CheckModelIdentity   CheckKey = "model_identity"
+	CheckReproducibility CheckKey = "reproducibility"
+)
+
+// Consistency method labels for CheckReproducibility results.
+const (
+	ConsistencyMethodSystemFingerprint        = "system_fingerprint"
+	ConsistencyMethodSystemFingerprintChanged = "system_fingerprint_changed"
+	ConsistencyMethodContentHash              = "content_hash"
+	ConsistencyMethodContentDiverged          = "content_diverged"
+	ConsistencyMethodInsufficientData         = "insufficient_data"
 )
 
 type CheckResult struct {
@@ -22,6 +32,9 @@ type CheckResult struct {
 	ObservedModel      string         `json:"observed_model,omitempty"`
 	IdentityConfidence int            `json:"identity_confidence,omitempty"`
 	SuspectedDowngrade bool           `json:"suspected_downgrade,omitempty"`
+	Consistent         bool           `json:"consistent,omitempty"`
+	ConsistencyMethod  string         `json:"consistency_method,omitempty"`
+	Skipped            bool           `json:"skipped,omitempty"`
 	Success            bool           `json:"success"`
 	Score              int            `json:"score"`
 	LatencyMs          int64          `json:"latency_ms,omitempty"`
@@ -65,6 +78,9 @@ type ChecklistItem struct {
 	ObservedModel      string  `json:"observed_model,omitempty"`
 	IdentityConfidence int     `json:"identity_confidence,omitempty"`
 	SuspectedDowngrade bool    `json:"suspected_downgrade,omitempty"`
+	Consistent         bool    `json:"consistent,omitempty"`
+	ConsistencyMethod  string  `json:"consistency_method,omitempty"`
+	Skipped            bool    `json:"skipped,omitempty"`
 	Passed             bool    `json:"passed"`
 	Status             string  `json:"status"`
 	Score              int     `json:"score"`
@@ -84,6 +100,19 @@ type ModelIdentitySummary struct {
 	Message            string `json:"message,omitempty"`
 }
 
+// ReproducibilitySummary captures whether two identical seeded probes returned
+// the same response (preferred via system_fingerprint, fallback via content hash).
+// Skipped is true on providers without seed support (e.g. Anthropic) — in that
+// case the result is informational and excluded from stability scoring.
+type ReproducibilitySummary struct {
+	Provider   string `json:"provider"`
+	ModelName  string `json:"model_name"`
+	Consistent bool   `json:"consistent"`
+	Method     string `json:"method,omitempty"`
+	Skipped    bool   `json:"skipped"`
+	Message    string `json:"message,omitempty"`
+}
+
 type FinalRating struct {
 	Score      int            `json:"score"`
 	Grade      string         `json:"grade"`
@@ -93,16 +122,17 @@ type FinalRating struct {
 }
 
 type ReportSummary struct {
-	Score          int                    `json:"score"`
-	Grade          string                 `json:"grade"`
-	Conclusion     string                 `json:"conclusion"`
-	Dimensions     map[string]int         `json:"dimensions"`
-	Checklist      []ChecklistItem        `json:"checklist"`
-	Models         []ModelSummary         `json:"models"`
-	ModelIdentity  []ModelIdentitySummary `json:"model_identity"`
-	Metrics        map[string]float64     `json:"metrics"`
-	Risks          []string               `json:"risks"`
-	FinalRating    FinalRating            `json:"final_rating"`
-	ScoringVersion string                 `json:"scoring_version"`
-	BaselineSource string                 `json:"baseline_source"`
+	Score           int                      `json:"score"`
+	Grade           string                   `json:"grade"`
+	Conclusion      string                   `json:"conclusion"`
+	Dimensions      map[string]int           `json:"dimensions"`
+	Checklist       []ChecklistItem          `json:"checklist"`
+	Models          []ModelSummary           `json:"models"`
+	ModelIdentity   []ModelIdentitySummary   `json:"model_identity"`
+	Reproducibility []ReproducibilitySummary `json:"reproducibility"`
+	Metrics         map[string]float64       `json:"metrics"`
+	Risks           []string                 `json:"risks"`
+	FinalRating     FinalRating              `json:"final_rating"`
+	ScoringVersion  string                   `json:"scoring_version"`
+	BaselineSource  string                   `json:"baseline_source"`
 }
