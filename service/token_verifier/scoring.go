@@ -6,6 +6,7 @@ const (
 	// Earlier reports without a scoring_version field are implicitly v1.
 	ScoringVersionV2 = "v2" // AA-baseline-aware scoring.
 	ScoringVersionV3 = "v3" // Adds reproducibility checks to stability/risk reporting.
+	ScoringVersionV4 = "v4" // Adds tool-call protocol fingerprint to stability/risk reporting.
 
 	BaselineSourceAA       = "artificial_analysis"
 	BaselineSourceFallback = "fallback_absolute"
@@ -53,6 +54,7 @@ func BuildReport(results []CheckResult) ReportSummary {
 	checklist := make([]ChecklistItem, 0, len(results))
 	modelIdentity := make([]ModelIdentitySummary, 0)
 	reproducibility := make([]ReproducibilitySummary, 0)
+	toolCalls := make([]ToolCallSummary, 0)
 	perf := make(map[modelPerfKey]*modelPerfData)
 
 	for _, result := range results {
@@ -135,6 +137,22 @@ func BuildReport(results []CheckResult) ReportSummary {
 			if !result.Skipped && !result.Consistent && result.ConsistencyMethod == ConsistencyMethodSystemFingerprintChanged {
 				risks = append(risks, "上游 system_fingerprint 在两次相同 seed 请求之间发生变化，疑似路由抖动或模型替换")
 			}
+		case CheckToolCall:
+			toolCalls = append(toolCalls, ToolCallSummary{
+				Provider:       result.Provider,
+				ModelName:      result.ModelName,
+				ExpectedFamily: result.ExpectedSchemaFamily,
+				DetectedFamily: result.ToolSchemaFamily,
+				SchemaMatches:  result.SchemaMatches,
+				Inconclusive:   result.Skipped,
+				Message:        result.Message,
+			})
+			if !result.Skipped && !result.SchemaMatches &&
+				result.ToolSchemaFamily != "" &&
+				result.ToolSchemaFamily != ToolSchemaFamilyUnknown &&
+				result.ToolSchemaFamily != result.ExpectedSchemaFamily {
+				risks = append(risks, "工具调用响应 schema 与请求 provider 不一致，疑似跨家族模型替换")
+			}
 		}
 
 		if !result.Success && result.Message != "" {
@@ -198,9 +216,10 @@ func BuildReport(results []CheckResult) ReportSummary {
 		Models:          models,
 		ModelIdentity:   modelIdentity,
 		Reproducibility: reproducibility,
+		ToolCalls:       toolCalls,
 		Metrics:         metrics,
 		Risks:           uniqueRisks,
-		ScoringVersion:  ScoringVersionV3,
+		ScoringVersion:  ScoringVersionV4,
 		BaselineSource:  baselineSource,
 		FinalRating: FinalRating{
 			Score:      score,
@@ -380,25 +399,28 @@ func buildChecklistItem(result CheckResult) ChecklistItem {
 		status = "passed"
 	}
 	return ChecklistItem{
-		Provider:           result.Provider,
-		CheckKey:           string(result.CheckKey),
-		CheckName:          checkDisplayName(result.CheckKey),
-		ModelName:          result.ModelName,
-		ClaimedModel:       result.ClaimedModel,
-		ObservedModel:      result.ObservedModel,
-		IdentityConfidence: result.IdentityConfidence,
-		SuspectedDowngrade: result.SuspectedDowngrade,
-		Consistent:         result.Consistent,
-		ConsistencyMethod:  result.ConsistencyMethod,
-		Skipped:            result.Skipped,
-		Passed:             result.Success && !result.Skipped,
-		Status:             status,
-		Score:              result.Score,
-		LatencyMs:          result.LatencyMs,
-		TTFTMs:             result.TTFTMs,
-		TokensPS:           result.TokensPS,
-		ErrorCode:          result.ErrorCode,
-		Message:            result.Message,
+		Provider:             result.Provider,
+		CheckKey:             string(result.CheckKey),
+		CheckName:            checkDisplayName(result.CheckKey),
+		ModelName:            result.ModelName,
+		ClaimedModel:         result.ClaimedModel,
+		ObservedModel:        result.ObservedModel,
+		IdentityConfidence:   result.IdentityConfidence,
+		SuspectedDowngrade:   result.SuspectedDowngrade,
+		Consistent:           result.Consistent,
+		ConsistencyMethod:    result.ConsistencyMethod,
+		ToolSchemaFamily:     result.ToolSchemaFamily,
+		ExpectedSchemaFamily: result.ExpectedSchemaFamily,
+		SchemaMatches:        result.SchemaMatches,
+		Skipped:              result.Skipped,
+		Passed:               result.Success && !result.Skipped,
+		Status:               status,
+		Score:                result.Score,
+		LatencyMs:            result.LatencyMs,
+		TTFTMs:               result.TTFTMs,
+		TokensPS:             result.TokensPS,
+		ErrorCode:            result.ErrorCode,
+		Message:              result.Message,
 	}
 }
 
@@ -418,6 +440,8 @@ func checkDisplayName(checkKey CheckKey) string {
 		return "JSON 输出稳定性"
 	case CheckReproducibility:
 		return "复现性指纹"
+	case CheckToolCall:
+		return "工具调用协议指纹"
 	default:
 		return string(checkKey)
 	}
