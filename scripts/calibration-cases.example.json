@@ -1,0 +1,182 @@
+{
+  "_help": "Layer-2 e2e calibration config. Copy to calibration-cases.json and fill in real token IDs. Each case sets enabled=true once the prerequisite tokens/channels exist. Run: scripts/run-calibration-e2e.sh --config scripts/calibration-cases.json --out report.md",
+  "_expectations_supported": [
+    "task_status: 'success' | 'failed'",
+    "grade_equals: 'S' | 'A' | 'B' | 'C' | 'D' | 'Fail'",
+    "grade_at_least: same",
+    "grade_at_most: same",
+    "baseline_source: 'artificial_analysis' | 'mixed' | 'fallback_absolute' | 'none'",
+    "suspected_downgrade: true (any model_identity entry has it)",
+    "no_suspected_downgrade: true",
+    "identity_confidence_at_most: int (applied to ALL identity entries)",
+    "identity_confidence_at_least: int",
+    "dimension_at_least: { 'availability': 20, ... }",
+    "dimension_at_most:  { ... }",
+    "dimension_equals:   { 'stream': 0, ... }",
+    "risk_contains: 'string' | ['multiple', 'all-must-match']"
+  ],
+
+  "gateway": "http://127.0.0.1:3000",
+  "access_token": "REPLACE_WITH_USER_ACCESS_TOKEN",
+  "user_id": 0,
+  "poll_interval_sec": 3,
+  "max_wait_sec": 300,
+
+  "cases": [
+    {
+      "id": "OFFICIAL-OPENAI-01",
+      "description": "Direct OpenAI gpt-4o, healthy. Needs a token bound to a direct-official OpenAI channel.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-4o"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "task_status": "success",
+        "grade_at_least": "A",
+        "baseline_source": "artificial_analysis",
+        "no_suspected_downgrade": true,
+        "dimension_at_least": { "availability": 20, "performance": 13 }
+      }
+    },
+
+    {
+      "id": "OFFICIAL-OPENAI-02",
+      "description": "Direct OpenAI gpt-5, top-tier. Needs the same direct-official token.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-5"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "task_status": "success",
+        "grade_at_least": "S",
+        "baseline_source": "artificial_analysis"
+      }
+    },
+
+    {
+      "id": "OFFICIAL-ANTHROPIC-01",
+      "description": "Direct Anthropic claude-opus-4-5. Needs a token bound to a direct-official Anthropic channel.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["claude-opus-4-5"],
+        "providers": ["anthropic"]
+      },
+      "expect": {
+        "task_status": "success",
+        "grade_at_least": "A",
+        "baseline_source": "artificial_analysis",
+        "dimension_at_least": { "stability": 15 }
+      }
+    },
+
+    {
+      "id": "DOWNGRADE-01",
+      "description": "Intra-family downgrade: token bound to a channel that maps gpt-4o -> gpt-4o-mini (or any same-family swap). Needs an explicit test channel; not safe to run against production traffic.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-4o"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "suspected_downgrade": true,
+        "identity_confidence_at_most": 35
+      }
+    },
+
+    {
+      "id": "DOWNGRADE-02",
+      "description": "Cross-family swap: anthropic-claimed token routed to an openai model. Needs a deliberately misconfigured test channel.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["claude-opus-4-5"],
+        "providers": ["anthropic"]
+      },
+      "expect": {
+        "suspected_downgrade": true,
+        "identity_confidence_at_most": 25
+      }
+    },
+
+    {
+      "id": "FAKE-MODEL-01",
+      "description": "Request a non-existent model. Works with any healthy openai token.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-9-ultra"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "grade_at_most": "C",
+        "dimension_equals": { "availability": 0 }
+      }
+    },
+
+    {
+      "id": "EXPIRED-KEY-01",
+      "description": "Token bound to an expired/invalid upstream key. Needs a deliberately invalidated key channel.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-4o"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "grade_at_most": "C",
+        "dimension_equals": { "availability": 0 }
+      }
+    },
+
+    {
+      "id": "QUOTA-EXHAUSTED-01",
+      "description": "Token bound to a channel whose upstream key has zero balance. Needs a prepared low/no-balance key.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-4o"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "grade_at_most": "C",
+        "risk_contains": "额度"
+      }
+    },
+
+    {
+      "id": "STREAM-OFF-01",
+      "description": "Channel pointing at an upstream that supports chat completion but not SSE streaming (some Azure deployments). Needs an Azure channel without streaming support.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-35-turbo"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "grade_at_least": "B",
+        "dimension_equals": { "stream": 0 },
+        "dimension_at_least": { "availability": 20 }
+      }
+    },
+
+    {
+      "id": "FINGERPRINT-CHANGED-01",
+      "description": "Hard to construct deliberately. Best effort: bind to a load-balanced relay where two seeded probes hit different backends. Often skipped; left here for opportunistic detection.",
+      "enabled": false,
+      "request": {
+        "token_id": 0,
+        "models": ["gpt-4o"],
+        "providers": ["openai"]
+      },
+      "expect": {
+        "risk_contains": "system_fingerprint"
+      }
+    }
+  ]
+}

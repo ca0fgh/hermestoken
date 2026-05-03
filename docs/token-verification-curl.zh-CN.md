@@ -843,3 +843,128 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 - 每被测的 OpenAI 系模型多 2 次 chat completion 调用（`max_tokens=32`，token 消耗极少）
 - 单模型增加耗时约 1–3 秒
 - Anthropic 模型零额外开销
+
+## Layer-2 端到端校准（curl + 真实 token）
+
+为了证明评分系统在**真实上游环境**下输出符合预期，仓库提供一套基于 `curl + jq` 的 e2e 校准脚本。它驱动真实部署的网关跑同一组场景（与 layer-1 评分逻辑测试 `TestCalibrationMatrix` 一一对应），评估每个 case 的实测 vs 预期，最后输出 markdown 报告。
+
+### 工具
+
+| 文件 | 作用 |
+| --- | --- |
+| `scripts/run-calibration-e2e.sh` | 驱动脚本，bash + curl + jq |
+| `scripts/calibration-cases.example.json` | 配置示例（10 个 case，默认全部 `enabled: false`） |
+
+### 用法
+
+```bash
+# 1. 复制示例配置
+cp scripts/calibration-cases.example.json scripts/calibration-cases.json
+
+# 2. 编辑 calibration-cases.json：
+#    - gateway / access_token / user_id 三件套
+#    - 把可用的 case 改成 enabled: true 并填入对应 token_id
+
+# 3. 执行
+scripts/run-calibration-e2e.sh \
+  --config scripts/calibration-cases.json \
+  --out reports/calibration-$(date +%Y%m%d).md
+```
+
+退出码：
+
+| code | 含义 |
+| --- | --- |
+| 0 | 所有启用的 case 全部 PASS |
+| 1 | 至少一个 case 期望未达标（FAIL） |
+| 2 | 至少一个 case 在评估前出错（gateway 不可达 / 任务异常 / 配置错） |
+
+### 配置：每个 case 的结构
+
+```jsonc
+{
+  "id": "OFFICIAL-OPENAI-01",
+  "description": "...",
+  "enabled": true,
+  "request": {                        // 直接转发到 POST /api/token_verification/tasks
+    "token_id": 42,
+    "models": ["gpt-4o"],
+    "providers": ["openai"]
+  },
+  "expect": {                         // 任意组合，详见下表
+    "task_status": "success",
+    "grade_at_least": "A",
+    "baseline_source": "artificial_analysis",
+    "no_suspected_downgrade": true,
+    "dimension_at_least": { "performance": 13 }
+  }
+}
+```
+
+### 支持的期望（`expect`）字段
+
+| 字段 | 类型 | 含义 |
+| --- | --- | --- |
+| `task_status` | string | `success` / `failed` 任务最终状态 |
+| `grade_equals` | string | 严格等于：`S`/`A`/`B`/`C`/`D`/`Fail` |
+| `grade_at_least` | string | grade 至少 |
+| `grade_at_most` | string | grade 至多 |
+| `baseline_source` | string | `artificial_analysis` / `mixed` / `fallback_absolute` / `none` |
+| `suspected_downgrade` | bool | true 时要求至少一条 `model_identity` 标了降级 |
+| `no_suspected_downgrade` | bool | true 时要求所有条都未标降级 |
+| `identity_confidence_at_most` | int | 所有条目的 confidence 都 ≤ 该值 |
+| `identity_confidence_at_least` | int | 所有条目的 confidence 都 ≥ 该值 |
+| `dimension_at_least` | object | `{ "key": minInt, ... }`，每个 dim 都 ≥ 阈值 |
+| `dimension_at_most` | object | 每个 dim 都 ≤ 阈值 |
+| `dimension_equals` | object | 每个 dim 严格等于 |
+| `risk_contains` | string \| string[] | risks 数组里至少一条包含给定子串；数组形式要求**全部**子串都被命中 |
+
+### 输出示例
+
+```markdown
+# HermesToken Calibration Layer-2 Report
+
+- Gateway: `https://api.example.com`
+- Generated: 2026-05-03T03:55:00Z
+- Cases: total=10, pass=7, fail=1, skip=2, error=0
+
+## Summary
+
+| Case | Status | Grade | Baseline | Task | Notes |
+| ---- | ------ | ----- | -------- | ---- | ----- |
+| OFFICIAL-OPENAI-01 | PASS | A (87) | artificial_analysis | 128 | - |
+| DOWNGRADE-01 | FAIL | C (52) | mixed | 130 | identity_confidence > 35: [gpt-4o=45] |
+| EXPIRED-KEY-01 | SKIP | - | - | - | disabled |
+...
+
+## Failures and errors
+
+### DOWNGRADE-01 — FAIL
+Intra-family downgrade: token bound to a channel that maps gpt-4o -> gpt-4o-mini.
+
+- identity_confidence > 35: [gpt-4o=45]
+- Task id: 130
+```
+
+### 与 layer-1 的关系
+
+| 层 | 工具 | 需真 token | 跑在哪 | 验证什么 |
+| --- | --- | --- | --- | --- |
+| 1 | `go test TestCalibrationMatrix` | 否 | CI / 本地 | scoring 算法在已知输入下输出正确（防回归） |
+| 2 | `scripts/run-calibration-e2e.sh` | 是 | 部署机 | 真实上游环境下端到端表现符合预期（防漂移） |
+
+两层互补：layer-1 守住代码逻辑不出错，layer-2 守住部署环境不漂移。生产建议把 layer-2 的"健康基线类" case（`OFFICIAL-*`、`FAKE-MODEL-01`）放到日常 cron，发现偏差立刻告警。
+
+### 实操建议：先开哪几个 case
+
+| 难度 | case | 准备工作 |
+| --- | --- | --- |
+| 低 | `FAKE-MODEL-01` | 任意一个 OpenAI token 即可 |
+| 中 | `OFFICIAL-OPENAI-01` / `02` | 一个绑定到直连官方 OpenAI channel 的 token |
+| 中 | `OFFICIAL-ANTHROPIC-01` | 同上，绑直连 Anthropic |
+| 高 | `DOWNGRADE-*` | 需要专门构造一个会偷换模型的测试 channel；**不要在生产 channel 上做** |
+| 高 | `STREAM-OFF-01` | 需要一个不支持 SSE 的 Azure 部署 |
+| 不可控 | `EXPIRED-KEY-01` / `QUOTA-EXHAUSTED-01` | 需要预留废 key 和零余额 key |
+| 几乎不可控 | `FINGERPRINT-CHANGED-01` | 偶发命中；保留以备机会观测 |
+
+最小可上线集合：`FAKE-MODEL-01` + 至少一个 `OFFICIAL-*`。每天 cron 跑一次，结果落到 `/var/log/hermestoken-calibration/`，绑定告警阈值。
