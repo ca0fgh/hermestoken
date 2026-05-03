@@ -125,9 +125,12 @@ test("classic token verification route is gated by the header module and login",
   assert.match(pageSource, /model/);
   assert.match(pageSource, /gpt-5\.5/);
   assert.match(pageSource, /gpt-5\.4/);
+  assert.doesNotMatch(pageSource, /gpt-4o-mini/);
   assert.match(pageSource, /claude-opus-4-7/);
   assert.match(pageSource, /claude-opus-4-6/);
+  assert.doesNotMatch(pageSource, /claude-3-5-haiku-latest/);
   assert.match(pageSource, /allowCreate/);
+  assert.match(pageSource, /key=\{`model-select-\$\{provider\}`\}/);
   assert.doesNotMatch(pageSource, /token-verification-model-presets/);
   assert.doesNotMatch(pageSource, /\/api\/token\//);
 });

@@ -51,8 +51,8 @@ const providerDefaults = {
 };
 
 const providerModelPresets = {
-  openai: ['gpt-5.5', 'gpt-5.4', 'gpt-4o-mini'],
-  anthropic: ['claude-opus-4-7', 'claude-opus-4-6', 'claude-3-5-haiku-latest'],
+  openai: ['gpt-5.5', 'gpt-5.4'],
+  anthropic: ['claude-opus-4-7', 'claude-opus-4-6'],
 };
 
 const dimensionLabels = {
@@ -114,7 +114,7 @@ function TokenVerification() {
   );
 
   const handleProviderChange = (value) => {
-    const nextProvider = value || 'openai';
+    const nextProvider = String(value || 'openai');
     const previousDefaults = providerDefaults[provider];
     const nextDefaults =
       providerDefaults[nextProvider] || providerDefaults.openai;
@@ -123,9 +123,7 @@ function TokenVerification() {
     if (!baseURL.trim() || baseURL === previousDefaults.baseURL) {
       setBaseURL(nextDefaults.baseURL);
     }
-    if (!model.trim() || model === previousDefaults.model) {
-      setModel(nextDefaults.model);
-    }
+    setModel(nextDefaults.model);
   };
 
   const createProbe = async () => {
@@ -446,6 +444,7 @@ function TokenVerification() {
               <label>
                 <Text strong>{t('检测模型')}</Text>
                 <Select
+                  key={`model-select-${provider}`}
                   allowCreate
                   filter
                   optionList={modelOptions}
