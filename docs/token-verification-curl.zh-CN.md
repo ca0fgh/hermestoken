@@ -1,24 +1,32 @@
 # Token 质量检测：curl 黑盒验证方案
 
-本文档描述 HermesToken 的 Token 质量检测 MVP。当前版本只支持 OpenAI 兼容协议和 Anthropic 兼容协议，检测方式为服务端执行 curl 命令，对本机 `/v1` 中转接口做真实黑盒请求。
+本文档描述 HermesToken 的 Token 质量检测系统。当前支持 OpenAI 兼容协议和 Anthropic 兼容协议；检测方式为服务端执行 curl 命令，对本机 `/v1` 中转接口做真实黑盒请求；评分锚定到 [Artificial Analysis](https://artificialanalysis.ai/) 公开 P50；模型身份通过响应字段 + `system_fingerprint` 双层证据校验。
+
+> 系统由三层校准互补保证质量：**Layer-1**（`go test TestCalibrationMatrix`）防算法回归；**Layer-2**（`scripts/run-calibration-e2e.sh`）防部署漂移；**Layer-3**（Prometheus 指标）防长尾异常。详见末尾「Prometheus 指标 → 与三层校准的关系」。
 
 ## 目标
 
 检测模块要回答三个问题：
 
 1. Token 是否真实可用。
-2. Token 是否能调用用户预期的模型。
+2. Token 是否能调用用户预期的模型，并验证不被中转站偷换为低档模型。
 3. Token 的基础质量如何，包括模型访问、流式能力、JSON 输出、延迟、首字节时间和输出速度。
 
-当前版本不做模型身份的强证明。黑盒 API 无法 100% 证明模型身份，只能通过协议一致性、响应模型名、能力边界和性能指纹给出风险判断。
+黑盒 API 无法 100% 证明模型身份，但通过以下两层证据组合可显著提升中转站伪造成本：
 
-当前已实现轻量模型身份检测：
+- **Layer A — 响应模型字段一致性**（`model_identity` check）：
+  - 从 `model_access` 的真实响应里读取 `observed_model`，与请求的 `claimed_model` 做一致性判断。
+  - 对官方别名、日期版本、同系列同档位做宽松匹配。
+  - 响应模型明显低于声明模型档位时标记 `suspected_downgrade=true`。
+  - 输出 `identity_confidence` 并纳入评分。
+  - 信号特点：成本低，但中转站可任意改写响应 JSON 的 `model` 字段（伪造难度低）。
 
-- 从 `model_access` 的真实响应里读取 `observed_model`。
-- 将用户请求的 `claimed_model` 与 `observed_model` 做一致性判断。
-- 对官方别名、日期版本、同系列同档位做宽松匹配。
-- 如果响应模型明显低于声明模型档位，标记 `suspected_downgrade=true`。
-- 输出 `identity_confidence`，并纳入最终评分。
+- **Layer B — Seeded probe 复现性指纹**（`reproducibility` check）：
+  - 对每个被测 OpenAI 系模型发两次 `temperature=0 + seed=42` 请求，比对 `system_fingerprint`（强信号）或响应内容哈希（弱信号）。
+  - `system_fingerprint` 由上游模型提供商生成，中转站做模型替换时几乎无法伪造一致 fingerprint。
+  - Anthropic Messages API 不支持 `seed`，自动跳过，不影响该 provider 评分。
+
+要骗过整条链需要：响应 model 名 ✓ + `system_fingerprint` 一致 ✓ + 响应内容字节级一致 —— 中转站做不到这三件齐活。
 
 ## 支持协议
 
@@ -696,15 +704,15 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
 
 ## 真实模型身份验证后续方案
 
-后续要进一步判断“是否为预期模型”，建议新增：
+已落地的两层身份证据见上文「目标」一节。下一阶段可继续叠加更难伪造的信号：
 
-- `behavior_fingerprint_score`：隐藏题库行为指纹得分。
-- `official_baseline_similarity`：与官方基准输出的相似度。
-- `long_context_score`：长上下文能力得分。
-- `tool_call_score`：工具调用协议稳定性得分。
-- `multi_period_consistency`：多时段复测一致性。
+- `behavior_fingerprint_score`：**未实现**——隐藏题库行为指纹得分（特定 prompt 引出模型特定行为）。
+- `official_baseline_similarity`：**部分实现**——通过 Artificial Analysis 基线接入实现了**性能指标**（TTFT / 输出速度）的 P50 对照（详见「Artificial Analysis 基线接入」章节），但**未实现**输出文本相似度对照（需要官方权威输出参考集）。
+- `long_context_score`：**未实现**——长上下文 needle-in-haystack 探针得分。
+- `tool_call_score`：**未实现**——工具调用协议字段顺序与命名稳定性得分（跨家族转换时几乎必崩，是强指纹）。
+- `multi_period_consistency`：**部分实现**——layer-2 e2e 校准矩阵（`scripts/run-calibration-e2e.sh`）支持每日 cron 跑同一组场景产出趋势数据，但还未做基于多次结果的方差告警。
 
-下一阶段可加入隐藏题库、官方基准输出对照、长上下文探针、工具调用探针和多时段复测。
+按"伪造成本"排序，下一个最值得做的是 **`tool_call_score`**：工具调用 schema 是上游协议层产物，中转站做模型替换时跨家族 finish_reason / tool_use_id 命名差异几乎必然暴露。
 
 ## Artificial Analysis 基线接入
 

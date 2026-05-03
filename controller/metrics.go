@@ -12,7 +12,7 @@ var promHandler = promhttp.Handler()
 
 // PrometheusMetrics exposes /metrics for Prometheus scraping.
 // Mounted under /api/performance/metrics, which is already RootAuth-gated, so
-// scraping requires an admin user access token + the New-Api-User header
+// scraping requires an admin user access token + the HermesToken-User header
 // (or a session cookie). Configure your Prometheus job accordingly.
 func PrometheusMetrics(c *gin.Context) {
 	promHandler.ServeHTTP(c.Writer, c.Request)
