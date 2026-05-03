@@ -354,7 +354,7 @@ const { task, report } = await pollTask();
 | 前端兜底超时 | 3 分钟未完成提示用户超时 |
 | 后端硬超时 | 5 分钟（任务 ctx 上限），超时后任务会被标记 `failed` |
 
-任务一旦终止（`success` 或 `failed`），立即停止轮询。检测过程中后端会按 `provider × model × {availability, model_access, model_identity, stream_support, json_stability}` 的矩阵串行执行 curl 请求，模型越多耗时越长，UI 上建议提示"正在检测中，可能需要 1~3 分钟"。
+任务一旦终止（`success` 或 `failed`），立即停止轮询。检测过程中后端会按 `provider × model × {availability, model_access, model_identity, stream_support, json_stability}` 的基础矩阵串行执行 curl 请求；OpenAI 兼容协议还会额外执行 `reproducibility` 两次同 seed 探针，Anthropic 会标记为 `skipped`。模型越多耗时越长，UI 上建议提示"正在检测中，可能需要 1~3 分钟"。
 
 ### 错误响应汇总
 
@@ -512,7 +512,7 @@ curl -sS --no-buffer --max-time 40 \
 
 `models_list` 进入检查清单，但当前不单独占评分权重。
 
-### performance 维度详解（v2 / AA 基线）
+### performance 维度详解（v2+ / AA 基线）
 
 `performance` 满分 15，由 TTFT 子分和输出速度子分各 7.5 分组成。当被测模型在 Artificial Analysis 缓存中能找到基线，且至少采集到一项流式性能数据时，按比值打分；否则回退到绝对耗时阶梯。
 
@@ -570,7 +570,7 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
   "score": 88,
   "grade": "A",
   "conclusion": "稳定可用，适合日常调用",
-  "scoring_version": "v2",
+  "scoring_version": "v3",
   "baseline_source": "artificial_analysis",
   "dimensions": {
     "availability": 20,
@@ -650,7 +650,7 @@ TTFT 子分（`measured_stream_ttft_ms / baseline_ttft_ms`，越低越好）：
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `scoring_version` | string | 评分算法版本。引入 AA 基线后为 `"v2"`；历史无该字段的报告隐含为 `"v1"` |
+| `scoring_version` | string | 评分算法版本。历史无该字段的报告隐含为 `"v1"`；`"v2"` 引入 AA 基线；`"v3"` 加入复现性指纹对 stability/risks 的影响 |
 | `baseline_source` | string | `artificial_analysis`（全部模型命中 AA 基线）/ `mixed`（部分命中）/ `fallback_absolute`（无命中，回退绝对阶梯）/ `none`（无任何性能数据） |
 | `models[].stream_ttft_ms` | int | 流式检查测得的首 token 时间，毫秒 |
 | `models[].stream_tokens_ps` | float | 流式检查估算的 tokens/s |
@@ -831,7 +831,7 @@ AA 数据是否最新可以通过日志关键字 `AA baseline refreshed: models=
 
 ### 评分影响
 
-当前版本（v2）该检查不单独占评分维度，但通过两个间接路径影响总分：
+当前版本（v3）该检查不单独占评分维度，但通过两个间接路径影响总分：
 
 1. **stability 维度**：成功的复现性检查给 stability 加分，失败的扣分。
 2. **risks**：当 `method == system_fingerprint_changed` 时，自动在 `report.risks` 加一条 `"上游 system_fingerprint 在两次相同 seed 请求之间发生变化，疑似路由抖动或模型替换"`。

@@ -3,9 +3,9 @@ package token_verifier
 import "strings"
 
 const (
-	// ScoringVersionV2 marks reports produced after the AA-baseline-aware scoring landed.
-	// Earlier reports (no scoring_version field) are implicitly v1.
-	ScoringVersionV2 = "v2"
+	// Earlier reports without a scoring_version field are implicitly v1.
+	ScoringVersionV2 = "v2" // AA-baseline-aware scoring.
+	ScoringVersionV3 = "v3" // Adds reproducibility checks to stability/risk reporting.
 
 	BaselineSourceAA       = "artificial_analysis"
 	BaselineSourceFallback = "fallback_absolute"
@@ -200,7 +200,7 @@ func BuildReport(results []CheckResult) ReportSummary {
 		Reproducibility: reproducibility,
 		Metrics:         metrics,
 		Risks:           uniqueRisks,
-		ScoringVersion:  ScoringVersionV2,
+		ScoringVersion:  ScoringVersionV3,
 		BaselineSource:  baselineSource,
 		FinalRating: FinalRating{
 			Score:      score,
