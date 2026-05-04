@@ -379,10 +379,10 @@ function TokenVerification() {
       <div className='token-verification-page__inner'>
         <div className='token-verification-header'>
           <div>
-            <Title heading={3}>{t('Token 质量黑盒检测')}</Title>
+            <Title heading={3}>{t('Token 质量检测')}</Title>
             <Text type='secondary'>
               {t(
-                '输入 API Base URL、API Key 和模型，发起真实黑盒请求并生成质量报告。',
+                '输入 API Base URL、API Key 和模型，发起真实请求并生成质量报告。',
               )}
             </Text>
           </div>

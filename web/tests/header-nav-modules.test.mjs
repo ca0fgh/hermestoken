@@ -183,7 +183,7 @@ test("settings header nav source separates marketplace entry visibility from gue
   assert.match(source, /key:\s*'marketplace'/);
   assert.match(source, /t\('控制是否显示市场入口'\)/);
   assert.match(source, /key:\s*'verification'/);
-  assert.match(source, /t\('控制是否显示 Token 质量黑盒检测入口'\)/);
+  assert.match(source, /t\('控制是否显示 Token 质量检测入口'\)/);
 });
 
 test("settings header nav cards use flex grid layout to avoid float masonry gaps", async () => {

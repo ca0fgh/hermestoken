@@ -74,31 +74,31 @@ const Home = () => {
   const homepageIframeRef = useRef(null);
   const isMobile = useIsMobile();
   const homeNarrativeTags = [
-    t('交易层'),
-    t('执行层'),
-    t('结算层'),
-    t('Human 与 Agent'),
+    t('能力流动性'),
+    t('供需网络'),
+    t('执行秩序'),
+    t('可信结算'),
   ];
   const homeNarrativeCards = [
     {
-      eyebrow: t('标准化'),
-      title: t('LLM Token 使用权正在被标准化'),
+      eyebrow: t('供给抽象'),
+      title: t('将异构智能能力抽象为流动性层'),
       body: t(
-        '使用能力开始脱离非结构化密钥流转，转向可定价、可约束、可履约的访问权对象。',
+        '不同来源的智能能力被统一表达为可供给、可组合、可约束、可履约的能力单元。',
       ),
     },
     {
-      eyebrow: t('资源化'),
-      title: t('AI 能力开始进入资源化阶段'),
+      eyebrow: t('流动网络'),
+      title: t('支撑 Agent 的连续能力获取'),
       body: t(
-        '组织级使用、多模型路由与 Agent 持续调用同时出现，使用权开始需要统一执行与结算边界。',
+        'Agent 不再绑定静态资源，而是在统一供需网络中按场景获得持续、稳定的能力供给。',
       ),
     },
     {
-      eyebrow: t('协作结构'),
-      title: t('买方、卖方、Agent 在同一结构里协作'),
+      eyebrow: t('执行秩序'),
+      title: t('让能力流动具备确定性'),
       body: t(
-        '平台处理的不是裸 Key，而是带规则的访问能力，让发现、执行和结算进入同一结构。',
+        '发现、调度、执行、结算与审计被纳入同一秩序，支撑能力在多主体之间规模化流动。',
       ),
     },
   ];
@@ -145,28 +145,30 @@ const Home = () => {
     }
   }, [applyBootstrap]);
 
-  useEffect(() => (
-    scheduleNonCriticalWork(async () => {
-      try {
-        const payload = await fetchPublicBootstrap();
+  useEffect(
+    () =>
+      scheduleNonCriticalWork(async () => {
+        try {
+          const payload = await fetchPublicBootstrap();
 
-        if (payload?.success && payload?.data) {
-          cachePublicBootstrap(payload.data);
-          applyBootstrap(payload.data);
-          return;
+          if (payload?.success && payload?.data) {
+            cachePublicBootstrap(payload.data);
+            applyBootstrap(payload.data);
+            return;
+          }
+        } catch (error) {
+          console.error('failed to refresh public bootstrap', error);
         }
-      } catch (error) {
-        console.error('failed to refresh public bootstrap', error);
-      }
 
-      if (!startupBootstrap) {
-        setHomePageContent('');
-        setHomePageFrameUrl('');
-        setNoticeVisible(false);
-        setHomePageContentLoaded(true);
-      }
-    })
-  ), [applyBootstrap]);
+        if (!startupBootstrap) {
+          setHomePageContent('');
+          setHomePageFrameUrl('');
+          setNoticeVisible(false);
+          setHomePageContentLoaded(true);
+        }
+      }),
+    [applyBootstrap],
+  );
 
   useEffect(() => {
     syncIframeThemeAndLanguage();
@@ -201,48 +203,48 @@ const Home = () => {
           />
         </div>
       ) : !homePageContentLoaded ? (
-        <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
+        <div className='w-full border-b border-[#e2e8f0] min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
           <div className='blur-ball blur-ball-indigo' />
           <div className='blur-ball blur-ball-teal' />
-          <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
-            <p className='text-base md:text-lg text-semi-color-text-2'>
+          <div className='flex justify-center h-full px-4 pt-16 pb-20 md:pt-20 md:pb-24 lg:pt-24 lg:pb-28 mt-10'>
+            <p className='text-base md:text-lg text-[#64748b]'>
               {t('加载中...')}
             </p>
           </div>
         </div>
       ) : (
-        <div className='w-full border-b border-semi-color-border min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
+        <div className='w-full border-b border-[#e2e8f0] min-h-[500px] md:min-h-[600px] lg:min-h-[700px] relative overflow-x-hidden'>
           <div className='blur-ball blur-ball-indigo' />
           <div className='blur-ball blur-ball-teal' />
-          <div className='flex items-center justify-center h-full px-4 py-20 md:py-24 lg:py-32 mt-10'>
+          <div className='flex justify-center h-full px-4 pt-16 pb-20 md:pt-20 md:pb-24 lg:pt-24 lg:pb-28 mt-10'>
             <div className='w-full max-w-5xl mx-auto'>
               <section className='text-center'>
-                <p className='text-sm md:text-base text-semi-color-text-2 mb-4'>
-                  {t('LLM Token 使用权共享基础设施')}
+                <p className='text-sm md:text-base text-[#64748b] mb-4'>
+                  {t('Agent 能力流动性基础设施')}
                 </p>
-                <h1 className='text-3xl md:text-5xl lg:text-6xl font-bold text-semi-color-text-0 leading-tight'>
-                  {t('面向 Agent 和 Human 自由交易 LLM Token 使用权的基础设施')}
+                <h1 className='text-3xl md:text-5xl lg:text-6xl font-bold text-[#020617] leading-tight'>
+                  {t('面向 Agent 能力流动性的基础设施')}
                 </h1>
                 <div className='mt-6 space-y-3 max-w-3xl mx-auto'>
-                  <p className='text-base md:text-lg text-semi-color-text-1'>
+                  <p className='text-base md:text-lg text-[#334155]'>
                     {t(
-                      'HermesToken 将 LLM Token 使用权定义为可交易、可执行、可结算、可审计的标准化资源。',
+                      'HermesToken 将异构智能能力抽象为可发现、可组合、可调度、可结算的流动性层。',
                     )}
                   </p>
-                  <p className='text-base md:text-lg text-semi-color-text-1'>
+                  <p className='text-base md:text-lg text-[#334155]'>
                     {t(
-                      'Agent 与 Human 在同一市场中发现能力、进入统一执行边界，并围绕真实使用完成结算。',
+                      '让 Agent 在统一供需网络中获得连续、可信、可审计的能力供给。',
                     )}
                   </p>
                 </div>
               </section>
 
-              <section className='mt-8 md:mt-10'>
+              <section className='mt-7 md:mt-8'>
                 <div className='flex flex-wrap justify-center gap-2 md:gap-3'>
                   {homeNarrativeTags.map((tag) => (
                     <span
                       key={tag}
-                      className='px-3 py-1.5 rounded-full border border-semi-color-border text-sm text-semi-color-text-1 bg-semi-color-fill-0'
+                      className='px-3 py-1.5 rounded-full border border-[#cbd5e1cc] text-sm text-[#334155] bg-[#ffffff73]'
                     >
                       {tag}
                     </span>
@@ -250,19 +252,17 @@ const Home = () => {
                 </div>
               </section>
 
-              <section className='mt-10 md:mt-12 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6'>
+              <section className='mt-8 md:mt-10 grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6'>
                 {homeNarrativeCards.map((card) => (
                   <article
                     key={card.eyebrow}
-                    className='rounded-2xl border border-semi-color-border bg-semi-color-bg-1 p-5 md:p-6'
+                    className='rounded-2xl border border-[#e2e8f0] bg-[#ffffffb3] p-5 md:p-6'
                   >
-                    <p className='text-sm text-semi-color-text-2'>
-                      {card.eyebrow}
-                    </p>
-                    <h2 className='mt-2 text-lg md:text-xl font-semibold text-semi-color-text-0'>
+                    <p className='text-sm text-[#64748b]'>{card.eyebrow}</p>
+                    <h2 className='mt-2 text-lg md:text-xl font-semibold text-[#020617]'>
                       {card.title}
                     </h2>
-                    <p className='mt-3 text-sm md:text-base text-semi-color-text-1 leading-relaxed'>
+                    <p className='mt-3 text-sm md:text-base text-[#334155] leading-relaxed'>
                       {card.body}
                     </p>
                   </article>
