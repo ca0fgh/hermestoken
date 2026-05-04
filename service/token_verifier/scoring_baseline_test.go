@@ -50,8 +50,8 @@ func TestBuildReportRatioScoringFastEndpoint(t *testing.T) {
 
 	report := BuildReport(results)
 
-	if report.ScoringVersion != ScoringVersionV3 {
-		t.Errorf("scoring_version: got %q, want %q", report.ScoringVersion, ScoringVersionV3)
+	if report.ScoringVersion != ScoringVersionV4 {
+		t.Errorf("scoring_version: got %q, want %q", report.ScoringVersion, ScoringVersionV4)
 	}
 	if report.BaselineSource != BaselineSourceAA {
 		t.Errorf("baseline_source: got %q, want %q", report.BaselineSource, BaselineSourceAA)

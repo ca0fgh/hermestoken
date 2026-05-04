@@ -67,19 +67,56 @@ func TestNormalizeTokenVerificationProbeProvider(t *testing.T) {
 	}
 }
 
+func TestNormalizeTokenVerificationProbeProfile(t *testing.T) {
+	profile, err := normalizeTokenVerificationProbeProfile("", common.RoleCommonUser)
+	if err != nil {
+		t.Fatalf("expected empty profile to use standard, got %v", err)
+	}
+	if profile != tokenverifier.ProbeProfileStandard {
+		t.Fatalf("expected standard profile, got %q", profile)
+	}
+
+	profile, err = normalizeTokenVerificationProbeProfile(" deep ", common.RoleAdminUser)
+	if err != nil {
+		t.Fatalf("expected admin deep profile to pass, got %v", err)
+	}
+	if profile != tokenverifier.ProbeProfileDeep {
+		t.Fatalf("expected deep profile, got %q", profile)
+	}
+	profile, err = normalizeTokenVerificationProbeProfile(" full ", common.RoleAdminUser)
+	if err != nil {
+		t.Fatalf("expected admin full profile to pass, got %v", err)
+	}
+	if profile != tokenverifier.ProbeProfileFull {
+		t.Fatalf("expected full profile, got %q", profile)
+	}
+
+	if _, err = normalizeTokenVerificationProbeProfile("deep", common.RoleCommonUser); err == nil {
+		t.Fatal("expected non-admin deep profile to fail")
+	}
+	if _, err = normalizeTokenVerificationProbeProfile("ultimate", common.RoleAdminUser); err == nil {
+		t.Fatal("expected unsupported profile to fail")
+	}
+}
+
 func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const secret = "sk-test-secret-value"
+	const requestedProfile = tokenverifier.ProbeProfileDeep
 	originalRunner := runDirectTokenVerificationProbe
 	runDirectTokenVerificationProbe = func(ctx context.Context, input tokenverifier.DirectProbeRequest) (*tokenverifier.DirectProbeResponse, error) {
 		if input.APIKey != secret {
 			t.Fatalf("expected API key to be passed to runner")
 		}
+		if input.ProbeProfile != requestedProfile {
+			t.Fatalf("expected probe profile %q, got %q", requestedProfile, input.ProbeProfile)
+		}
 		return &tokenverifier.DirectProbeResponse{
-			BaseURL:  input.BaseURL,
-			Provider: input.Provider,
-			Model:    input.Model,
+			BaseURL:      input.BaseURL,
+			Provider:     input.Provider,
+			Model:        input.Model,
+			ProbeProfile: input.ProbeProfile,
 			Results: []tokenverifier.CheckResult{
 				{
 					Provider:  input.Provider,
@@ -107,10 +144,11 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 		runDirectTokenVerificationProbe = originalRunner
 	})
 
-	payload := []byte(`{"url":"https://8.8.8.8/v1","api_key":"` + secret + `","model":"gpt-4o-mini","provider":"openai"}`)
+	payload := []byte(`{"url":"https://8.8.8.8/v1","api_key":"` + secret + `","model":"gpt-4o-mini","provider":"openai","probe_profile":"` + requestedProfile + `"}`)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Set("id", 1)
+	ctx.Set("role", common.RoleAdminUser)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/token_verification/probe", bytes.NewReader(payload))
 	ctx.Request.Header.Set("Content-Type", "application/json")
 
@@ -133,5 +171,8 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 	}
 	if _, ok := data["api_key"]; ok {
 		t.Fatal("response must not include api_key field")
+	}
+	if data["probe_profile"] != requestedProfile {
+		t.Fatalf("response probe_profile = %v, want %q", data["probe_profile"], requestedProfile)
 	}
 }

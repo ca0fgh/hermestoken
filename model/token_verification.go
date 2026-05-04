@@ -67,12 +67,16 @@ type TokenVerificationResult struct {
 	ID                 int64   `json:"id" gorm:"primaryKey"`
 	TaskID             int64   `json:"task_id" gorm:"index"`
 	Provider           string  `json:"provider" gorm:"type:varchar(32);index"`
+	Group              string  `json:"group" gorm:"type:varchar(32);index"`
 	CheckKey           string  `json:"check_key" gorm:"type:varchar(64);index"`
 	ModelName          string  `json:"model_name" gorm:"type:varchar(191);index"`
 	ClaimedModel       string  `json:"claimed_model" gorm:"type:varchar(191);index"`
 	ObservedModel      string  `json:"observed_model" gorm:"type:varchar(191);index"`
 	IdentityConfidence int     `json:"identity_confidence"`
 	SuspectedDowngrade bool    `json:"suspected_downgrade"`
+	Consistent         bool    `json:"consistent"`
+	ConsistencyMethod  string  `json:"consistency_method" gorm:"type:varchar(64)"`
+	Neutral            bool    `json:"neutral"`
 	Success            bool    `json:"success"`
 	Score              int     `json:"score"`
 	LatencyMs          int64   `json:"latency_ms"`

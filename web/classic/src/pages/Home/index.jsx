@@ -89,9 +89,9 @@ const Home = () => {
     },
     {
       eyebrow: t('流动网络'),
-      title: t('支撑 Agent 的连续能力获取'),
+      title: t('支撑 AGI 的连续能力获取'),
       body: t(
-        'Agent 不再绑定静态资源，而是在统一供需网络中按场景获得持续、稳定的能力供给。',
+        'AGI 不再绑定静态资源，而是在统一供需网络中按场景获得持续、稳定的能力供给。',
       ),
     },
     {
@@ -220,10 +220,10 @@ const Home = () => {
             <div className='w-full max-w-5xl mx-auto'>
               <section className='text-center'>
                 <p className='text-sm md:text-base text-[#64748b] mb-4'>
-                  {t('Agent 能力流动性基础设施')}
+                  {t('AGI 能力流动性基础设施')}
                 </p>
                 <h1 className='text-3xl md:text-5xl lg:text-6xl font-bold text-[#020617] leading-tight'>
-                  {t('面向 Agent 能力流动性的基础设施')}
+                  {t('面向 AGI 能力流动性的基础设施')}
                 </h1>
                 <div className='mt-6 space-y-3 max-w-3xl mx-auto'>
                   <p className='text-base md:text-lg text-[#334155]'>
@@ -233,7 +233,7 @@ const Home = () => {
                   </p>
                   <p className='text-base md:text-lg text-[#334155]'>
                     {t(
-                      '让 Agent 在统一供需网络中获得连续、可信、可审计的能力供给。',
+                      '让 AGI 在统一供需网络中获得连续、可信、可审计的能力供给。',
                     )}
                   </p>
                 </div>

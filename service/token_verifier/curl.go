@@ -17,6 +17,7 @@ type CurlExecutor struct {
 
 type CurlResponse struct {
 	StatusCode    int
+	Headers       map[string]string
 	Body          []byte
 	LatencyMs     int64
 	TTFTMs        int64
@@ -89,8 +90,16 @@ func (e *CurlExecutor) Do(ctx context.Context, method string, targetURL string, 
 	if firstByteAt.IsZero() {
 		firstByteAt = time.Now()
 	}
+	responseHeaders := make(map[string]string, len(response.Header))
+	for key, values := range response.Header {
+		if len(values) == 0 {
+			continue
+		}
+		responseHeaders[strings.ToLower(key)] = strings.Join(values, ",")
+	}
 	return &CurlResponse{
 		StatusCode:    response.StatusCode,
+		Headers:       responseHeaders,
 		Body:          responseBody,
 		LatencyMs:     time.Since(startedAt).Milliseconds(),
 		TTFTMs:        firstByteAt.Sub(startedAt).Milliseconds(),

@@ -147,6 +147,12 @@
   margin: 0;
 }
 
+.token-verification-inline-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 @media (max-width: 920px) {
   .token-verification-header,
   .token-verification-score {

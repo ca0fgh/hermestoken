@@ -25,11 +25,12 @@ type createTokenVerificationTaskRequest struct {
 }
 
 type createTokenVerificationProbeRequest struct {
-	URL      string `json:"url"`
-	BaseURL  string `json:"base_url"`
-	APIKey   string `json:"api_key"`
-	Model    string `json:"model"`
-	Provider string `json:"provider"`
+	URL          string `json:"url"`
+	BaseURL      string `json:"base_url"`
+	APIKey       string `json:"api_key"`
+	Model        string `json:"model"`
+	Provider     string `json:"provider"`
+	ProbeProfile string `json:"probe_profile"`
 }
 
 type tokenVerificationTaskView struct {
@@ -116,14 +117,20 @@ func CreateTokenVerificationProbe(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	probeProfile, err := normalizeTokenVerificationProbeProfile(req.ProbeProfile, c.GetInt("role"))
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), tokenVerificationProbeTimeout(probeProfile))
 	defer cancel()
 	result, err := runDirectTokenVerificationProbe(ctx, tokenverifier.DirectProbeRequest{
-		BaseURL:  baseURL,
-		APIKey:   apiKey,
-		Model:    modelName,
-		Provider: provider,
+		BaseURL:      baseURL,
+		APIKey:       apiKey,
+		Model:        modelName,
+		Provider:     provider,
+		ProbeProfile: probeProfile,
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -264,6 +271,42 @@ func normalizeTokenVerificationProbeProvider(rawProvider string) (string, error)
 		return "", errors.New("检测协议仅支持 OpenAI 或 Anthropic")
 	}
 	return value, nil
+}
+
+func normalizeTokenVerificationProbeProfile(rawProfile string, role int) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(rawProfile))
+	if value == "" || value == tokenverifier.ProbeProfileStandard {
+		return tokenverifier.ProbeProfileStandard, nil
+	}
+	if value != tokenverifier.ProbeProfileDeep && value != tokenverifier.ProbeProfileFull {
+		return "", errors.New("检测深度仅支持 standard、deep 或 full")
+	}
+	if role < common.RoleAdminUser {
+		return "", errors.New("深度检测仅管理员可用")
+	}
+	return value, nil
+}
+
+func tokenVerificationProbeTimeout(profile string) time.Duration {
+	switch normalizeProbeProfileForTimeout(profile) {
+	case tokenverifier.ProbeProfileFull:
+		return 15 * time.Minute
+	case tokenverifier.ProbeProfileDeep:
+		return 8 * time.Minute
+	default:
+		return 5 * time.Minute
+	}
+}
+
+func normalizeProbeProfileForTimeout(profile string) string {
+	switch strings.ToLower(strings.TrimSpace(profile)) {
+	case tokenverifier.ProbeProfileFull:
+		return tokenverifier.ProbeProfileFull
+	case tokenverifier.ProbeProfileDeep:
+		return tokenverifier.ProbeProfileDeep
+	default:
+		return tokenverifier.ProbeProfileStandard
+	}
 }
 
 func rejectPrivateTokenVerificationProbeHost(host string) error {

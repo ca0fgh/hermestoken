@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import React, { useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -30,6 +30,7 @@ import {
 import { IconPlayCircle, IconRefresh } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, showError, showSuccess } from '../../helpers';
+import { UserContext } from '../../context/User';
 import './index.css';
 
 const { Text, Title } = Typography;
@@ -65,6 +66,52 @@ const dimensionLabels = {
   json: 'JSON',
 };
 
+const groupLabels = {
+  core: '基础检测',
+  quality: '质量探针',
+  security: '安全探针',
+  integrity: '完整性探针',
+  identity: '身份探针',
+  submodel: '子模型探针',
+  signature: '签名探针',
+  multimodal: '多模态探针',
+  canary: '金丝雀基准',
+};
+
+const identityStatusLabels = {
+  match: '匹配',
+  mismatch: '不一致',
+  uncertain: '不确定',
+  insufficient_data: '数据不足',
+};
+
+const identityStatusColors = {
+  match: 'green',
+  mismatch: 'red',
+  uncertain: 'orange',
+  insufficient_data: 'grey',
+};
+
+const verdictStatusLabels = {
+  clean_match: '三向匹配',
+  clean_match_submodel_mismatch: '子模型不一致',
+  plain_mismatch: '身份不一致',
+  spoof_behavior_induced: '行为诱导伪装',
+  spoof_selfclaim_forged: '自报伪装',
+  ambiguous: '信号冲突',
+  insufficient_data: '数据不足',
+};
+
+const verdictStatusColors = {
+  clean_match: 'green',
+  clean_match_submodel_mismatch: 'orange',
+  plain_mismatch: 'red',
+  spoof_behavior_induced: 'red',
+  spoof_selfclaim_forged: 'red',
+  ambiguous: 'orange',
+  insufficient_data: 'grey',
+};
+
 function formatMetric(value, suffix = '') {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue) || numberValue <= 0) {
@@ -87,14 +134,33 @@ function reportFinalRating(report) {
 
 function TokenVerification() {
   const { t } = useTranslation();
+  const [userState] = useContext(UserContext);
   const [provider, setProvider] = useState('openai');
   const [baseURL, setBaseURL] = useState(providerDefaults.openai.baseURL);
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(providerDefaults.openai.model);
+  const [probeProfile, setProbeProfile] = useState('standard');
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState(null);
 
+  const isAdminUser = Number(userState?.user?.role || 0) >= 10;
   const selectedReport = probeResult?.report;
+  const checklistItems = selectedReport?.checklist || probeResult?.results || [];
+  const profileOptions = useMemo(
+    () => [
+      { label: t('标准检测'), value: 'standard' },
+      { label: t('深度检测'), value: 'deep' },
+      { label: t('完整检测'), value: 'full' },
+    ],
+    [t],
+  );
+  const profileLabelMap = useMemo(
+    () =>
+      Object.fromEntries(
+        profileOptions.map((option) => [option.value, option.label]),
+      ),
+    [profileOptions],
+  );
   const modelOptions = useMemo(() => {
     const presets = providerModelPresets[provider] || [];
     const options = presets.map((value) => ({ label: value, value }));
@@ -109,8 +175,9 @@ function TokenVerification() {
       baseURL: probeResult?.base_url || baseURL,
       provider: probeResult?.provider || provider,
       model: probeResult?.model || model,
+      probeProfile: probeResult?.probe_profile || probeProfile,
     }),
-    [baseURL, model, probeResult, provider],
+    [baseURL, model, probeProfile, probeResult, provider],
   );
 
   const handleProviderChange = (value) => {
@@ -154,9 +221,10 @@ function TokenVerification() {
           api_key: trimmedAPIKey,
           provider,
           model: trimmedModel,
+          probe_profile: isAdminUser ? probeProfile : 'standard',
         },
         {
-          timeout: 310000,
+          timeout: probeProfile === 'full' ? 910000 : 490000,
         },
       );
       const { success, message, data } = response.data || {};
@@ -175,6 +243,12 @@ function TokenVerification() {
   };
 
   const checklistColumns = [
+    {
+      title: t('分组'),
+      dataIndex: 'group',
+      width: 120,
+      render: (value) => t(groupLabels[value] || value || '基础检测'),
+    },
     {
       title: t('检测项'),
       dataIndex: 'check_name',
@@ -203,12 +277,16 @@ function TokenVerification() {
             ? 'green'
             : normalizedStatus === 'skipped'
               ? 'grey'
+              : normalizedStatus === 'neutral'
+                ? 'blue'
               : 'red';
         const label =
           normalizedStatus === 'passed'
             ? t('通过')
             : normalizedStatus === 'skipped'
               ? t('跳过')
+              : normalizedStatus === 'neutral'
+                ? t('信息')
               : t('失败');
         return <Tag color={color}>{label}</Tag>;
       },
@@ -266,6 +344,80 @@ function TokenVerification() {
     },
   ];
 
+  const identityColumns = [
+    {
+      title: t('模型'),
+      dataIndex: 'model_name',
+      render: (value, record) => value || record.claimed_model || '-',
+    },
+    {
+      title: t('状态'),
+      dataIndex: 'status',
+      width: 96,
+      render: (value) => (
+        <Tag color={identityStatusColors[value] || 'grey'}>
+          {t(identityStatusLabels[value] || value || '不确定')}
+        </Tag>
+      ),
+    },
+    {
+      title: t('预测家族'),
+      dataIndex: 'predicted_family',
+      width: 120,
+      render: (value) => value || '-',
+    },
+    {
+      title: t('置信度'),
+      dataIndex: 'confidence',
+      width: 96,
+      render: (value) =>
+        Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : '-',
+    },
+    {
+      title: t('子模型判定'),
+      dataIndex: 'submodel_assessments',
+      render: (items = []) => {
+        if (!Array.isArray(items) || items.length === 0) {
+          return '-';
+        }
+        return (
+          <div className='token-verification-inline-tags'>
+            {items.map((item) => (
+              <Tag key={item.method} color={item.abstained ? 'grey' : 'light-blue'}>
+                {String(item.method || '').toUpperCase()}
+                {item.display_name ? ` ${item.display_name}` : ''}
+              </Tag>
+            ))}
+          </div>
+        );
+      },
+    },
+    {
+      title: t('交叉判定'),
+      dataIndex: 'verdict',
+      width: 136,
+      render: (value) => {
+        const status = value?.status;
+        if (!status) {
+          return '-';
+        }
+        return (
+          <Tag color={verdictStatusColors[status] || 'grey'}>
+            {t(verdictStatusLabels[status] || status)}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: t('证据'),
+      dataIndex: 'evidence',
+      render: (items = []) =>
+        Array.isArray(items) && items.length > 0
+          ? items.slice(0, 3).join('；')
+          : '-',
+    },
+  ];
+
   const renderReport = () => {
     if (probing) {
       return (
@@ -291,6 +443,14 @@ function TokenVerification() {
     const metrics = selectedReport.metrics || {};
     const risks = rating.risks || selectedReport.risks || [];
     const dimensions = rating.dimensions || selectedReport.dimensions || {};
+    const identityAssessments = selectedReport.identity_assessments || [];
+    const checklistGroupCounts = checklistItems.reduce((counts, item) => {
+      const key = item.group || 'core';
+      return {
+        ...counts,
+        [key]: (counts[key] || 0) + 1,
+      };
+    }, {});
 
     return (
       <div className='token-verification-report'>
@@ -308,6 +468,18 @@ function TokenVerification() {
         <div className='token-verification-result-meta'>
           <Tag color='light-blue'>{selectedTarget.provider}</Tag>
           <Tag color='light-blue'>{selectedTarget.model}</Tag>
+          <Tag
+            color={
+              selectedTarget.probeProfile === 'full'
+                ? 'red'
+                : selectedTarget.probeProfile === 'deep'
+                  ? 'orange'
+                  : 'light-blue'
+            }
+          >
+            {profileLabelMap[selectedTarget.probeProfile] ||
+              selectedTarget.probeProfile}
+          </Tag>
           <Text type='secondary'>{selectedTarget.baseURL}</Text>
         </div>
 
@@ -336,6 +508,14 @@ function TokenVerification() {
           ))}
         </div>
 
+        <div className='token-verification-dimensions'>
+          {Object.entries(checklistGroupCounts).map(([key, value]) => (
+            <Tag key={key} color='light-blue'>
+              {t(groupLabels[key] || key)} {value}
+            </Tag>
+          ))}
+        </div>
+
         {risks.length > 0 && (
           <div className='token-verification-alert token-verification-alert--warn'>
             <Text strong>{t('风险提示')}</Text>
@@ -358,12 +538,27 @@ function TokenVerification() {
           />
         </div>
 
+        {identityAssessments.length > 0 && (
+          <div className='token-verification-section'>
+            <Title heading={5}>{t('身份指纹评估')}</Title>
+            <Table
+              size='small'
+              columns={identityColumns}
+              dataSource={identityAssessments}
+              pagination={false}
+              rowKey={(record, index) =>
+                `${record.provider}:${record.model_name}:${index}`
+              }
+            />
+          </div>
+        )}
+
         <div className='token-verification-section'>
           <Title heading={5}>{t('检测清单')}</Title>
           <Table
             size='small'
             columns={checklistColumns}
-            dataSource={selectedReport.checklist || probeResult?.results || []}
+            dataSource={checklistItems}
             pagination={false}
             rowKey={(record, index) =>
               `${record.provider}:${record.check_key}:${record.model_name}:${index}`
@@ -454,6 +649,20 @@ function TokenVerification() {
                   style={{ width: '100%' }}
                 />
               </label>
+
+              {isAdminUser && (
+                <label>
+                  <Text strong>{t('检测深度')}</Text>
+                  <Select
+                    optionList={profileOptions}
+                    value={probeProfile}
+                    onChange={(value) =>
+                      setProbeProfile(String(value || 'standard'))
+                    }
+                    style={{ width: '100%' }}
+                  />
+                </label>
+              )}
 
               <Text
                 className='token-verification-secret-note'

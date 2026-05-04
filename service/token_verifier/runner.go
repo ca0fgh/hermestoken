@@ -26,11 +26,12 @@ const (
 )
 
 type Runner struct {
-	BaseURL   string
-	Token     string
-	Models    []string
-	Providers []string
-	Executor  *CurlExecutor
+	BaseURL      string
+	Token        string
+	Models       []string
+	Providers    []string
+	ProbeProfile string
+	Executor     *CurlExecutor
 }
 
 func RunTask(ctx context.Context, taskID int64) error {
@@ -66,7 +67,7 @@ func RunTask(ctx context.Context, taskID int64) error {
 		return err
 	}
 
-	report := BuildReport(results)
+	report := BuildReportWithOptions(ctx, results, DefaultReportOptionsFromEnv())
 	summaryBytes, _ := common.Marshal(report)
 	if err := model.UpsertTokenVerificationReport(&model.TokenVerificationReport{
 		TaskID:         taskID,
@@ -89,22 +90,24 @@ func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbe
 	}
 	apiKey := strings.TrimSpace(input.APIKey)
 	runner := Runner{
-		BaseURL:   strings.TrimSpace(input.BaseURL),
-		Token:     apiKey,
-		Models:    models,
-		Providers: providers,
-		Executor:  NewCurlExecutor(defaultVerifierHTTPTimeout),
+		BaseURL:      strings.TrimSpace(input.BaseURL),
+		Token:        apiKey,
+		Models:       models,
+		Providers:    providers,
+		ProbeProfile: normalizeProbeProfile(input.ProbeProfile),
+		Executor:     NewCurlExecutor(defaultVerifierHTTPTimeout),
 	}
 	results, err := runner.Run(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return RedactDirectProbeResponse(&DirectProbeResponse{
-		BaseURL:  runner.BaseURL,
-		Provider: providers[0],
-		Model:    models[0],
-		Results:  results,
-		Report:   BuildReport(results),
+		BaseURL:      runner.BaseURL,
+		Provider:     providers[0],
+		Model:        models[0],
+		ProbeProfile: runner.ProbeProfile,
+		Results:      results,
+		Report:       BuildReportWithOptions(ctx, results, DefaultReportOptionsFromEnv()),
 	}, apiKey), nil
 }
 
@@ -125,7 +128,7 @@ func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {
 	}
 
 	providers := resolveProviders(r.Providers)
-	results := make([]CheckResult, 0, len(providers)*(2+len(models)*4))
+	results := make([]CheckResult, 0, len(providers)*(2+len(models)*12))
 	for _, provider := range providers {
 		providerModels := models
 		if len(providerModels) == 1 && provider == ProviderAnthropic && providerModels[0] == defaultVerifierModel {
@@ -144,6 +147,9 @@ func (r Runner) Run(ctx context.Context) ([]CheckResult, error) {
 			results = append(results, withProvider(r.checkStream(ctx, executor, provider, modelName), provider))
 			results = append(results, r.checkJSON(ctx, executor, provider, modelName))
 			results = append(results, r.checkReproducibility(ctx, executor, provider, modelName))
+			if chatResult.Success {
+				results = append(results, r.runProbeSuite(ctx, executor, provider, modelName)...)
+			}
 		}
 	}
 	return results, nil
@@ -646,12 +652,16 @@ func toModelResults(taskID int64, results []CheckResult) []*model.TokenVerificat
 		out = append(out, &model.TokenVerificationResult{
 			TaskID:             taskID,
 			Provider:           result.Provider,
+			Group:              result.Group,
 			CheckKey:           string(result.CheckKey),
 			ModelName:          result.ModelName,
 			ClaimedModel:       result.ClaimedModel,
 			ObservedModel:      result.ObservedModel,
 			IdentityConfidence: result.IdentityConfidence,
 			SuspectedDowngrade: result.SuspectedDowngrade,
+			Consistent:         result.Consistent,
+			ConsistencyMethod:  result.ConsistencyMethod,
+			Neutral:            result.Neutral,
 			Success:            result.Success,
 			Score:              result.Score,
 			LatencyMs:          result.LatencyMs,
@@ -751,9 +761,17 @@ func failedResult(checkKey CheckKey, modelName string, err error, latencyMs int6
 }
 
 func httpFailedResult(checkKey CheckKey, modelName string, statusCode int, body []byte, latencyMs int64) CheckResult {
-	message := extractErrorMessageFromBytes(body)
+	preflight := classifyPreflightResult(statusCode, body)
+	message := preflight.Reason
+	if message == "" {
+		message = extractErrorMessageFromBytes(body)
+	}
 	if message == "" {
 		message = fmt.Sprintf("HTTP %d", statusCode)
+	}
+	errorCode := preflight.Code
+	if errorCode == "" {
+		errorCode = fmt.Sprintf("http_%d", statusCode)
 	}
 	return CheckResult{
 		CheckKey:  checkKey,
@@ -761,7 +779,7 @@ func httpFailedResult(checkKey CheckKey, modelName string, statusCode int, body 
 		Success:   false,
 		Score:     0,
 		LatencyMs: latencyMs,
-		ErrorCode: fmt.Sprintf("http_%d", statusCode),
+		ErrorCode: errorCode,
 		Message:   message,
 	}
 }

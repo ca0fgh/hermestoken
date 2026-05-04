@@ -14,6 +14,7 @@ func RedactDirectProbeResponse(response *DirectProbeResponse, secrets ...string)
 	redacted.BaseURL = redactSecretString(response.BaseURL, normalizedSecrets)
 	redacted.Provider = redactSecretString(response.Provider, normalizedSecrets)
 	redacted.Model = redactSecretString(response.Model, normalizedSecrets)
+	redacted.ProbeProfile = redactSecretString(response.ProbeProfile, normalizedSecrets)
 	redacted.Results = redactCheckResults(response.Results, normalizedSecrets)
 	redacted.Report = redactReportSummary(response.Report, normalizedSecrets)
 	return &redacted
@@ -44,6 +45,7 @@ func redactCheckResults(results []CheckResult, secrets []string) []CheckResult {
 	for i, result := range results {
 		redacted[i] = result
 		redacted[i].Provider = redactSecretString(result.Provider, secrets)
+		redacted[i].Group = redactSecretString(result.Group, secrets)
 		redacted[i].ModelName = redactSecretString(result.ModelName, secrets)
 		redacted[i].ClaimedModel = redactSecretString(result.ClaimedModel, secrets)
 		redacted[i].ObservedModel = redactSecretString(result.ObservedModel, secrets)
@@ -51,6 +53,7 @@ func redactCheckResults(results []CheckResult, secrets []string) []CheckResult {
 		redacted[i].ErrorCode = redactSecretString(result.ErrorCode, secrets)
 		redacted[i].Message = redactSecretString(result.Message, secrets)
 		redacted[i].Raw = redactSecretMap(result.Raw, secrets)
+		redacted[i].PrivateResponseText = ""
 	}
 	return redacted
 }
@@ -61,6 +64,7 @@ func redactReportSummary(report ReportSummary, secrets []string) ReportSummary {
 	redacted.Checklist = redactChecklistItems(report.Checklist, secrets)
 	redacted.Models = redactModelSummaries(report.Models, secrets)
 	redacted.ModelIdentity = redactModelIdentitySummaries(report.ModelIdentity, secrets)
+	redacted.IdentityAssessments = redactIdentityAssessments(report.IdentityAssessments, secrets)
 	redacted.Reproducibility = redactReproducibilitySummaries(report.Reproducibility, secrets)
 	redacted.Risks = redactSecretStrings(report.Risks, secrets)
 	redacted.FinalRating = redactFinalRating(report.FinalRating, secrets)
@@ -77,6 +81,7 @@ func redactChecklistItems(items []ChecklistItem, secrets []string) []ChecklistIt
 	for i, item := range items {
 		redacted[i] = item
 		redacted[i].Provider = redactSecretString(item.Provider, secrets)
+		redacted[i].Group = redactSecretString(item.Group, secrets)
 		redacted[i].CheckKey = redactSecretString(item.CheckKey, secrets)
 		redacted[i].CheckName = redactSecretString(item.CheckName, secrets)
 		redacted[i].ModelName = redactSecretString(item.ModelName, secrets)
@@ -137,6 +142,69 @@ func redactReproducibilitySummaries(items []ReproducibilitySummary, secrets []st
 		redacted[i].ModelName = redactSecretString(item.ModelName, secrets)
 		redacted[i].Method = redactSecretString(item.Method, secrets)
 		redacted[i].Message = redactSecretString(item.Message, secrets)
+	}
+	return redacted
+}
+
+func redactIdentityAssessments(items []IdentityAssessmentSummary, secrets []string) []IdentityAssessmentSummary {
+	if len(items) == 0 {
+		return items
+	}
+	redacted := make([]IdentityAssessmentSummary, len(items))
+	for i, item := range items {
+		redacted[i] = item
+		redacted[i].Provider = redactSecretString(item.Provider, secrets)
+		redacted[i].ModelName = redactSecretString(item.ModelName, secrets)
+		redacted[i].ClaimedModel = redactSecretString(item.ClaimedModel, secrets)
+		redacted[i].Status = redactSecretString(item.Status, secrets)
+		redacted[i].PredictedFamily = redactSecretString(item.PredictedFamily, secrets)
+		redacted[i].PredictedModel = redactSecretString(item.PredictedModel, secrets)
+		redacted[i].Method = redactSecretString(item.Method, secrets)
+		redacted[i].Candidates = redactIdentityCandidates(item.Candidates, secrets)
+		redacted[i].SubmodelAssessments = redactSubmodelAssessments(item.SubmodelAssessments, secrets)
+		if item.Verdict != nil {
+			verdict := *item.Verdict
+			verdict.Status = redactSecretString(verdict.Status, secrets)
+			verdict.TrueFamily = redactSecretString(verdict.TrueFamily, secrets)
+			verdict.TrueModel = redactSecretString(verdict.TrueModel, secrets)
+			verdict.SpoofMethod = redactSecretString(verdict.SpoofMethod, secrets)
+			verdict.ConfidenceBand = redactSecretString(verdict.ConfidenceBand, secrets)
+			verdict.Reasoning = redactSecretStrings(verdict.Reasoning, secrets)
+			redacted[i].Verdict = &verdict
+		}
+		redacted[i].RiskFlags = redactSecretStrings(item.RiskFlags, secrets)
+		redacted[i].Evidence = redactSecretStrings(item.Evidence, secrets)
+	}
+	return redacted
+}
+
+func redactIdentityCandidates(items []IdentityCandidateSummary, secrets []string) []IdentityCandidateSummary {
+	if len(items) == 0 {
+		return items
+	}
+	redacted := make([]IdentityCandidateSummary, len(items))
+	for i, item := range items {
+		redacted[i] = item
+		redacted[i].Family = redactSecretString(item.Family, secrets)
+		redacted[i].Model = redactSecretString(item.Model, secrets)
+		redacted[i].Reasons = redactSecretStrings(item.Reasons, secrets)
+	}
+	return redacted
+}
+
+func redactSubmodelAssessments(items []SubmodelAssessmentSummary, secrets []string) []SubmodelAssessmentSummary {
+	if len(items) == 0 {
+		return items
+	}
+	redacted := make([]SubmodelAssessmentSummary, len(items))
+	for i, item := range items {
+		redacted[i] = item
+		redacted[i].Method = redactSecretString(item.Method, secrets)
+		redacted[i].Family = redactSecretString(item.Family, secrets)
+		redacted[i].ModelID = redactSecretString(item.ModelID, secrets)
+		redacted[i].DisplayName = redactSecretString(item.DisplayName, secrets)
+		redacted[i].Candidates = redactIdentityCandidates(item.Candidates, secrets)
+		redacted[i].Evidence = redactSecretStrings(item.Evidence, secrets)
 	}
 	return redacted
 }
