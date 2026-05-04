@@ -2,6 +2,7 @@ package token_verifier
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +12,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 )
 
-func TestSourceBayesianCandidatesProduceProbabilityScores(t *testing.T) {
+func TestSourceWeightedCandidatesProduceNormalizedScores(t *testing.T) {
 	responses := map[CheckKey]string{
 		CheckProbeIdentitySelfKnowledge:  "I am Claude, created by Anthropic.",
 		CheckProbeIdentityRefusalPattern: "I can't help with that request, but I can offer safer alternatives.",
@@ -26,13 +27,33 @@ func TestSourceBayesianCandidatesProduceProbabilityScores(t *testing.T) {
 	candidates := sourceBehavioralIdentityCandidates(results, responses)
 
 	if len(candidates) == 0 {
-		t.Fatal("expected bayesian behavioral candidates")
+		t.Fatal("expected source weighted behavioral candidates")
 	}
 	if candidates[0].Family != "anthropic" {
 		t.Fatalf("top family = %q, want anthropic: %+v", candidates[0].Family, candidates)
 	}
 	if candidates[0].Score <= 0 || candidates[0].Score > 1 {
-		t.Fatalf("top score = %.2f, want probability in (0,1]", candidates[0].Score)
+		t.Fatalf("top score = %.2f, want normalized score in (0,1]", candidates[0].Score)
+	}
+}
+
+func TestAggregateSourceTimingFeaturesIncludesOutputLengthBuckets(t *testing.T) {
+	features := aggregateSourceTimingFeatures([]CheckResult{
+		{CheckKey: CheckProbeIdentityStyleEN, TTFTMs: 400, TokensPS: 10, OutputTokens: intPtr(25)},
+		{CheckKey: CheckProbeIdentitySelfKnowledge, TTFTMs: 800, TokensPS: 30, OutputTokens: intPtr(75)},
+		{CheckKey: CheckProbeIdentityListFormat, TTFTMs: 1600, TokensPS: 80, OutputTokens: intPtr(240)},
+		{CheckKey: CheckCanaryMathMul, TTFTMs: 10, TokensPS: 900, OutputTokens: intPtr(500)},
+		{CheckKey: CheckProbeSignatureRoundtrip, TTFTMs: 10, TokensPS: 900, OutputTokens: intPtr(500)},
+	})
+
+	if features["out_len_normal"] != 1 || features["out_len_terse"] != 0 || features["out_len_verbose"] != 0 {
+		t.Fatalf("output length buckets = %+v, want LLMprobe median output bucket normal", features)
+	}
+	if math.Abs(features["out_median_norm"]-0.15) > 1e-9 {
+		t.Fatalf("out_median_norm = %v, want 0.15", features["out_median_norm"])
+	}
+	if features["tps_bucket_medium"] != 1 || features["ttft_bucket_normal"] != 1 {
+		t.Fatalf("timing buckets = %+v, want source timed items only", features)
 	}
 }
 

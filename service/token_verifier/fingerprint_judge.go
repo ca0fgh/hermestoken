@@ -54,7 +54,7 @@ func judgeFingerprint(ctx context.Context, executor *CurlExecutor, responses map
 	candidate := IdentityCandidateSummary{
 		Family:  result.Family,
 		Model:   identityFamilyDisplayName(result.Family),
-		Score:   roundScore(result.Confidence),
+		Score:   sourceCandidateScore(result.Confidence),
 		Reasons: firstNStrings(result.Reasons, 5),
 	}
 	return []IdentityCandidateSummary{candidate}, result
@@ -68,10 +68,11 @@ func buildJudgeIdentityPrompt(responses map[string]string) string {
 		sections = append(sections, "["+key+"]\n"+text)
 	}
 	return "You are a model fingerprinting expert. Analyze the following AI assistant probe responses and identify which model family produced them.\n\n" +
-		"Known families: anthropic, openai, google, qwen, meta, mistral, deepseek, zhipu, xai\n\n" +
-		"Look for self-identification claims, refusal phrasing, writing style, formatting preferences, JSON discipline, and reasoning patterns.\n\n" +
+		"Known families: anthropic, openai, google, qwen, meta, mistral, deepseek\n\n" +
+		"Look for: self-identification claims, refusal phrasing, writing style, formatting preferences (bold headers, numbered lists, emoji), JSON discipline, and reasoning patterns.\n\n" +
 		"PROBE RESPONSES:\n" + strings.Join(sections, "\n\n---\n\n") + "\n\n" +
-		`Reply with ONLY a JSON object: {"family":"<family>","confidence":<0.0-1.0>,"reasons":["<evidence>"]}`
+		`Reply with ONLY a JSON object:
+{"family": "<family>", "confidence": <0.0-1.0>, "reasons": ["<evidence 1>", "<evidence 2>", "<evidence 3>"]}`
 }
 
 func parseJudgeIdentityResult(text string) *judgeIdentityResult {
@@ -99,7 +100,7 @@ func parseJudgeIdentityResult(text string) *judgeIdentityResult {
 		}
 		return &judgeIdentityResult{
 			Family:     family,
-			Confidence: roundScore(parsed.Confidence),
+			Confidence: sourceCandidateScore(parsed.Confidence),
 			Reasons:    firstNStrings(parsed.Reasons, 5),
 		}
 	}
@@ -108,7 +109,7 @@ func parseJudgeIdentityResult(text string) *judgeIdentityResult {
 
 func knownIdentityFamily(family string) bool {
 	switch family {
-	case "anthropic", "openai", "google", "qwen", "meta", "mistral", "deepseek", "zhipu", "xai":
+	case "anthropic", "openai", "google", "qwen", "meta", "mistral", "deepseek":
 		return true
 	default:
 		return false

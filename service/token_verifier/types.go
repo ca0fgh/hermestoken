@@ -121,6 +121,8 @@ type CheckResult struct {
 	Score               int            `json:"score"`
 	LatencyMs           int64          `json:"latency_ms,omitempty"`
 	TTFTMs              int64          `json:"ttft_ms,omitempty"`
+	InputTokens         *int           `json:"input_tokens,omitempty"`
+	OutputTokens        *int           `json:"output_tokens,omitempty"`
 	TokensPS            float64        `json:"tokens_ps,omitempty"`
 	ErrorCode           string         `json:"error_code,omitempty"`
 	Message             string         `json:"message,omitempty"`
@@ -129,21 +131,23 @@ type CheckResult struct {
 }
 
 type ChecklistItem struct {
-	Provider  string  `json:"provider"`
-	Group     string  `json:"group,omitempty"`
-	CheckKey  string  `json:"check_key"`
-	CheckName string  `json:"check_name"`
-	ModelName string  `json:"model_name,omitempty"`
-	Neutral   bool    `json:"neutral,omitempty"`
-	Skipped   bool    `json:"skipped,omitempty"`
-	Passed    bool    `json:"passed"`
-	Status    string  `json:"status"`
-	Score     int     `json:"score"`
-	LatencyMs int64   `json:"latency_ms,omitempty"`
-	TTFTMs    int64   `json:"ttft_ms,omitempty"`
-	TokensPS  float64 `json:"tokens_ps,omitempty"`
-	ErrorCode string  `json:"error_code,omitempty"`
-	Message   string  `json:"message,omitempty"`
+	Provider     string  `json:"provider"`
+	Group        string  `json:"group,omitempty"`
+	CheckKey     string  `json:"check_key"`
+	CheckName    string  `json:"check_name"`
+	ModelName    string  `json:"model_name,omitempty"`
+	Neutral      bool    `json:"neutral,omitempty"`
+	Skipped      bool    `json:"skipped,omitempty"`
+	Passed       bool    `json:"passed"`
+	Status       string  `json:"status"`
+	Score        int     `json:"score"`
+	LatencyMs    int64   `json:"latency_ms,omitempty"`
+	TTFTMs       int64   `json:"ttft_ms,omitempty"`
+	InputTokens  *int    `json:"input_tokens,omitempty"`
+	OutputTokens *int    `json:"output_tokens,omitempty"`
+	TokensPS     float64 `json:"tokens_ps,omitempty"`
+	ErrorCode    string  `json:"error_code,omitempty"`
+	Message      string  `json:"message,omitempty"`
 }
 
 type IdentityCandidateSummary struct {

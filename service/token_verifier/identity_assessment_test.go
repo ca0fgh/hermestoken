@@ -59,7 +59,7 @@ func TestBuildReportIncludesBehavioralIdentityAssessment(t *testing.T) {
 	}
 }
 
-func TestBuildReportStandardProfileDoesNotStrongClassifyFromWeakSignals(t *testing.T) {
+func TestBuildReportUsesSourceVagueSelfClaimBaselineForWeakProfile(t *testing.T) {
 	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
 		identityProbeResult(CheckProbeIdentitySelfKnowledge, "unknown"),
 	)
@@ -70,15 +70,15 @@ func TestBuildReportStandardProfileDoesNotStrongClassifyFromWeakSignals(t *testi
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
 	assessment := report.IdentityAssessments[0]
-	if assessment.Status != identityStatusInsufficientData {
-		t.Fatalf("status = %q, want insufficient_data: %+v", assessment.Status, assessment)
+	if assessment.Status != identityStatusMismatch {
+		t.Fatalf("status = %q, want source mismatch from vague baseline: %+v", assessment.Status, assessment)
 	}
-	if assessment.PredictedFamily != "" {
-		t.Fatalf("predicted family = %q, want empty for weak standard evidence", assessment.PredictedFamily)
+	if assessment.PredictedFamily != "zhipu" {
+		t.Fatalf("predicted family = %q, want zhipu from source vague baseline", assessment.PredictedFamily)
 	}
 }
 
-func TestBuildReportDoesNotClassifyFromVagueSelfKnowledge(t *testing.T) {
+func TestBuildReportClassifiesVagueSelfKnowledgeLikeSourceBaseline(t *testing.T) {
 	results := []CheckResult{
 		identityProbeResult(CheckProbeIdentitySelfKnowledge, "I am an AI assistant and cannot verify the exact upstream model."),
 	}
@@ -89,15 +89,15 @@ func TestBuildReportDoesNotClassifyFromVagueSelfKnowledge(t *testing.T) {
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
 	assessment := report.IdentityAssessments[0]
-	if assessment.Status != identityStatusInsufficientData {
-		t.Fatalf("status = %q, want insufficient_data for vague self knowledge: %+v", assessment.Status, assessment)
+	if assessment.Status != identityStatusMismatch {
+		t.Fatalf("status = %q, want source mismatch for vague self knowledge: %+v", assessment.Status, assessment)
 	}
-	if assessment.PredictedFamily != "" {
-		t.Fatalf("predicted family = %q, want empty for vague self knowledge", assessment.PredictedFamily)
+	if assessment.PredictedFamily != "zhipu" {
+		t.Fatalf("predicted family = %q, want zhipu for source vague self knowledge", assessment.PredictedFamily)
 	}
 }
 
-func TestBuildReportIgnoresVolatileCurrentAffairsFingerprintForFamily(t *testing.T) {
+func TestBuildReportUsesSourceCurrentAffairsFingerprintForFamily(t *testing.T) {
 	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
 		identityProbeResult(CheckProbeLingJPPM, "石破茂"),
 		identityProbeResult(CheckProbeLingFRPM, "François Bayrou"),
@@ -111,11 +111,11 @@ func TestBuildReportIgnoresVolatileCurrentAffairsFingerprintForFamily(t *testing
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
 	assessment := report.IdentityAssessments[0]
-	if assessment.Status != identityStatusInsufficientData {
-		t.Fatalf("status = %q, want insufficient_data for current-affairs-only evidence: %+v", assessment.Status, assessment)
+	if assessment.Status != identityStatusMismatch {
+		t.Fatalf("status = %q, want source mismatch from current-affairs baseline: %+v", assessment.Status, assessment)
 	}
-	if len(assessment.Candidates) > 0 {
-		t.Fatalf("candidates = %+v, want no family candidates from volatile current affairs", assessment.Candidates)
+	if len(assessment.Candidates) == 0 || assessment.Candidates[0].Family != "anthropic" {
+		t.Fatalf("candidates = %+v, want source current-affairs Anthropic lead", assessment.Candidates)
 	}
 }
 
@@ -180,6 +180,9 @@ func TestRunVerifierProbeKeepsSensitiveTextPrivate(t *testing.T) {
 
 	if result.PrivateResponseText != secretText {
 		t.Fatalf("PrivateResponseText = %q, want secret response", result.PrivateResponseText)
+	}
+	if result.InputTokens == nil || *result.InputTokens != 32 || result.OutputTokens == nil || *result.OutputTokens != 8 {
+		t.Fatalf("usage = input:%v output:%v, want 32/8", result.InputTokens, result.OutputTokens)
 	}
 	if result.Raw["response_redacted"] != true {
 		t.Fatalf("raw = %+v, want redacted marker", result.Raw)
@@ -278,6 +281,30 @@ func TestBuildReportUsesSourceFamilyBaselineForZhipuBehavior(t *testing.T) {
 	}
 	if len(assessment.Candidates) == 0 || assessment.Candidates[0].Family != "zhipu" {
 		t.Fatalf("top candidates = %+v, want Zhipu from source family baseline", assessment.Candidates)
+	}
+}
+
+func TestIdentityRiskFlagsMirrorLLMProbeWarningSemantics(t *testing.T) {
+	flags := identityRiskFlags([]CheckResult{
+		{
+			Group:     probeGroupIntegrity,
+			CheckKey:  CheckProbeSSECompliance,
+			Success:   false,
+			Score:     50,
+			ErrorCode: "sse_compliance_warning",
+			Message:   "SSE warning",
+		},
+		{
+			Group:     probeGroupIntegrity,
+			CheckKey:  CheckProbeConsistencyCache,
+			Success:   false,
+			Score:     50,
+			ErrorCode: "possible_cache_hit",
+			Message:   "Both responses identical",
+		},
+	})
+	if len(flags) != 1 || !strings.Contains(flags[0], "Both responses identical") {
+		t.Fatalf("identity risk flags = %#v, want only consistency warning", flags)
 	}
 }
 

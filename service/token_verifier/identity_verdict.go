@@ -158,41 +158,6 @@ func confidenceBandForSignals(count int) string {
 	return "medium"
 }
 
-func shouldAbstainSubModel(topFamily string, topFamilyScore float64, secondFamilyScore float64, claimedFamily string) bool {
-	if topFamilyScore < 0.70 && topFamilyScore-secondFamilyScore < 0.30 {
-		return true
-	}
-	return claimedFamily != "" && topFamily != claimedFamily && topFamilyScore < 0.85
-}
-
-func applySubmodelAbstainGuard(submodels []SubmodelAssessmentSummary, candidates []IdentityCandidateSummary, claimedFamily string) []SubmodelAssessmentSummary {
-	if len(submodels) == 0 || len(candidates) == 0 {
-		return submodels
-	}
-	top := candidates[0]
-	secondScore := 0.0
-	if len(candidates) > 1 {
-		secondScore = candidates[1].Score
-	}
-	if !shouldAbstainSubModel(top.Family, top.Score, secondScore, claimedFamily) {
-		return submodels
-	}
-	guarded := make([]SubmodelAssessmentSummary, len(submodels))
-	for i, submodel := range submodels {
-		guarded[i] = submodel
-		if submodel.Abstained {
-			continue
-		}
-		guarded[i].Family = ""
-		guarded[i].ModelID = ""
-		guarded[i].DisplayName = ""
-		guarded[i].Score = 0
-		guarded[i].Abstained = true
-		guarded[i].Evidence = uniqueStrings(append(guarded[i].Evidence, "family_confidence_abstain=true"))
-	}
-	return guarded
-}
-
 func surfaceIdentitySignal(responses map[CheckKey]string) *IdentitySignal {
 	features := extractSourceSelfClaim(sourceResponseIDMap(responses))
 	bestFamily := ""

@@ -35,22 +35,3 @@ func TestComputeIdentityVerdictSpoofSelfclaimForged(t *testing.T) {
 		t.Fatalf("true family = %q, want anthropic", verdict.TrueFamily)
 	}
 }
-
-func TestApplySubmodelAbstainGuardClearsWeakWrongFamilyMatch(t *testing.T) {
-	submodels := []SubmodelAssessmentSummary{
-		{Method: "v3", Family: "anthropic", ModelID: "claude-opus-4-7", DisplayName: "Claude Opus 4.7", Score: 0.7},
-	}
-	candidates := []IdentityCandidateSummary{
-		{Family: "anthropic", Score: 0.7},
-		{Family: "openai", Score: 0.45},
-	}
-
-	guarded := applySubmodelAbstainGuard(submodels, candidates, "openai")
-
-	if len(guarded) != 1 || !guarded[0].Abstained {
-		t.Fatalf("guarded submodels = %+v, want abstained", guarded)
-	}
-	if guarded[0].Family != "" || guarded[0].ModelID != "" || guarded[0].DisplayName != "" {
-		t.Fatalf("abstained submodel leaked a concrete verdict: %+v", guarded[0])
-	}
-}

@@ -218,7 +218,7 @@ func directProbeSuiteDefinitions(profile string) []verifierProbe {
 	probes := make([]verifierProbe, 0, len(verifierProbeSuite(profile))+3)
 	if profile == ProbeProfileDeep || profile == ProbeProfileFull {
 		probes = append(probes,
-			verifierProbe{Key: CheckProbeChannelSignature, Group: probeGroupSignature, Neutral: true},
+			verifierProbe{Key: CheckProbeChannelSignature, Group: probeGroupSecurity, Neutral: true},
 			verifierProbe{Key: CheckProbeSSECompliance, Group: probeGroupIntegrity},
 		)
 	}
@@ -310,20 +310,22 @@ func toModelResults(taskID int64, results []CheckResult) []*model.TokenVerificat
 	for _, result := range results {
 		rawBytes, _ := common.Marshal(result.Raw)
 		out = append(out, &model.TokenVerificationResult{
-			TaskID:    taskID,
-			Provider:  result.Provider,
-			Group:     result.Group,
-			CheckKey:  string(result.CheckKey),
-			ModelName: result.ModelName,
-			Neutral:   result.Neutral,
-			Success:   result.Success,
-			Score:     result.Score,
-			LatencyMs: result.LatencyMs,
-			TTFTMs:    result.TTFTMs,
-			TokensPS:  result.TokensPS,
-			ErrorCode: result.ErrorCode,
-			Message:   result.Message,
-			Raw:       string(rawBytes),
+			TaskID:       taskID,
+			Provider:     result.Provider,
+			Group:        result.Group,
+			CheckKey:     string(result.CheckKey),
+			ModelName:    result.ModelName,
+			Neutral:      result.Neutral,
+			Success:      result.Success,
+			Score:        result.Score,
+			LatencyMs:    result.LatencyMs,
+			TTFTMs:       result.TTFTMs,
+			InputTokens:  result.InputTokens,
+			OutputTokens: result.OutputTokens,
+			TokensPS:     result.TokensPS,
+			ErrorCode:    result.ErrorCode,
+			Message:      result.Message,
+			Raw:          string(rawBytes),
 		})
 	}
 	return out

@@ -9,6 +9,8 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 )
 
+var sourceVectorFamilies = []string{"anthropic", "openai", "google", "qwen", "meta", "mistral", "deepseek"}
+
 func cosineSimilarity(a []float64, b []float64) float64 {
 	if len(a) == 0 || len(a) != len(b) {
 		return 0
@@ -55,12 +57,13 @@ func pickTopVectorScores(query []float64, refs []EmbeddingReference) []IdentityC
 			maxSim = score
 		}
 	}
-	items := make([]IdentityCandidateSummary, 0, len(familyMax))
-	for family, score := range familyMax {
+	items := make([]IdentityCandidateSummary, 0, len(sourceVectorFamilies))
+	for _, family := range sourceVectorFamilies {
+		score := familyMax[family]
 		items = append(items, IdentityCandidateSummary{
 			Family:  family,
 			Model:   identityFamilyDisplayName(family),
-			Score:   roundScore(score / maxSim),
+			Score:   sourceCandidateScore(score / maxSim),
 			Reasons: []string{"embedding cosine similarity"},
 		})
 	}

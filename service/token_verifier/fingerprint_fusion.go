@@ -86,7 +86,7 @@ func fuseIdentityCandidates(rule []IdentityCandidateSummary, judge []IdentityCan
 		out = append(out, IdentityCandidateSummary{
 			Family:  item.family,
 			Model:   firstNonEmptyString(item.model, identityFamilyDisplayName(item.family)),
-			Score:   roundScore(item.score),
+			Score:   sourceCandidateScore(item.score),
 			Reasons: uniqueStrings(firstNStrings(item.reasons, 5)),
 		})
 	}

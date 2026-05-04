@@ -58,7 +58,7 @@ func BuildProbeReportWithOptions(ctx context.Context, results []CheckResult, opt
 }
 
 func appendProbeRisk(risks []string, result CheckResult) []string {
-	if !result.Success && !result.Skipped {
+	if !result.Success && !result.Skipped && !isWarningCheckResult(result) {
 		switch result.CheckKey {
 		case CheckProbeInfraLeak:
 			risks = append(risks, "基础设施探针发现上游可能泄露真实后端或代理特征")
@@ -98,7 +98,7 @@ func appendProbeRisk(risks []string, result CheckResult) []string {
 		}
 	}
 
-	if !result.Success && result.Message != "" {
+	if !result.Success && !isWarningCheckResult(result) && result.Message != "" {
 		message := strings.ToLower(result.Message)
 		switch {
 		case strings.Contains(message, "rate limit") || strings.Contains(message, "429"):
@@ -124,12 +124,11 @@ func computeProbeScoreRange(items []ChecklistItem) (int, int) {
 		switch item.Status {
 		case "passed":
 			points += 1
+		case "warning":
+			points += 0.5
 		case "skipped", "neutral":
 			reviewable++
 		default:
-			if item.Score >= 50 {
-				points += 0.5
-			}
 		}
 	}
 	if total == 0 {
@@ -155,24 +154,32 @@ func buildChecklistItem(result CheckResult) ChecklistItem {
 		status = "neutral"
 	case result.Success:
 		status = "passed"
+	case isWarningCheckResult(result):
+		status = "warning"
 	}
 	return ChecklistItem{
-		Provider:  result.Provider,
-		Group:     resultGroup(result),
-		CheckKey:  string(result.CheckKey),
-		CheckName: checkDisplayName(result.CheckKey),
-		ModelName: result.ModelName,
-		Neutral:   result.Neutral,
-		Skipped:   result.Skipped,
-		Passed:    result.Success && !result.Skipped,
-		Status:    status,
-		Score:     result.Score,
-		LatencyMs: result.LatencyMs,
-		TTFTMs:    result.TTFTMs,
-		TokensPS:  result.TokensPS,
-		ErrorCode: result.ErrorCode,
-		Message:   result.Message,
+		Provider:     result.Provider,
+		Group:        resultGroup(result),
+		CheckKey:     string(result.CheckKey),
+		CheckName:    checkDisplayName(result.CheckKey),
+		ModelName:    result.ModelName,
+		Neutral:      result.Neutral,
+		Skipped:      result.Skipped,
+		Passed:       result.Success && !result.Skipped,
+		Status:       status,
+		Score:        result.Score,
+		LatencyMs:    result.LatencyMs,
+		TTFTMs:       result.TTFTMs,
+		InputTokens:  result.InputTokens,
+		OutputTokens: result.OutputTokens,
+		TokensPS:     result.TokensPS,
+		ErrorCode:    result.ErrorCode,
+		Message:      result.Message,
 	}
+}
+
+func isWarningCheckResult(result CheckResult) bool {
+	return !result.Success && !result.Skipped && !result.Neutral && result.Score >= 50
 }
 
 func resultGroup(result CheckResult) string {

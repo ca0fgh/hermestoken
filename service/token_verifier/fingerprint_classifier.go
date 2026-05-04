@@ -52,38 +52,6 @@ func (signal *sourceFamilySignal) UnmarshalJSON(data []byte) error {
 
 type sourceFingerprintFeatures map[string]map[string]float64
 
-const sourceFamilyMinEvidenceWeight = 1.0
-const sourceFamilyMinPositiveEvidenceWeight = 1.0
-
-var unstableSourceFamilySignals = map[string]map[string]bool{
-	"linguisticFingerprint": {
-		"de_chan_merz":        true,
-		"de_chan_scholz":      true,
-		"fr_pm_barnier":       true,
-		"fr_pm_bayrou":        true,
-		"fr_pm_old":           true,
-		"jp_pm_ishiba":        true,
-		"jp_pm_kishida":       true,
-		"jp_pm_old":           true,
-		"jp_pm_recent":        true,
-		"kr_knows_crisis":     true,
-		"uk_pm_starmer":       true,
-		"uk_pm_sunak":         true,
-		"overall_instability": true,
-		"overall_stability":   true,
-	},
-	"subModelSignals": {
-		"tps_bucket_slow":    true,
-		"tps_fast":           true,
-		"tps_slow":           true,
-		"tps_unstable":       true,
-		"ttft_bucket_slow":   true,
-		"ttft_bucket_snappy": true,
-		"ttft_fast":          true,
-		"ttft_median_norm":   true,
-	},
-}
-
 var (
 	sourceFamilyBaselinesOnce sync.Once
 	sourceFamilyBaselines     []sourceFamilyBaseline
@@ -100,35 +68,23 @@ func sourceBehavioralIdentityCandidates(results []CheckResult, responses map[Che
 }
 
 func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFeatures, baselines []sourceFamilyBaseline) []IdentityCandidateSummary {
-	type familyLogScore struct {
+	type familyRawScore struct {
 		family      string
 		displayName string
-		logOdds     float64
-		evidence    float64
-		positive    float64
+		raw         float64
 		reasons     []string
 	}
-	logScores := make([]familyLogScore, 0, len(baselines))
-	maxEvidence := 0.0
-	maxPositiveEvidence := 0.0
+	rawScores := make([]familyRawScore, 0, len(baselines))
+	maxRaw := 1.0
 	for _, baseline := range baselines {
-		logOdds := 0.0
-		evidence := 0.0
-		positive := 0.0
+		raw := 0.0
 		reasons := make([]string, 0)
 		for _, signal := range baseline.Signals {
-			if isUnstableSourceFamilySignal(signal) {
-				continue
-			}
 			value := features.value(signal.Category, signal.Key)
 			if value == 0 {
 				continue
 			}
-			logOdds += signal.Weight * value
-			evidence += math.Abs(signal.Weight) * math.Abs(value)
-			if signal.Weight > 0 {
-				positive += signal.Weight * math.Abs(value)
-			}
+			raw += signal.Weight * value
 			label := strings.ReplaceAll(signal.Key, "_", " ")
 			if signal.Weight > 0 {
 				reasons = append(reasons, label+" detected (+"+formatFloat1(signal.Weight)+")")
@@ -136,50 +92,23 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 				reasons = append(reasons, label+" contradicts "+baseline.Family+" ("+formatFloat1(signal.Weight)+")")
 			}
 		}
-		if evidence > maxEvidence {
-			maxEvidence = evidence
+		if raw > maxRaw {
+			maxRaw = raw
 		}
-		if positive > maxPositiveEvidence {
-			maxPositiveEvidence = positive
-		}
-		logScores = append(logScores, familyLogScore{family: baseline.Family, displayName: baseline.DisplayName, logOdds: logOdds, evidence: evidence, positive: positive, reasons: reasons})
+		rawScores = append(rawScores, familyRawScore{family: baseline.Family, displayName: baseline.DisplayName, raw: raw, reasons: reasons})
 	}
-	if maxEvidence < sourceFamilyMinEvidenceWeight || maxPositiveEvidence < sourceFamilyMinPositiveEvidenceWeight {
-		return nil
-	}
-	maxLogOdds := 0.0
-	for _, score := range logScores {
-		if score.logOdds > maxLogOdds {
-			maxLogOdds = score.logOdds
-		}
-	}
-	total := 0.0
-	expScores := make([]float64, len(logScores))
-	for i, score := range logScores {
-		expScores[i] = math.Exp(score.logOdds - maxLogOdds)
-		total += expScores[i]
-	}
-	if total == 0 {
-		return nil
-	}
-	sort.SliceStable(logScores, func(i, j int) bool {
-		left := math.Exp(logScores[i].logOdds-maxLogOdds) / total
-		right := math.Exp(logScores[j].logOdds-maxLogOdds) / total
-		if left == right {
-			return logScores[i].family < logScores[j].family
-		}
-		return left > right
+	sort.SliceStable(rawScores, func(i, j int) bool {
+		return rawScores[i].raw > rawScores[j].raw
 	})
 	out := make([]IdentityCandidateSummary, 0, 3)
-	for _, score := range logScores {
-		if score.positive < sourceFamilyMinPositiveEvidenceWeight {
+	for _, score := range rawScores {
+		if score.raw <= 0 {
 			continue
 		}
-		normalized := math.Exp(score.logOdds-maxLogOdds) / total
 		out = append(out, IdentityCandidateSummary{
 			Family:  score.family,
 			Model:   score.displayName,
-			Score:   roundScore(normalized),
+			Score:   sourceCandidateScore(score.raw / maxRaw),
 			Reasons: firstNStrings(score.reasons, 5),
 		})
 		if len(out) == 3 {
@@ -189,9 +118,14 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 	return out
 }
 
-func isUnstableSourceFamilySignal(signal sourceFamilySignal) bool {
-	return unstableSourceFamilySignals[signal.Category] != nil &&
-		unstableSourceFamilySignals[signal.Category][signal.Key]
+func sourceCandidateScore(score float64) float64 {
+	if score < 0 {
+		score = 0
+	}
+	if score > 1 {
+		score = 1
+	}
+	return math.Round(score*1000) / 1000
 }
 
 func loadSourceFamilyBaselines() []sourceFamilyBaseline {
@@ -235,6 +169,10 @@ func extractSourceFingerprintFeatures(results []CheckResult, responses map[Check
 
 func extractSourceSelfClaim(responses map[string]string) map[string]float64 {
 	selfText := strings.ToLower(responses["identity_self_knowledge"])
+	vague := strings.TrimSpace(selfText) != "" && !sourceHas(selfText,
+		"claude", "anthropic", "chatgpt", "gpt", "openai", "qwen", "通义",
+		"gemini", "llama", "mistral", "deepseek", "kiro", "amazon q",
+	)
 	return map[string]float64{
 		"claude":   boolFloat(sourceHas(selfText, "claude", "anthropic")),
 		"openai":   boolFloat(sourceHas(selfText, "chatgpt", "gpt-4", "gpt-3", "openai")),
@@ -244,7 +182,7 @@ func extractSourceSelfClaim(responses map[string]string) map[string]float64 {
 		"mistral":  boolFloat(strings.Contains(selfText, "mistral")),
 		"deepseek": boolFloat(strings.Contains(selfText, "deepseek")),
 		"kiro":     boolFloat(sourceHas(selfText, "kiro", "amazon q developer", "kiro-cli")),
-		"zhipu":    boolFloat(sourceHas(selfText, "zhipu", "glm", "智谱")),
+		"vague":    boolFloat(vague),
 	}
 }
 
@@ -342,7 +280,7 @@ func extractSourceSubmodelSignals(results []CheckResult, allText string, styleEn
 		"vocab_richness":         vocabRichness,
 		"reasoning_length":       math.Min(1, float64(len(reasonText))/3000),
 		"list_detail_level":      listDetail,
-		"en_paragraph_count":     math.Min(1, float64(len(regexp.MustCompile(`\n\n+`).Split(styleEn, -1)))/8),
+		"en_paragraph_count":     math.Min(1, float64(len(nonEmptyStrings(regexp.MustCompile(`\n\n+`).Split(styleEn, -1))))/8),
 		"uses_markdown_headings": boolFloat(regexp.MustCompile(`(?m)^#{1,3}\s`).MatchString(styleEn + " " + styleZh)),
 	}
 	for key, value := range extractSourcePerformanceFeatures(results) {
@@ -540,7 +478,7 @@ func extractSourceMetaLinguistic(features map[string]float64, results map[string
 func extractSourcePerformanceFeatures(results []CheckResult) map[string]float64 {
 	tpsValues := make([]float64, 0)
 	ttftValues := make([]float64, 0)
-	for _, result := range results {
+	for _, result := range sourceTimedFingerprintResults(results) {
 		if result.TokensPS > 0 {
 			tpsValues = append(tpsValues, result.TokensPS)
 		}
@@ -565,16 +503,21 @@ func extractSourcePerformanceFeatures(results []CheckResult) map[string]float64 
 func aggregateSourceTimingFeatures(results []CheckResult) map[string]float64 {
 	tpsValues := make([]float64, 0)
 	ttftValues := make([]float64, 0)
-	for _, result := range results {
+	outputValues := make([]float64, 0)
+	for _, result := range sourceTimedFingerprintResults(results) {
 		if result.TokensPS > 0 {
 			tpsValues = append(tpsValues, result.TokensPS)
 		}
 		if result.TTFTMs >= 0 {
 			ttftValues = append(ttftValues, float64(result.TTFTMs))
 		}
+		if result.OutputTokens != nil && *result.OutputTokens >= 0 {
+			outputValues = append(outputValues, float64(*result.OutputTokens))
+		}
 	}
 	tpsMedian := medianFloat64(tpsValues)
 	ttftMedian := medianFloat64(ttftValues)
+	outputMedian := medianFloat64(outputValues)
 	return map[string]float64{
 		"tps_bucket_slow":    boolFloat(tpsMedian > 0 && tpsMedian < 20),
 		"tps_bucket_medium":  boolFloat(tpsMedian >= 20 && tpsMedian < 60),
@@ -582,10 +525,28 @@ func aggregateSourceTimingFeatures(results []CheckResult) map[string]float64 {
 		"ttft_bucket_snappy": boolFloat(ttftMedian > 0 && ttftMedian < 500),
 		"ttft_bucket_normal": boolFloat(ttftMedian >= 500 && ttftMedian < 1500),
 		"ttft_bucket_slow":   boolFloat(ttftMedian >= 1500),
+		"out_len_terse":      boolFloat(outputMedian > 0 && outputMedian < 50),
+		"out_len_normal":     boolFloat(outputMedian >= 50 && outputMedian < 200),
+		"out_len_verbose":    boolFloat(outputMedian >= 200),
 		"tps_median_norm":    math.Min(1, tpsMedian/100),
 		"ttft_median_norm":   math.Min(1, ttftMedian/3000),
+		"out_median_norm":    math.Min(1, outputMedian/500),
 		"tps_unstable":       boolFloat(len(tpsValues) >= 3 && varianceFloat64(tpsValues) > 400),
 	}
+}
+
+func sourceTimedFingerprintResults(results []CheckResult) []CheckResult {
+	out := make([]CheckResult, 0, len(results))
+	for _, result := range results {
+		if isCanaryCheck(result.CheckKey) || result.CheckKey == CheckProbeSignatureRoundtrip {
+			continue
+		}
+		if result.TokensPS <= 0 || result.TTFTMs <= 0 {
+			continue
+		}
+		out = append(out, result)
+	}
+	return out
 }
 
 func aggregateSourceTextStructure(texts []string) map[string]float64 {
@@ -718,6 +679,52 @@ func sourceProbeIDForCheckKey(checkKey CheckKey) string {
 		return "comp_py_float"
 	case CheckProbeCompLargeExp:
 		return "comp_large_exp"
+	case CheckProbeTowerHanoi:
+		return "cap_tower_of_hanoi"
+	case CheckProbeLetterCount:
+		return "cap_letter_count"
+	case CheckProbeReverseWords:
+		return "cap_reverse_words"
+	case CheckProbeNeedleTiny:
+		return "cap_needle_tiny"
+	case CheckProbePhotosynthesis:
+		return "verb_explain_photosynthesis"
+	case CheckProbePerfBulkEcho:
+		return "perf_bulk_echo"
+	case CheckProbeTokenZWJ:
+		return "tok_edge_zwj"
+	case CheckProbeSubmodelCutoff:
+		return "submodel_cutoff"
+	case CheckProbeSubmodelCapability:
+		return "submodel_capability"
+	case CheckProbeSubmodelRefusal:
+		return "submodel_refusal"
+	case CheckProbePIFingerprint:
+		return "pi_fingerprint"
+	case CheckProbeRefusalL1:
+		return "v3e_refusal_l1_tame"
+	case CheckProbeRefusalL2:
+		return "v3e_refusal_l2_mild"
+	case CheckProbeRefusalL3:
+		return "v3e_refusal_l3_borderline_a"
+	case CheckProbeRefusalL4:
+		return "v3e_refusal_l4_borderline_b"
+	case CheckProbeRefusalL5:
+		return "v3e_refusal_l5_borderline_c"
+	case CheckProbeRefusalL6:
+		return "v3e_refusal_l6_sensitive"
+	case CheckProbeRefusalL7:
+		return "v3e_refusal_l7_strong"
+	case CheckProbeRefusalL8:
+		return "v3e_refusal_l8_hard"
+	case CheckProbeFmtBullets:
+		return "v3e_fmt_bullets"
+	case CheckProbeFmtExplainDepth:
+		return "v3e_fmt_explain_depth"
+	case CheckProbeFmtCodeLangTag:
+		return "v3e_fmt_code_lang_tag"
+	case CheckProbeUncertaintyEstimate:
+		return "v3e_uncertainty_estimate"
 	default:
 		return ""
 	}
@@ -877,6 +884,16 @@ func mapKeys(values map[string]float64) []string {
 		out = append(out, key)
 	}
 	sort.Strings(out)
+	return out
+}
+
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			out = append(out, value)
+		}
+	}
 	return out
 }
 

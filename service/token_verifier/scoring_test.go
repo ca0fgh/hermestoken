@@ -47,6 +47,31 @@ func TestBuildReportUsesLLMProbeScoreRange(t *testing.T) {
 	}
 }
 
+func TestBuildReportCountsWarningsAsHalfPointWithoutRisk(t *testing.T) {
+	report := BuildReport([]CheckResult{
+		{
+			Provider:  ProviderOpenAI,
+			Group:     probeGroupIntegrity,
+			CheckKey:  CheckProbeSSECompliance,
+			ModelName: "gpt-5.5",
+			Success:   false,
+			Score:     50,
+			ErrorCode: "sse_compliance_warning",
+			Message:   "SSE 合规但存在 choices 缺失的兼容性警告",
+		},
+	})
+
+	if report.ProbeScore != 50 || report.ProbeScoreMax != 50 {
+		t.Fatalf("warning score range = %d-%d, want 50-50", report.ProbeScore, report.ProbeScoreMax)
+	}
+	if len(report.Risks) != 0 {
+		t.Fatalf("warning risks = %#v, want none", report.Risks)
+	}
+	if got := report.Checklist[0].Status; got != "warning" {
+		t.Fatalf("warning checklist status = %q, want warning", got)
+	}
+}
+
 func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 	report := BuildReport([]CheckResult{
 		{
