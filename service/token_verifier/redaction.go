@@ -47,9 +47,6 @@ func redactCheckResults(results []CheckResult, secrets []string) []CheckResult {
 		redacted[i].Provider = redactSecretString(result.Provider, secrets)
 		redacted[i].Group = redactSecretString(result.Group, secrets)
 		redacted[i].ModelName = redactSecretString(result.ModelName, secrets)
-		redacted[i].ClaimedModel = redactSecretString(result.ClaimedModel, secrets)
-		redacted[i].ObservedModel = redactSecretString(result.ObservedModel, secrets)
-		redacted[i].ConsistencyMethod = redactSecretString(result.ConsistencyMethod, secrets)
 		redacted[i].ErrorCode = redactSecretString(result.ErrorCode, secrets)
 		redacted[i].Message = redactSecretString(result.Message, secrets)
 		redacted[i].Raw = redactSecretMap(result.Raw, secrets)
@@ -62,14 +59,10 @@ func redactReportSummary(report ReportSummary, secrets []string) ReportSummary {
 	redacted := report
 	redacted.Conclusion = redactSecretString(report.Conclusion, secrets)
 	redacted.Checklist = redactChecklistItems(report.Checklist, secrets)
-	redacted.Models = redactModelSummaries(report.Models, secrets)
-	redacted.ModelIdentity = redactModelIdentitySummaries(report.ModelIdentity, secrets)
 	redacted.IdentityAssessments = redactIdentityAssessments(report.IdentityAssessments, secrets)
-	redacted.Reproducibility = redactReproducibilitySummaries(report.Reproducibility, secrets)
 	redacted.Risks = redactSecretStrings(report.Risks, secrets)
 	redacted.FinalRating = redactFinalRating(report.FinalRating, secrets)
 	redacted.ScoringVersion = redactSecretString(report.ScoringVersion, secrets)
-	redacted.BaselineSource = redactSecretString(report.BaselineSource, secrets)
 	return redacted
 }
 
@@ -85,62 +78,8 @@ func redactChecklistItems(items []ChecklistItem, secrets []string) []ChecklistIt
 		redacted[i].CheckKey = redactSecretString(item.CheckKey, secrets)
 		redacted[i].CheckName = redactSecretString(item.CheckName, secrets)
 		redacted[i].ModelName = redactSecretString(item.ModelName, secrets)
-		redacted[i].ClaimedModel = redactSecretString(item.ClaimedModel, secrets)
-		redacted[i].ObservedModel = redactSecretString(item.ObservedModel, secrets)
-		redacted[i].ConsistencyMethod = redactSecretString(item.ConsistencyMethod, secrets)
 		redacted[i].Status = redactSecretString(item.Status, secrets)
 		redacted[i].ErrorCode = redactSecretString(item.ErrorCode, secrets)
-		redacted[i].Message = redactSecretString(item.Message, secrets)
-	}
-	return redacted
-}
-
-func redactModelSummaries(models []ModelSummary, secrets []string) []ModelSummary {
-	if len(models) == 0 {
-		return models
-	}
-	redacted := make([]ModelSummary, len(models))
-	for i, model := range models {
-		redacted[i] = model
-		redacted[i].Provider = redactSecretString(model.Provider, secrets)
-		redacted[i].ModelName = redactSecretString(model.ModelName, secrets)
-		redacted[i].Message = redactSecretString(model.Message, secrets)
-		if model.Baseline != nil {
-			baseline := *model.Baseline
-			baseline.Source = redactSecretString(baseline.Source, secrets)
-			baseline.Slug = redactSecretString(baseline.Slug, secrets)
-			baseline.Note = redactSecretString(baseline.Note, secrets)
-			redacted[i].Baseline = &baseline
-		}
-	}
-	return redacted
-}
-
-func redactModelIdentitySummaries(items []ModelIdentitySummary, secrets []string) []ModelIdentitySummary {
-	if len(items) == 0 {
-		return items
-	}
-	redacted := make([]ModelIdentitySummary, len(items))
-	for i, item := range items {
-		redacted[i] = item
-		redacted[i].Provider = redactSecretString(item.Provider, secrets)
-		redacted[i].ClaimedModel = redactSecretString(item.ClaimedModel, secrets)
-		redacted[i].ObservedModel = redactSecretString(item.ObservedModel, secrets)
-		redacted[i].Message = redactSecretString(item.Message, secrets)
-	}
-	return redacted
-}
-
-func redactReproducibilitySummaries(items []ReproducibilitySummary, secrets []string) []ReproducibilitySummary {
-	if len(items) == 0 {
-		return items
-	}
-	redacted := make([]ReproducibilitySummary, len(items))
-	for i, item := range items {
-		redacted[i] = item
-		redacted[i].Provider = redactSecretString(item.Provider, secrets)
-		redacted[i].ModelName = redactSecretString(item.ModelName, secrets)
-		redacted[i].Method = redactSecretString(item.Method, secrets)
 		redacted[i].Message = redactSecretString(item.Message, secrets)
 	}
 	return redacted

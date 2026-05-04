@@ -51,7 +51,7 @@ func TestClassifyPreflightResult(t *testing.T) {
 }
 
 func TestHTTPFailedResultUsesPreflightClassification(t *testing.T) {
-	result := httpFailedResult(CheckModelAccess, "gpt-test", 401, []byte(`{"error":{"message":"bad key"}}`), 42)
+	result := httpFailedResult(CheckProbeInstructionFollow, "gpt-test", 401, []byte(`{"error":{"message":"bad key"}}`), 42)
 
 	if result.ErrorCode != "authentication_failed" {
 		t.Fatalf("error code = %q, want authentication_failed", result.ErrorCode)

@@ -16,7 +16,8 @@ func TestRedactDirectProbeResponseRedactsNestedSecretFields(t *testing.T) {
 		Results: []CheckResult{
 			{
 				Provider:  ProviderOpenAI,
-				CheckKey:  CheckModelAccess,
+				Group:     probeGroupQuality,
+				CheckKey:  CheckProbeInstructionFollow,
 				ModelName: "gpt-5.5",
 				Message:   "upstream echoed " + secret,
 				Raw: map[string]any{
@@ -30,16 +31,50 @@ func TestRedactDirectProbeResponseRedactsNestedSecretFields(t *testing.T) {
 		Report: ReportSummary{
 			Conclusion: "report " + secret,
 			Checklist: []ChecklistItem{
-				{Message: "check " + secret},
+				{
+					Provider:  ProviderOpenAI,
+					CheckKey:  string(CheckProbeInstructionFollow),
+					CheckName: "probe " + secret,
+					ModelName: "gpt-5.5",
+					Message:   "check " + secret,
+				},
 			},
-			Models: []ModelSummary{
-				{Message: "model " + secret},
-			},
-			ModelIdentity: []ModelIdentitySummary{
-				{Message: "identity " + secret},
-			},
-			Reproducibility: []ReproducibilitySummary{
-				{Message: "repro " + secret},
+			IdentityAssessments: []IdentityAssessmentSummary{
+				{
+					Provider:        ProviderOpenAI,
+					ModelName:       "gpt-5.5",
+					ClaimedModel:    "claim " + secret,
+					Status:          "status " + secret,
+					PredictedFamily: "family " + secret,
+					PredictedModel:  "model " + secret,
+					Method:          "method " + secret,
+					Candidates: []IdentityCandidateSummary{
+						{
+							Family:  "candidate-family " + secret,
+							Model:   "candidate-model " + secret,
+							Reasons: []string{"reason " + secret},
+						},
+					},
+					SubmodelAssessments: []SubmodelAssessmentSummary{
+						{
+							Method:      "submethod " + secret,
+							Family:      "subfamily " + secret,
+							ModelID:     "submodel " + secret,
+							DisplayName: "display " + secret,
+							Evidence:    []string{"sub evidence " + secret},
+						},
+					},
+					Verdict: &IdentityVerdictSummary{
+						Status:         "verdict " + secret,
+						TrueFamily:     "true family " + secret,
+						TrueModel:      "true model " + secret,
+						SpoofMethod:    "spoof " + secret,
+						ConfidenceBand: "band " + secret,
+						Reasoning:      []string{"verdict reason " + secret},
+					},
+					RiskFlags: []string{"flag " + secret},
+					Evidence:  []string{"identity evidence " + secret},
+				},
 			},
 			Risks: []string{"risk " + secret},
 			FinalRating: FinalRating{

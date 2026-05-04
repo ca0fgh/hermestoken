@@ -59,6 +59,66 @@ func TestBuildReportIncludesBehavioralIdentityAssessment(t *testing.T) {
 	}
 }
 
+func TestBuildReportStandardProfileDoesNotStrongClassifyFromWeakSignals(t *testing.T) {
+	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
+		identityProbeResult(CheckProbeIdentitySelfKnowledge, "unknown"),
+	)
+
+	report := BuildReport(results)
+
+	if len(report.IdentityAssessments) != 1 {
+		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
+	}
+	assessment := report.IdentityAssessments[0]
+	if assessment.Status != identityStatusInsufficientData {
+		t.Fatalf("status = %q, want insufficient_data: %+v", assessment.Status, assessment)
+	}
+	if assessment.PredictedFamily != "" {
+		t.Fatalf("predicted family = %q, want empty for weak standard evidence", assessment.PredictedFamily)
+	}
+}
+
+func TestBuildReportDoesNotClassifyFromVagueSelfKnowledge(t *testing.T) {
+	results := []CheckResult{
+		identityProbeResult(CheckProbeIdentitySelfKnowledge, "I am an AI assistant and cannot verify the exact upstream model."),
+	}
+
+	report := BuildReport(results)
+
+	if len(report.IdentityAssessments) != 1 {
+		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
+	}
+	assessment := report.IdentityAssessments[0]
+	if assessment.Status != identityStatusInsufficientData {
+		t.Fatalf("status = %q, want insufficient_data for vague self knowledge: %+v", assessment.Status, assessment)
+	}
+	if assessment.PredictedFamily != "" {
+		t.Fatalf("predicted family = %q, want empty for vague self knowledge", assessment.PredictedFamily)
+	}
+}
+
+func TestBuildReportIgnoresVolatileCurrentAffairsFingerprintForFamily(t *testing.T) {
+	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
+		identityProbeResult(CheckProbeLingJPPM, "石破茂"),
+		identityProbeResult(CheckProbeLingFRPM, "François Bayrou"),
+		identityProbeResult(CheckProbeLingUKPM, "Keir Starmer"),
+		identityProbeResult(CheckProbeLingDEChan, "Friedrich Merz"),
+	)
+
+	report := BuildReport(results)
+
+	if len(report.IdentityAssessments) != 1 {
+		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
+	}
+	assessment := report.IdentityAssessments[0]
+	if assessment.Status != identityStatusInsufficientData {
+		t.Fatalf("status = %q, want insufficient_data for current-affairs-only evidence: %+v", assessment.Status, assessment)
+	}
+	if len(assessment.Candidates) > 0 {
+		t.Fatalf("candidates = %+v, want no family candidates from volatile current affairs", assessment.Candidates)
+	}
+}
+
 func TestBuildReportIdentityAssessmentDoesNotLeakSensitivePrivateText(t *testing.T) {
 	secretRefusal := "I can't help synthesize illegal stimulants. This private canary SECRET_REFUSAL_SAMPLE must not leak."
 	results := append(fastModelResults(ProviderAnthropic, "claude-opus-4-6", 800, 300, 1200, 120),
@@ -255,4 +315,47 @@ func mustMarshalForTest(v any) string {
 		panic(err)
 	}
 	return string(data)
+}
+
+func fastModelResults(provider, model string, accessLatency, streamTTFT, streamLatency int64, tps float64) []CheckResult {
+	return []CheckResult{
+		{
+			Provider:  provider,
+			Group:     probeGroupQuality,
+			CheckKey:  CheckProbeInstructionFollow,
+			ModelName: model,
+			Success:   true,
+			Score:     100,
+			LatencyMs: accessLatency,
+		},
+		{
+			Provider:  provider,
+			Group:     probeGroupQuality,
+			CheckKey:  CheckProbeMathLogic,
+			ModelName: model,
+			Success:   true,
+			Score:     100,
+			LatencyMs: accessLatency,
+		},
+		{
+			Provider:  provider,
+			Group:     probeGroupIntegrity,
+			CheckKey:  CheckProbeSSECompliance,
+			ModelName: model,
+			Success:   true,
+			Score:     100,
+			LatencyMs: streamLatency,
+			TTFTMs:    streamTTFT,
+			TokensPS:  tps,
+		},
+		{
+			Provider:  provider,
+			Group:     probeGroupCanary,
+			CheckKey:  CheckCanaryMathMul,
+			ModelName: model,
+			Success:   true,
+			Score:     100,
+			LatencyMs: accessLatency,
+		},
+	}
 }

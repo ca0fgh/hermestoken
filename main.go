@@ -23,7 +23,6 @@ import (
 	"github.com/ca0fgh/hermestoken/router"
 	"github.com/ca0fgh/hermestoken/service"
 	cryptoPayment "github.com/ca0fgh/hermestoken/service/crypto_payment"
-	tokenVerifier "github.com/ca0fgh/hermestoken/service/token_verifier"
 	_ "github.com/ca0fgh/hermestoken/setting/performance_setting"
 	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
 	"github.com/ca0fgh/hermestoken/setting/system_setting"
@@ -119,9 +118,6 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 	cryptoPayment.StartCryptoPaymentScanners()
-
-	// Artificial Analysis baseline auto-refresh (no-op when AA_API_KEY unset)
-	tokenVerifier.StartAABaselineAutoRefreshTask()
 
 	// Wire task polling adaptor factory (breaks service -> relay import cycle)
 	service.GetTaskAdaptorFunc = func(platform constant.TaskPlatform) service.TaskPollingAdaptor {

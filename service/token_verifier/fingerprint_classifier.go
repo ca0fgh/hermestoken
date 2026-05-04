@@ -52,6 +52,38 @@ func (signal *sourceFamilySignal) UnmarshalJSON(data []byte) error {
 
 type sourceFingerprintFeatures map[string]map[string]float64
 
+const sourceFamilyMinEvidenceWeight = 1.0
+const sourceFamilyMinPositiveEvidenceWeight = 1.0
+
+var unstableSourceFamilySignals = map[string]map[string]bool{
+	"linguisticFingerprint": {
+		"de_chan_merz":        true,
+		"de_chan_scholz":      true,
+		"fr_pm_barnier":       true,
+		"fr_pm_bayrou":        true,
+		"fr_pm_old":           true,
+		"jp_pm_ishiba":        true,
+		"jp_pm_kishida":       true,
+		"jp_pm_old":           true,
+		"jp_pm_recent":        true,
+		"kr_knows_crisis":     true,
+		"uk_pm_starmer":       true,
+		"uk_pm_sunak":         true,
+		"overall_instability": true,
+		"overall_stability":   true,
+	},
+	"subModelSignals": {
+		"tps_bucket_slow":    true,
+		"tps_fast":           true,
+		"tps_slow":           true,
+		"tps_unstable":       true,
+		"ttft_bucket_slow":   true,
+		"ttft_bucket_snappy": true,
+		"ttft_fast":          true,
+		"ttft_median_norm":   true,
+	},
+}
+
 var (
 	sourceFamilyBaselinesOnce sync.Once
 	sourceFamilyBaselines     []sourceFamilyBaseline
@@ -72,20 +104,31 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 		family      string
 		displayName string
 		logOdds     float64
+		evidence    float64
+		positive    float64
 		reasons     []string
 	}
 	logScores := make([]familyLogScore, 0, len(baselines))
-	observed := false
+	maxEvidence := 0.0
+	maxPositiveEvidence := 0.0
 	for _, baseline := range baselines {
 		logOdds := 0.0
+		evidence := 0.0
+		positive := 0.0
 		reasons := make([]string, 0)
 		for _, signal := range baseline.Signals {
+			if isUnstableSourceFamilySignal(signal) {
+				continue
+			}
 			value := features.value(signal.Category, signal.Key)
 			if value == 0 {
 				continue
 			}
-			observed = true
 			logOdds += signal.Weight * value
+			evidence += math.Abs(signal.Weight) * math.Abs(value)
+			if signal.Weight > 0 {
+				positive += signal.Weight * math.Abs(value)
+			}
 			label := strings.ReplaceAll(signal.Key, "_", " ")
 			if signal.Weight > 0 {
 				reasons = append(reasons, label+" detected (+"+formatFloat1(signal.Weight)+")")
@@ -93,9 +136,15 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 				reasons = append(reasons, label+" contradicts "+baseline.Family+" ("+formatFloat1(signal.Weight)+")")
 			}
 		}
-		logScores = append(logScores, familyLogScore{family: baseline.Family, displayName: baseline.DisplayName, logOdds: logOdds, reasons: reasons})
+		if evidence > maxEvidence {
+			maxEvidence = evidence
+		}
+		if positive > maxPositiveEvidence {
+			maxPositiveEvidence = positive
+		}
+		logScores = append(logScores, familyLogScore{family: baseline.Family, displayName: baseline.DisplayName, logOdds: logOdds, evidence: evidence, positive: positive, reasons: reasons})
 	}
-	if !observed {
+	if maxEvidence < sourceFamilyMinEvidenceWeight || maxPositiveEvidence < sourceFamilyMinPositiveEvidenceWeight {
 		return nil
 	}
 	maxLogOdds := 0.0
@@ -123,6 +172,9 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 	})
 	out := make([]IdentityCandidateSummary, 0, 3)
 	for _, score := range logScores {
+		if score.positive < sourceFamilyMinPositiveEvidenceWeight {
+			continue
+		}
 		normalized := math.Exp(score.logOdds-maxLogOdds) / total
 		out = append(out, IdentityCandidateSummary{
 			Family:  score.family,
@@ -135,6 +187,11 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 		}
 	}
 	return out
+}
+
+func isUnstableSourceFamilySignal(signal sourceFamilySignal) bool {
+	return unstableSourceFamilySignals[signal.Category] != nil &&
+		unstableSourceFamilySignals[signal.Category][signal.Key]
 }
 
 func loadSourceFamilyBaselines() []sourceFamilyBaseline {
@@ -178,7 +235,6 @@ func extractSourceFingerprintFeatures(results []CheckResult, responses map[Check
 
 func extractSourceSelfClaim(responses map[string]string) map[string]float64 {
 	selfText := strings.ToLower(responses["identity_self_knowledge"])
-	known := []string{"claude", "anthropic", "chatgpt", "gpt", "openai", "qwen", "通义", "gemini", "llama", "mistral", "deepseek", "kiro", "amazon q"}
 	return map[string]float64{
 		"claude":   boolFloat(sourceHas(selfText, "claude", "anthropic")),
 		"openai":   boolFloat(sourceHas(selfText, "chatgpt", "gpt-4", "gpt-3", "openai")),
@@ -188,7 +244,7 @@ func extractSourceSelfClaim(responses map[string]string) map[string]float64 {
 		"mistral":  boolFloat(strings.Contains(selfText, "mistral")),
 		"deepseek": boolFloat(strings.Contains(selfText, "deepseek")),
 		"kiro":     boolFloat(sourceHas(selfText, "kiro", "amazon q developer", "kiro-cli")),
-		"vague":    boolFloat(selfText != "" && !sourceHas(selfText, known...)),
+		"zhipu":    boolFloat(sourceHas(selfText, "zhipu", "glm", "智谱")),
 	}
 }
 
@@ -638,7 +694,7 @@ func sourceProbeIDForCheckKey(checkKey CheckKey) string {
 		return "tok_count_num"
 	case CheckProbeTokenSplitWord:
 		return "tok_split_word"
-	case CheckProbeTokenSelfKnowledge, CheckProbeTokenizerAware:
+	case CheckProbeTokenSelfKnowledge:
 		return "tok_self_knowledge"
 	case CheckProbeCodeReverseList:
 		return "code_reverse_list"

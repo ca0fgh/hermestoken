@@ -56,16 +56,6 @@ const providerModelPresets = {
   anthropic: ['claude-opus-4-7', 'claude-opus-4-6'],
 };
 
-const dimensionLabels = {
-  availability: '基础可用性',
-  model_access: '模型访问',
-  model_identity: '身份一致性',
-  stability: '稳定性',
-  performance: '性能',
-  stream: '流式',
-  json: 'JSON',
-};
-
 const groupLabels = {
   core: '基础检测',
   quality: '质量探针',
@@ -121,15 +111,33 @@ function formatMetric(value, suffix = '') {
 }
 
 function reportFinalRating(report) {
-  return (
-    report?.final_rating || {
-      score: report?.score || 0,
-      grade: report?.grade || '',
-      conclusion: report?.conclusion || '',
-      risks: report?.risks || [],
-      dimensions: report?.dimensions || {},
-    }
+  const rating = report?.final_rating || {};
+  const score = Number(
+    rating.probe_score ?? report?.probe_score ?? rating.score ?? report?.score ?? 0,
   );
+  const scoreMax = Number(
+    rating.probe_score_max ??
+      report?.probe_score_max ??
+      rating.score_max ??
+      report?.score_max ??
+      rating.scoreMax ??
+      report?.scoreMax ??
+      score,
+  );
+
+  return {
+    score: Number.isFinite(score) ? score : 0,
+    scoreMax: Number.isFinite(scoreMax) ? scoreMax : score,
+    conclusion: rating.conclusion || report?.conclusion || '',
+    risks: rating.risks || report?.risks || [],
+  };
+}
+
+function formatProbeScore(rating) {
+  if (rating.scoreMax !== rating.score) {
+    return `${rating.score}-${rating.scoreMax}`;
+  }
+  return String(rating.score);
 }
 
 function TokenVerification() {
@@ -255,17 +263,6 @@ function TokenVerification() {
       render: (name, record) => name || record.check_key,
     },
     {
-      title: t('协议'),
-      dataIndex: 'provider',
-      width: 96,
-      render: (value) => value || '-',
-    },
-    {
-      title: t('模型'),
-      dataIndex: 'model_name',
-      render: (value) => value || '-',
-    },
-    {
       title: t('结果'),
       dataIndex: 'status',
       width: 96,
@@ -301,46 +298,6 @@ function TokenVerification() {
       title: t('说明'),
       dataIndex: 'message',
       render: (value) => value || '-',
-    },
-  ];
-
-  const modelColumns = [
-    {
-      title: t('协议'),
-      dataIndex: 'provider',
-      width: 96,
-    },
-    {
-      title: t('模型'),
-      dataIndex: 'model_name',
-    },
-    {
-      title: t('可用'),
-      dataIndex: 'available',
-      width: 90,
-      render: (available) => (
-        <Tag color={available ? 'green' : 'red'}>
-          {available ? t('可用') : t('不可用')}
-        </Tag>
-      ),
-    },
-    {
-      title: t('延迟'),
-      dataIndex: 'latency_ms',
-      width: 90,
-      render: (value) => formatMetric(value, 'ms'),
-    },
-    {
-      title: t('首字节'),
-      dataIndex: 'stream_ttft_ms',
-      width: 90,
-      render: (value) => formatMetric(value, 'ms'),
-    },
-    {
-      title: t('速度'),
-      dataIndex: 'stream_tokens_ps',
-      width: 110,
-      render: (value) => formatMetric(value, ' t/s'),
     },
   ];
 
@@ -433,33 +390,24 @@ function TokenVerification() {
     if (!selectedReport) {
       return (
         <Empty
-          title={t('暂无检测详情')}
-          description={t('输入 URL、API Key 和模型后开始检测')}
+          title={t('暂无探针报告')}
+          description={t('填写目标后开始运行探针套件')}
         />
       );
     }
 
     const rating = reportFinalRating(selectedReport);
-    const metrics = selectedReport.metrics || {};
     const risks = rating.risks || selectedReport.risks || [];
-    const dimensions = rating.dimensions || selectedReport.dimensions || {};
     const identityAssessments = selectedReport.identity_assessments || [];
-    const checklistGroupCounts = checklistItems.reduce((counts, item) => {
-      const key = item.group || 'core';
-      return {
-        ...counts,
-        [key]: (counts[key] || 0) + 1,
-      };
-    }, {});
 
     return (
       <div className='token-verification-report'>
         <div className='token-verification-score'>
           <div>
-            <Text type='secondary'>{t('综合评分')}</Text>
+            <Text type='secondary'>{t('探针评分')}</Text>
             <div className='token-verification-score__value'>
-              {rating.score || 0}
-              <span>{rating.grade || '-'}</span>
+              {formatProbeScore(rating)}
+              <span>/100</span>
             </div>
           </div>
           <Text>{rating.conclusion || selectedReport.conclusion || '-'}</Text>
@@ -483,39 +431,6 @@ function TokenVerification() {
           <Text type='secondary'>{selectedTarget.baseURL}</Text>
         </div>
 
-        <div className='token-verification-metrics'>
-          <div>
-            <Text type='secondary'>{t('平均延迟')}</Text>
-            <strong>{formatMetric(metrics.avg_latency_ms, 'ms')}</strong>
-          </div>
-          <div>
-            <Text type='secondary'>{t('平均首字节')}</Text>
-            <strong>{formatMetric(metrics.avg_ttft_ms, 'ms')}</strong>
-          </div>
-          <div>
-            <Text type='secondary'>{t('平均输出速度')}</Text>
-            <strong>
-              {formatMetric(metrics.avg_tokens_per_second, ' t/s')}
-            </strong>
-          </div>
-        </div>
-
-        <div className='token-verification-dimensions'>
-          {Object.entries(dimensions).map(([key, value]) => (
-            <Tag key={key} color='blue'>
-              {t(dimensionLabels[key] || key)} {value}
-            </Tag>
-          ))}
-        </div>
-
-        <div className='token-verification-dimensions'>
-          {Object.entries(checklistGroupCounts).map(([key, value]) => (
-            <Tag key={key} color='light-blue'>
-              {t(groupLabels[key] || key)} {value}
-            </Tag>
-          ))}
-        </div>
-
         {risks.length > 0 && (
           <div className='token-verification-alert token-verification-alert--warn'>
             <Text strong>{t('风险提示')}</Text>
@@ -526,17 +441,6 @@ function TokenVerification() {
             ))}
           </div>
         )}
-
-        <div className='token-verification-section'>
-          <Title heading={5}>{t('模型可用性')}</Title>
-          <Table
-            size='small'
-            columns={modelColumns}
-            dataSource={selectedReport.models || []}
-            pagination={false}
-            rowKey={(record) => `${record.provider}:${record.model_name}`}
-          />
-        </div>
 
         {identityAssessments.length > 0 && (
           <div className='token-verification-section'>
@@ -554,7 +458,7 @@ function TokenVerification() {
         )}
 
         <div className='token-verification-section'>
-          <Title heading={5}>{t('检测清单')}</Title>
+          <Title heading={5}>{t('探针清单')}</Title>
           <Table
             size='small'
             columns={checklistColumns}
@@ -574,10 +478,10 @@ function TokenVerification() {
       <div className='token-verification-page__inner'>
         <div className='token-verification-header'>
           <div>
-            <Title heading={3}>{t('Token 质量检测')}</Title>
+            <Title heading={3}>{t('LLM 探针检测')}</Title>
             <Text type='secondary'>
               {t(
-                '输入 API Base URL、API Key 和模型，发起真实请求并生成质量报告。',
+                '基于 LLMprobe-engine 探针套件发起真实请求，生成身份、完整性与安全检测报告。',
               )}
             </Text>
           </div>
@@ -594,7 +498,7 @@ function TokenVerification() {
         <div className='token-verification-grid'>
           <Card
             className='token-verification-panel'
-            title={t('创建检测任务')}
+            title={t('检测配置')}
             headerExtraContent={
               <Button
                 type='primary'
@@ -674,7 +578,7 @@ function TokenVerification() {
             </div>
           </Card>
 
-          <Card className='token-verification-panel' title={t('检测详情')}>
+          <Card className='token-verification-panel' title={t('探针报告')}>
             {renderReport()}
           </Card>
         </div>

@@ -52,7 +52,7 @@ func buildIdentityAssessmentsWithOptions(ctx context.Context, results []CheckRes
 		if len(responses) == 0 {
 			continue
 		}
-		claimedModel := identityClaimedModel(key.model, groupResults)
+		claimedModel := identityClaimedModel(key.model)
 		claimedFamily := claimedModelToIdentityFamily(claimedModel)
 		behavioralCandidates := sourceBehavioralIdentityCandidates(groupResults, responses)
 		if len(behavioralCandidates) == 0 {
@@ -164,12 +164,7 @@ func identityResponseText(result CheckResult) string {
 	return ""
 }
 
-func identityClaimedModel(fallback string, results []CheckResult) string {
-	for _, result := range results {
-		if result.CheckKey == CheckModelIdentity && strings.TrimSpace(result.ClaimedModel) != "" {
-			return strings.TrimSpace(result.ClaimedModel)
-		}
-	}
+func identityClaimedModel(fallback string) string {
 	return strings.TrimSpace(fallback)
 }
 
@@ -829,9 +824,7 @@ func firstNonEmptyString(values ...string) string {
 
 func isIdentityFeatureCheck(checkKey CheckKey) bool {
 	switch checkKey {
-	case CheckProbeIdentitySelfClaim,
-		CheckProbeTokenizerAware,
-		CheckProbeIdentityStyleEN,
+	case CheckProbeIdentityStyleEN,
 		CheckProbeIdentityStyleZHTW,
 		CheckProbeIdentityReasoningShape,
 		CheckProbeIdentitySelfKnowledge,

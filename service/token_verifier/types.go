@@ -6,29 +6,17 @@ const (
 	ProviderOpenAI    = "openai"
 	ProviderAnthropic = "anthropic"
 
-	CheckAvailability    CheckKey = "availability"
-	CheckModelAccess     CheckKey = "model_access"
-	CheckStream          CheckKey = "stream_support"
-	CheckJSON            CheckKey = "json_stability"
-	CheckModelsList      CheckKey = "models_list"
-	CheckModelIdentity   CheckKey = "model_identity"
-	CheckReproducibility CheckKey = "reproducibility"
-
 	CheckProbeInstructionFollow       CheckKey = "probe_instruction_follow"
 	CheckProbeMathLogic               CheckKey = "probe_math_logic"
 	CheckProbeJSONOutput              CheckKey = "probe_json_output"
 	CheckProbeSymbolExact             CheckKey = "probe_symbol_exact"
-	CheckProbeQuotedInstruction       CheckKey = "probe_quoted_instruction"
 	CheckProbeHallucination           CheckKey = "probe_hallucination"
 	CheckProbeInfraLeak               CheckKey = "probe_infra_leak"
-	CheckProbeRefusalBoundary         CheckKey = "probe_refusal_boundary"
-	CheckProbeIdentitySelfClaim       CheckKey = "probe_identity_self_claim"
 	CheckProbeTokenInflation          CheckKey = "probe_token_inflation"
 	CheckProbeResponseAugment         CheckKey = "probe_response_augmentation"
 	CheckProbeChannelSignature        CheckKey = "probe_channel_signature"
 	CheckProbeSignatureRoundtrip      CheckKey = "probe_signature_roundtrip"
 	CheckProbeSSECompliance           CheckKey = "probe_sse_compliance"
-	CheckProbeContextRecall           CheckKey = "probe_context_recall"
 	CheckProbeURLExfiltration         CheckKey = "probe_url_exfiltration"
 	CheckProbeMarkdownExfil           CheckKey = "probe_markdown_exfiltration"
 	CheckProbeCodeInjection           CheckKey = "probe_code_injection"
@@ -38,7 +26,6 @@ const (
 	CheckProbeShellChain              CheckKey = "probe_shell_chain"
 	CheckProbeNeedleTiny              CheckKey = "probe_needle_tiny"
 	CheckProbeLetterCount             CheckKey = "probe_letter_count"
-	CheckProbeTokenizerAware          CheckKey = "probe_tokenizer_awareness"
 	CheckProbeZHReasoning             CheckKey = "probe_zh_reasoning"
 	CheckProbeCodeGeneration          CheckKey = "probe_code_generation"
 	CheckProbeENReasoning             CheckKey = "probe_en_reasoning"
@@ -123,26 +110,11 @@ const (
 	CheckCanaryRecallMoonYear CheckKey = "canary_recall_moon_year"
 )
 
-// Consistency method labels for CheckReproducibility results.
-const (
-	ConsistencyMethodSystemFingerprint        = "system_fingerprint"
-	ConsistencyMethodSystemFingerprintChanged = "system_fingerprint_changed"
-	ConsistencyMethodContentHash              = "content_hash"
-	ConsistencyMethodContentDiverged          = "content_diverged"
-	ConsistencyMethodInsufficientData         = "insufficient_data"
-)
-
 type CheckResult struct {
 	Provider            string         `json:"provider"`
 	Group               string         `json:"group,omitempty"`
 	CheckKey            CheckKey       `json:"check_key"`
 	ModelName           string         `json:"model_name,omitempty"`
-	ClaimedModel        string         `json:"claimed_model,omitempty"`
-	ObservedModel       string         `json:"observed_model,omitempty"`
-	IdentityConfidence  int            `json:"identity_confidence,omitempty"`
-	SuspectedDowngrade  bool           `json:"suspected_downgrade,omitempty"`
-	Consistent          bool           `json:"consistent,omitempty"`
-	ConsistencyMethod   string         `json:"consistency_method,omitempty"`
 	Neutral             bool           `json:"neutral,omitempty"`
 	Skipped             bool           `json:"skipped,omitempty"`
 	Success             bool           `json:"success"`
@@ -156,74 +128,22 @@ type CheckResult struct {
 	PrivateResponseText string         `json:"-"`
 }
 
-type ModelSummary struct {
-	Provider       string            `json:"provider"`
-	ModelName      string            `json:"model_name"`
-	Available      bool              `json:"available"`
-	LatencyMs      int64             `json:"latency_ms,omitempty"`
-	StreamTTFTMs   int64             `json:"stream_ttft_ms,omitempty"`
-	StreamTokensPS float64           `json:"stream_tokens_ps,omitempty"`
-	Message        string            `json:"message,omitempty"`
-	Baseline       *ModelBaselineRef `json:"baseline,omitempty"`
-}
-
-// ModelBaselineRef captures comparison against an external public baseline (Artificial Analysis P50).
-// TTFTRatio = measured_ttft / baseline_ttft (lower is better).
-// TPSRatio  = measured_tps  / baseline_tps  (higher is better).
-type ModelBaselineRef struct {
-	Source         string  `json:"source"`
-	Slug           string  `json:"slug,omitempty"`
-	BaselineTTFTMs int64   `json:"baseline_ttft_ms"`
-	BaselineTPS    float64 `json:"baseline_tokens_ps"`
-	TTFTRatio      float64 `json:"ttft_ratio,omitempty"`
-	TPSRatio       float64 `json:"tps_ratio,omitempty"`
-	Note           string  `json:"note,omitempty"`
-}
-
 type ChecklistItem struct {
-	Provider           string  `json:"provider"`
-	Group              string  `json:"group,omitempty"`
-	CheckKey           string  `json:"check_key"`
-	CheckName          string  `json:"check_name"`
-	ModelName          string  `json:"model_name,omitempty"`
-	ClaimedModel       string  `json:"claimed_model,omitempty"`
-	ObservedModel      string  `json:"observed_model,omitempty"`
-	IdentityConfidence int     `json:"identity_confidence,omitempty"`
-	SuspectedDowngrade bool    `json:"suspected_downgrade,omitempty"`
-	Consistent         bool    `json:"consistent,omitempty"`
-	ConsistencyMethod  string  `json:"consistency_method,omitempty"`
-	Neutral            bool    `json:"neutral,omitempty"`
-	Skipped            bool    `json:"skipped,omitempty"`
-	Passed             bool    `json:"passed"`
-	Status             string  `json:"status"`
-	Score              int     `json:"score"`
-	LatencyMs          int64   `json:"latency_ms,omitempty"`
-	TTFTMs             int64   `json:"ttft_ms,omitempty"`
-	TokensPS           float64 `json:"tokens_ps,omitempty"`
-	ErrorCode          string  `json:"error_code,omitempty"`
-	Message            string  `json:"message,omitempty"`
-}
-
-type ModelIdentitySummary struct {
-	Provider           string `json:"provider"`
-	ClaimedModel       string `json:"claimed_model"`
-	ObservedModel      string `json:"observed_model,omitempty"`
-	IdentityConfidence int    `json:"identity_confidence"`
-	SuspectedDowngrade bool   `json:"suspected_downgrade"`
-	Message            string `json:"message,omitempty"`
-}
-
-// ReproducibilitySummary captures whether two identical seeded probes returned
-// the same response (preferred via system_fingerprint, fallback via content hash).
-// Skipped is true on providers without seed support (e.g. Anthropic) — in that
-// case the result is informational and excluded from stability scoring.
-type ReproducibilitySummary struct {
-	Provider   string `json:"provider"`
-	ModelName  string `json:"model_name"`
-	Consistent bool   `json:"consistent"`
-	Method     string `json:"method,omitempty"`
-	Skipped    bool   `json:"skipped"`
-	Message    string `json:"message,omitempty"`
+	Provider  string  `json:"provider"`
+	Group     string  `json:"group,omitempty"`
+	CheckKey  string  `json:"check_key"`
+	CheckName string  `json:"check_name"`
+	ModelName string  `json:"model_name,omitempty"`
+	Neutral   bool    `json:"neutral,omitempty"`
+	Skipped   bool    `json:"skipped,omitempty"`
+	Passed    bool    `json:"passed"`
+	Status    string  `json:"status"`
+	Score     int     `json:"score"`
+	LatencyMs int64   `json:"latency_ms,omitempty"`
+	TTFTMs    int64   `json:"ttft_ms,omitempty"`
+	TokensPS  float64 `json:"tokens_ps,omitempty"`
+	ErrorCode string  `json:"error_code,omitempty"`
+	Message   string  `json:"message,omitempty"`
 }
 
 type IdentityCandidateSummary struct {
@@ -270,28 +190,25 @@ type IdentityAssessmentSummary struct {
 }
 
 type FinalRating struct {
-	Score      int            `json:"score"`
-	Grade      string         `json:"grade"`
-	Conclusion string         `json:"conclusion"`
-	Dimensions map[string]int `json:"dimensions"`
-	Risks      []string       `json:"risks"`
+	Score         int      `json:"score"`
+	Grade         string   `json:"grade"`
+	Conclusion    string   `json:"conclusion"`
+	Risks         []string `json:"risks"`
+	ProbeScore    int      `json:"probe_score"`
+	ProbeScoreMax int      `json:"probe_score_max"`
 }
 
 type ReportSummary struct {
 	Score               int                         `json:"score"`
 	Grade               string                      `json:"grade"`
 	Conclusion          string                      `json:"conclusion"`
-	Dimensions          map[string]int              `json:"dimensions"`
 	Checklist           []ChecklistItem             `json:"checklist"`
-	Models              []ModelSummary              `json:"models"`
-	ModelIdentity       []ModelIdentitySummary      `json:"model_identity"`
 	IdentityAssessments []IdentityAssessmentSummary `json:"identity_assessments,omitempty"`
-	Reproducibility     []ReproducibilitySummary    `json:"reproducibility"`
-	Metrics             map[string]float64          `json:"metrics"`
 	Risks               []string                    `json:"risks"`
 	FinalRating         FinalRating                 `json:"final_rating"`
 	ScoringVersion      string                      `json:"scoring_version"`
-	BaselineSource      string                      `json:"baseline_source"`
+	ProbeScore          int                         `json:"probe_score"`
+	ProbeScoreMax       int                         `json:"probe_score_max"`
 }
 
 type DirectProbeRequest struct {

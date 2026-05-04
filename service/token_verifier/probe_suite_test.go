@@ -84,9 +84,7 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 	for _, key := range []CheckKey{
 		CheckProbeResponseAugment,
 		CheckProbeURLExfiltration,
-		CheckProbeContextRecall,
 		CheckProbeNeedleTiny,
-		CheckProbeTokenizerAware,
 	} {
 		if standardKeys[key] {
 			t.Fatalf("standard suite unexpectedly included %s", key)
@@ -106,10 +104,8 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		CheckProbeNPMRegistry,
 		CheckProbePipIndex,
 		CheckProbeShellChain,
-		CheckProbeContextRecall,
 		CheckProbeNeedleTiny,
 		CheckProbeLetterCount,
-		CheckProbeTokenizerAware,
 	} {
 		if !deepKeys[key] {
 			t.Fatalf("deep suite missing %s", key)
@@ -143,11 +139,9 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 
 func TestFullProbeSuiteCoversLLMProbeEngineProbeIDs(t *testing.T) {
 	fullKeys := make(map[CheckKey]bool)
-	for _, probe := range verifierProbeSuite(ProbeProfileFull) {
+	for _, probe := range directProbeSuiteDefinitions(ProbeProfileFull) {
 		fullKeys[probe.Key] = true
 	}
-	fullKeys[CheckProbeChannelSignature] = true
-	fullKeys[CheckProbeSSECompliance] = true
 
 	sourceProbeMap := map[string]CheckKey{
 		"zh_reasoning":                CheckProbeZHReasoning,
@@ -247,6 +241,18 @@ func TestFullProbeSuiteCoversLLMProbeEngineProbeIDs(t *testing.T) {
 			t.Fatalf("full suite missing source probe %s mapped to %s", sourceID, checkKey)
 		}
 	}
+
+	allowedKeys := make(map[CheckKey]bool, len(sourceProbeMap)+1)
+	for _, checkKey := range sourceProbeMap {
+		allowedKeys[checkKey] = true
+	}
+	allowedKeys[CheckProbeSignatureRoundtrip] = true
+	for checkKey := range fullKeys {
+		if allowedKeys[checkKey] || isCanaryCheck(checkKey) {
+			continue
+		}
+		t.Fatalf("full suite includes non-LLMprobe probe key %s", checkKey)
+	}
 }
 
 func TestFullProbeSuiteCoversLLMProbeEngineCanaryBench(t *testing.T) {
@@ -311,20 +317,19 @@ func TestRunnerIncludesLLMProbeSuite(t *testing.T) {
 	}
 	results := runner.runProbeSuite(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test")
 
-	if len(results) < 8 {
-		t.Fatalf("probe result count = %d, want expanded LLM probe suite", len(results))
+	if expected := len(verifierProbeSuite(ProbeProfileStandard)); len(results) != expected {
+		t.Fatalf("probe result count = %d, want standard LLMprobe suite count %d", len(results), expected)
 	}
 	required := map[CheckKey]bool{
 		CheckProbeInstructionFollow: false,
 		CheckProbeInfraLeak:         false,
 		CheckProbeTokenInflation:    false,
-		CheckProbeIdentitySelfClaim: false,
 	}
 	for _, result := range results {
 		if _, ok := required[result.CheckKey]; ok {
 			required[result.CheckKey] = true
 		}
-		if result.CheckKey != CheckProbeIdentitySelfClaim && result.Skipped {
+		if result.Skipped {
 			t.Fatalf("%s unexpectedly skipped: %+v", result.CheckKey, result)
 		}
 	}

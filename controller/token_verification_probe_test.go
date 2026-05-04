@@ -120,7 +120,7 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 			Results: []tokenverifier.CheckResult{
 				{
 					Provider:  input.Provider,
-					CheckKey:  tokenverifier.CheckAvailability,
+					CheckKey:  tokenverifier.CheckProbeInstructionFollow,
 					ModelName: input.Model,
 					Success:   true,
 					Score:     100,

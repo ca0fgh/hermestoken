@@ -137,7 +137,7 @@ export default function SettingsHeaderNavModules(props) {
     {
       key: 'verification',
       title: t('检测'),
-      description: t('控制是否显示 Token 质量检测入口'),
+      description: t('控制是否显示 LLM 探针检测入口'),
     },
     {
       key: 'console',
