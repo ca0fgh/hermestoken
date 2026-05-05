@@ -130,6 +130,15 @@ type CheckResult struct {
 	PrivateResponseText string         `json:"-"`
 }
 
+type BaselineMap map[string]string
+
+type ProbeJudgeConfig struct {
+	BaseURL   string
+	APIKey    string
+	ModelID   string
+	Threshold int
+}
+
 type ChecklistItem struct {
 	Provider     string  `json:"provider"`
 	Group        string  `json:"group,omitempty"`

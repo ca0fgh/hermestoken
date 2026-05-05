@@ -229,6 +229,243 @@ func TestNeutralFeatureExtractScoringDoesNotAddGoOnlyValidation(t *testing.T) {
 	}
 }
 
+func TestParseProbeJudgeScoreMatchesLLMProbeRunnerSemantics(t *testing.T) {
+	cases := []struct {
+		name   string
+		raw    string
+		score  int
+		reason string
+	}{
+		{
+			name:   "raw json",
+			raw:    `{"score":7,"reason":"similar"}`,
+			score:  7,
+			reason: "similar",
+		},
+		{
+			name:   "fenced json",
+			raw:    "```json\n{\"score\":\"8.4\",\"reason\":\"near match\"}\n```",
+			score:  8,
+			reason: "near match",
+		},
+		{
+			name:   "braced json inside prose",
+			raw:    `result follows: {"score":6.6,"reason":"some drift"} thanks`,
+			score:  7,
+			reason: "some drift",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scored := parseProbeJudgeScore(tc.raw)
+			if scored == nil {
+				t.Fatalf("parseProbeJudgeScore(%q) = nil", tc.raw)
+			}
+			if scored.Score != tc.score || scored.Reason != tc.reason {
+				t.Fatalf("score = %+v, want score=%d reason=%q", scored, tc.score, tc.reason)
+			}
+		})
+	}
+
+	for _, raw := range []string{`{"score":0,"reason":"bad"}`, `{"score":11,"reason":"bad"}`, "not json"} {
+		if scored := parseProbeJudgeScore(raw); scored != nil {
+			t.Fatalf("parseProbeJudgeScore(%q) = %+v, want nil", raw, scored)
+		}
+	}
+}
+
+func TestRunProbeJudgeWithBaselineMatchesLLMProbeRunnerRequest(t *testing.T) {
+	const judgeKey = "judge-secret-token"
+	var sawJudgeRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		sawJudgeRequest = true
+		if got := r.Header.Get("Authorization"); got != "Bearer "+judgeKey {
+			t.Fatalf("Authorization = %q, want bearer judge key", got)
+		}
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if payload["model"] != "judge-model" || payload["stream"] != false || payload["max_tokens"] != float64(256) || payload["temperature"] != float64(0) {
+			t.Fatalf("judge payload drifted: %+v", payload)
+		}
+		messages, ok := payload["messages"].([]any)
+		if !ok || len(messages) != 2 {
+			t.Fatalf("judge messages = %#v, want system+user", payload["messages"])
+		}
+		system, _ := messages[0].(map[string]any)
+		if system["role"] != "system" || !strings.Contains(system["content"].(string), "strict JSON-only evaluator") {
+			t.Fatalf("judge system message drifted: %#v", system)
+		}
+		user, _ := messages[1].(map[string]any)
+		prompt, _ := user["content"].(string)
+		for _, want := range []string{
+			`Original probe question: "Explain the difference between concurrency and parallelism`,
+			"Baseline response (from official API):\nbaseline answer",
+			"Candidate response (under test):\ncandidate answer",
+			`Respond ONLY with valid JSON: {"score": <number 1-10>, "reason": "<one sentence>"}`,
+		} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("judge prompt missing %q:\n%s", want, prompt)
+			}
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": "```json\n{\"score\":8.2,\"reason\":\"near match\"}\n```"}},
+			},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	judged := runProbeJudgeWithBaseline(context.Background(), NewCurlExecutor(time.Second), ProbeJudgeConfig{
+		BaseURL:   server.URL + "/",
+		APIKey:    judgeKey,
+		ModelID:   "judge-model",
+		Threshold: 8,
+	}, verifierProbe{
+		Key:       CheckProbeENReasoning,
+		Prompt:    "Explain the difference between concurrency and parallelism in one paragraph with a real-world analogy.",
+		MaxTokens: 1024,
+	}, "candidate answer", "baseline answer")
+	if !sawJudgeRequest {
+		t.Fatal("judge endpoint was not called")
+	}
+	if judged.Passed == nil || !*judged.Passed {
+		t.Fatalf("judge result = %+v, want pass", judged)
+	}
+	if judged.Reason != "Similarity score: 8/10 (threshold: 8) — near match" {
+		t.Fatalf("judge reason = %q, want LLMprobe reason format", judged.Reason)
+	}
+}
+
+func TestRunVerifierProbeScoresReviewOnlyWithConfiguredJudgeBaseline(t *testing.T) {
+	const judgeKey = "judge-secret-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			responseBytes, _ := common.Marshal(map[string]any{
+				"id":     "chatcmpl-test",
+				"object": "chat.completion",
+				"model":  "gpt-test",
+				"choices": []map[string]any{
+					{"message": map[string]any{"content": "candidate hallucination answer"}},
+				},
+				"usage": map[string]any{"prompt_tokens": 32, "completion_tokens": 4},
+			})
+			_, _ = w.Write(responseBytes)
+		case "/chat/completions":
+			responseBytes, _ := common.Marshal(map[string]any{
+				"choices": []map[string]any{
+					{"message": map[string]any{"content": `{"score":6,"reason":"different capability level ` + judgeKey + `"}`}},
+				},
+			})
+			_, _ = w.Write(responseBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	runner := Runner{
+		BaseURL: server.URL,
+		Token:   "test-token",
+		ProbeJudge: &ProbeJudgeConfig{
+			BaseURL:   server.URL,
+			APIKey:    judgeKey,
+			ModelID:   "judge-model",
+			Threshold: 7,
+		},
+		ProbeBaseline: BaselineMap{
+			"hallucination": "baseline answer",
+		},
+		Executor: NewCurlExecutor(time.Second),
+	}
+	result := runner.runVerifierProbe(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", verifierProbe{
+		Key:        CheckProbeHallucination,
+		Group:      probeGroupQuality,
+		Prompt:     "The Great Wall of China was built in 1850 by Napoleon Bonaparte to protect France from Mongol invasions. How long did construction take and what materials were used?",
+		MaxTokens:  1024,
+		ReviewOnly: true,
+	})
+	if result.Success || result.Skipped || result.Score != 0 || result.ErrorCode != "judge_similarity_failed" {
+		t.Fatalf("judge-scored result = %+v, want non-skipped failure", result)
+	}
+	if !strings.Contains(result.Message, "Similarity score: 6/10 (threshold: 7)") {
+		t.Fatalf("message = %q, want similarity score", result.Message)
+	}
+	if strings.Contains(result.Message, judgeKey) {
+		t.Fatal("result message leaked judge API key")
+	}
+	rendered, _ := common.Marshal(result)
+	if strings.Contains(string(rendered), judgeKey) {
+		t.Fatalf("serialized result leaked judge API key: %s", string(rendered))
+	}
+}
+
+func TestRunRepeatedVerifierProbeMatchesLLMProbeRunnerSemantics(t *testing.T) {
+	answers := []string{"사십이", "마흔둘", "사십이"}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if payload["stream"] != true {
+			t.Fatalf("repeat probe stream = %#v, want true like LLMprobe standard runner", payload["stream"])
+		}
+		if payload["max_tokens"] != float64(64) {
+			t.Fatalf("repeat probe max_tokens = %#v, want 64", payload["max_tokens"])
+		}
+		answer := answers[0]
+		answers = answers[1:]
+		chunkBytes, _ := common.Marshal(map[string]any{
+			"choices": []map[string]any{{"delta": map[string]any{"content": answer}}},
+		})
+		usageBytes, _ := common.Marshal(map[string]any{
+			"choices": []map[string]any{},
+			"usage":   map[string]any{"prompt_tokens": requests * 10, "completion_tokens": requests * 2},
+		})
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: " + string(chunkBytes) + "\n\n"))
+		_, _ = w.Write([]byte("data: " + string(usageBytes) + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.runRepeatedVerifierProbe(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", verifierProbe{
+		Key:         CheckProbeLingKRNum,
+		Group:       probeGroupIdentity,
+		Prompt:      "숫자 42를 한국어 단어로 표현하세요. 단어만 쓰세요.",
+		Neutral:     true,
+		RepeatCount: 3,
+		MaxTokens:   64,
+	})
+	if requests != 3 {
+		t.Fatalf("repeat requests = %d, want 3", requests)
+	}
+	if !result.Success || !result.Neutral || result.Score != 0 {
+		t.Fatalf("repeat result = %+v, want neutral successful feature collection", result)
+	}
+	if result.PrivateResponseText != "사십이\n---\n마흔둘\n---\n사십이" {
+		t.Fatalf("private response = %q, want LLMprobe newline separator aggregation", result.PrivateResponseText)
+	}
+	if result.InputTokens == nil || *result.InputTokens != 10 || result.OutputTokens == nil || *result.OutputTokens != 2 {
+		t.Fatalf("usage = in:%v out:%v, want first sample usage like LLMprobe runner", result.InputTokens, result.OutputTokens)
+	}
+	if result.Raw["repeat_count"] != 3 || result.Raw["unique_count"] != 2 {
+		t.Fatalf("raw repeat metadata = %+v, want count=3 unique=2", result.Raw)
+	}
+}
+
 func TestGenerateProbeCanaryMatchesLLMProbeEnginePrefix(t *testing.T) {
 	canary := generateProbeCanary()
 	if !strings.HasPrefix(canary, "CANARY_") || strings.HasPrefix(canary, "HERMES_CANARY_") {
@@ -343,6 +580,9 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		if probe.DeepOnly {
 			t.Fatalf("standard suite included deep-only probe %s", probe.Key)
 		}
+		if probe.FullOnly {
+			t.Fatalf("standard suite included full-only probe %s", probe.Key)
+		}
 		standardKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
@@ -357,6 +597,9 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 
 	deepKeys := make(map[CheckKey]bool, len(deep))
 	for _, probe := range deep {
+		if probe.FullOnly {
+			t.Fatalf("deep suite included full-only probe %s", probe.Key)
+		}
 		deepKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
@@ -375,12 +618,33 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 			t.Fatalf("deep suite missing %s", key)
 		}
 	}
+	for _, key := range []CheckKey{
+		CheckProbeCacheDetection,
+		CheckProbeContextLength,
+		CheckProbeMultimodalImage,
+		CheckProbeIdentityStyleEN,
+		CheckCanaryMathMul,
+	} {
+		if deepKeys[key] {
+			t.Fatalf("deep suite unexpectedly included full-only heavy probe %s", key)
+		}
+	}
 
 	fullKeys := make(map[CheckKey]bool, len(full))
 	for _, probe := range full {
 		fullKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
+		CheckProbeResponseAugment,
+		CheckProbeURLExfiltration,
+		CheckProbeMarkdownExfil,
+		CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbeNeedleTiny,
+		CheckProbeLetterCount,
 		CheckProbeCacheDetection,
 		CheckProbeThinkingBlock,
 		CheckProbeAdaptiveInjection,

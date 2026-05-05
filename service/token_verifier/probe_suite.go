@@ -218,7 +218,7 @@ func verifierProbeSuite(profile string) []verifierProbe {
 			Key:           CheckProbeResponseAugment,
 			Group:         probeGroupIntegrity,
 			Prompt:        "Reply with ONLY the exact text shown below — no extra characters, no newlines before or after, no explanation:\n\n{CANARY}",
-			ExpectedExact: "{CANARY}",
+			ExpectedExact: "AUGMENT_CANARY_PLACEHOLDER",
 			MaxTokens:     64,
 			DynamicCanary: true,
 			DeepOnly:      true,
@@ -409,7 +409,7 @@ func (r Runner) runVerifierProbe(ctx context.Context, executor *CurlExecutor, pr
 		}
 	}
 
-	passed, score, message, errorCode, skipped := scoreVerifierProbe(probe, content, decoded)
+	passed, score, message, errorCode, skipped := r.scoreVerifierProbe(ctx, executor, probe, content, decoded)
 	return CheckResult{
 		Provider:            provider,
 		Group:               probe.Group,
@@ -429,6 +429,30 @@ func (r Runner) runVerifierProbe(ctx context.Context, executor *CurlExecutor, pr
 		Raw:                 compactProbeRawForProbe(probe, decoded, content),
 		PrivateResponseText: content,
 	}
+}
+
+func (r Runner) scoreVerifierProbe(ctx context.Context, executor *CurlExecutor, probe verifierProbe, responseText string, decoded map[string]any) (bool, int, string, string, bool) {
+	if !probe.ReviewOnly {
+		return scoreVerifierProbe(probe, responseText, decoded)
+	}
+	probeID := sourceProbeIDForCheckKey(probe.Key)
+	if r.ProbeJudge != nil && r.ProbeBaseline != nil && strings.TrimSpace(r.ProbeBaseline[probeID]) != "" {
+		judged := runProbeJudgeWithBaseline(ctx, executor, *r.ProbeJudge, probe, responseText, r.ProbeBaseline[probeID])
+		if judged.Passed == nil {
+			return true, 0, judged.Reason, "judge_unparseable", true
+		}
+		if *judged.Passed {
+			return true, 100, judged.Reason, "", false
+		}
+		return false, 0, judged.Reason, "judge_similarity_failed", false
+	}
+	if r.ProbeJudge != nil && r.ProbeBaseline == nil {
+		return true, 0, "llm_judge: no baseline provided — pass --baseline <file> or --fetch-baseline <url> to enable similarity scoring", "judge_unconfigured", true
+	}
+	if r.ProbeJudge == nil {
+		return true, 0, "llm_judge: no judge endpoint configured — pass --judge-base-url to enable auto-scoring", "judge_unconfigured", true
+	}
+	return true, 0, "llm_judge: no baseline entry for probe '" + probeID + "' — run collect-baseline to build one", "judge_unconfigured", true
 }
 
 func (r Runner) executeVerifierProbe(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) (*CurlResponse, map[string]any, string, error) {
@@ -1854,8 +1878,7 @@ func prepareVerifierProbe(probe verifierProbe) verifierProbe {
 	}
 	canary := generateProbeCanary()
 	probe.Prompt = strings.ReplaceAll(probe.Prompt, "{CANARY}", canary)
-	probe.ExpectedExact = strings.ReplaceAll(probe.ExpectedExact, "{CANARY}", canary)
-	probe.ExpectedContains = strings.ReplaceAll(probe.ExpectedContains, "{CANARY}", canary)
+	probe.ExpectedExact = canary
 	return probe
 }
 

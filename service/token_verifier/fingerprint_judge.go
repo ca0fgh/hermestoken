@@ -61,7 +61,7 @@ func judgeFingerprint(ctx context.Context, executor *CurlExecutor, responses map
 }
 
 func buildJudgeIdentityPrompt(responses map[string]string) string {
-	keys := sortedStringKeys(responses)
+	keys := sourceOrderedResponseIDs(responses)
 	sections := make([]string, 0, len(keys))
 	for _, key := range keys {
 		text := truncateRunes(responses[key], 600)

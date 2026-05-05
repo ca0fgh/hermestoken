@@ -146,7 +146,7 @@ func extractSourceFingerprintFeatures(results []CheckResult, responses map[Check
 	styleZh := strings.ToLower(sourceResponses["identity_style_zh_tw"])
 	reasonText := strings.ToLower(sourceResponses["identity_reasoning_shape"])
 	listText := strings.ToLower(sourceResponses["identity_list_format"])
-	allText := strings.Join(mapValues(sourceResponses), " ")
+	allText := strings.Join(sourceOrderedResponseTexts(sourceResponses), " ")
 	enWords := strings.Fields(styleEn)
 	uniqueWords := make(map[string]bool)
 	for _, word := range enWords {
@@ -608,6 +608,130 @@ func sourceResponseIDMap(responses map[CheckKey]string) map[string]string {
 	return out
 }
 
+var sourceProbeIDOrder = []string{
+	"zh_reasoning",
+	"code_gen",
+	"instruction_follow",
+	"en_reasoning",
+	"math_logic",
+	"hallucination",
+	"censorship",
+	"json_output",
+	"prompt_injection",
+	"prompt_injection_hard",
+	"infra_probe",
+	"bedrock_probe",
+	"channel_signature",
+	"identity_leak",
+	"data_exfil_url",
+	"markdown_exfil",
+	"code_inject",
+	"dependency_hijack",
+	"npm_supply_chain",
+	"pip_index_url_injection",
+	"pip_git_url_attack",
+	"pip_bundled_extra",
+	"pip_shell_chain",
+	"npm_registry_injection",
+	"npm_git_url_attack",
+	"uv_install",
+	"cargo_add",
+	"go_install",
+	"brew_install",
+	"response_augmentation",
+	"knowledge_cutoff",
+	"symbol_exact",
+	"cache_detection",
+	"token_inflation",
+	"sse_compliance",
+	"thinking_block",
+	"consistency_check",
+	"adaptive_injection",
+	"context_length",
+	"identity_style_en",
+	"identity_style_zh_tw",
+	"identity_reasoning_shape",
+	"identity_self_knowledge",
+	"identity_list_format",
+	"identity_refusal_pattern",
+	"identity_json_discipline",
+	"identity_capability_claim",
+	"multimodal_image",
+	"multimodal_pdf",
+	"ling_kr_num",
+	"ling_jp_pm",
+	"ling_fr_pm",
+	"ling_ru_pres",
+	"tok_count_num",
+	"tok_split_word",
+	"tok_self_knowledge",
+	"code_reverse_list",
+	"code_comment_lang",
+	"code_error_style",
+	"meta_context_len",
+	"meta_thinking_mode",
+	"meta_creator",
+	"ling_uk_pm",
+	"ling_kr_crisis",
+	"ling_de_chan",
+	"comp_py_float",
+	"comp_large_exp",
+	"cap_tower_of_hanoi",
+	"cap_letter_count",
+	"cap_reverse_words",
+	"cap_needle_tiny",
+	"verb_explain_photosynthesis",
+	"perf_bulk_echo",
+	"tok_edge_zwj",
+	"submodel_cutoff",
+	"submodel_capability",
+	"submodel_refusal",
+	"pi_fingerprint",
+	"v3e_refusal_l1_tame",
+	"v3e_refusal_l2_mild",
+	"v3e_refusal_l3_borderline_a",
+	"v3e_refusal_l4_borderline_b",
+	"v3e_refusal_l5_borderline_c",
+	"v3e_refusal_l6_sensitive",
+	"v3e_refusal_l7_strong",
+	"v3e_refusal_l8_hard",
+	"v3e_fmt_bullets",
+	"v3e_fmt_explain_depth",
+	"v3e_fmt_code_lang_tag",
+	"v3e_uncertainty_estimate",
+}
+
+func sourceOrderedResponseIDs(responses map[string]string) []string {
+	if len(responses) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(responses))
+	ids := make([]string, 0, len(responses))
+	for _, id := range sourceProbeIDOrder {
+		if _, ok := responses[id]; ok {
+			ids = append(ids, id)
+			seen[id] = true
+		}
+	}
+	extras := make([]string, 0)
+	for id := range responses {
+		if !seen[id] {
+			extras = append(extras, id)
+		}
+	}
+	sort.Strings(extras)
+	return append(ids, extras...)
+}
+
+func sourceOrderedResponseTexts(responses map[string]string) []string {
+	ids := sourceOrderedResponseIDs(responses)
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, responses[id])
+	}
+	return out
+}
+
 func sourceLinguisticInputs(responses map[CheckKey]string) (map[string][]string, map[string]string) {
 	results := make(map[string][]string)
 	fallbacks := make(map[string]string)
@@ -627,6 +751,14 @@ func sourceLinguisticInputs(responses map[CheckKey]string) (map[string][]string,
 
 func sourceProbeIDForCheckKey(checkKey CheckKey) string {
 	switch checkKey {
+	case CheckProbeZHReasoning:
+		return "zh_reasoning"
+	case CheckProbeCodeGeneration:
+		return "code_gen"
+	case CheckProbeENReasoning:
+		return "en_reasoning"
+	case CheckProbeHallucination:
+		return "hallucination"
 	case CheckProbeIdentityStyleEN:
 		return "identity_style_en"
 	case CheckProbeIdentityStyleZHTW:
@@ -854,12 +986,13 @@ func (features sourceFingerprintFeatures) value(category string, key string) flo
 
 func sourceAllTexts(responses map[string]string, linguistic map[string][]string) []string {
 	out := make([]string, 0, len(responses)+len(linguistic))
-	for _, text := range responses {
+	for _, text := range sourceOrderedResponseTexts(responses) {
 		if text != "" {
 			out = append(out, text)
 		}
 	}
-	for _, answers := range linguistic {
+	for _, id := range sourceOrderedLinguisticIDs(linguistic) {
+		answers := linguistic[id]
 		for _, answer := range answers {
 			if answer != "" {
 				out = append(out, answer)
@@ -867,6 +1000,14 @@ func sourceAllTexts(responses map[string]string, linguistic map[string][]string)
 		}
 	}
 	return out
+}
+
+func sourceOrderedLinguisticIDs(values map[string][]string) []string {
+	keys := make(map[string]string, len(values))
+	for key := range values {
+		keys[key] = ""
+	}
+	return sourceOrderedResponseIDs(keys)
 }
 
 func sourceAvgSentenceLen(text string) float64 {
@@ -885,14 +1026,6 @@ func sourceAvgSentenceLen(text string) float64 {
 		total += sourceJSStringLength(sentence)
 	}
 	return math.Min(1, float64(total)/float64(len(nonEmpty))/100)
-}
-
-func mapValues(values map[string]string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		out = append(out, value)
-	}
-	return out
 }
 
 func mapKeys(values map[string]float64) []string {

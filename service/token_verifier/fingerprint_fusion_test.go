@@ -118,6 +118,36 @@ func TestJudgeFingerprintParsesAndDoesNotExposeAPIKey(t *testing.T) {
 	}
 }
 
+func TestSourceFingerprintTextInputsUseLLMProbeSuiteOrder(t *testing.T) {
+	responses := map[string]string{
+		"submodel_refusal":        "refusal text",
+		"identity_style_en":       "style text",
+		"identity_self_knowledge": "self text",
+	}
+	ordered := sourceOrderedResponseIDs(responses)
+	want := []string{"identity_style_en", "identity_self_knowledge", "submodel_refusal"}
+	if strings.Join(ordered, ",") != strings.Join(want, ",") {
+		t.Fatalf("ordered response IDs = %v, want LLMprobe suite order %v", ordered, want)
+	}
+
+	prompt := buildJudgeIdentityPrompt(responses)
+	styleIdx := strings.Index(prompt, "[identity_style_en]")
+	selfIdx := strings.Index(prompt, "[identity_self_knowledge]")
+	refusalIdx := strings.Index(prompt, "[submodel_refusal]")
+	if styleIdx < 0 || selfIdx < 0 || refusalIdx < 0 || !(styleIdx < selfIdx && selfIdx < refusalIdx) {
+		t.Fatalf("judge prompt order drifted:\n%s", prompt)
+	}
+
+	texts := sourceAllTexts(responses, map[string][]string{
+		"tok_split_word": {"tok split"},
+		"ling_kr_num":    {"kr answer"},
+	})
+	joined := strings.Join(texts, "|")
+	if joined != "style text|self text|refusal text|kr answer|tok split" {
+		t.Fatalf("sourceAllTexts = %q, want LLMprobe response order then linguistic order", joined)
+	}
+}
+
 func TestBuildReportWithOptionsUsesOptionalJudgeSignalOnHigherFusedScore(t *testing.T) {
 	const apiKey = "judge-secret-token"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +268,38 @@ func TestRunIdentityVectorSignalRequiresReferencesLikeLLMProbe(t *testing.T) {
 	}
 	if len(candidates) != 0 {
 		t.Fatalf("vector candidates = %+v, want none without references", candidates)
+	}
+}
+
+func TestEmbedProbeResponsesUsesLLMProbeSuiteOrder(t *testing.T) {
+	var input string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		input, _ = payload["input"].(string)
+		responseBytes, _ := common.Marshal(map[string]any{
+			"data": []map[string]any{{"embedding": []float64{1, 0}}},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	_, ok := embedProbeResponses(context.Background(), NewCurlExecutor(time.Second), map[string]string{
+		"submodel_refusal":        "refusal text",
+		"identity_style_en":       "style text",
+		"identity_self_knowledge": "self text",
+	}, EmbeddingConfig{BaseURL: server.URL, APIKey: "embed-key", ModelID: "embed-model"})
+	if !ok {
+		t.Fatal("embedding request failed")
+	}
+	styleIdx := strings.Index(input, "[identity_style_en]")
+	selfIdx := strings.Index(input, "[identity_self_knowledge]")
+	refusalIdx := strings.Index(input, "[submodel_refusal]")
+	if styleIdx < 0 || selfIdx < 0 || refusalIdx < 0 || !(styleIdx < selfIdx && selfIdx < refusalIdx) {
+		t.Fatalf("embedding input order drifted: %q", input)
 	}
 }
 

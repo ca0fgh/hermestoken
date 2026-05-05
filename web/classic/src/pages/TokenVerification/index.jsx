@@ -113,7 +113,11 @@ function formatMetric(value, suffix = '') {
 function reportFinalRating(report) {
   const rating = report?.final_rating || {};
   const score = Number(
-    rating.probe_score ?? report?.probe_score ?? rating.score ?? report?.score ?? 0,
+    rating.probe_score ??
+      report?.probe_score ??
+      rating.score ??
+      report?.score ??
+      0,
   );
   const scoreMax = Number(
     rating.probe_score_max ??
@@ -140,6 +144,26 @@ function formatProbeScore(rating) {
   return String(rating.score);
 }
 
+function probeRequestTimeout(profile) {
+  if (profile === 'full') {
+    return 910000;
+  }
+  if (profile === 'deep') {
+    return 490000;
+  }
+  return 310000;
+}
+
+function probeProfileTagColor(profile) {
+  if (profile === 'full') {
+    return 'red';
+  }
+  if (profile === 'deep') {
+    return 'orange';
+  }
+  return 'light-blue';
+}
+
 function TokenVerification() {
   const { t } = useTranslation();
   const [userState] = useContext(UserContext);
@@ -153,15 +177,18 @@ function TokenVerification() {
 
   const isAdminUser = Number(userState?.user?.role || 0) >= 10;
   const selectedReport = probeResult?.report;
-  const checklistItems = selectedReport?.checklist || probeResult?.results || [];
-  const profileOptions = useMemo(
-    () => [
+  const checklistItems =
+    selectedReport?.checklist || probeResult?.results || [];
+  const profileOptions = useMemo(() => {
+    const options = [
       { label: t('标准检测'), value: 'standard' },
       { label: t('深度检测'), value: 'deep' },
-      { label: t('完整检测'), value: 'full' },
-    ],
-    [t],
-  );
+    ];
+    if (isAdminUser) {
+      options.push({ label: t('完整检测'), value: 'full' });
+    }
+    return options;
+  }, [isAdminUser, t]);
   const profileLabelMap = useMemo(
     () =>
       Object.fromEntries(
@@ -229,10 +256,10 @@ function TokenVerification() {
           api_key: trimmedAPIKey,
           provider,
           model: trimmedModel,
-          probe_profile: isAdminUser ? probeProfile : 'standard',
+          probe_profile: probeProfile,
         },
         {
-          timeout: probeProfile === 'full' ? 910000 : 490000,
+          timeout: probeRequestTimeout(probeProfile),
         },
       );
       const { success, message, data } = response.data || {};
@@ -276,7 +303,7 @@ function TokenVerification() {
               ? 'grey'
               : normalizedStatus === 'neutral'
                 ? 'blue'
-              : 'red';
+                : 'red';
         const label =
           normalizedStatus === 'passed'
             ? t('通过')
@@ -284,7 +311,7 @@ function TokenVerification() {
               ? t('跳过')
               : normalizedStatus === 'neutral'
                 ? t('信息')
-              : t('失败');
+                : t('失败');
         return <Tag color={color}>{label}</Tag>;
       },
     },
@@ -328,7 +355,9 @@ function TokenVerification() {
       dataIndex: 'confidence',
       width: 96,
       render: (value) =>
-        Number.isFinite(Number(value)) ? `${Math.round(Number(value) * 100)}%` : '-',
+        Number.isFinite(Number(value))
+          ? `${Math.round(Number(value) * 100)}%`
+          : '-',
     },
     {
       title: t('子模型判定'),
@@ -340,7 +369,10 @@ function TokenVerification() {
         return (
           <div className='token-verification-inline-tags'>
             {items.map((item) => (
-              <Tag key={item.method} color={item.abstained ? 'grey' : 'light-blue'}>
+              <Tag
+                key={item.method}
+                color={item.abstained ? 'grey' : 'light-blue'}
+              >
                 {String(item.method || '').toUpperCase()}
                 {item.display_name ? ` ${item.display_name}` : ''}
               </Tag>
@@ -416,15 +448,7 @@ function TokenVerification() {
         <div className='token-verification-result-meta'>
           <Tag color='light-blue'>{selectedTarget.provider}</Tag>
           <Tag color='light-blue'>{selectedTarget.model}</Tag>
-          <Tag
-            color={
-              selectedTarget.probeProfile === 'full'
-                ? 'red'
-                : selectedTarget.probeProfile === 'deep'
-                  ? 'orange'
-                  : 'light-blue'
-            }
-          >
+          <Tag color={probeProfileTagColor(selectedTarget.probeProfile)}>
             {profileLabelMap[selectedTarget.probeProfile] ||
               selectedTarget.probeProfile}
           </Tag>
@@ -554,19 +578,17 @@ function TokenVerification() {
                 />
               </label>
 
-              {isAdminUser && (
-                <label>
-                  <Text strong>{t('检测深度')}</Text>
-                  <Select
-                    optionList={profileOptions}
-                    value={probeProfile}
-                    onChange={(value) =>
-                      setProbeProfile(String(value || 'standard'))
-                    }
-                    style={{ width: '100%' }}
-                  />
-                </label>
-              )}
+              <label>
+                <Text strong>{t('检测深度')}</Text>
+                <Select
+                  optionList={profileOptions}
+                  value={probeProfile}
+                  onChange={(value) =>
+                    setProbeProfile(String(value || 'standard'))
+                  }
+                  style={{ width: '100%' }}
+                />
+              </label>
 
               <Text
                 className='token-verification-secret-note'

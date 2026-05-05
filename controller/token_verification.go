@@ -281,8 +281,8 @@ func normalizeTokenVerificationProbeProfile(rawProfile string, role int) (string
 	if value != tokenverifier.ProbeProfileDeep && value != tokenverifier.ProbeProfileFull {
 		return "", errors.New("检测深度仅支持 standard、deep 或 full")
 	}
-	if role < common.RoleAdminUser {
-		return "", errors.New("深度检测仅管理员可用")
+	if value == tokenverifier.ProbeProfileFull && role < common.RoleAdminUser {
+		return "", errors.New("完整检测仅管理员可用")
 	}
 	return value, nil
 }

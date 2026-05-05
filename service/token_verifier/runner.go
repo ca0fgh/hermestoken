@@ -23,12 +23,14 @@ const (
 )
 
 type Runner struct {
-	BaseURL      string
-	Token        string
-	Models       []string
-	Providers    []string
-	ProbeProfile string
-	Executor     *CurlExecutor
+	BaseURL       string
+	Token         string
+	Models        []string
+	Providers     []string
+	ProbeProfile  string
+	ProbeJudge    *ProbeJudgeConfig
+	ProbeBaseline BaselineMap
+	Executor      *CurlExecutor
 }
 
 func RunTask(ctx context.Context, taskID int64) error {
@@ -47,11 +49,13 @@ func RunTask(ctx context.Context, taskID int64) error {
 	}
 
 	runner := Runner{
-		BaseURL:   resolveBaseURL(),
-		Token:     token.GetFullKey(),
-		Models:    resolveModels(task.GetModels(), token),
-		Providers: resolveProviders(task.GetProviders()),
-		Executor:  NewCurlExecutor(defaultVerifierHTTPTimeout),
+		BaseURL:       resolveBaseURL(),
+		Token:         token.GetFullKey(),
+		Models:        resolveModels(task.GetModels(), token),
+		Providers:     resolveProviders(task.GetProviders()),
+		ProbeJudge:    probeJudgeConfigFromEnv(),
+		ProbeBaseline: probeBaselineFromEnv(),
+		Executor:      NewCurlExecutor(defaultVerifierHTTPTimeout),
 	}
 	results, err := runner.RunProbeSuiteOnly(ctx)
 	if len(results) > 0 {
@@ -86,12 +90,14 @@ func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbe
 	}
 	apiKey := strings.TrimSpace(input.APIKey)
 	runner := Runner{
-		BaseURL:      strings.TrimSpace(input.BaseURL),
-		Token:        apiKey,
-		Models:       models,
-		Providers:    providers,
-		ProbeProfile: normalizeProbeProfile(input.ProbeProfile),
-		Executor:     NewCurlExecutor(defaultVerifierHTTPTimeout),
+		BaseURL:       strings.TrimSpace(input.BaseURL),
+		Token:         apiKey,
+		Models:        models,
+		Providers:     providers,
+		ProbeProfile:  normalizeProbeProfile(input.ProbeProfile),
+		ProbeJudge:    probeJudgeConfigFromEnv(),
+		ProbeBaseline: probeBaselineFromEnv(),
+		Executor:      NewCurlExecutor(defaultVerifierHTTPTimeout),
 	}
 	results, err := runner.RunProbeSuiteOnly(ctx)
 	if err != nil {
@@ -218,8 +224,19 @@ func directProbeSuiteDefinitions(profile string) []verifierProbe {
 	probes := make([]verifierProbe, 0, len(verifierProbeSuite(profile))+3)
 	if profile == ProbeProfileDeep || profile == ProbeProfileFull {
 		probes = append(probes,
-			verifierProbe{Key: CheckProbeChannelSignature, Group: probeGroupSecurity, Neutral: true},
-			verifierProbe{Key: CheckProbeSSECompliance, Group: probeGroupIntegrity},
+			verifierProbe{
+				Key:       CheckProbeChannelSignature,
+				Group:     probeGroupSecurity,
+				Prompt:    "Reply with exactly one word: OK",
+				MaxTokens: 16,
+				Neutral:   true,
+			},
+			verifierProbe{
+				Key:       CheckProbeSSECompliance,
+				Group:     probeGroupIntegrity,
+				Prompt:    "Say hello in exactly three words.",
+				MaxTokens: defaultProbeMaxTokens,
+			},
 		)
 	}
 	if profile == ProbeProfileFull {

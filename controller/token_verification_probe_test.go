@@ -76,13 +76,14 @@ func TestNormalizeTokenVerificationProbeProfile(t *testing.T) {
 		t.Fatalf("expected standard profile, got %q", profile)
 	}
 
-	profile, err = normalizeTokenVerificationProbeProfile(" deep ", common.RoleAdminUser)
+	profile, err = normalizeTokenVerificationProbeProfile(" deep ", common.RoleCommonUser)
 	if err != nil {
-		t.Fatalf("expected admin deep profile to pass, got %v", err)
+		t.Fatalf("expected common user deep profile to pass, got %v", err)
 	}
 	if profile != tokenverifier.ProbeProfileDeep {
 		t.Fatalf("expected deep profile, got %q", profile)
 	}
+
 	profile, err = normalizeTokenVerificationProbeProfile(" full ", common.RoleAdminUser)
 	if err != nil {
 		t.Fatalf("expected admin full profile to pass, got %v", err)
@@ -91,8 +92,8 @@ func TestNormalizeTokenVerificationProbeProfile(t *testing.T) {
 		t.Fatalf("expected full profile, got %q", profile)
 	}
 
-	if _, err = normalizeTokenVerificationProbeProfile("deep", common.RoleCommonUser); err == nil {
-		t.Fatal("expected non-admin deep profile to fail")
+	if _, err = normalizeTokenVerificationProbeProfile("full", common.RoleCommonUser); err == nil {
+		t.Fatal("expected non-admin full profile to fail")
 	}
 	if _, err = normalizeTokenVerificationProbeProfile("ultimate", common.RoleAdminUser); err == nil {
 		t.Fatal("expected unsupported profile to fail")

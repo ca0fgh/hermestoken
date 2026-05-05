@@ -88,7 +88,7 @@ func embedProbeResponses(ctx context.Context, executor *CurlExecutor, responses 
 	if strings.TrimSpace(config.BaseURL) == "" || strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.ModelID) == "" || len(responses) == 0 {
 		return nil, false
 	}
-	keys := sortedStringKeys(responses)
+	keys := sourceOrderedResponseIDs(responses)
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
 		parts = append(parts, "["+key+"] "+truncateRunes(responses[key], 600))
