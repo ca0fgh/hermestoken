@@ -588,6 +588,8 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 	for _, key := range []CheckKey{
 		CheckProbeResponseAugment,
 		CheckProbeURLExfiltration,
+		CheckProbePromptInjection,
+		CheckProbePromptInjectionHard,
 		CheckProbeNeedleTiny,
 	} {
 		if standardKeys[key] {
@@ -603,6 +605,8 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		deepKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
+		CheckProbePromptInjection,
+		CheckProbePromptInjectionHard,
 		CheckProbeResponseAugment,
 		CheckProbeURLExfiltration,
 		CheckProbeMarkdownExfil,
@@ -635,6 +639,8 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		fullKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
+		CheckProbePromptInjection,
+		CheckProbePromptInjectionHard,
 		CheckProbeResponseAugment,
 		CheckProbeURLExfiltration,
 		CheckProbeMarkdownExfil,

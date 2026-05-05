@@ -22,4 +22,8 @@ test("token verification profile selector exposes standard and deep to users, fu
     source,
     /probe_profile:\s*isAdminUser\s*\?\s*probeProfile\s*:\s*'standard'/,
   );
+  assert.match(
+    source,
+    /if\s*\(\s*!isAdminUser\s*&&\s*probeProfile\s*===\s*'full'\s*\)\s*{\s*setProbeProfile\('deep'\)/s,
+  );
 });

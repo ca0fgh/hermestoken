@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -196,6 +196,12 @@ function TokenVerification() {
       ),
     [profileOptions],
   );
+
+  useEffect(() => {
+    if (!isAdminUser && probeProfile === 'full') {
+      setProbeProfile('deep');
+    }
+  }, [isAdminUser, probeProfile]);
   const modelOptions = useMemo(() => {
     const presets = providerModelPresets[provider] || [];
     const options = presets.map((value) => ({ label: value, value }));
