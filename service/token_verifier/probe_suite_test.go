@@ -2,6 +2,7 @@ package token_verifier
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,6 +164,11 @@ func TestVerifierProbeDefinitionsMirrorLLMProbeEngineSemantics(t *testing.T) {
 	tokenSplit := probes[CheckProbeTokenSplitWord]
 	if !strings.Contains(tokenSplit.Prompt, "'tokenization'") || !strings.Contains(tokenSplit.Prompt, "nothing else") {
 		t.Fatalf("tok_split_word probe prompt drifted: %q", tokenSplit.Prompt)
+	}
+
+	krCrisis := probes[CheckProbeLingKRCrisis]
+	if krCrisis.RepeatCount != 5 || krCrisis.MaxTokens != 48 {
+		t.Fatalf("ling_kr_crisis probe = %+v, want LLMprobe repeatCount 5 maxTokens 48", krCrisis)
 	}
 
 	pyFloat := probes[CheckProbeCompPyFloat]
@@ -648,6 +654,25 @@ func TestCheckProbeSSECompliance(t *testing.T) {
 	}
 }
 
+func TestCheckSSEComplianceWarningDoesNotFailRunnerResult(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"model\":\"gpt-test\"}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	runner := Runner{
+		BaseURL:  server.URL,
+		Token:    "test-token",
+		Executor: NewCurlExecutor(time.Second),
+	}
+	result := runner.checkSSECompliance(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test")
+	if !result.Success || result.Score != 100 || result.ErrorCode != "" {
+		t.Fatalf("SSE warning result = %+v, want LLMprobe runner passed=true without score penalty", result)
+	}
+}
+
 func TestClassifyProbeChannelSignature(t *testing.T) {
 	signature := classifyProbeChannelSignature(
 		map[string]string{"x-generation-id": "gen-abc"},
@@ -702,17 +727,31 @@ func TestCheckCacheDetectionMirrorsHeaderCheckScoring(t *testing.T) {
 	}
 }
 
-func TestCheckAdaptiveInjectionRequiresBothExactEchoes(t *testing.T) {
-	makeRunner := func(rewriteTrigger bool) Runner {
+func TestCheckAdaptiveInjectionMirrorsLLMProbeIdenticalResponseLogic(t *testing.T) {
+	makeRunner := func(mode string) Runner {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var payload map[string]any
-			if err := common.DecodeJson(r.Body, &payload); err != nil {
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
-			prompt := extractRequestPrompt(payload)
-			content := extractProbeEchoExpected(prompt)
-			if rewriteTrigger && strings.Contains(prompt, "aws_secret_access_key") {
+			var payload map[string]any
+			if err := common.Unmarshal(bodyBytes, &payload); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			bodyText := string(bodyBytes)
+			content := "same-router-response"
+			if mode == "empty" {
+				content = ""
+			}
+			if mode == "echo" {
+				content = "apple banana cherry date elderberry"
+				if strings.Contains(bodyText, "aws_secret_access_key") {
+					content = "apple banana aws_secret_access_key date elderberry"
+				}
+			}
+			if mode == "rewrite-trigger" && strings.Contains(bodyText, "aws_secret_access_key") {
 				content = "apple banana [filtered] date elderberry"
 			}
 			responseBytes, _ := common.Marshal(map[string]any{
@@ -734,16 +773,64 @@ func TestCheckAdaptiveInjectionRequiresBothExactEchoes(t *testing.T) {
 		MaxTokens:             256,
 	}
 
-	passRunner := makeRunner(false)
+	passRunner := makeRunner("same")
 	passing := passRunner.checkAdaptiveInjection(context.Background(), passRunner.Executor, ProviderOpenAI, "gpt-test", probe)
 	if !passing.Success || passing.Score != 100 {
 		t.Fatalf("passing adaptive result = %+v, want success", passing)
 	}
 
-	failRunner := makeRunner(true)
+	echoRunner := makeRunner("echo")
+	echo := echoRunner.checkAdaptiveInjection(context.Background(), echoRunner.Executor, ProviderOpenAI, "gpt-test", probe)
+	if echo.Success || echo.Score != 0 || echo.ErrorCode != "adaptive_probe_diverged" {
+		t.Fatalf("echo adaptive result = %+v, want LLMprobe identical-response failure", echo)
+	}
+
+	failRunner := makeRunner("rewrite-trigger")
 	failing := failRunner.checkAdaptiveInjection(context.Background(), failRunner.Executor, ProviderOpenAI, "gpt-test", probe)
 	if failing.Success || failing.Score != 0 || failing.ErrorCode != "adaptive_probe_diverged" {
 		t.Fatalf("failing adaptive result = %+v, want divergence failure", failing)
+	}
+
+	emptyRunner := makeRunner("empty")
+	empty := emptyRunner.checkAdaptiveInjection(context.Background(), emptyRunner.Executor, ProviderOpenAI, "gpt-test", probe)
+	if empty.Success || empty.Score != 50 || empty.ErrorCode != "adaptive_unassessable" {
+		t.Fatalf("empty adaptive result = %+v, want warning unassessable", empty)
+	}
+}
+
+func TestOpenAIMultimodalContentMirrorsLLMProbeRunner(t *testing.T) {
+	imageContent, ok := openAIProbeContent(verifierProbe{
+		Prompt: "What color is this image?",
+		Multimodal: &probeMultimodalContent{
+			Kind:      "image",
+			DataB64:   "abc123",
+			MediaType: "image/png",
+		},
+	}).([]map[string]any)
+	if !ok || len(imageContent) != 2 {
+		t.Fatalf("image content = %#v, want two content blocks", imageContent)
+	}
+	if imageContent[0]["type"] != "image_url" || imageContent[1]["type"] != "text" {
+		t.Fatalf("image content order = %#v, want image_url then text", imageContent)
+	}
+
+	pdfContent, ok := openAIProbeContent(verifierProbe{
+		Prompt: "What word appears?",
+		Multimodal: &probeMultimodalContent{
+			Kind:      "pdf",
+			DataB64:   strings.Repeat("A", 80),
+			MediaType: "application/pdf",
+		},
+	}).([]map[string]any)
+	if !ok || len(pdfContent) != 1 || pdfContent[0]["type"] != "text" {
+		t.Fatalf("pdf content = %#v, want one text block", pdfContent)
+	}
+	text, _ := pdfContent[0]["text"].(string)
+	if !strings.Contains(text, "[Attached document (application/pdf), base64: data:application/pdf;base64,") || !strings.Contains(text, "What word appears?") {
+		t.Fatalf("pdf text = %q, want LLMprobe data URI annotation plus prompt", text)
+	}
+	if strings.Contains(text, strings.Repeat("A", 65)) {
+		t.Fatalf("pdf text should include only the first 64 base64 chars: %q", text)
 	}
 }
 

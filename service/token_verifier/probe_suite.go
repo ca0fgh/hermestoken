@@ -38,7 +38,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryMathMul,
 			Group:          probeGroupCanary,
 			Prompt:         "Compute 347 * 89. Output only the integer, no words.",
-			RequirePattern: "^30883\\.?$",
+			RequirePattern: "^30883[.。]?$",
 			MaxTokens:      32,
 			FullOnly:       true,
 		},
@@ -46,7 +46,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryMathPow,
 			Group:          probeGroupCanary,
 			Prompt:         "What is 2 to the power of 16? Output only the integer, no words.",
-			RequirePattern: "^65536\\.?$",
+			RequirePattern: "^65536[.。]?$",
 			MaxTokens:      32,
 			FullOnly:       true,
 		},
@@ -54,7 +54,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryMathMod,
 			Group:          probeGroupCanary,
 			Prompt:         "What is 1000 mod 7? Output only the integer, no words.",
-			RequirePattern: "^6\\.?$",
+			RequirePattern: "^6[.。]?$",
 			MaxTokens:      32,
 			FullOnly:       true,
 		},
@@ -62,7 +62,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryLogicSyllogism,
 			Group:          probeGroupCanary,
 			Prompt:         "If all cats are mammals and Whiskers is a cat, is Whiskers a mammal? Answer only yes or no.",
-			RequirePattern: "^yes\\.?$",
+			RequirePattern: "^yes[.。]?$",
 			MaxTokens:      16,
 			FullOnly:       true,
 		},
@@ -70,7 +70,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryRecallCapital,
 			Group:          probeGroupCanary,
 			Prompt:         "What is the capital of Australia? Output only the single city name.",
-			RequirePattern: "^Canberra\\.?$",
+			RequirePattern: "^Canberra[.。]?$",
 			MaxTokens:      32,
 			FullOnly:       true,
 		},
@@ -78,24 +78,23 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryRecallSymbol,
 			Group:          probeGroupCanary,
 			Prompt:         "What is the chemical symbol for gold? Output only the symbol.",
-			RequirePattern: "^Au\\.?$",
+			RequirePattern: "^Au[.。]?$",
 			MaxTokens:      16,
 			FullOnly:       true,
 		},
 		{
-			Key:           CheckCanaryFormatEcho,
-			Group:         probeGroupCanary,
-			Prompt:        "Reply with exactly this token and nothing else: BANANA",
-			ExpectedExact: "BANANA",
-			MaxTokens:     16,
-			FullOnly:      true,
+			Key:            CheckCanaryFormatEcho,
+			Group:          probeGroupCanary,
+			Prompt:         "Reply with exactly this token and nothing else: BANANA",
+			RequirePattern: "^BANANA[.。]?$",
+			MaxTokens:      16,
+			FullOnly:       true,
 		},
 		{
 			Key:            CheckCanaryFormatJSON,
 			Group:          probeGroupCanary,
 			Prompt:         `Output this JSON object with no extra text and no code fences: {"ok":true}`,
-			RequirePattern: `^\{\s*"ok"\s*:\s*true\s*\}$`,
-			RequireJSON:    true,
+			RequirePattern: `^\{\s*"ok"\s*:\s*true\s*\}[.。]?$`,
 			MaxTokens:      32,
 			FullOnly:       true,
 		},
@@ -103,7 +102,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryCodeReverse,
 			Group:          probeGroupCanary,
 			Prompt:         "Write a Python expression that reverses string s. Output only the expression, no code fences, no explanation.",
-			RequirePattern: `^s\s*\[\s*:\s*:\s*-1\s*\]\.?$`,
+			RequirePattern: `s\[::-1\]`,
 			MaxTokens:      64,
 			FullOnly:       true,
 		},
@@ -111,7 +110,7 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Key:            CheckCanaryRecallMoonYear,
 			Group:          probeGroupCanary,
 			Prompt:         "In what year did humans first land on the moon? Output only the four-digit year.",
-			RequirePattern: "^1969\\.?$",
+			RequirePattern: "^1969[.。]?$",
 			MaxTokens:      16,
 			FullOnly:       true,
 		},
@@ -646,8 +645,6 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 	score := 100
 	if !compliance.Passed {
 		score = 0
-	} else if compliance.Warning {
-		score = 50
 	}
 	message := "SSE 流式格式合规"
 	errorCode := ""
@@ -656,7 +653,6 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 		errorCode = "sse_compliance_failed"
 	} else if compliance.Warning {
 		message = "SSE 合规但存在 choices 缺失的兼容性警告"
-		errorCode = "sse_compliance_warning"
 	}
 	inputTokens, outputTokens := extractVerifierUsageFromSSE(string(resp.Body))
 	return CheckResult{
@@ -664,7 +660,7 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 		Group:        probeGroupIntegrity,
 		CheckKey:     CheckProbeSSECompliance,
 		ModelName:    modelName,
-		Success:      compliance.Passed && !compliance.Warning,
+		Success:      compliance.Passed,
 		Score:        score,
 		LatencyMs:    resp.LatencyMs,
 		TTFTMs:       resp.TTFTMs,
@@ -1209,8 +1205,6 @@ func (r Runner) checkConsistencyCache(ctx context.Context, executor *CurlExecuto
 }
 
 func (r Runner) checkAdaptiveInjection(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
-	neutralExpected := extractProbeEchoExpected(probe.Prompt)
-	triggerExpected := extractProbeEchoExpected(probe.AdaptiveTriggerPrompt)
 	neutral, neutralLatency, err := r.runTextProbe(ctx, executor, provider, modelName, probe, probe.Prompt, 0)
 	if err != nil {
 		return warningCheckResult(provider, probe.Group, probe.Key, modelName, 0, "adaptive_unassessable", "中性请求失败，无法评估条件注入")
@@ -1219,15 +1213,32 @@ func (r Runner) checkAdaptiveInjection(ctx context.Context, executor *CurlExecut
 	if err != nil {
 		return warningCheckResult(provider, probe.Group, probe.Key, modelName, neutralLatency, "adaptive_unassessable", "触发请求失败，无法评估条件注入")
 	}
-	neutralOK := strings.EqualFold(strings.TrimSpace(neutral), strings.TrimSpace(neutralExpected))
-	triggerOK := strings.EqualFold(strings.TrimSpace(trigger), strings.TrimSpace(triggerExpected))
-	passed := neutralOK && triggerOK
+	neutralText := strings.TrimSpace(neutral)
+	triggerText := strings.TrimSpace(trigger)
+	if neutralText == "" || triggerText == "" {
+		return CheckResult{
+			Provider:  provider,
+			Group:     probe.Group,
+			CheckKey:  probe.Key,
+			ModelName: modelName,
+			Success:   false,
+			Score:     50,
+			LatencyMs: (neutralLatency + triggerLatency) / 2,
+			ErrorCode: "adaptive_unassessable",
+			Message:   "One or both requests failed — cannot assess",
+			Raw: map[string]any{
+				"neutral_hash": sha256Hex(neutralText),
+				"trigger_hash": sha256Hex(triggerText),
+			},
+		}
+	}
+	passed := neutralText == triggerText
 	score := 100
-	message := "中性和触发样本均按原文回显"
+	message := "Both requests returned identical content — no conditional injection detected"
 	errorCode := ""
 	if !passed {
 		score = 0
-		message = "触发样本或中性样本出现偏离，疑似条件注入或关键词过滤"
+		message = fmt.Sprintf("Responses diverge — possible conditional injection: neutral=%q trigger=%q", truncate(neutralText, 60), truncate(triggerText, 60))
 		errorCode = "adaptive_probe_diverged"
 	}
 	return CheckResult{
@@ -1241,10 +1252,9 @@ func (r Runner) checkAdaptiveInjection(ctx context.Context, executor *CurlExecut
 		ErrorCode: errorCode,
 		Message:   message,
 		Raw: map[string]any{
-			"neutral_ok":   neutralOK,
-			"trigger_ok":   triggerOK,
-			"neutral_hash": sha256Hex(strings.TrimSpace(neutral)),
-			"trigger_hash": sha256Hex(strings.TrimSpace(trigger)),
+			"identical":    passed,
+			"neutral_hash": sha256Hex(neutralText),
+			"trigger_hash": sha256Hex(triggerText),
 		},
 	}
 }
@@ -1670,26 +1680,19 @@ func openAIProbeContent(probe verifierProbe) any {
 	if probe.Multimodal == nil {
 		return probe.Prompt
 	}
-	parts := []map[string]any{
-		{"type": "text", "text": probe.Prompt},
-	}
 	dataURL := "data:" + probe.Multimodal.MediaType + ";base64," + probe.Multimodal.DataB64
 	switch probe.Multimodal.Kind {
 	case "image":
-		parts = append(parts, map[string]any{
-			"type":      "image_url",
-			"image_url": map[string]any{"url": dataURL},
-		})
+		return []map[string]any{
+			{"type": "image_url", "image_url": map[string]any{"url": dataURL}},
+			{"type": "text", "text": probe.Prompt},
+		}
 	case "pdf":
-		parts = append(parts, map[string]any{
-			"type": "file",
-			"file": map[string]any{
-				"filename":  "probe.pdf",
-				"file_data": dataURL,
-			},
-		})
+		return []map[string]any{
+			{"type": "text", "text": fmt.Sprintf("[Attached document (%s), base64: data:%s;base64,%s…]\n\n%s", probe.Multimodal.MediaType, probe.Multimodal.MediaType, stringPrefix(probe.Multimodal.DataB64, 64), probe.Prompt)},
+		}
 	}
-	return parts
+	return probe.Prompt
 }
 
 func anthropicProbeContent(probe verifierProbe) any {
