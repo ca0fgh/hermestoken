@@ -375,59 +375,19 @@ func firstNonEmptyString(values ...string) string {
 	return ""
 }
 
+var identityFeatureCheckKeySet = buildIdentityFeatureCheckKeys()
+
 func isIdentityFeatureCheck(checkKey CheckKey) bool {
-	switch checkKey {
-	case CheckProbeIdentityStyleEN,
-		CheckProbeIdentityStyleZHTW,
-		CheckProbeIdentityReasoningShape,
-		CheckProbeIdentitySelfKnowledge,
-		CheckProbeIdentityListFormat,
-		CheckProbeIdentityRefusalPattern,
-		CheckProbeIdentityJSONDiscipline,
-		CheckProbeIdentityCapabilityClaim,
-		CheckProbeLingKRNum,
-		CheckProbeLingJPPM,
-		CheckProbeLingFRPM,
-		CheckProbeLingRUPres,
-		CheckProbeTokenCountNum,
-		CheckProbeTokenSplitWord,
-		CheckProbeTokenSelfKnowledge,
-		CheckProbeCodeReverseList,
-		CheckProbeCodeCommentLang,
-		CheckProbeCodeErrorStyle,
-		CheckProbeMetaContextLen,
-		CheckProbeMetaThinkingMode,
-		CheckProbeMetaCreator,
-		CheckProbeLingUKPM,
-		CheckProbeLingKRCrisis,
-		CheckProbeLingDEChan,
-		CheckProbeCompPyFloat,
-		CheckProbeCompLargeExp,
-		CheckProbeTowerHanoi,
-		CheckProbeLetterCount,
-		CheckProbeReverseWords,
-		CheckProbeNeedleTiny,
-		CheckProbePhotosynthesis,
-		CheckProbePerfBulkEcho,
-		CheckProbeTokenZWJ,
-		CheckProbeSubmodelCutoff,
-		CheckProbeSubmodelCapability,
-		CheckProbeSubmodelRefusal,
-		CheckProbePIFingerprint,
-		CheckProbeRefusalL1,
-		CheckProbeRefusalL2,
-		CheckProbeRefusalL3,
-		CheckProbeRefusalL4,
-		CheckProbeRefusalL5,
-		CheckProbeRefusalL6,
-		CheckProbeRefusalL7,
-		CheckProbeRefusalL8,
-		CheckProbeFmtBullets,
-		CheckProbeFmtExplainDepth,
-		CheckProbeFmtCodeLangTag,
-		CheckProbeUncertaintyEstimate:
-		return true
-	default:
-		return false
+	return identityFeatureCheckKeySet[checkKey]
+}
+
+func buildIdentityFeatureCheckKeys() map[CheckKey]bool {
+	probes := probeSuiteDefinitions(ProbeProfileFull)
+	keys := make(map[CheckKey]bool, len(probes))
+	for _, probe := range probes {
+		if probe.Group == probeGroupIdentity || probe.Group == probeGroupSubmodel {
+			keys[probe.Key] = true
+		}
 	}
+	return keys
 }

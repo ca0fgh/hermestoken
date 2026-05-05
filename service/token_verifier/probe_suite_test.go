@@ -79,7 +79,7 @@ func TestScoreVerifierProbeTokenInflation(t *testing.T) {
 
 func TestVerifierProbeDefinitionsMirrorLLMProbeEngineSemantics(t *testing.T) {
 	probes := make(map[CheckKey]verifierProbe)
-	for _, probe := range directProbeSuiteDefinitions(ProbeProfileFull) {
+	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
 		probes[probe.Key] = probe
 	}
 
@@ -580,9 +580,6 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		if probe.DeepOnly {
 			t.Fatalf("standard suite included deep-only probe %s", probe.Key)
 		}
-		if probe.FullOnly {
-			t.Fatalf("standard suite included full-only probe %s", probe.Key)
-		}
 		standardKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
@@ -599,9 +596,6 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 
 	deepKeys := make(map[CheckKey]bool, len(deep))
 	for _, probe := range deep {
-		if probe.FullOnly {
-			t.Fatalf("deep suite included full-only probe %s", probe.Key)
-		}
 		deepKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
@@ -673,7 +667,7 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 
 func TestFullProbeSuiteCoversLLMProbeEngineProbeIDs(t *testing.T) {
 	fullKeys := make(map[CheckKey]bool)
-	for _, probe := range directProbeSuiteDefinitions(ProbeProfileFull) {
+	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
 		fullKeys[probe.Key] = true
 	}
 
@@ -1076,7 +1070,7 @@ func TestCheckChannelSignatureUsesLLMProbeRequestShape(t *testing.T) {
 	defer server.Close()
 
 	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
-	result := runner.checkChannelSignature(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test")
+	result := runner.checkChannelSignature(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", channelSignatureProbe())
 	if !sawRequest {
 		t.Fatal("channel_signature request was not sent")
 	}
@@ -1160,7 +1154,7 @@ func TestCheckSSEComplianceWarningDoesNotFailRunnerResult(t *testing.T) {
 		Token:    "test-token",
 		Executor: NewCurlExecutor(time.Second),
 	}
-	result := runner.checkSSECompliance(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test")
+	result := runner.checkSSECompliance(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", sseComplianceProbe())
 	if !result.Success || result.Score != 100 || result.ErrorCode != "" {
 		t.Fatalf("SSE warning result = %+v, want LLMprobe runner passed=true without score penalty", result)
 	}
@@ -1433,7 +1427,7 @@ func TestCheckSignatureRoundtripDoesNotLeakThinkingOrSignature(t *testing.T) {
 		Token:    "test-token",
 		Executor: NewCurlExecutor(time.Second),
 	}
-	result := runner.checkSignatureRoundtrip(context.Background(), runner.Executor, ProviderAnthropic, "claude-test")
+	result := runner.checkSignatureRoundtrip(context.Background(), runner.Executor, ProviderAnthropic, "claude-test", signatureRoundtripProbe())
 
 	if !result.Success || result.Skipped {
 		t.Fatalf("signature roundtrip result = %+v, want success", result)

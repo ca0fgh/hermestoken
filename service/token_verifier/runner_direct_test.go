@@ -11,7 +11,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 )
 
-func TestRunDirectProbeSuiteUsesLLMProbeResultsOnly(t *testing.T) {
+func TestRunProbeSuiteOnlyDirectPathUsesLLMProbeResultsOnly(t *testing.T) {
 	modelsListCalled := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
@@ -54,9 +54,9 @@ func TestRunDirectProbeSuiteUsesLLMProbeResultsOnly(t *testing.T) {
 		ProbeProfile: ProbeProfileStandard,
 		Executor:     NewCurlExecutor(time.Second),
 	}
-	results, err := runner.RunDirectProbeSuite(context.Background())
+	results, err := runner.RunProbeSuiteOnly(context.Background())
 	if err != nil {
-		t.Fatalf("RunDirectProbeSuite returned error: %v", err)
+		t.Fatalf("RunProbeSuiteOnly returned error: %v", err)
 	}
 	if modelsListCalled {
 		t.Fatal("direct probe suite must not call the legacy models list check")
@@ -149,7 +149,7 @@ func TestRunProbeSuiteOnlyUsesLLMProbeResultsOnly(t *testing.T) {
 	}
 }
 
-func TestRunDirectProbeSuitePreflightAbortReturnsProbeFailuresOnly(t *testing.T) {
+func TestRunProbeSuiteOnlyPreflightAbortReturnsProbeFailuresOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			t.Fatal("direct preflight abort must not call the legacy models list check")
@@ -171,9 +171,9 @@ func TestRunDirectProbeSuitePreflightAbortReturnsProbeFailuresOnly(t *testing.T)
 		ProbeProfile: ProbeProfileStandard,
 		Executor:     NewCurlExecutor(time.Second),
 	}
-	results, err := runner.RunDirectProbeSuite(context.Background())
+	results, err := runner.RunProbeSuiteOnly(context.Background())
 	if err != nil {
-		t.Fatalf("RunDirectProbeSuite returned error: %v", err)
+		t.Fatalf("RunProbeSuiteOnly returned error: %v", err)
 	}
 	if len(results) == 0 {
 		t.Fatal("preflight abort should return failed probe-suite results")

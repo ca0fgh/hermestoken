@@ -113,10 +113,6 @@ func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbe
 	}, apiKey), nil
 }
 
-func (r Runner) RunDirectProbeSuite(ctx context.Context) ([]CheckResult, error) {
-	return r.RunProbeSuiteOnly(ctx)
-}
-
 func (r Runner) RunProbeSuiteOnly(ctx context.Context) ([]CheckResult, error) {
 	if strings.TrimSpace(r.BaseURL) == "" {
 		return nil, errors.New("token verifier base url is empty")
@@ -192,7 +188,7 @@ func (r Runner) checkProbePreflight(ctx context.Context, executor *CurlExecutor,
 }
 
 func failedDirectProbeSuiteResults(provider string, modelName string, profile string, preflight preflightResult, latencyMs int64) []CheckResult {
-	probes := directProbeSuiteDefinitions(profile)
+	probes := probeSuiteDefinitions(profile)
 	results := make([]CheckResult, 0, len(probes))
 	message := preflight.Reason
 	if strings.TrimSpace(message) == "" {
@@ -217,33 +213,6 @@ func failedDirectProbeSuiteResults(provider string, modelName string, profile st
 		})
 	}
 	return results
-}
-
-func directProbeSuiteDefinitions(profile string) []verifierProbe {
-	profile = normalizeProbeProfile(profile)
-	probes := make([]verifierProbe, 0, len(verifierProbeSuite(profile))+3)
-	if profile == ProbeProfileDeep || profile == ProbeProfileFull {
-		probes = append(probes,
-			verifierProbe{
-				Key:       CheckProbeChannelSignature,
-				Group:     probeGroupSecurity,
-				Prompt:    "Reply with exactly one word: OK",
-				MaxTokens: 16,
-				Neutral:   true,
-			},
-			verifierProbe{
-				Key:       CheckProbeSSECompliance,
-				Group:     probeGroupIntegrity,
-				Prompt:    "Say hello in exactly three words.",
-				MaxTokens: defaultProbeMaxTokens,
-			},
-		)
-	}
-	if profile == ProbeProfileFull {
-		probes = append(probes, verifierProbe{Key: CheckProbeSignatureRoundtrip, Group: probeGroupSignature, Neutral: true})
-	}
-	probes = append(probes, verifierProbeSuite(profile)...)
-	return probes
 }
 
 func (r Runner) endpoint(path string) string {

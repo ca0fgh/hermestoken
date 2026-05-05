@@ -40,7 +40,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "Compute 347 * 89. Output only the integer, no words.",
 			ExpectedExact: "30883",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 		{
 			Key:           CheckCanaryMathPow,
@@ -48,7 +47,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "What is 2 to the power of 16? Output only the integer, no words.",
 			ExpectedExact: "65536",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 		{
 			Key:           CheckCanaryMathMod,
@@ -56,7 +54,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "What is 1000 mod 7? Output only the integer, no words.",
 			ExpectedExact: "6",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 		{
 			Key:            CheckCanaryLogicSyllogism,
@@ -64,7 +61,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:         "If all cats are mammals and Whiskers is a cat, is Whiskers a mammal? Answer only yes or no.",
 			RequirePattern: "^yes$",
 			MaxTokens:      64,
-			FullOnly:       true,
 		},
 		{
 			Key:           CheckCanaryRecallCapital,
@@ -72,7 +68,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "What is the capital of Australia? Output only the single city name.",
 			ExpectedExact: "Canberra",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 		{
 			Key:           CheckCanaryRecallSymbol,
@@ -80,7 +75,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "What is the chemical symbol for gold? Output only the symbol.",
 			ExpectedExact: "Au",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 		{
 			Key:           CheckCanaryFormatEcho,
@@ -88,7 +82,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "Reply with exactly this token and nothing else: BANANA",
 			ExpectedExact: "BANANA",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 		{
 			Key:            CheckCanaryFormatJSON,
@@ -96,7 +89,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:         `Output this JSON object with no extra text and no code fences: {"ok":true}`,
 			RequirePattern: `^\{\s*"ok"\s*:\s*true\s*\}$`,
 			MaxTokens:      64,
-			FullOnly:       true,
 		},
 		{
 			Key:            CheckCanaryCodeReverse,
@@ -104,7 +96,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:         "Write a Python expression that reverses string s. Output only the expression, no code fences, no explanation.",
 			RequirePattern: `s\[::-1\]`,
 			MaxTokens:      64,
-			FullOnly:       true,
 		},
 		{
 			Key:           CheckCanaryRecallMoonYear,
@@ -112,7 +103,6 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			Prompt:        "In what year did humans first land on the moon? Output only the four-digit year.",
 			ExpectedExact: "1969",
 			MaxTokens:     64,
-			FullOnly:      true,
 		},
 	}
 }
@@ -145,7 +135,6 @@ type verifierProbe struct {
 	RequireJSON           bool
 	Neutral               bool
 	DeepOnly              bool
-	FullOnly              bool
 	Sensitive             bool
 	DynamicCanary         bool
 	ReviewOnly            bool
@@ -334,34 +323,49 @@ func verifierProbeSuite(profile string) []verifierProbe {
 	}
 	profile = normalizeProbeProfile(profile)
 	if profile == ProbeProfileFull {
-		return append(fullSuite, verifierFullOnlyProbeSuite()...)
+		return append(fullSuite, verifierFullProbeSuite()...)
 	}
 	if profile == ProbeProfileDeep {
 		return fullSuite
 	}
 	filtered := make([]verifierProbe, 0, len(fullSuite))
 	for _, probe := range fullSuite {
-		if !probe.DeepOnly && !probe.FullOnly {
+		if !probe.DeepOnly {
 			filtered = append(filtered, probe)
 		}
 	}
 	return filtered
 }
 
+func probeSuiteDefinitions(profile string) []verifierProbe {
+	profile = normalizeProbeProfile(profile)
+	probes := verifierProbeSuite(profile)
+	if profile != ProbeProfileDeep && profile != ProbeProfileFull {
+		return probes
+	}
+
+	definitions := make([]verifierProbe, 0, len(probes)+3)
+	definitions = append(definitions, channelSignatureProbe(), sseComplianceProbe())
+	if profile == ProbeProfileFull {
+		definitions = append(definitions, signatureRoundtripProbe())
+	}
+	definitions = append(definitions, probes...)
+	return definitions
+}
+
 func (r Runner) runProbeSuite(ctx context.Context, executor *CurlExecutor, provider string, modelName string) []CheckResult {
 	profile := normalizeProbeProfile(r.ProbeProfile)
-	probes := verifierProbeSuite(profile)
-	results := make([]CheckResult, 0, len(probes)+6)
-	if profile == ProbeProfileDeep || profile == ProbeProfileFull {
-		results = append(results, r.checkChannelSignature(ctx, executor, provider, modelName))
-		results = append(results, r.checkSSECompliance(ctx, executor, provider, modelName))
-	}
-	if profile == ProbeProfileFull {
-		results = append(results, r.checkSignatureRoundtrip(ctx, executor, provider, modelName))
-	}
+	probes := probeSuiteDefinitions(profile)
+	results := make([]CheckResult, 0, len(probes))
 	for _, probe := range probes {
 		var result CheckResult
 		switch probe.Key {
+		case CheckProbeChannelSignature:
+			result = r.checkChannelSignature(ctx, executor, provider, modelName, probe)
+		case CheckProbeSSECompliance:
+			result = r.checkSSECompliance(ctx, executor, provider, modelName, probe)
+		case CheckProbeSignatureRoundtrip:
+			result = r.checkSignatureRoundtrip(ctx, executor, provider, modelName, probe)
 		case CheckProbeCacheDetection:
 			result = r.checkCacheDetection(ctx, executor, provider, modelName, probe)
 		case CheckProbeThinkingBlock:
@@ -638,15 +642,34 @@ func scoreCanaryVerifierProbe(probe verifierProbe, responseText string) (bool, i
 	return false, 0, "canary 未配置期望输出", "canary_expectation_missing", false
 }
 
-func (r Runner) checkChannelSignature(ctx context.Context, executor *CurlExecutor, provider string, modelName string) CheckResult {
-	probe := verifierProbe{
+func channelSignatureProbe() verifierProbe {
+	return verifierProbe{
 		Key:       CheckProbeChannelSignature,
 		Group:     probeGroupSecurity,
 		Prompt:    "Reply with exactly one word: OK",
 		MaxTokens: 16,
 		Neutral:   true,
-		DeepOnly:  true,
 	}
+}
+
+func sseComplianceProbe() verifierProbe {
+	return verifierProbe{
+		Key:       CheckProbeSSECompliance,
+		Group:     probeGroupIntegrity,
+		Prompt:    "Say hello in exactly three words.",
+		MaxTokens: defaultProbeMaxTokens,
+	}
+}
+
+func signatureRoundtripProbe() verifierProbe {
+	return verifierProbe{
+		Key:     CheckProbeSignatureRoundtrip,
+		Group:   probeGroupSignature,
+		Neutral: true,
+	}
+}
+
+func (r Runner) checkChannelSignature(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
 	resp, decoded, content, err := r.executeVerifierProbeWithoutTemperature(ctx, executor, provider, modelName, probe, false)
 	if err != nil {
 		result := failedResult(probe.Key, modelName, err, 0)
@@ -691,12 +714,12 @@ func (r Runner) checkChannelSignature(ctx context.Context, executor *CurlExecuto
 	}
 }
 
-func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, provider string, modelName string) CheckResult {
+func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
 	if provider == ProviderAnthropic {
 		return CheckResult{
 			Provider:  provider,
-			Group:     probeGroupIntegrity,
-			CheckKey:  CheckProbeSSECompliance,
+			Group:     probe.Group,
+			CheckKey:  probe.Key,
 			ModelName: modelName,
 			Skipped:   true,
 			Success:   true,
@@ -708,9 +731,9 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 	body := map[string]any{
 		"model": modelName,
 		"messages": []map[string]string{
-			{"role": "user", "content": "Say hello in exactly three words."},
+			{"role": "user", "content": probe.Prompt},
 		},
-		"max_tokens":     defaultProbeMaxTokens,
+		"max_tokens":     probe.MaxTokens,
 		"stream":         true,
 		"stream_options": map[string]any{"include_usage": true},
 		"temperature":    0.3,
@@ -720,15 +743,15 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/chat/completions"), headers, payload)
 	if err != nil {
-		result := failedResult(CheckProbeSSECompliance, modelName, err, 0)
+		result := failedResult(probe.Key, modelName, err, 0)
 		result.Provider = provider
-		result.Group = probeGroupIntegrity
+		result.Group = probe.Group
 		return result
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		result := httpFailedResult(CheckProbeSSECompliance, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
+		result := httpFailedResult(probe.Key, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
 		result.Provider = provider
-		result.Group = probeGroupIntegrity
+		result.Group = probe.Group
 		return result
 	}
 	compliance := checkProbeSSECompliance(string(resp.Body))
@@ -747,8 +770,8 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 	inputTokens, outputTokens := extractVerifierUsageFromSSE(string(resp.Body))
 	return CheckResult{
 		Provider:     provider,
-		Group:        probeGroupIntegrity,
-		CheckKey:     CheckProbeSSECompliance,
+		Group:        probe.Group,
+		CheckKey:     probe.Key,
 		ModelName:    modelName,
 		Success:      compliance.Passed,
 		Score:        score,
@@ -1068,12 +1091,12 @@ func (r Runner) checkOpenAICompatibleThinkingBlock(ctx context.Context, executor
 	}
 }
 
-func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecutor, provider string, modelName string) CheckResult {
+func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
 	if provider != ProviderAnthropic {
 		return CheckResult{
 			Provider:  provider,
-			Group:     probeGroupSignature,
-			CheckKey:  CheckProbeSignatureRoundtrip,
+			Group:     probe.Group,
+			CheckKey:  probe.Key,
 			ModelName: modelName,
 			Neutral:   true,
 			Skipped:   true,
@@ -1097,16 +1120,16 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 	}
 	firstResp, firstDecoded, err := r.doAnthropicSignatureRequest(ctx, executor, firstBody)
 	if err != nil {
-		result := failedResult(CheckProbeSignatureRoundtrip, modelName, err, 0)
+		result := failedResult(probe.Key, modelName, err, 0)
 		result.Provider = provider
-		result.Group = probeGroupSignature
+		result.Group = probe.Group
 		result.Neutral = true
 		return result
 	}
 	if firstResp.StatusCode < 200 || firstResp.StatusCode >= 300 {
-		result := httpFailedResult(CheckProbeSignatureRoundtrip, modelName, firstResp.StatusCode, firstResp.Body, firstResp.LatencyMs)
+		result := httpFailedResult(probe.Key, modelName, firstResp.StatusCode, firstResp.Body, firstResp.LatencyMs)
 		result.Provider = provider
-		result.Group = probeGroupSignature
+		result.Group = probe.Group
 		result.Neutral = true
 		return result
 	}
@@ -1114,8 +1137,8 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 	if !ok {
 		return CheckResult{
 			Provider:  provider,
-			Group:     probeGroupSignature,
-			CheckKey:  CheckProbeSignatureRoundtrip,
+			Group:     probe.Group,
+			CheckKey:  probe.Key,
 			ModelName: modelName,
 			Neutral:   true,
 			Skipped:   true,
@@ -1134,9 +1157,9 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 	roundtripBody := buildAnthropicSignatureRoundtripBody(modelName, originalPrompt, thinking, assistantText, "What is 3+3? Answer only the number.")
 	secondResp, _, err := r.doAnthropicSignatureRequest(ctx, executor, roundtripBody)
 	if err != nil {
-		result := failedResult(CheckProbeSignatureRoundtrip, modelName, err, firstResp.LatencyMs)
+		result := failedResult(probe.Key, modelName, err, firstResp.LatencyMs)
 		result.Provider = provider
-		result.Group = probeGroupSignature
+		result.Group = probe.Group
 		result.Neutral = true
 		return result
 	}
@@ -1144,8 +1167,8 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 	if secondResp.StatusCode >= 200 && secondResp.StatusCode < 300 {
 		return CheckResult{
 			Provider:  provider,
-			Group:     probeGroupSignature,
-			CheckKey:  CheckProbeSignatureRoundtrip,
+			Group:     probe.Group,
+			CheckKey:  probe.Key,
 			ModelName: modelName,
 			Neutral:   true,
 			Success:   true,
@@ -1170,8 +1193,8 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 	}
 	return CheckResult{
 		Provider:  provider,
-		Group:     probeGroupSignature,
-		CheckKey:  CheckProbeSignatureRoundtrip,
+		Group:     probe.Group,
+		CheckKey:  probe.Key,
 		ModelName: modelName,
 		Neutral:   true,
 		Success:   false,
