@@ -193,6 +193,47 @@ func TestRunProbeSuiteOnlyPreflightAbortReturnsProbeFailuresOnly(t *testing.T) {
 	}
 }
 
+func TestToModelResultsPersistsProbeClassificationFields(t *testing.T) {
+	results := toModelResults(123, []CheckResult{
+		{
+			Provider:            ProviderAnthropic,
+			Group:               probeGroupSecurity,
+			CheckKey:            CheckProbeNPMRegistry,
+			ModelName:           "claude-opus-4-7",
+			Neutral:             false,
+			Skipped:             true,
+			Success:             false,
+			Score:               0,
+			ErrorCode:           "http_502",
+			Message:             "端点返回 502：HTTP 502",
+			RiskLevel:           "unknown",
+			Evidence:            []string{"端点错误，本探针未评分"},
+			LatencyMs:           1104,
+			PrivateResponseText: "private response must not persist",
+			Raw: map[string]any{
+				"response_redacted": true,
+			},
+		},
+	})
+
+	if len(results) != 1 {
+		t.Fatalf("model result count = %d, want 1", len(results))
+	}
+	result := results[0]
+	if !result.Skipped {
+		t.Fatal("Skipped was not persisted")
+	}
+	if result.RiskLevel != "unknown" {
+		t.Fatalf("RiskLevel = %q, want unknown", result.RiskLevel)
+	}
+	if len(result.Evidence) != 1 || result.Evidence[0] != "端点错误，本探针未评分" {
+		t.Fatalf("Evidence = %#v, want persisted evidence", result.Evidence)
+	}
+	if strings.Contains(result.Raw, "private response") {
+		t.Fatalf("Raw leaked private response text: %s", result.Raw)
+	}
+}
+
 func isLLMProbeResultKey(checkKey CheckKey) bool {
 	value := string(checkKey)
 	return strings.HasPrefix(value, "probe_") || strings.HasPrefix(value, "canary_")

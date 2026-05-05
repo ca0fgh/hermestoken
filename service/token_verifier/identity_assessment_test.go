@@ -97,6 +97,65 @@ func TestBuildReportClassifiesVagueSelfKnowledgeLikeSourceBaseline(t *testing.T)
 	}
 }
 
+func TestSourceIdentityVerdictRequiresStrongMismatchEvidence(t *testing.T) {
+	status, confidence, evidence := sourceIdentityVerdictFromCandidates([]IdentityCandidateSummary{
+		{Family: "google", Model: "Google / Gemini", Score: 0.55},
+	}, "anthropic")
+
+	if status != identityStatusUncertain {
+		t.Fatalf("status = %q, want uncertain for weak cross-family signal", status)
+	}
+	if confidence >= 0.4 {
+		t.Fatalf("confidence = %.2f, want weak confidence for uncertain verdict", confidence)
+	}
+	joinedEvidence := strings.Join(evidence, "\n")
+	if strings.Contains(joinedEvidence, "not in top candidates") {
+		t.Fatalf("evidence = %#v, should not claim missing top candidate as mismatch for weak signal", evidence)
+	}
+
+	status, confidence, evidence = sourceIdentityVerdictFromCandidates([]IdentityCandidateSummary{
+		{Family: "google", Model: "Google / Gemini", Score: 0.82},
+	}, "anthropic")
+	if status != identityStatusMismatch {
+		t.Fatalf("status = %q, want mismatch for strong cross-family signal", status)
+	}
+	if confidence < 0.8 {
+		t.Fatalf("confidence = %.2f, want strong mismatch confidence", confidence)
+	}
+	if !strings.Contains(strings.Join(evidence, "\n"), "not in top candidates") {
+		t.Fatalf("evidence = %#v, want mismatch evidence for strong signal", evidence)
+	}
+}
+
+func TestIdentityAssessmentDowngradesMismatchWhenReliabilityFlagsLowerConfidence(t *testing.T) {
+	assessment := deriveIdentityAssessmentWithSignals(
+		identityResultKey{provider: ProviderAnthropic, model: "claude-opus-4-7"},
+		"claude-opus-4-7",
+		"anthropic",
+		[]IdentityCandidateSummary{
+			{Family: "google", Model: "Google / Gemini", Score: 1.0},
+		},
+		nil,
+		[]string{
+			"Markdown 外泄诱饵: endpoint returned 502",
+			"代码注入探针: endpoint returned 502",
+			"依赖劫持探针: endpoint returned 502",
+		},
+		nil,
+		nil,
+	)
+
+	if assessment.Status != identityStatusUncertain {
+		t.Fatalf("status = %q, want uncertain when final confidence is weak: %+v", assessment.Status, assessment)
+	}
+	if assessment.Confidence != 0.55 {
+		t.Fatalf("confidence = %.2f, want 0.55 after reliability penalty", assessment.Confidence)
+	}
+	if !strings.Contains(strings.Join(assessment.Evidence, "\n"), "降级") {
+		t.Fatalf("evidence = %#v, want downgrade explanation", assessment.Evidence)
+	}
+}
+
 func TestBuildReportUsesSourceCurrentAffairsFingerprintForFamily(t *testing.T) {
 	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
 		identityProbeResult(CheckProbeLingJPPM, "石破茂"),

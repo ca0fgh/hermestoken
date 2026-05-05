@@ -30,7 +30,7 @@ func BuildReportWithOptions(ctx context.Context, results []CheckResult, options 
 
 	probeScore, probeScoreMax := computeProbeScoreRange(checklist)
 	grade := gradeForScore(probeScore)
-	conclusion := conclusionForGrade(grade)
+	conclusion := conclusionForScoreRange(grade, probeScore, probeScoreMax)
 	uniqueRisks := uniqueStrings(risks)
 	return ReportSummary{
 		Score:               probeScore,
@@ -58,6 +58,15 @@ func BuildProbeReportWithOptions(ctx context.Context, results []CheckResult, opt
 }
 
 func appendProbeRisk(risks []string, result CheckResult) []string {
+	if !result.Success && !result.Skipped {
+		switch strings.ToLower(strings.TrimSpace(result.RiskLevel)) {
+		case "high":
+			risks = append(risks, checkDisplayName(result.CheckKey)+"发现高危信号："+probeRiskMessage(result))
+		case "medium":
+			risks = append(risks, checkDisplayName(result.CheckKey)+"发现中危信号："+probeRiskMessage(result))
+		}
+	}
+
 	if !result.Success && !result.Skipped && !isWarningCheckResult(result) {
 		switch result.CheckKey {
 		case CheckProbeInfraLeak:
@@ -98,7 +107,7 @@ func appendProbeRisk(risks []string, result CheckResult) []string {
 		}
 	}
 
-	if !result.Success && !isWarningCheckResult(result) && result.Message != "" {
+	if !result.Success && !result.Skipped && !isWarningCheckResult(result) && result.Message != "" {
 		message := strings.ToLower(result.Message)
 		switch {
 		case strings.Contains(message, "rate limit") || strings.Contains(message, "429"):
@@ -110,6 +119,16 @@ func appendProbeRisk(risks []string, result CheckResult) []string {
 		}
 	}
 	return risks
+}
+
+func probeRiskMessage(result CheckResult) string {
+	if strings.TrimSpace(result.Message) != "" {
+		return strings.TrimSpace(result.Message)
+	}
+	if len(result.Evidence) > 0 {
+		return strings.Join(result.Evidence, "；")
+	}
+	return "建议查看探针说明与证据"
 }
 
 func computeProbeScoreRange(items []ChecklistItem) (int, int) {
@@ -175,6 +194,8 @@ func buildChecklistItem(result CheckResult) ChecklistItem {
 		TokensPS:     result.TokensPS,
 		ErrorCode:    result.ErrorCode,
 		Message:      result.Message,
+		RiskLevel:    result.RiskLevel,
+		Evidence:     append([]string(nil), result.Evidence...),
 	}
 }
 
@@ -434,6 +455,13 @@ func gradeForScore(score int) string {
 }
 
 func conclusionForGrade(grade string) string {
+	return conclusionForScoreRange(grade, 0, 0)
+}
+
+func conclusionForScoreRange(grade string, score int, scoreMax int) string {
+	if score == 0 && scoreMax == 100 {
+		return "探针未完成或端点不可用，当前结果无法评价模型风险"
+	}
 	switch grade {
 	case "S":
 		return "探针结果健康，适合生产调用"

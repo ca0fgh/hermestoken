@@ -13,6 +13,9 @@ const (
 	identityStatusMatch     = "match"
 	identityStatusMismatch  = "mismatch"
 	identityStatusUncertain = "uncertain"
+
+	identityMismatchScoreThreshold     = 0.70
+	identityMinFinalMismatchConfidence = 0.70
 )
 
 type identityResultKey struct {
@@ -184,6 +187,12 @@ func deriveIdentityAssessmentWithSignals(key identityResultKey, claimedModel str
 	if len(riskFlags) > 0 {
 		confidence = math.Max(0, confidence-0.15*float64(min(len(riskFlags), 3)))
 	}
+	if status == identityStatusMismatch && confidence < identityMinFinalMismatchConfidence {
+		status = identityStatusUncertain
+		evidence = append([]string{
+			fmt.Sprintf("身份不一致信号因可靠性风险降级：最终置信度 %.2f 低于 %.2f", confidence, identityMinFinalMismatchConfidence),
+		}, evidence...)
+	}
 
 	assessment := IdentityAssessmentSummary{
 		Provider:            key.provider,
@@ -223,7 +232,7 @@ func sourceIdentityVerdictFromCandidates(candidates []IdentityCandidateSummary, 
 		margin := top.Score - secondScore
 		return identityStatusMatch, math.Min(1, top.Score*(0.6+margin*0.4)), evidence
 	}
-	if top.Family != claimedFamily && top.Score > 0.4 {
+	if top.Family != claimedFamily && top.Score >= identityMismatchScoreThreshold {
 		mismatchEvidence := []string{
 			fmt.Sprintf("Behavior most consistent with %s (score: %.2f)", top.Model, top.Score),
 			"Claimed family " + claimedFamily + " not in top candidates",
@@ -231,7 +240,10 @@ func sourceIdentityVerdictFromCandidates(candidates []IdentityCandidateSummary, 
 		mismatchEvidence = append(mismatchEvidence, evidence...)
 		return identityStatusMismatch, top.Score, mismatchEvidence
 	}
-	return identityStatusUncertain, top.Score * 0.5, evidence
+	uncertainEvidence := append([]string{
+		fmt.Sprintf("Weak cross-family signal for %s (score: %.2f); more identity probes required", top.Model, top.Score),
+	}, evidence...)
+	return identityStatusUncertain, top.Score * 0.5, uncertainEvidence
 }
 
 func identityRiskFlags(results []CheckResult) []string {

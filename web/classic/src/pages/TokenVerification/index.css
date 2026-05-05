@@ -132,6 +132,14 @@
   gap: 6px;
 }
 
+.token-verification-probe-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  line-height: 1.45;
+}
+
 @media (max-width: 920px) {
   .token-verification-header,
   .token-verification-score {

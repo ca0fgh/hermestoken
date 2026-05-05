@@ -64,25 +64,27 @@ func (t *TokenVerificationTask) GetProviders() []string {
 }
 
 type TokenVerificationResult struct {
-	ID           int64   `json:"id" gorm:"primaryKey"`
-	TaskID       int64   `json:"task_id" gorm:"index"`
-	Provider     string  `json:"provider" gorm:"type:varchar(32);index"`
-	Group        string  `json:"group" gorm:"type:varchar(32);index"`
-	CheckKey     string  `json:"check_key" gorm:"type:varchar(64);index"`
-	ModelName    string  `json:"model_name" gorm:"type:varchar(191);index"`
-	Neutral      bool    `json:"neutral"`
-	Skipped      bool    `json:"skipped"`
-	Success      bool    `json:"success"`
-	Score        int     `json:"score"`
-	LatencyMs    int64   `json:"latency_ms"`
-	TTFTMs       int64   `json:"ttft_ms"`
-	InputTokens  *int    `json:"input_tokens,omitempty"`
-	OutputTokens *int    `json:"output_tokens,omitempty"`
-	TokensPS     float64 `json:"tokens_ps" gorm:"type:decimal(18,6);not null;default:0"`
-	ErrorCode    string  `json:"error_code" gorm:"type:varchar(64)"`
-	Message      string  `json:"message" gorm:"type:text"`
-	Raw          string  `json:"raw" gorm:"type:json"`
-	CreatedAt    int64   `json:"created_at" gorm:"index"`
+	ID           int64    `json:"id" gorm:"primaryKey"`
+	TaskID       int64    `json:"task_id" gorm:"index"`
+	Provider     string   `json:"provider" gorm:"type:varchar(32);index"`
+	Group        string   `json:"group" gorm:"type:varchar(32);index"`
+	CheckKey     string   `json:"check_key" gorm:"type:varchar(64);index"`
+	ModelName    string   `json:"model_name" gorm:"type:varchar(191);index"`
+	Neutral      bool     `json:"neutral"`
+	Skipped      bool     `json:"skipped"`
+	Success      bool     `json:"success"`
+	Score        int      `json:"score"`
+	LatencyMs    int64    `json:"latency_ms"`
+	TTFTMs       int64    `json:"ttft_ms"`
+	InputTokens  *int     `json:"input_tokens,omitempty"`
+	OutputTokens *int     `json:"output_tokens,omitempty"`
+	TokensPS     float64  `json:"tokens_ps" gorm:"type:decimal(18,6);not null;default:0"`
+	ErrorCode    string   `json:"error_code" gorm:"type:varchar(64)"`
+	Message      string   `json:"message" gorm:"type:text"`
+	RiskLevel    string   `json:"risk_level" gorm:"type:varchar(32)"`
+	Evidence     []string `json:"evidence,omitempty" gorm:"type:json;serializer:json"`
+	Raw          string   `json:"raw" gorm:"type:json"`
+	CreatedAt    int64    `json:"created_at" gorm:"index"`
 }
 
 type TokenVerificationReport struct {

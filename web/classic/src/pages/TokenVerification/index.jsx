@@ -80,7 +80,7 @@ const groupLabels = {
 const identityStatusLabels = {
   match: '匹配',
   mismatch: '不一致',
-  uncertain: '不确定',
+  uncertain: '证据不足',
   insufficient_data: '数据不足',
 };
 
@@ -171,6 +171,97 @@ function probeProfileTagColor(profile) {
     return 'orange';
   }
   return 'light-blue';
+}
+
+function probeStatusMeta(record, t) {
+  const normalizedStatus =
+    record.status || (record.success || record.passed ? 'passed' : 'failed');
+  const riskLevel = String(record.risk_level || '').toLowerCase();
+
+  if (record.error_code === 'judge_unconfigured') {
+    return {
+      color: 'grey',
+      label: t('未评分'),
+    };
+  }
+  if (riskLevel === 'high') {
+    return {
+      color: 'red',
+      label: t('高危'),
+    };
+  }
+  if (riskLevel === 'medium') {
+    return {
+      color: 'orange',
+      label: t('中危'),
+    };
+  }
+  if (riskLevel === 'low' && normalizedStatus === 'passed') {
+    return {
+      color: 'green',
+      label: t('低风险'),
+    };
+  }
+  if (normalizedStatus === 'passed') {
+    return {
+      color: 'green',
+      label: t('通过'),
+    };
+  }
+  if (normalizedStatus === 'skipped') {
+    return {
+      color: 'grey',
+      label: t('跳过'),
+    };
+  }
+  if (normalizedStatus === 'neutral') {
+    return {
+      color: 'blue',
+      label: t('信息'),
+    };
+  }
+  if (normalizedStatus === 'warning') {
+    return {
+      color: 'orange',
+      label: t('警告'),
+    };
+  }
+  return {
+    color: 'red',
+    label: t('失败'),
+  };
+}
+
+function renderProbeMessage(value, record) {
+  const evidence = Array.isArray(record.evidence) ? record.evidence : [];
+  if (!value && evidence.length === 0) {
+    return '-';
+  }
+  return (
+    <div className='token-verification-probe-message'>
+      {value && <Text>{value}</Text>}
+      {evidence.slice(0, 3).map((item) => (
+        <Text key={item} type='secondary' size='small'>
+          {item}
+        </Text>
+      ))}
+    </div>
+  );
+}
+
+function renderIdentityEvidence(items = [], record = {}, t = (value) => value) {
+  const evidence = Array.isArray(items) ? items : [];
+  const notes = [...evidence];
+  if (record.status === 'uncertain' && notes.length === 0) {
+    notes.push(t('当前信号不足，建议重跑 Deep/Full 探针或查看原始响应'));
+  }
+  if (record.verdict?.status === 'insufficient_data') {
+    notes.push(t('交叉判定数据不足，不能作为身份不一致结论'));
+  }
+  if (notes.length === 0) {
+    return '-';
+  }
+  return notes.slice(0, 3).join('；');
 }
 
 function TokenVerification() {
@@ -314,26 +405,9 @@ function TokenVerification() {
       title: t('结果'),
       dataIndex: 'status',
       width: 96,
-      render: (status, record) => {
-        const normalizedStatus =
-          status || (record.success || record.passed ? 'passed' : 'failed');
-        const color =
-          normalizedStatus === 'passed'
-            ? 'green'
-            : normalizedStatus === 'skipped'
-              ? 'grey'
-              : normalizedStatus === 'neutral'
-                ? 'blue'
-                : 'red';
-        const label =
-          normalizedStatus === 'passed'
-            ? t('通过')
-            : normalizedStatus === 'skipped'
-              ? t('跳过')
-              : normalizedStatus === 'neutral'
-                ? t('信息')
-                : t('失败');
-        return <Tag color={color}>{label}</Tag>;
+      render: (_status, record) => {
+        const meta = probeStatusMeta(record, t);
+        return <Tag color={meta.color}>{meta.label}</Tag>;
       },
     },
     {
@@ -345,7 +419,7 @@ function TokenVerification() {
     {
       title: t('说明'),
       dataIndex: 'message',
-      render: (value) => value || '-',
+      render: renderProbeMessage,
     },
   ];
 
@@ -421,10 +495,7 @@ function TokenVerification() {
     {
       title: t('证据'),
       dataIndex: 'evidence',
-      render: (items = []) =>
-        Array.isArray(items) && items.length > 0
-          ? items.slice(0, 3).join('；')
-          : '-',
+      render: (value, record) => renderIdentityEvidence(value, record, t),
     },
   ];
 

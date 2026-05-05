@@ -60,3 +60,43 @@ func TestHTTPFailedResultUsesPreflightClassification(t *testing.T) {
 		t.Fatal("expected user-facing preflight message")
 	}
 }
+
+func TestHTTPFailedResultTreatsTransientEndpointErrorsAsUnscored(t *testing.T) {
+	result := httpFailedResult(CheckProbeNPMRegistry, "claude-test", 502, []byte(`HTTP 502`), 1104)
+
+	if result.Success {
+		t.Fatal("transient endpoint error should not pass")
+	}
+	if !result.Skipped {
+		t.Fatalf("skipped = %v, want true for unscored endpoint error", result.Skipped)
+	}
+	if result.ErrorCode != "http_502" {
+		t.Fatalf("error code = %q, want http_502", result.ErrorCode)
+	}
+	if result.RiskLevel != "unknown" {
+		t.Fatalf("risk level = %q, want unknown", result.RiskLevel)
+	}
+	if len(result.Evidence) == 0 {
+		t.Fatal("expected evidence explaining endpoint error was not scored as model behavior")
+	}
+}
+
+func TestFailedDirectProbeSuiteResultsAreUnscoredWhenPreflightAborts(t *testing.T) {
+	preflight := preflightResult{Outcome: preflightOutcomeAbort, Code: "authentication_failed", Reason: "认证失败（401）：bad key"}
+	results := failedDirectProbeSuiteResults(ProviderAnthropic, "claude-test", ProbeProfileStandard, preflight, 42)
+
+	if len(results) == 0 {
+		t.Fatal("expected generated probe results")
+	}
+	for _, result := range results {
+		if result.Success {
+			t.Fatalf("preflight abort result %s passed unexpectedly", result.CheckKey)
+		}
+		if !result.Skipped {
+			t.Fatalf("preflight abort result %s skipped = false, want unscored", result.CheckKey)
+		}
+		if result.RiskLevel != "unknown" {
+			t.Fatalf("preflight abort result %s risk = %q, want unknown", result.CheckKey, result.RiskLevel)
+		}
+	}
+}

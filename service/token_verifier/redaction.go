@@ -82,6 +82,8 @@ func redactChecklistItems(items []ChecklistItem, secrets []string) []ChecklistIt
 		redacted[i].Status = redactSecretString(item.Status, secrets)
 		redacted[i].ErrorCode = redactSecretString(item.ErrorCode, secrets)
 		redacted[i].Message = redactSecretString(item.Message, secrets)
+		redacted[i].RiskLevel = redactSecretString(item.RiskLevel, secrets)
+		redacted[i].Evidence = redactSecretStrings(item.Evidence, secrets)
 	}
 	return redacted
 }

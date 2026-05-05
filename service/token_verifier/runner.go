@@ -238,11 +238,14 @@ func failedDirectProbeSuiteResults(provider string, modelName string, profile st
 			CheckKey:  probe.Key,
 			ModelName: modelName,
 			Neutral:   probe.Neutral,
+			Skipped:   true,
 			Success:   false,
 			Score:     0,
 			LatencyMs: latencyMs,
 			ErrorCode: errorCode,
 			Message:   message,
+			RiskLevel: "unknown",
+			Evidence:  []string{"预检未通过，本探针未执行；该结果不代表模型行为"},
 		})
 	}
 	return results
@@ -335,6 +338,7 @@ func toModelResults(taskID int64, results []CheckResult) []*model.TokenVerificat
 			CheckKey:     string(result.CheckKey),
 			ModelName:    result.ModelName,
 			Neutral:      result.Neutral,
+			Skipped:      result.Skipped,
 			Success:      result.Success,
 			Score:        result.Score,
 			LatencyMs:    result.LatencyMs,
@@ -344,6 +348,8 @@ func toModelResults(taskID int64, results []CheckResult) []*model.TokenVerificat
 			TokensPS:     result.TokensPS,
 			ErrorCode:    result.ErrorCode,
 			Message:      result.Message,
+			RiskLevel:    result.RiskLevel,
+			Evidence:     append([]string(nil), result.Evidence...),
 			Raw:          string(rawBytes),
 		})
 	}
@@ -777,11 +783,14 @@ func failedResult(checkKey CheckKey, modelName string, err error, latencyMs int6
 	return CheckResult{
 		CheckKey:  checkKey,
 		ModelName: modelName,
+		Skipped:   true,
 		Success:   false,
 		Score:     0,
 		LatencyMs: latencyMs,
 		ErrorCode: "request_failed",
 		Message:   message,
+		RiskLevel: "unknown",
+		Evidence:  []string{"请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"},
 	}
 }
 
@@ -801,11 +810,14 @@ func httpFailedResult(checkKey CheckKey, modelName string, statusCode int, body 
 	return CheckResult{
 		CheckKey:  checkKey,
 		ModelName: modelName,
+		Skipped:   true,
 		Success:   false,
 		Score:     0,
 		LatencyMs: latencyMs,
 		ErrorCode: errorCode,
 		Message:   message,
+		RiskLevel: "unknown",
+		Evidence:  []string{"端点错误，本探针未评分；HTTP/网关失败不代表模型输出风险"},
 	}
 }
 

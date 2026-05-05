@@ -47,6 +47,81 @@ func TestBuildReportUsesLLMProbeScoreRange(t *testing.T) {
 	}
 }
 
+func TestBuildReportExplainsUnscoredEndpointFailuresAsIncomplete(t *testing.T) {
+	report := BuildReport([]CheckResult{
+		{
+			Provider:  ProviderAnthropic,
+			Group:     probeGroupSecurity,
+			CheckKey:  CheckProbeNPMRegistry,
+			ModelName: "claude-opus-4-7",
+			Skipped:   true,
+			Success:   false,
+			Score:     0,
+			ErrorCode: "http_502",
+			Message:   "端点返回 502：HTTP 502",
+			RiskLevel: "unknown",
+		},
+		{
+			Provider:  ProviderAnthropic,
+			Group:     probeGroupSecurity,
+			CheckKey:  CheckProbePipIndex,
+			ModelName: "claude-opus-4-7",
+			Skipped:   true,
+			Success:   false,
+			Score:     0,
+			ErrorCode: "http_502",
+			Message:   "端点返回 502：HTTP 502",
+			RiskLevel: "unknown",
+		},
+	})
+
+	if report.ProbeScore != 0 || report.ProbeScoreMax != 100 {
+		t.Fatalf("score range = %d-%d, want 0-100 for all-unscored probes", report.ProbeScore, report.ProbeScoreMax)
+	}
+	if !strings.Contains(report.Conclusion, "未完成") || !strings.Contains(report.Conclusion, "无法评价模型风险") {
+		t.Fatalf("conclusion = %q, want incomplete/unscored wording", report.Conclusion)
+	}
+	if report.FinalRating.Conclusion != report.Conclusion {
+		t.Fatalf("final rating conclusion = %q, want %q", report.FinalRating.Conclusion, report.Conclusion)
+	}
+	if len(report.Risks) != 0 {
+		t.Fatalf("risks = %#v, want no model/security risks for skipped endpoint failures", report.Risks)
+	}
+}
+
+func TestBuildReportDoesNotTreatSkippedEndpointMessagesAsRisks(t *testing.T) {
+	report := BuildReport([]CheckResult{
+		{
+			Provider:  ProviderAnthropic,
+			Group:     probeGroupSecurity,
+			CheckKey:  CheckProbeNPMRegistry,
+			ModelName: "claude-opus-4-7",
+			Skipped:   true,
+			Success:   false,
+			Score:     0,
+			ErrorCode: "request_timeout",
+			Message:   "request timeout: context deadline exceeded",
+			RiskLevel: "unknown",
+		},
+		{
+			Provider:  ProviderAnthropic,
+			Group:     probeGroupSecurity,
+			CheckKey:  CheckProbePipIndex,
+			ModelName: "claude-opus-4-7",
+			Skipped:   true,
+			Success:   false,
+			Score:     0,
+			ErrorCode: "http_429",
+			Message:   "endpoint returned 429 rate limit",
+			RiskLevel: "unknown",
+		},
+	})
+
+	if len(report.Risks) != 0 {
+		t.Fatalf("risks = %#v, want no process/model risks for skipped endpoint failures", report.Risks)
+	}
+}
+
 func TestBuildReportCountsWarningsAsHalfPointWithoutRisk(t *testing.T) {
 	report := BuildReport([]CheckResult{
 		{
@@ -81,6 +156,8 @@ func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 			ModelName: "gpt-5.5",
 			Success:   true,
 			Score:     100,
+			RiskLevel: "low",
+			Evidence:  []string{"contains Fortran"},
 		},
 	})
 
@@ -121,6 +198,8 @@ func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 		"passed":     true,
 		"status":     true,
 		"score":      true,
+		"risk_level": true,
+		"evidence":   true,
 	})
 	finalRating, ok := rendered["final_rating"].(map[string]any)
 	if !ok {
@@ -134,6 +213,35 @@ func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 		"probe_score":     true,
 		"probe_score_max": true,
 	})
+}
+
+func TestBuildReportCarriesProbeRiskEvidence(t *testing.T) {
+	report := BuildReport([]CheckResult{
+		{
+			Provider:  ProviderOpenAI,
+			Group:     probeGroupSecurity,
+			CheckKey:  CheckProbeInfraLeak,
+			ModelName: "gpt-5.5",
+			Success:   false,
+			Score:     0,
+			ErrorCode: "infra_leak_high",
+			Message:   "确认泄露真实基础设施",
+			RiskLevel: "high",
+			Evidence:  []string{"确认当前服务使用 Bedrock", "命中 anthropic_version=bedrock-2023-05-31"},
+		},
+	})
+
+	if len(report.Checklist) != 1 {
+		t.Fatalf("checklist len = %d, want 1", len(report.Checklist))
+	}
+	item := report.Checklist[0]
+	if item.RiskLevel != "high" || len(item.Evidence) != 2 {
+		t.Fatalf("checklist risk/evidence = %q %#v, want high with evidence", item.RiskLevel, item.Evidence)
+	}
+	renderedRisks := strings.Join(report.Risks, "\n")
+	if !strings.Contains(renderedRisks, "高危") {
+		t.Fatalf("risks = %#v, want high severity wording", report.Risks)
+	}
 }
 
 func assertOnlyJSONKeys(t *testing.T, object map[string]any, allowed map[string]bool) {
