@@ -78,7 +78,7 @@ func runIdentityJudgeSignal(ctx context.Context, options ReportOptions, response
 }
 
 func runIdentityVectorSignal(ctx context.Context, options ReportOptions, responses map[string]string) []IdentityCandidateSummary {
-	if options.Embedding == nil {
+	if options.Embedding == nil || len(options.Embedding.References) == 0 {
 		return nil
 	}
 	executor := options.Executor

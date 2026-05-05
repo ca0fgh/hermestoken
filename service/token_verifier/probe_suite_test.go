@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,22 @@ func TestScoreVerifierProbeExactAndKeywordModes(t *testing.T) {
 	}
 	if !strings.Contains(message, "msg_bdrk_") {
 		t.Fatalf("keyword failure message = %q, want matched keyword", message)
+	}
+}
+
+func TestScoreVerifierProbeRegexUsesLLMProbeCaseInsensitiveOnlySemantics(t *testing.T) {
+	probe := verifierProbe{
+		Key:            CheckProbeDependencyHijack,
+		RequirePattern: "^foo.bar$",
+	}
+	passed, score, _, errorCode, skipped := scoreVerifierProbe(probe, "foo\nbar", nil)
+	if passed || score != 0 || skipped || errorCode != "probe_pattern_missing" {
+		t.Fatalf("newline regex score = (%v,%d,%q,%v), want no dotAll match like LLMprobe autoScore", passed, score, errorCode, skipped)
+	}
+
+	passed, score, _, errorCode, skipped = scoreVerifierProbe(probe, "FOO-bar", nil)
+	if !passed || score != 100 || skipped || errorCode != "" {
+		t.Fatalf("case-insensitive regex score = (%v,%d,%q,%v), want match", passed, score, errorCode, skipped)
 	}
 }
 
@@ -232,7 +249,7 @@ func TestDefaultVerifierProbeTemperatureMirrorsLLMProbeRunner(t *testing.T) {
 	if got := defaultVerifierProbeTemperature(verifierProbe{Key: CheckProbeIdentityStyleEN, Neutral: true}); got != 0.3 {
 		t.Fatalf("feature_extract temperature = %.1f, want 0.3", got)
 	}
-	if got := defaultVerifierProbeTemperature(verifierProbe{Key: CheckCanaryMathMul, RequirePattern: "^30883$"}); got != 0 {
+	if got := defaultVerifierProbeTemperature(verifierProbe{Key: CheckCanaryMathMul, ExpectedExact: "30883"}); got != 0 {
 		t.Fatalf("canary temperature = %.1f, want 0", got)
 	}
 }
@@ -504,8 +521,10 @@ func TestFullProbeSuiteCoversLLMProbeEngineProbeIDs(t *testing.T) {
 
 func TestFullProbeSuiteCoversLLMProbeEngineCanaryBench(t *testing.T) {
 	fullKeys := make(map[CheckKey]bool)
+	fullProbes := make(map[CheckKey]verifierProbe)
 	for _, probe := range verifierProbeSuite(ProbeProfileFull) {
 		fullKeys[probe.Key] = true
+		fullProbes[probe.Key] = probe
 	}
 
 	canaryBenchMap := map[string]CheckKey{
@@ -525,6 +544,83 @@ func TestFullProbeSuiteCoversLLMProbeEngineCanaryBench(t *testing.T) {
 		if !fullKeys[checkKey] {
 			t.Fatalf("full suite missing canary bench item %s mapped to %s", sourceID, checkKey)
 		}
+		if fullProbes[checkKey].MaxTokens != 64 {
+			t.Fatalf("canary bench item %s max_tokens = %d, want LLMprobe runCanary max_tokens 64", sourceID, fullProbes[checkKey].MaxTokens)
+		}
+	}
+}
+
+func TestRunCanaryProbeUsesLLMProbeRunCanaryRequestShape(t *testing.T) {
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sawRequest = true
+		if payload["stream"] != false {
+			t.Fatalf("canary stream = %#v, want false like LLMprobe runCanary", payload["stream"])
+		}
+		if _, ok := payload["stream_options"]; ok {
+			t.Fatalf("canary payload has stream_options = %#v, want absent for non-stream runCanary", payload["stream_options"])
+		}
+		if payload["max_tokens"] != float64(64) {
+			t.Fatalf("canary max_tokens = %#v, want 64", payload["max_tokens"])
+		}
+		if payload["temperature"] != float64(0) {
+			t.Fatalf("canary temperature = %#v, want 0", payload["temperature"])
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id":     "chatcmpl-canary",
+			"object": "chat.completion",
+			"model":  payload["model"],
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": "30883"}},
+			},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.runVerifierProbe(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", verifierProbe{
+		Key:           CheckCanaryMathMul,
+		Group:         probeGroupCanary,
+		Prompt:        "Compute 347 * 89. Output only the integer, no words.",
+		ExpectedExact: "30883",
+		MaxTokens:     64,
+	})
+
+	if !sawRequest {
+		t.Fatal("canary request was not sent")
+	}
+	if !result.Success || result.Score != 100 {
+		t.Fatalf("canary result = %+v, want successful scored response", result)
+	}
+}
+
+func TestCanaryScoringUsesLLMProbeCleanThenScoreSemantics(t *testing.T) {
+	probe := verifierProbe{Key: CheckCanaryMathMul, ExpectedExact: "30883"}
+	passed, score, _, errorCode, _ := scoreVerifierProbe(probe, "30883。", nil)
+	if !passed || score != 100 || errorCode != "" {
+		t.Fatalf("canary full-stop exact score = (%v,%d,%q), want pass", passed, score, errorCode)
+	}
+
+	passed, score, _, errorCode, _ = scoreVerifierProbe(probe, "30883。.", nil)
+	if passed || score != 0 || errorCode != "canary_exact_failed" {
+		t.Fatalf("canary double-punctuation score = (%v,%d,%q), want LLMprobe failure", passed, score, errorCode)
+	}
+
+	probe = verifierProbe{Key: CheckCanaryFormatJSON, RequirePattern: `^\{\s*"ok"\s*:\s*true\s*\}$`}
+	passed, score, _, errorCode, _ = scoreVerifierProbe(probe, `{"ok":true}.`, nil)
+	if !passed || score != 100 || errorCode != "" {
+		t.Fatalf("canary regex cleaned score = (%v,%d,%q), want pass", passed, score, errorCode)
+	}
+
+	passed, score, _, errorCode, _ = scoreVerifierProbe(probe, `prefix {"ok":true}`, nil)
+	if passed || score != 0 || errorCode != "canary_pattern_missing" {
+		t.Fatalf("canary regex mismatch score = (%v,%d,%q), want failure", passed, score, errorCode)
 	}
 }
 
@@ -681,6 +777,44 @@ func TestDeepRunnerIncludesChannelAndSSEProbes(t *testing.T) {
 	}
 }
 
+func TestCheckChannelSignatureUsesLLMProbeRequestShape(t *testing.T) {
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sawRequest = true
+		if payload["stream"] != false {
+			t.Fatalf("channel stream = %#v, want false", payload["stream"])
+		}
+		if payload["max_tokens"] != float64(16) {
+			t.Fatalf("channel max_tokens = %#v, want 16", payload["max_tokens"])
+		}
+		if _, ok := payload["temperature"]; ok {
+			t.Fatalf("channel payload has temperature = %#v, want omitted like LLMprobe", payload["temperature"])
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id": "chatcmpl-channel-test",
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": "OK"}},
+			},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.checkChannelSignature(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test")
+	if !sawRequest {
+		t.Fatal("channel_signature request was not sent")
+	}
+	if !result.Neutral || result.CheckKey != CheckProbeChannelSignature {
+		t.Fatalf("channel result = %+v, want neutral channel signature result", result)
+	}
+}
+
 func TestCheckProbeSSECompliance(t *testing.T) {
 	passing := checkProbeSSECompliance("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n")
 	if !passing.Passed || passing.Warning || passing.DataLines != 1 {
@@ -695,6 +829,51 @@ func TestCheckProbeSSECompliance(t *testing.T) {
 	failing := checkProbeSSECompliance("data: {not-json}\n\n")
 	if failing.Passed || len(failing.Issues) == 0 {
 		t.Fatalf("failing SSE compliance = %+v, want issues", failing)
+	}
+}
+
+func TestCheckContextLengthUsesLLMProbeRequestShape(t *testing.T) {
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sawRequest = true
+		if payload["stream"] != false {
+			t.Fatalf("context stream = %#v, want false", payload["stream"])
+		}
+		if payload["max_tokens"] != float64(256) {
+			t.Fatalf("context max_tokens = %#v, want 256", payload["max_tokens"])
+		}
+		if _, ok := payload["temperature"]; ok {
+			t.Fatalf("context payload has temperature = %#v, want omitted like LLMprobe", payload["temperature"])
+		}
+		prompt := extractRequestPrompt(payload)
+		canaries := regexp.MustCompile(`CANARY_\d+_[0-9A-F]{6}`).FindAllString(prompt, -1)
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id": "chatcmpl-context-test",
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": strings.Join(canaries, "\n")}},
+			},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.checkContextLength(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", verifierProbe{
+		Key:            CheckProbeContextLength,
+		Group:          probeGroupIntegrity,
+		ContextLengths: []int{4000},
+		MaxTokens:      256,
+	})
+	if !sawRequest {
+		t.Fatal("context_check request was not sent")
+	}
+	if !result.Success || result.Score != 100 {
+		t.Fatalf("context result = %+v, want pass", result)
 	}
 }
 
@@ -730,6 +909,32 @@ func TestClassifyProbeChannelSignature(t *testing.T) {
 	signature = classifyProbeChannelSignature(nil, "msg_bdrk_abc", `{"anthropic_version":"bedrock-2023-05-31"}`)
 	if signature.Channel != "aws-bedrock" || signature.Confidence <= 0 {
 		t.Fatalf("signature = %+v, want aws-bedrock evidence", signature)
+	}
+
+	signature = classifyProbeChannelSignature(map[string]string{"server": "Google Frontend"}, "", "")
+	if signature.Channel != "google-vertex" || signature.Confidence != 0.5 {
+		t.Fatalf("google server signature = %+v, want LLMprobe weak google-vertex signal", signature)
+	}
+
+	signature = classifyProbeChannelSignature(map[string]string{
+		"x-amzn-bedrock-trace": "a",
+		"x-goog-request-id":    "b",
+	}, "", "")
+	if signature.Channel != "aws-bedrock" || signature.Confidence != 1 {
+		t.Fatalf("tie signature = %+v, want LLMprobe Bedrock-over-Vertex tie priority", signature)
+	}
+
+	signature = classifyProbeChannelSignature(map[string]string{
+		"apim-request-id": "azure",
+		"x-litellm-id":    "litellm",
+	}, "", "")
+	if signature.Channel != "azure-foundry" {
+		t.Fatalf("tier1 ordering signature = %+v, want LLMprobe Azure before LiteLLM", signature)
+	}
+
+	signature = classifyProbeChannelSignature(map[string]string{"x-new-api-version": "v0.6.0"}, "", "")
+	if signature.Channel != "new-api" || len(signature.Evidence) != 1 || signature.Evidence[0] != "header:x-new-api-version=v0.6.0" {
+		t.Fatalf("new-api signature = %+v, want LLMprobe evidence with header value", signature)
 	}
 }
 
@@ -768,6 +973,29 @@ func TestCheckCacheDetectionMirrorsHeaderCheckScoring(t *testing.T) {
 	hit := hitRunner.checkCacheDetection(context.Background(), hitRunner.Executor, ProviderOpenAI, "gpt-test", probe)
 	if hit.Success || hit.Score != 0 || hit.ErrorCode != "cache_header_hit" {
 		t.Fatalf("HIT cache result = %+v, want failed header_check", hit)
+	}
+}
+
+func TestCheckCacheDetectionHTTPErrorStaysNonNeutralLikeLLMProbe(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "upstream failed", http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.checkCacheDetection(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", verifierProbe{
+		Key:       CheckProbeCacheDetection,
+		Group:     probeGroupIntegrity,
+		Prompt:    "Generate a UUID v4. Output only the UUID string, nothing else.",
+		HeaderKey: "x-cache",
+		MaxTokens: defaultProbeMaxTokens,
+	})
+
+	if result.Neutral {
+		t.Fatalf("cache HTTP error result = %+v, want non-neutral like LLMprobe header_check error", result)
+	}
+	if result.Success || result.Score != 0 {
+		t.Fatalf("cache HTTP error result = %+v, want failed scored result", result)
 	}
 }
 
@@ -887,6 +1115,9 @@ func TestCheckSignatureRoundtripDoesNotLeakThinkingOrSignature(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
+		if got := r.Header.Get("anthropic-beta"); got != "" {
+			t.Fatalf("signature roundtrip anthropic-beta header = %q, want absent like LLMprobe verifySignatureRoundtrip", got)
+		}
 		requestCount++
 		var payload map[string]any
 		if err := common.DecodeJson(r.Body, &payload); err != nil {
@@ -946,6 +1177,28 @@ func TestCheckSignatureRoundtripDoesNotLeakThinkingOrSignature(t *testing.T) {
 	}
 	if requestCount != 2 {
 		t.Fatalf("request count = %d, want first probe plus roundtrip", requestCount)
+	}
+}
+
+func TestSignatureRoundtripHelpersMirrorLLMProbeEngine(t *testing.T) {
+	thinking, ok := extractAnthropicThinkingBlock(map[string]any{
+		"content": []any{
+			map[string]any{"type": "thinking", "thinking": "", "signature": "sig-empty-thinking"},
+		},
+	})
+	if !ok || thinking.Signature != "sig-empty-thinking" || thinking.Thinking != "" {
+		t.Fatalf("thinking block = %+v ok=%v, want LLMprobe extractThinkingBlock to accept empty thinking string with signature", thinking, ok)
+	}
+
+	body := buildAnthropicSignatureRoundtripBody(
+		"claude-test",
+		"What is 2+2?",
+		anthropicThinkingBlock{Thinking: "t", Signature: "s"},
+		"4",
+		"What is 3+3?",
+	)
+	if body["max_tokens"] != 512 {
+		t.Fatalf("roundtrip max_tokens = %#v, want LLMprobe buildRoundtripBody max_tokens 512", body["max_tokens"])
 	}
 }
 

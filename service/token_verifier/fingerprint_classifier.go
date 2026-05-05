@@ -195,8 +195,8 @@ func extractSourceLexical(styleEn string, styleZh string) map[string]float64 {
 		"uses_bold_headers":  boolFloat(strings.Contains(combined, "**")),
 		"uses_numbered_list": boolFloat(regexp.MustCompile(`\n\d+\.\s`).MatchString(combined)),
 		"uses_dash_bullets":  boolFloat(regexp.MustCompile(`\n-\s`).MatchString(combined)),
-		"verbose_zh":         boolFloat(len(styleZh) > 600),
-		"concise_en":         boolFloat(len(styleEn) > 0 && len(styleEn) < 400),
+		"verbose_zh":         boolFloat(sourceJSStringLength(styleZh) > 600),
+		"concise_en":         boolFloat(styleEn != "" && sourceJSStringLength(styleEn) < 400),
 	}
 }
 
@@ -229,7 +229,7 @@ func extractSourceRefusal(text string) map[string]float64 {
 	)
 	gptStyle := sourceHas(text, "i'm sorry, but i cannot", "i apologize, but", "i'm sorry, i can't")
 	genericCannot := sourceHas(text, "i cannot", "i can't", "i won't", "i'm not going to", "i don't provide")
-	noRefusal := len(text) > 20 && !sourceHas(text,
+	noRefusal := sourceJSStringLength(text) > 20 && !sourceHas(text,
 		"cannot", "can't", "won't", "unable", "无法", "不能",
 		"isn't something i'll", "not something i'll",
 		"i'm not going to", "i don't help", "i won't help",
@@ -269,16 +269,16 @@ func extractSourceSubmodelSignals(results []CheckResult, allText string, styleEn
 	if len(listItems) > 0 {
 		total := 0
 		for _, item := range listItems {
-			total += len(item)
+			total += sourceJSStringLength(item)
 		}
 		listDetail = math.Min(1, float64(total)/float64(len(listItems))/200)
 	}
 	features := map[string]float64{
-		"total_response_length":  math.Min(1, float64(len(allText))/15000),
-		"en_response_length":     math.Min(1, float64(len(styleEn))/3000),
-		"zh_response_length":     math.Min(1, float64(len(styleZh))/3000),
+		"total_response_length":  math.Min(1, float64(sourceJSStringLength(allText))/15000),
+		"en_response_length":     math.Min(1, float64(sourceJSStringLength(styleEn))/3000),
+		"zh_response_length":     math.Min(1, float64(sourceJSStringLength(styleZh))/3000),
 		"vocab_richness":         vocabRichness,
-		"reasoning_length":       math.Min(1, float64(len(reasonText))/3000),
+		"reasoning_length":       math.Min(1, float64(sourceJSStringLength(reasonText))/3000),
 		"list_detail_level":      listDetail,
 		"en_paragraph_count":     math.Min(1, float64(len(nonEmptyStrings(regexp.MustCompile(`\n\n+`).Split(styleEn, -1))))/8),
 		"uses_markdown_headings": boolFloat(regexp.MustCompile(`(?m)^#{1,3}\s`).MatchString(styleEn + " " + styleZh)),
@@ -304,14 +304,14 @@ func extractSourceLinguisticFeatures(results map[string][]string, fallback map[s
 	}
 	if answers := sourceEffectiveAnswers("ling_kr_num", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(sourceModeAnswer(dist))
+		mode := strings.ToLower(sourceModeAnswerForAnswers(answers))
 		features["kr_num_sino"] = boolFloat(strings.Contains(mode, "사십이") || strings.Contains(mode, "사십"))
 		features["kr_num_native"] = boolFloat(strings.Contains(mode, "마흔"))
 		features["kr_num_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("ling_jp_pm", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := sourceModeAnswer(dist)
+		mode := sourceModeAnswerForAnswers(answers)
 		lower := strings.ToLower(mode)
 		isIshiba := strings.Contains(mode, "石破") || strings.Contains(lower, "ishiba")
 		isKishida := strings.Contains(mode, "岸田") || strings.Contains(lower, "kishida")
@@ -323,7 +323,7 @@ func extractSourceLinguisticFeatures(results map[string][]string, fallback map[s
 	}
 	if answers := sourceEffectiveAnswers("ling_fr_pm", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(sourceModeAnswer(dist))
+		mode := strings.ToLower(sourceModeAnswerForAnswers(answers))
 		isBayrou := strings.Contains(mode, "bayrou")
 		isBarnier := strings.Contains(mode, "barnier")
 		features["fr_pm_bayrou"] = boolFloat(isBayrou)
@@ -333,13 +333,13 @@ func extractSourceLinguisticFeatures(results map[string][]string, fallback map[s
 	}
 	if answers := sourceEffectiveAnswers("ling_ru_pres", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := sourceModeAnswer(dist)
+		mode := sourceModeAnswerForAnswers(answers)
 		features["ru_pres_surname_first"] = boolFloat(strings.HasPrefix(strings.ToLower(strings.TrimSpace(mode)), "пут"))
 		features["ru_pres_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("tok_count_num", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		count := atoiOrZero(strings.TrimSpace(sourceModeAnswer(dist)))
+		count := atoiOrZero(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		features["tok_count_1"] = boolFloat(count == 1)
 		features["tok_count_2"] = boolFloat(count == 2)
 		features["tok_count_3"] = boolFloat(count == 3)
@@ -348,7 +348,7 @@ func extractSourceLinguisticFeatures(results map[string][]string, fallback map[s
 	}
 	if answers := sourceEffectiveAnswers("tok_split_word", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		parts := strings.Split(mode, "|")
 		nonEmpty := 0
 		for _, part := range parts {
@@ -363,7 +363,7 @@ func extractSourceLinguisticFeatures(results map[string][]string, fallback map[s
 	}
 	if answers := sourceEffectiveAnswers("tok_self_knowledge", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		features["tok_knows_bpe"] = boolFloat(strings.Contains(mode, "bpe"))
 		features["tok_knows_tiktoken"] = boolFloat(strings.Contains(mode, "tiktoken") || strings.Contains(mode, "cl100k"))
 		features["tok_knows_none"] = boolFloat(!strings.Contains(mode, "bpe") && !strings.Contains(mode, "tiktoken") && !strings.Contains(mode, "token") && mode != "")
@@ -386,7 +386,7 @@ func extractSourceLinguisticFeatures(results map[string][]string, fallback map[s
 func extractSourceCodeLinguistic(features map[string]float64, results map[string][]string, fallback map[string]string, addStability func(map[string]float64) float64) {
 	if answers := sourceEffectiveAnswers("code_reverse_list", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := sourceModeAnswer(dist)
+		mode := sourceModeAnswerForAnswers(answers)
 		features["code_uses_slice"] = boolFloat(strings.Contains(mode, "[::-1]"))
 		features["code_uses_reversed"] = boolFloat(strings.Contains(mode, "reversed("))
 		features["code_uses_loop"] = boolFloat(regexp.MustCompile(`for\s+\w+\s+in\s+range`).MatchString(mode))
@@ -396,7 +396,7 @@ func extractSourceCodeLinguistic(features map[string]float64, results map[string
 	}
 	if answers := sourceEffectiveAnswers("code_comment_lang", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := sourceModeAnswer(dist)
+		mode := sourceModeAnswerForAnswers(answers)
 		hasChinese := regexp.MustCompile(`[\x{4e00}-\x{9fff}]`).MatchString(mode)
 		features["code_comment_zh"] = boolFloat(hasChinese)
 		features["code_comment_en"] = boolFloat(!hasChinese && mode != "")
@@ -404,7 +404,7 @@ func extractSourceCodeLinguistic(features map[string]float64, results map[string
 	}
 	if answers := sourceEffectiveAnswers("code_error_style", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := sourceModeAnswer(dist)
+		mode := sourceModeAnswerForAnswers(answers)
 		features["code_raises_error"] = boolFloat(strings.Contains(mode, "raise") || strings.Contains(mode, "ValueError"))
 		features["code_returns_none"] = boolFloat(regexp.MustCompile(`return\s+None`).MatchString(mode))
 		features["code_uses_assert"] = boolFloat(strings.Contains(mode, "assert"))
@@ -415,7 +415,7 @@ func extractSourceCodeLinguistic(features map[string]float64, results map[string
 func extractSourceMetaLinguistic(features map[string]float64, results map[string][]string, fallback map[string]string, addStability func(map[string]float64) float64) {
 	if answers := sourceEffectiveAnswers("meta_context_len", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.NewReplacer(",", "", "_", "", " ", "").Replace(sourceModeAnswer(dist))
+		mode := strings.NewReplacer(",", "", "_", "", " ", "").Replace(sourceModeAnswerForAnswers(answers))
 		value := atoiOrZero(mode)
 		features["meta_ctx_200k"] = boolFloat(value >= 180000)
 		features["meta_ctx_128k"] = boolFloat(value >= 100000 && value < 180000)
@@ -424,14 +424,14 @@ func extractSourceMetaLinguistic(features map[string]float64, results map[string
 	}
 	if answers := sourceEffectiveAnswers("meta_thinking_mode", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		features["meta_thinking_yes"] = boolFloat(mode == "yes" || strings.HasPrefix(mode, "yes"))
 		features["meta_thinking_no"] = boolFloat(mode == "no" || strings.HasPrefix(mode, "no"))
 		features["meta_think_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("meta_creator", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		features["meta_creator_anthropic"] = boolFloat(strings.Contains(mode, "anthropic"))
 		features["meta_creator_openai"] = boolFloat(strings.Contains(mode, "openai"))
 		features["meta_creator_zhipu"] = boolFloat(strings.Contains(mode, "zhipu") || strings.Contains(mode, "智谱"))
@@ -439,35 +439,35 @@ func extractSourceMetaLinguistic(features map[string]float64, results map[string
 	}
 	if answers := sourceEffectiveAnswers("ling_uk_pm", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		features["uk_pm_starmer"] = boolFloat(strings.Contains(mode, "starmer") || strings.Contains(mode, "keir"))
 		features["uk_pm_sunak"] = boolFloat(strings.Contains(mode, "sunak") || strings.Contains(mode, "rishi"))
 		features["uk_pm_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("ling_kr_crisis", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		knows := sourceHas(mode, "impeach", "martial", "탄핵", "계엄", "removed", "suspended")
 		features["kr_knows_crisis"] = boolFloat(knows)
 		features["kr_crisis_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("ling_de_chan", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswer(dist)))
+		mode := strings.ToLower(strings.TrimSpace(sourceModeAnswerForAnswers(answers)))
 		features["de_chan_merz"] = boolFloat(strings.Contains(mode, "merz") || strings.Contains(mode, "friedrich"))
 		features["de_chan_scholz"] = boolFloat(strings.Contains(mode, "scholz") || strings.Contains(mode, "olaf"))
 		features["de_chan_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("comp_py_float", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.TrimSpace(sourceModeAnswer(dist))
+		mode := strings.TrimSpace(sourceModeAnswerForAnswers(answers))
 		features["comp_float_exact"] = boolFloat(strings.Contains(mode, "0.30000000000000004"))
 		features["comp_float_approx"] = boolFloat(mode == "0.3" || mode == "0.30")
 		features["comp_float_stability"] = addStability(dist)
 	}
 	if answers := sourceEffectiveAnswers("comp_large_exp", results, fallback); len(answers) > 0 {
 		dist := sourceDistribution(answers)
-		mode := strings.TrimSpace(sourceModeAnswer(dist))
+		mode := strings.TrimSpace(sourceModeAnswerForAnswers(answers))
 		normalized := strings.NewReplacer(",", "", "_", "", " ", "").Replace(mode)
 		features["comp_exp_correct"] = boolFloat(normalized == "4294967296")
 		features["comp_exp_commas"] = boolFloat(strings.Contains(mode, ","))
@@ -794,7 +794,7 @@ func sourceNormalizeAnswer(answer string) string {
 	answer = strings.ReplaceAll(answer, "**", "")
 	answer = regexp.MustCompile(`^#+\s*`).ReplaceAllString(answer, "")
 	answer = strings.TrimSpace(answer)
-	return truncateRunes(answer, 60)
+	return sourceJSStringPrefix(answer, 60)
 }
 
 func sourceSkipAnswer(answer string) bool {
@@ -816,12 +816,29 @@ func sourceStability(dist map[string]float64) float64 {
 	return best
 }
 
-func sourceModeAnswer(dist map[string]float64) string {
+func sourceModeAnswerForAnswers(answers []string) string {
+	counts := make(map[string]int)
+	order := make([]string, 0, len(answers))
+	total := 0
+	for _, answer := range answers {
+		normalized := sourceNormalizeAnswer(answer)
+		if normalized == "" || sourceSkipAnswer(normalized) {
+			continue
+		}
+		if _, ok := counts[normalized]; !ok {
+			order = append(order, normalized)
+		}
+		counts[normalized]++
+		total++
+	}
+	if total == 0 {
+		return ""
+	}
 	best := ""
-	bestScore := -1.0
-	for answer, score := range dist {
-		if score > bestScore {
-			bestScore = score
+	bestCount := -1
+	for _, answer := range order {
+		if counts[answer] > bestCount {
+			bestCount = counts[answer]
 			best = answer
 		}
 	}
@@ -865,7 +882,7 @@ func sourceAvgSentenceLen(text string) float64 {
 	}
 	total := 0
 	for _, sentence := range nonEmpty {
-		total += len(sentence)
+		total += sourceJSStringLength(sentence)
 	}
 	return math.Min(1, float64(total)/float64(len(nonEmpty))/100)
 }
@@ -898,11 +915,10 @@ func nonEmptyStrings(values []string) []string {
 }
 
 func trailingString(text string, limit int) string {
-	runes := []rune(text)
-	if len(runes) <= limit {
+	if sourceJSStringLength(text) <= limit {
 		return text
 	}
-	return string(runes[len(runes)-limit:])
+	return sourceJSStringSuffix(text, limit)
 }
 
 func sourceHas(text string, needles ...string) bool {

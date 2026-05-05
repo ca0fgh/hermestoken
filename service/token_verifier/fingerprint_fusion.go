@@ -39,6 +39,7 @@ func fuseIdentityCandidates(rule []IdentityCandidateSummary, judge []IdentityCan
 		reasons []string
 	}
 	byFamily := make(map[string]*fusedCandidate)
+	ordered := make([]*fusedCandidate, 0)
 	add := func(items []IdentityCandidateSummary, weight float64, source string) {
 		if weight <= 0 {
 			return
@@ -52,6 +53,7 @@ func fuseIdentityCandidates(rule []IdentityCandidateSummary, judge []IdentityCan
 			if !ok {
 				existing = &fusedCandidate{family: family, model: firstNonEmptyString(item.Model, identityFamilyDisplayName(family))}
 				byFamily[family] = existing
+				ordered = append(ordered, existing)
 			}
 			existing.score += weight * item.Score
 			if existing.model == "" {
@@ -68,14 +70,8 @@ func fuseIdentityCandidates(rule []IdentityCandidateSummary, judge []IdentityCan
 	add(judge, wJudge, "judge")
 	add(vector, wVector, "vector")
 
-	items := make([]*fusedCandidate, 0, len(byFamily))
-	for _, item := range byFamily {
-		items = append(items, item)
-	}
+	items := append([]*fusedCandidate(nil), ordered...)
 	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].score == items[j].score {
-			return items[i].family < items[j].family
-		}
 		return items[i].score > items[j].score
 	})
 	if len(items) > 3 {

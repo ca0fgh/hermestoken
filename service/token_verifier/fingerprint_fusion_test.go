@@ -72,6 +72,21 @@ func TestFuseIdentityCandidatesRedistributesMissingOptionalWeights(t *testing.T)
 	}
 }
 
+func TestFuseIdentityCandidatesPreservesSourceOrderForTies(t *testing.T) {
+	rule := []IdentityCandidateSummary{
+		{Family: "z-family", Model: "Z Family", Score: 0.5},
+		{Family: "a-family", Model: "A Family", Score: 0.5},
+	}
+
+	fused := fuseIdentityCandidates(rule, nil, nil)
+	if len(fused) < 2 {
+		t.Fatalf("fused candidates = %+v, want at least two tied candidates", fused)
+	}
+	if fused[0].Family != "z-family" || fused[1].Family != "a-family" {
+		t.Fatalf("fused candidates = %+v, want LLMprobe stable source order for equal scores", fused)
+	}
+}
+
 func TestJudgeFingerprintParsesAndDoesNotExposeAPIKey(t *testing.T) {
 	const apiKey = "judge-secret-token"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -103,12 +118,43 @@ func TestJudgeFingerprintParsesAndDoesNotExposeAPIKey(t *testing.T) {
 	}
 }
 
-func TestBuildReportWithOptionsUsesOptionalJudgeSignal(t *testing.T) {
+func TestBuildReportWithOptionsUsesOptionalJudgeSignalOnHigherFusedScore(t *testing.T) {
 	const apiKey = "judge-secret-token"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		responseBytes, _ := common.Marshal(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": `{"family":"anthropic","confidence":1,"reasons":["judge override"]}`}},
+			},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	results := []CheckResult{
+		identityProbeResultFor(ProviderOpenAI, "gpt-5.5", CheckProbeIdentityStyleEN, "Neutral writing style without a strong family self-claim."),
+	}
+	report := BuildReportWithOptions(context.Background(), results, ReportOptions{
+		IdentityJudge: &IdentityJudgeConfig{BaseURL: server.URL, APIKey: apiKey, ModelID: "judge-model"},
+		Executor:      NewCurlExecutor(time.Second),
+	})
+
+	if len(report.IdentityAssessments) != 1 {
+		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
+	}
+	if report.IdentityAssessments[0].PredictedFamily != "anthropic" {
+		t.Fatalf("assessment = %+v, want optional judge to affect fused predicted family", report.IdentityAssessments[0])
+	}
+	if strings.Contains(mustMarshalForTest(report), apiKey) {
+		t.Fatal("report leaked judge API key")
+	}
+}
+
+func TestBuildReportWithOptionsPreservesRuleOrderOnJudgeTie(t *testing.T) {
+	const apiKey = "judge-secret-token"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		responseBytes, _ := common.Marshal(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": `{"family":"anthropic","confidence":1,"reasons":["judge tie"]}`}},
 			},
 		})
 		_, _ = w.Write(responseBytes)
@@ -127,11 +173,8 @@ func TestBuildReportWithOptionsUsesOptionalJudgeSignal(t *testing.T) {
 	if len(report.IdentityAssessments) != 1 {
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
-	if report.IdentityAssessments[0].PredictedFamily != "anthropic" {
-		t.Fatalf("assessment = %+v, want optional judge to affect fused predicted family", report.IdentityAssessments[0])
-	}
-	if strings.Contains(mustMarshalForTest(report), apiKey) {
-		t.Fatal("report leaked judge API key")
+	if report.IdentityAssessments[0].PredictedFamily != "openai" {
+		t.Fatalf("assessment = %+v, want LLMprobe stable rule-first ordering on equal fused score", report.IdentityAssessments[0])
 	}
 }
 
@@ -143,7 +186,90 @@ func TestVectorFingerprintScores(t *testing.T) {
 		{Family: "openai", Embedding: []float64{1, 0}},
 		{Family: "anthropic", Embedding: []float64{0, 1}},
 	})
-	if len(scores) == 0 || scores[0].Family != "openai" || scores[0].Score != 1 {
-		t.Fatalf("vector scores = %+v, want OpenAI first with score 1", scores)
+	openai := identityCandidateByFamily(scores, "openai")
+	if openai == nil || openai.Score != 1 {
+		t.Fatalf("vector scores = %+v, want OpenAI score 1", scores)
 	}
+	if len(scores) == 0 || scores[0].Family != "anthropic" {
+		t.Fatalf("vector scores = %+v, want LLMprobe fixed family order before fusion", scores)
+	}
+}
+
+func TestVectorFingerprintScoresReturnZeroFamiliesWhenUnavailable(t *testing.T) {
+	noRefs := pickTopVectorScores([]float64{1, 0}, nil)
+	if len(noRefs) != len(sourceVectorFamilies) {
+		t.Fatalf("no-ref vector scores length = %d, want known family count %d", len(noRefs), len(sourceVectorFamilies))
+	}
+	for _, score := range noRefs {
+		if score.Score != 0 {
+			t.Fatalf("no-ref vector scores = %+v, want all zero", noRefs)
+		}
+	}
+
+	emptyQuery := pickTopVectorScores(nil, []EmbeddingReference{{Family: "anthropic", Embedding: []float64{1, 0}}})
+	if len(emptyQuery) != len(sourceVectorFamilies) {
+		t.Fatalf("empty-query vector scores length = %d, want known family count %d", len(emptyQuery), len(sourceVectorFamilies))
+	}
+	for _, score := range emptyQuery {
+		if score.Score != 0 {
+			t.Fatalf("empty-query vector scores = %+v, want all zero", emptyQuery)
+		}
+	}
+}
+
+func TestRunIdentityVectorSignalRequiresReferencesLikeLLMProbe(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		responseBytes, _ := common.Marshal(map[string]any{
+			"data": []map[string]any{{"embedding": []float64{1, 0}}},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	candidates := runIdentityVectorSignal(context.Background(), ReportOptions{
+		Embedding: &EmbeddingConfig{BaseURL: server.URL, APIKey: "embed-key", ModelID: "embed-model"},
+		Executor:  NewCurlExecutor(time.Second),
+	}, map[string]string{"identity_style_en": "hello"})
+
+	if called {
+		t.Fatal("embedding endpoint was called without references; LLMprobe skips vector signal when references.length is 0")
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("vector candidates = %+v, want none without references", candidates)
+	}
+}
+
+func TestVectorFingerprintScoresPreserveLLMProbeFamilyOrderForTies(t *testing.T) {
+	scores := pickTopVectorScores([]float64{1, 0}, []EmbeddingReference{
+		{Family: "qwen", Embedding: []float64{1, 0}},
+		{Family: "deepseek", Embedding: []float64{1, 0}},
+	})
+	qwenIndex := identityCandidateIndex(scores, "qwen")
+	deepseekIndex := identityCandidateIndex(scores, "deepseek")
+	if qwenIndex < 0 || deepseekIndex < 0 {
+		t.Fatalf("vector scores = %+v, want qwen and deepseek entries", scores)
+	}
+	if qwenIndex > deepseekIndex {
+		t.Fatalf("vector scores = %+v, want LLMprobe known-family order qwen before deepseek on ties", scores)
+	}
+}
+
+func identityCandidateByFamily(items []IdentityCandidateSummary, family string) *IdentityCandidateSummary {
+	for i := range items {
+		if items[i].Family == family {
+			return &items[i]
+		}
+	}
+	return nil
+}
+
+func identityCandidateIndex(items []IdentityCandidateSummary, family string) int {
+	for i, item := range items {
+		if item.Family == family {
+			return i
+		}
+	}
+	return -1
 }

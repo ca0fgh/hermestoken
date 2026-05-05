@@ -182,7 +182,7 @@ func classifySubmodelV3Source(claimedFamily string, responses map[CheckKey]strin
 	}
 	familyImplied := implySourceV3Family(features)
 	pool := filterSourceV3Baselines(baselines, claimedFamily)
-	if len(pool) == 0 {
+	if len(pool) == 0 && claimedFamily == "" {
 		pool = baselines
 	}
 	uniquenessMap := buildSourceV3UniquenessMap(baselines)
@@ -204,7 +204,7 @@ func classifySubmodelV3Source(claimedFamily string, responses map[CheckKey]strin
 	if familyImplied != "" {
 		evidence = append(evidence, "family_implied="+familyImplied)
 	}
-	if claimedFamily != "" && familyImplied != "" && claimedFamily != familyImplied {
+	if len(pool) > 0 && claimedFamily != "" && familyImplied != "" && claimedFamily != familyImplied {
 		evidence = append(evidence, "family_mismatch=true")
 	}
 	return sourceSubmodelSummaryFromMatches("v3", top, scored, abstained, evidence)
@@ -220,7 +220,7 @@ func classifySubmodelV3ESource(claimedFamily string, responses map[CheckKey]stri
 		return SubmodelAssessmentSummary{}
 	}
 	pool := filterSourceV3EBaselines(baselines, claimedFamily)
-	if len(pool) == 0 {
+	if len(pool) == 0 && claimedFamily == "" {
 		pool = baselines
 	}
 	method := "v3e"
@@ -339,7 +339,7 @@ func extractSourceV3Refusal(text string) sourceObservedV3Refusal {
 		MentionsGuidelines:   regexp.MustCompile(`(?i)guidelines?`).MatchString(text),
 		MentionsIllegal:      regexp.MustCompile(`(?i)illegal|unlawful|against\s+the\s+law`).MatchString(text),
 		MentionsHarmful:      regexp.MustCompile(`(?i)harmful|dangerous|harm`).MatchString(text),
-		Length:               len(text),
+		Length:               sourceJSStringLength(text),
 	}
 }
 
@@ -469,17 +469,14 @@ func extractSourceV3ERefusalLadder(responses map[CheckKey]string) sourceV3ERefus
 	firstRefusal := -1
 	refused := 0
 	partial := 0
-	for _, key := range keys {
+	for index, key := range keys {
 		text := responseFor(responses, key)
-		if text == "" {
-			continue
-		}
 		rung := classifySourceV3ERung(text)
 		vector = append(vector, rung)
 		joined = append(joined, text)
 		if rung == 2 {
 			if firstRefusal < 0 {
-				firstRefusal = len(vector) - 1
+				firstRefusal = index
 			}
 			refused++
 			refusedTexts = append(refusedTexts, text)
@@ -491,7 +488,7 @@ func extractSourceV3ERefusalLadder(responses map[CheckKey]string) sourceV3ERefus
 	if len(refusedTexts) > 0 {
 		total := 0
 		for _, text := range refusedTexts {
-			total += len(text)
+			total += sourceJSStringLength(text)
 		}
 		avgLen = float64(total) / float64(len(refusedTexts))
 	}
@@ -508,7 +505,7 @@ func extractSourceV3ERefusalLadder(responses map[CheckKey]string) sourceV3ERefus
 }
 
 func classifySourceV3ERung(text string) int {
-	if strings.TrimSpace(text) == "" || len(strings.TrimSpace(text)) < 5 {
+	if strings.TrimSpace(text) == "" || sourceJSStringLength(strings.TrimSpace(text)) < 5 {
 		return 1
 	}
 	first := firstNonBlankLine(text)
@@ -523,7 +520,7 @@ func classifySourceV3ERung(text string) int {
 			return 2
 		}
 	}
-	if regexp.MustCompile(`(?i)\b(illegal|unlawful|harmful|i can't|cannot provide)`).MatchString(text) && len(text) > 400 {
+	if regexp.MustCompile(`(?i)\b(illegal|unlawful|harmful|i can't|cannot provide)`).MatchString(text) && sourceJSStringLength(text) > 400 {
 		return 1
 	}
 	return 0
@@ -687,9 +684,6 @@ func sourceTopSubmodelMatch(scored []sourceSubmodelMatch, threshold float64) (*s
 
 func sortSourceSubmodelMatches(matches []sourceSubmodelMatch) {
 	sort.SliceStable(matches, func(i, j int) bool {
-		if matches[i].Score == matches[j].Score {
-			return matches[i].ModelID < matches[j].ModelID
-		}
 		return matches[i].Score > matches[j].Score
 	})
 }
@@ -992,14 +986,7 @@ func firstNonBlankLine(text string) string {
 }
 
 func truncateRunes(text string, limit int) string {
-	if limit <= 0 {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= limit {
-		return text
-	}
-	return string(runes[:limit])
+	return sourceJSStringPrefix(text, limit)
 }
 
 func intsToString(values []int) string {
@@ -1007,7 +994,7 @@ func intsToString(values []int) string {
 	for _, value := range values {
 		parts = append(parts, strconvItoa(value))
 	}
-	return "[" + strings.Join(parts, " ") + "]"
+	return "[" + strings.Join(parts, ",") + "]"
 }
 
 func strconvItoa(value int) string {

@@ -35,67 +35,67 @@ const (
 func verifierCanaryProbeSuite() []verifierProbe {
 	return []verifierProbe{
 		{
-			Key:            CheckCanaryMathMul,
-			Group:          probeGroupCanary,
-			Prompt:         "Compute 347 * 89. Output only the integer, no words.",
-			RequirePattern: "^30883[.。]?$",
-			MaxTokens:      32,
-			FullOnly:       true,
+			Key:           CheckCanaryMathMul,
+			Group:         probeGroupCanary,
+			Prompt:        "Compute 347 * 89. Output only the integer, no words.",
+			ExpectedExact: "30883",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 		{
-			Key:            CheckCanaryMathPow,
-			Group:          probeGroupCanary,
-			Prompt:         "What is 2 to the power of 16? Output only the integer, no words.",
-			RequirePattern: "^65536[.。]?$",
-			MaxTokens:      32,
-			FullOnly:       true,
+			Key:           CheckCanaryMathPow,
+			Group:         probeGroupCanary,
+			Prompt:        "What is 2 to the power of 16? Output only the integer, no words.",
+			ExpectedExact: "65536",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 		{
-			Key:            CheckCanaryMathMod,
-			Group:          probeGroupCanary,
-			Prompt:         "What is 1000 mod 7? Output only the integer, no words.",
-			RequirePattern: "^6[.。]?$",
-			MaxTokens:      32,
-			FullOnly:       true,
+			Key:           CheckCanaryMathMod,
+			Group:         probeGroupCanary,
+			Prompt:        "What is 1000 mod 7? Output only the integer, no words.",
+			ExpectedExact: "6",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 		{
 			Key:            CheckCanaryLogicSyllogism,
 			Group:          probeGroupCanary,
 			Prompt:         "If all cats are mammals and Whiskers is a cat, is Whiskers a mammal? Answer only yes or no.",
-			RequirePattern: "^yes[.。]?$",
-			MaxTokens:      16,
+			RequirePattern: "^yes$",
+			MaxTokens:      64,
 			FullOnly:       true,
 		},
 		{
-			Key:            CheckCanaryRecallCapital,
-			Group:          probeGroupCanary,
-			Prompt:         "What is the capital of Australia? Output only the single city name.",
-			RequirePattern: "^Canberra[.。]?$",
-			MaxTokens:      32,
-			FullOnly:       true,
+			Key:           CheckCanaryRecallCapital,
+			Group:         probeGroupCanary,
+			Prompt:        "What is the capital of Australia? Output only the single city name.",
+			ExpectedExact: "Canberra",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 		{
-			Key:            CheckCanaryRecallSymbol,
-			Group:          probeGroupCanary,
-			Prompt:         "What is the chemical symbol for gold? Output only the symbol.",
-			RequirePattern: "^Au[.。]?$",
-			MaxTokens:      16,
-			FullOnly:       true,
+			Key:           CheckCanaryRecallSymbol,
+			Group:         probeGroupCanary,
+			Prompt:        "What is the chemical symbol for gold? Output only the symbol.",
+			ExpectedExact: "Au",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 		{
-			Key:            CheckCanaryFormatEcho,
-			Group:          probeGroupCanary,
-			Prompt:         "Reply with exactly this token and nothing else: BANANA",
-			RequirePattern: "^BANANA[.。]?$",
-			MaxTokens:      16,
-			FullOnly:       true,
+			Key:           CheckCanaryFormatEcho,
+			Group:         probeGroupCanary,
+			Prompt:        "Reply with exactly this token and nothing else: BANANA",
+			ExpectedExact: "BANANA",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 		{
 			Key:            CheckCanaryFormatJSON,
 			Group:          probeGroupCanary,
 			Prompt:         `Output this JSON object with no extra text and no code fences: {"ok":true}`,
-			RequirePattern: `^\{\s*"ok"\s*:\s*true\s*\}[.。]?$`,
-			MaxTokens:      32,
+			RequirePattern: `^\{\s*"ok"\s*:\s*true\s*\}$`,
+			MaxTokens:      64,
 			FullOnly:       true,
 		},
 		{
@@ -107,12 +107,12 @@ func verifierCanaryProbeSuite() []verifierProbe {
 			FullOnly:       true,
 		},
 		{
-			Key:            CheckCanaryRecallMoonYear,
-			Group:          probeGroupCanary,
-			Prompt:         "In what year did humans first land on the moon? Output only the four-digit year.",
-			RequirePattern: "^1969[.。]?$",
-			MaxTokens:      16,
-			FullOnly:       true,
+			Key:           CheckCanaryRecallMoonYear,
+			Group:         probeGroupCanary,
+			Prompt:        "In what year did humans first land on the moon? Output only the four-digit year.",
+			ExpectedExact: "1969",
+			MaxTokens:     64,
+			FullOnly:      true,
 		},
 	}
 }
@@ -432,7 +432,7 @@ func (r Runner) runVerifierProbe(ctx context.Context, executor *CurlExecutor, pr
 }
 
 func (r Runner) executeVerifierProbe(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) (*CurlResponse, map[string]any, string, error) {
-	return r.executeVerifierProbeWithTemperatureAndStream(ctx, executor, provider, modelName, probe, defaultVerifierProbeTemperature(probe), true)
+	return r.executeVerifierProbeWithTemperatureAndStream(ctx, executor, provider, modelName, probe, defaultVerifierProbeTemperature(probe), defaultVerifierProbeOpenAIStream(probe))
 }
 
 func (r Runner) executeVerifierProbeWithTemperature(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe, temperature float64) (*CurlResponse, map[string]any, string, error) {
@@ -440,6 +440,14 @@ func (r Runner) executeVerifierProbeWithTemperature(ctx context.Context, executo
 }
 
 func (r Runner) executeVerifierProbeWithTemperatureAndStream(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe, temperature float64, streamOpenAI bool) (*CurlResponse, map[string]any, string, error) {
+	return r.executeVerifierProbeWithTemperatureOption(ctx, executor, provider, modelName, probe, &temperature, streamOpenAI)
+}
+
+func (r Runner) executeVerifierProbeWithoutTemperature(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe, streamOpenAI bool) (*CurlResponse, map[string]any, string, error) {
+	return r.executeVerifierProbeWithTemperatureOption(ctx, executor, provider, modelName, probe, nil, streamOpenAI)
+}
+
+func (r Runner) executeVerifierProbeWithTemperatureOption(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe, temperature *float64, streamOpenAI bool) (*CurlResponse, map[string]any, string, error) {
 	maxTokens := probe.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = defaultProbeMaxTokens
@@ -460,8 +468,8 @@ func (r Runner) executeVerifierProbeWithTemperatureAndStream(ctx context.Context
 		if strings.TrimSpace(probe.SystemPrompt) != "" {
 			body["system"] = probe.SystemPrompt
 		}
-		if temperature > 0 {
-			body["temperature"] = temperature
+		if temperature != nil && *temperature > 0 {
+			body["temperature"] = *temperature
 		}
 	default:
 		target = r.endpoint("/v1/chat/completions")
@@ -471,11 +479,13 @@ func (r Runner) executeVerifierProbeWithTemperatureAndStream(ctx context.Context
 		}
 		messages = append(messages, map[string]any{"role": "user", "content": openAIProbeContent(probe)})
 		body = map[string]any{
-			"model":       modelName,
-			"messages":    messages,
-			"max_tokens":  maxTokens,
-			"temperature": temperature,
-			"stream":      streamOpenAI,
+			"model":      modelName,
+			"messages":   messages,
+			"max_tokens": maxTokens,
+			"stream":     streamOpenAI,
+		}
+		if temperature != nil {
+			body["temperature"] = *temperature
 		}
 		if streamOpenAI {
 			body["stream_options"] = map[string]any{"include_usage": true}
@@ -508,6 +518,9 @@ func (r Runner) executeVerifierProbeWithTemperatureAndStream(ctx context.Context
 func scoreVerifierProbe(probe verifierProbe, responseText string, decoded map[string]any) (bool, int, string, string, bool) {
 	if probe.Key == CheckProbeTokenInflation {
 		return scoreTokenInflationProbe(probe, decoded)
+	}
+	if isCanaryCheck(probe.Key) {
+		return scoreCanaryVerifierProbe(probe, responseText)
 	}
 
 	text := strings.TrimSpace(responseText)
@@ -563,6 +576,27 @@ func scoreVerifierProbe(probe verifierProbe, responseText string, decoded map[st
 	return true, 100, "探针通过", "", false
 }
 
+func scoreCanaryVerifierProbe(probe verifierProbe, responseText string) (bool, int, string, string, bool) {
+	cleaned := strings.TrimSpace(responseText)
+	cleaned = regexp.MustCompile(`[.。]$`).ReplaceAllString(cleaned, "")
+	if cleaned == "" {
+		return false, 0, "canary 响应为空", "canary_empty_response", false
+	}
+	if probe.ExpectedExact != "" {
+		if strings.EqualFold(cleaned, probe.ExpectedExact) {
+			return true, 100, "canary 精确输出匹配", "", false
+		}
+		return false, 0, fmt.Sprintf("canary 精确输出不匹配，期望：%s", probe.ExpectedExact), "canary_exact_failed", false
+	}
+	if probe.RequirePattern != "" {
+		if matchesPattern(cleaned, probe.RequirePattern) {
+			return true, 100, "canary 正则输出匹配", "", false
+		}
+		return false, 0, fmt.Sprintf("canary 响应未匹配模式：%s", probe.RequirePattern), "canary_pattern_missing", false
+	}
+	return false, 0, "canary 未配置期望输出", "canary_expectation_missing", false
+}
+
 func (r Runner) checkChannelSignature(ctx context.Context, executor *CurlExecutor, provider string, modelName string) CheckResult {
 	probe := verifierProbe{
 		Key:       CheckProbeChannelSignature,
@@ -572,19 +606,19 @@ func (r Runner) checkChannelSignature(ctx context.Context, executor *CurlExecuto
 		Neutral:   true,
 		DeepOnly:  true,
 	}
-	resp, decoded, content, err := r.executeVerifierProbeWithTemperature(ctx, executor, provider, modelName, probe, 0)
+	resp, decoded, content, err := r.executeVerifierProbeWithoutTemperature(ctx, executor, provider, modelName, probe, false)
 	if err != nil {
 		result := failedResult(probe.Key, modelName, err, 0)
 		result.Provider = provider
 		result.Group = probe.Group
-		result.Neutral = true
+		result.Neutral = probe.Neutral
 		return result
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		result := httpFailedResult(probe.Key, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
 		result.Provider = provider
 		result.Group = probe.Group
-		result.Neutral = true
+		result.Neutral = probe.Neutral
 		return result
 	}
 	inputTokens, outputTokens := extractVerifierUsage(decoded)
@@ -823,14 +857,14 @@ func (r Runner) checkCacheDetection(ctx context.Context, executor *CurlExecutor,
 		result := failedResult(probe.Key, modelName, err, 0)
 		result.Provider = provider
 		result.Group = probe.Group
-		result.Neutral = true
+		result.Neutral = probe.Neutral
 		return result
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		result := httpFailedResult(probe.Key, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
 		result.Provider = provider
 		result.Group = probe.Group
-		result.Neutral = true
+		result.Neutral = probe.Neutral
 		return result
 	}
 	inputTokens, outputTokens := extractVerifierUsage(decoded)
@@ -1123,7 +1157,6 @@ func (r Runner) doAnthropicSignatureRequest(ctx context.Context, executor *CurlE
 	payload, _ := common.Marshal(body)
 	headers := providerHeaders(ProviderAnthropic, r.Token)
 	headers["Content-Type"] = "application/json"
-	headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/messages"), headers, payload)
 	if err != nil {
 		return nil, nil, err
@@ -1153,9 +1186,9 @@ func extractAnthropicThinkingBlock(decoded map[string]any) (anthropicThinkingBlo
 		if block["type"] != "thinking" {
 			continue
 		}
-		signature, _ := block["signature"].(string)
-		thinking, _ := block["thinking"].(string)
-		if signature == "" || thinking == "" {
+		signature, signatureOK := block["signature"].(string)
+		thinking, thinkingOK := block["thinking"].(string)
+		if !signatureOK || signature == "" || !thinkingOK {
 			continue
 		}
 		return anthropicThinkingBlock{Thinking: thinking, Signature: signature}, true
@@ -1166,7 +1199,7 @@ func extractAnthropicThinkingBlock(decoded map[string]any) (anthropicThinkingBlo
 func buildAnthropicSignatureRoundtripBody(modelName string, originalPrompt string, thinking anthropicThinkingBlock, assistantText string, followUpPrompt string) map[string]any {
 	return map[string]any{
 		"model":      modelName,
-		"max_tokens": 2048,
+		"max_tokens": 512,
 		"thinking":   map[string]any{"type": "enabled", "budget_tokens": 1024},
 		"messages": []map[string]any{
 			{"role": "user", "content": originalPrompt},
@@ -1348,7 +1381,15 @@ func (r Runner) runTextProbe(ctx context.Context, executor *CurlExecutor, provid
 	clone := probe
 	clone.Prompt = prompt
 	clone.Multimodal = nil
-	resp, decoded, content, err := r.executeVerifierProbeWithTemperature(ctx, executor, provider, modelName, clone, temperature)
+	var resp *CurlResponse
+	var decoded map[string]any
+	var content string
+	var err error
+	if temperature == 0 && clone.Key == CheckProbeContextLength {
+		resp, decoded, content, err = r.executeVerifierProbeWithoutTemperature(ctx, executor, provider, modelName, clone, false)
+	} else {
+		resp, decoded, content, err = r.executeVerifierProbeWithTemperature(ctx, executor, provider, modelName, clone, temperature)
+	}
 	if err != nil {
 		return "", 0, err
 	}
@@ -1620,7 +1661,7 @@ func firstMatchedPattern(text string, patterns []string) string {
 }
 
 func matchesPattern(text string, pattern string) bool {
-	re, err := regexp.Compile("(?is)" + pattern)
+	re, err := regexp.Compile("(?i)" + pattern)
 	if err != nil {
 		return false
 	}
@@ -1825,6 +1866,10 @@ func defaultVerifierProbeTemperature(probe verifierProbe) float64 {
 	return 0.3
 }
 
+func defaultVerifierProbeOpenAIStream(probe verifierProbe) bool {
+	return !isCanaryCheck(probe.Key)
+}
+
 func generateProbeCanary() string {
 	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	buf := make([]byte, 8)
@@ -1857,27 +1902,29 @@ func classifyProbeChannelSignature(headers map[string]string, messageID string, 
 	if strings.HasPrefix(lower["x-generation-id"], "gen-") {
 		return probeChannelSignature{Channel: "openrouter", Confidence: 1, Evidence: []string{"header:x-generation-id"}}
 	}
-	for key := range lower {
-		switch {
-		case strings.HasPrefix(key, "cf-aig-"):
-			return probeChannelSignature{Channel: "cloudflare-ai-gateway", Confidence: 1, Evidence: []string{"header:" + key}}
-		case strings.HasPrefix(key, "x-litellm-"):
-			return probeChannelSignature{Channel: "litellm", Confidence: 1, Evidence: []string{"header:" + key}}
-		case strings.HasPrefix(key, "helicone-"):
-			return probeChannelSignature{Channel: "helicone", Confidence: 1, Evidence: []string{"header:" + key}}
-		case strings.HasPrefix(key, "x-portkey-"):
-			return probeChannelSignature{Channel: "portkey", Confidence: 1, Evidence: []string{"header:" + key}}
-		case strings.HasPrefix(key, "x-kong-"):
-			return probeChannelSignature{Channel: "kong-gateway", Confidence: 1, Evidence: []string{"header:" + key}}
-		case strings.HasPrefix(key, "x-dashscope-"):
-			return probeChannelSignature{Channel: "alibaba-dashscope", Confidence: 1, Evidence: []string{"header:" + key}}
-		}
+	if key := firstHeaderWithPrefix(lower, "cf-aig-"); key != "" {
+		return probeChannelSignature{Channel: "cloudflare-ai-gateway", Confidence: 1, Evidence: []string{"header:" + key}}
 	}
 	if lower["apim-request-id"] != "" {
 		return probeChannelSignature{Channel: "azure-foundry", Confidence: 1, Evidence: []string{"header:apim-request-id"}}
 	}
+	if key := firstHeaderWithPrefix(lower, "x-litellm-"); key != "" {
+		return probeChannelSignature{Channel: "litellm", Confidence: 1, Evidence: []string{"header:" + key}}
+	}
+	if key := firstHeaderWithPrefix(lower, "helicone-"); key != "" {
+		return probeChannelSignature{Channel: "helicone", Confidence: 1, Evidence: []string{"header:" + key}}
+	}
+	if key := firstHeaderWithPrefix(lower, "x-portkey-"); key != "" {
+		return probeChannelSignature{Channel: "portkey", Confidence: 1, Evidence: []string{"header:" + key}}
+	}
+	if key := firstHeaderWithPrefix(lower, "x-kong-"); key != "" {
+		return probeChannelSignature{Channel: "kong-gateway", Confidence: 1, Evidence: []string{"header:" + key}}
+	}
+	if key := firstHeaderWithPrefix(lower, "x-dashscope-"); key != "" {
+		return probeChannelSignature{Channel: "alibaba-dashscope", Confidence: 1, Evidence: []string{"header:" + key}}
+	}
 	if lower["x-new-api-version"] != "" {
-		return probeChannelSignature{Channel: "new-api", Confidence: 1, Evidence: []string{"header:x-new-api-version"}}
+		return probeChannelSignature{Channel: "new-api", Confidence: 1, Evidence: []string{"header:x-new-api-version=" + lower["x-new-api-version"]}}
 	}
 	if lower["x-oneapi-request-id"] != "" {
 		return probeChannelSignature{Channel: "one-api", Confidence: 1, Evidence: []string{"header:x-oneapi-request-id"}}
@@ -1889,18 +1936,9 @@ func classifyProbeChannelSignature(headers map[string]string, messageID string, 
 		"google-vertex":      0,
 		"anthropic-official": 0,
 	}
-	for key := range lower {
-		switch {
-		case strings.HasPrefix(key, "x-amzn-bedrock-"):
-			scores["aws-bedrock"] += 1
-			evidence = append(evidence, "header:"+key)
-		case strings.HasPrefix(key, "x-goog-"):
-			scores["google-vertex"] += 1
-			evidence = append(evidence, "header:"+key)
-		case strings.HasPrefix(key, "anthropic-ratelimit-") || strings.HasPrefix(key, "anthropic-priority-") || strings.HasPrefix(key, "anthropic-fast-"):
-			scores["anthropic-official"] += 0.95
-			evidence = append(evidence, "header:"+key)
-		}
+	if key := firstHeaderWithPrefix(lower, "x-amzn-bedrock-"); key != "" {
+		scores["aws-bedrock"] += 1
+		evidence = append(evidence, "header:"+key)
 	}
 	switch {
 	case strings.HasPrefix(messageID, "msg_bdrk_"):
@@ -1912,39 +1950,91 @@ func classifyProbeChannelSignature(headers map[string]string, messageID string, 
 	}
 	if strings.Contains(rawBody, "bedrock-2023-05-31") {
 		scores["aws-bedrock"] += 0.9
-		evidence = append(evidence, "body:bedrock-version")
+		evidence = append(evidence, "body:anthropic_version=bedrock-2023-05-31")
 	}
 	if strings.Contains(rawBody, "vertex-2023-10-16") {
 		scores["google-vertex"] += 0.9
-		evidence = append(evidence, "body:vertex-version")
+		evidence = append(evidence, "body:anthropic_version=vertex-2023-10-16")
 	}
 	if lower["x-amz-apigw-id"] != "" || lower["apigw-requestid"] != "" {
 		scores["aws-apigateway"] += 0.8
-		evidence = append(evidence, "header:aws-apigateway")
+		if lower["x-amz-apigw-id"] != "" {
+			evidence = append(evidence, "header:x-amz-apigw-id")
+		} else {
+			evidence = append(evidence, "header:apigw-requestid")
+		}
+	}
+	if key := firstHeaderWithPrefix(lower, "x-goog-"); key != "" {
+		scores["google-vertex"] += 1
+		evidence = append(evidence, "header:"+key)
+	}
+	if strings.Contains(strings.ToLower(lower["server"]), "google") {
+		scores["google-vertex"] += 0.5
+		evidence = append(evidence, "header:server="+lower["server"])
+	}
+	if strings.Contains(strings.ToLower(lower["via"]), "google") {
+		scores["google-vertex"] += 0.5
+		evidence = append(evidence, "header:via="+lower["via"])
+	}
+	if firstHeaderWithPrefix(lower, "anthropic-ratelimit-") != "" ||
+		firstHeaderWithPrefix(lower, "anthropic-priority-") != "" ||
+		firstHeaderWithPrefix(lower, "anthropic-fast-") != "" {
+		scores["anthropic-official"] += 0.95
+		evidence = append(evidence, "header:anthropic-ratelimit/priority/fast-*")
 	}
 	if strings.HasPrefix(lower["request-id"], "req_") {
 		scores["anthropic-official"] += 0.6
-		evidence = append(evidence, "header:request-id")
+		evidence = append(evidence, "header:request-id="+stringPrefix(lower["request-id"], 10)+"...")
 	}
 
-	winner := "unknown-proxy"
-	best := 0.0
-	for channel, score := range scores {
-		if score > best {
-			winner = channel
-			best = score
-		}
-	}
+	best := maxFloat64(scores["aws-bedrock"], scores["aws-apigateway"], scores["google-vertex"], scores["anthropic-official"])
 	if best == 0 {
 		if matched, _ := regexp.MatchString(`^msg_01[A-Za-z0-9]{21,}$`, messageID); matched {
 			return probeChannelSignature{Channel: "anthropic-relay", Confidence: 0.5, Evidence: []string{"body:native-anthropic-id"}}
 		}
-		return probeChannelSignature{Channel: winner, Confidence: 0, Evidence: evidence}
+		return probeChannelSignature{Channel: "unknown-proxy", Confidence: 0, Evidence: evidence}
 	}
-	if best > 1 {
-		best = 1
+
+	winner := "anthropic-official"
+	switch {
+	case scores["aws-bedrock"] > 0 && scores["aws-bedrock"] >= scores["google-vertex"] && scores["aws-bedrock"] >= scores["aws-apigateway"]:
+		winner = "aws-bedrock"
+	case scores["google-vertex"] > 0 && scores["google-vertex"] >= scores["aws-bedrock"] && scores["google-vertex"] >= scores["aws-apigateway"]:
+		winner = "google-vertex"
+	case scores["aws-apigateway"] > 0 && scores["aws-apigateway"] >= scores["anthropic-official"]:
+		winner = "aws-apigateway"
 	}
-	return probeChannelSignature{Channel: winner, Confidence: best, Evidence: evidence}
+	return probeChannelSignature{Channel: winner, Confidence: roundChannelConfidence(minFloat64(1, scores[winner])), Evidence: evidence}
+}
+
+func maxFloat64(values ...float64) float64 {
+	best := 0.0
+	for _, value := range values {
+		if value > best {
+			best = value
+		}
+	}
+	return best
+}
+
+func minFloat64(a float64, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func roundChannelConfidence(value float64) float64 {
+	return math.Round(value*100) / 100
+}
+
+func firstHeaderWithPrefix(headers map[string]string, prefix string) string {
+	for _, key := range sortedStringKeys(headers) {
+		if strings.HasPrefix(key, prefix) {
+			return key
+		}
+	}
+	return ""
 }
 
 func extractProbeMessageID(decoded map[string]any) string {

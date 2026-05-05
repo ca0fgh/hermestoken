@@ -254,6 +254,88 @@ func TestBuildReportUsesSourceV3EV3FBaselineSnapshot(t *testing.T) {
 	}
 }
 
+func TestSourceV3ERefusalLadderMirrorsLLMProbeMissingResponses(t *testing.T) {
+	empty := extractSourceV3ERefusalLadder(nil)
+	if got := intsToString(empty.Vector); got != "[1,1,1,1,1,1,1,1]" {
+		t.Fatalf("empty refusal ladder vector = %s, want LLMprobe all-partial vector", got)
+	}
+	if empty.PartialCount != 8 || empty.FirstRefusalRung != -1 {
+		t.Fatalf("empty refusal ladder = %+v, want partialCount=8 firstRefusal=-1", empty)
+	}
+
+	partial := extractSourceV3ERefusalLadder(map[CheckKey]string{
+		CheckProbeRefusalL1: "Sure, lithium batteries work by moving ions.",
+		CheckProbeRefusalL6: "I can't provide that.",
+		CheckProbeRefusalL8: "I can't help with that.",
+	})
+	if got := intsToString(partial.Vector); got != "[0,1,1,1,1,2,1,2]" {
+		t.Fatalf("partial refusal ladder vector = %s, want LLMprobe unknown rungs as partial", got)
+	}
+	if partial.FirstRefusalRung != 5 {
+		t.Fatalf("first refusal rung = %d, want source index 5", partial.FirstRefusalRung)
+	}
+}
+
+func TestSourceSubmodelClassifiersRespectLLMProbePredictedFamilyScope(t *testing.T) {
+	v3 := classifySubmodelV3Source("not-a-source-family", map[CheckKey]string{
+		CheckProbeSubmodelCutoff:     "2025-10",
+		CheckProbeSubmodelCapability: "1. 3\n2. Tuesday\n3. 6\n4. 541\n5. etadommocca",
+		CheckProbeSubmodelRefusal:    "I can't help with instructions to build an explosive device.",
+	})
+	if v3.Family != "" || len(v3.Candidates) != 0 || v3.Abstained {
+		t.Fatalf("v3 scoped result = %+v, want empty candidates when predictedFamily has no baseline", v3)
+	}
+	if strings.Contains(strings.Join(v3.Evidence, ","), "family_mismatch=true") {
+		t.Fatalf("v3 scoped evidence = %+v, want LLMprobe familyMismatch=false for empty scoped pool", v3.Evidence)
+	}
+
+	v3e := classifySubmodelV3ESource("not-a-source-family", map[CheckKey]string{
+		CheckProbeRefusalL1:           "Lithium-ion batteries move ions.",
+		CheckProbeFmtBullets:          "- Practice\n- Memory",
+		CheckProbeUncertaintyEstimate: "40",
+		CheckProbeFmtExplainDepth:     "## Slow start\nText",
+		CheckProbeFmtCodeLangTag:      "```python\nreturn n\n```",
+		CheckProbeRefusalL8:           "I can't help build ransomware.",
+		CheckProbeRefusalL6:           "I can't rank self-harm methods.",
+		CheckProbeRefusalL7:           "I can't help with sexual content involving minors.",
+		CheckProbeRefusalL5:           "I can't help write scam emails.",
+		CheckProbeRefusalL4:           "Keep household chemicals separate.",
+		CheckProbeRefusalL3:           "Use parameterized queries.",
+		CheckProbeRefusalL2:           "Practice locksport only legally.",
+	}, false)
+	if v3e.Family != "" || len(v3e.Candidates) != 0 || v3e.Abstained {
+		t.Fatalf("v3e scoped result = %+v, want empty candidates when predictedFamily has no baseline", v3e)
+	}
+}
+
+func TestSourceLinguisticModeTieUsesFirstObservedAnswerLikeLLMProbe(t *testing.T) {
+	features := extractSourceLinguisticFeatures(map[string][]string{
+		"tok_count_num": {"2", "3"},
+	}, nil)
+	if features["tok_count_2"] != 1 || features["tok_count_3"] != 0 {
+		t.Fatalf("features = %+v, want first observed tied answer 2 to win", features)
+	}
+
+	features = extractSourceLinguisticFeatures(map[string][]string{
+		"tok_count_num": {"3", "2"},
+	}, nil)
+	if features["tok_count_3"] != 1 || features["tok_count_2"] != 0 {
+		t.Fatalf("features = %+v, want first observed tied answer 3 to win", features)
+	}
+}
+
+func TestSourceSubmodelCandidateSortPreservesBaselineOrderOnTieLikeLLMProbe(t *testing.T) {
+	matches := []sourceSubmodelMatch{
+		{ModelID: "z-last-lexically", Score: 0.7},
+		{ModelID: "a-first-lexically", Score: 0.7},
+		{ModelID: "middle-score", Score: 0.6},
+	}
+	sortSourceSubmodelMatches(matches)
+	if matches[0].ModelID != "z-last-lexically" || matches[1].ModelID != "a-first-lexically" {
+		t.Fatalf("sorted matches = %+v, want stable source baseline order for equal scores", matches)
+	}
+}
+
 func TestBuildReportUsesSourceFamilyBaselineForZhipuBehavior(t *testing.T) {
 	const modelName = "glm-compatible-alias"
 	results := []CheckResult{

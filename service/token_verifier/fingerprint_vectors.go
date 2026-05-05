@@ -3,7 +3,6 @@ package token_verifier
 import (
 	"context"
 	"math"
-	"sort"
 	"strings"
 
 	"github.com/ca0fgh/hermestoken/common"
@@ -32,7 +31,7 @@ func cosineSimilarity(a []float64, b []float64) float64 {
 
 func pickTopVectorScores(query []float64, refs []EmbeddingReference) []IdentityCandidateSummary {
 	if len(query) == 0 || len(refs) == 0 {
-		return nil
+		return zeroVectorFamilyScores()
 	}
 	familyMax := make(map[string]float64)
 	for _, ref := range refs {
@@ -49,7 +48,7 @@ func pickTopVectorScores(query []float64, refs []EmbeddingReference) []IdentityC
 		}
 	}
 	if len(familyMax) == 0 {
-		return nil
+		return zeroVectorFamilyScores()
 	}
 	maxSim := 0.0001
 	for _, score := range familyMax {
@@ -67,12 +66,18 @@ func pickTopVectorScores(query []float64, refs []EmbeddingReference) []IdentityC
 			Reasons: []string{"embedding cosine similarity"},
 		})
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Score == items[j].Score {
-			return items[i].Family < items[j].Family
-		}
-		return items[i].Score > items[j].Score
-	})
+	return items
+}
+
+func zeroVectorFamilyScores() []IdentityCandidateSummary {
+	items := make([]IdentityCandidateSummary, 0, len(sourceVectorFamilies))
+	for _, family := range sourceVectorFamilies {
+		items = append(items, IdentityCandidateSummary{
+			Family: family,
+			Model:  identityFamilyDisplayName(family),
+			Score:  0,
+		})
+	}
 	return items
 }
 
