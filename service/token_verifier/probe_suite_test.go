@@ -491,6 +491,51 @@ func TestDefaultVerifierProbeTemperatureMirrorsLLMProbeRunner(t *testing.T) {
 	}
 }
 
+func TestAnthropicVerifierProbeOmitsTemperatureForModelsThatDeprecateIt(t *testing.T) {
+	var sawRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sawRequest = true
+		if _, ok := payload["temperature"]; ok {
+			t.Fatalf("anthropic payload has temperature = %#v, want omitted for Claude models that deprecate it", payload["temperature"])
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id":    "msg-temperature-omitted",
+			"type":  "message",
+			"model": payload["model"],
+			"content": []map[string]any{
+				{"type": "text", "text": "unknown"},
+			},
+			"usage": map[string]any{"input_tokens": 10, "output_tokens": 1},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.runVerifierProbe(context.Background(), runner.Executor, ProviderAnthropic, "claude-opus-4-7", verifierProbe{
+		Key:            CheckProbeInfraLeak,
+		Group:          probeGroupSecurity,
+		Prompt:         "Return unknown.",
+		PassIfContains: []string{"unknown"},
+		MaxTokens:      32,
+	})
+	if !sawRequest {
+		t.Fatal("anthropic request was not sent")
+	}
+	if !result.Success {
+		t.Fatalf("anthropic probe result = %+v, want success", result)
+	}
+}
+
 func TestRunVerifierProbeUsesOpenAIStreamingLikeLLMProbeRunner(t *testing.T) {
 	var sawStream bool
 	var sawIncludeUsage bool
@@ -557,6 +602,20 @@ func TestExtractVerifierUsageMatchesOpenAIAnthropicAndSSE(t *testing.T) {
 	}, "\n"))
 	if inputTokens == nil || *inputTokens != 21 || outputTokens == nil || *outputTokens != 5 {
 		t.Fatalf("sse usage = input:%v output:%v, want 21/5", inputTokens, outputTokens)
+	}
+}
+
+func TestParseVerifierAnthropicSSEResponseFallsBackToJSON(t *testing.T) {
+	decoded, content := parseVerifierAnthropicSSEResponse(`{"id":"msg-json-fallback","type":"message","content":[{"type":"text","text":"OK"}],"usage":{"input_tokens":3,"output_tokens":1}}`)
+	if content != "OK" {
+		t.Fatalf("content = %q, want JSON fallback text", content)
+	}
+	if decoded["id"] != "msg-json-fallback" {
+		t.Fatalf("decoded id = %#v, want JSON fallback id", decoded["id"])
+	}
+	inputTokens, outputTokens := extractVerifierUsage(decoded)
+	if inputTokens == nil || *inputTokens != 3 || outputTokens == nil || *outputTokens != 1 {
+		t.Fatalf("json fallback usage = input:%v output:%v, want 3/1", inputTokens, outputTokens)
 	}
 }
 
@@ -1438,6 +1497,132 @@ func TestCheckSignatureRoundtripDoesNotLeakThinkingOrSignature(t *testing.T) {
 	}
 	if !strings.Contains(rendered, sha256Hex(signature)) {
 		t.Fatalf("signature roundtrip raw = %s, want signature hash only", rendered)
+	}
+	if requestCount != 2 {
+		t.Fatalf("request count = %d, want first probe plus roundtrip", requestCount)
+	}
+}
+
+func TestAnthropicClaudeCodeThinkingBlockParsesStreamingThinkingDelta(t *testing.T) {
+	var sawStream bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sawStream = payload["stream"] == true
+		if !sawStream {
+			t.Fatalf("thinking stream = %#v, want true for Claude Code profile", payload["stream"])
+		}
+		if got := r.Header.Get("x-stainless-helper-method"); got != "stream" {
+			t.Fatalf("x-stainless-helper-method = %q, want stream", got)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"message_start","message":{"id":"msg_thinking_stream","type":"message","model":"claude-test","usage":{"input_tokens":20}}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"private reasoning"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-stream"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"4"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"message_delta","usage":{"output_tokens":5}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"message_stop"}` + "\n\n"))
+	}))
+	defer server.Close()
+
+	runner := Runner{
+		BaseURL:       server.URL,
+		Token:         "test-token",
+		ClientProfile: ClientProfileClaudeCode,
+		sessionID:     "11111111-1111-4111-8111-111111111111",
+		Executor:      NewCurlExecutor(time.Second),
+	}
+	result := runner.checkThinkingBlock(context.Background(), runner.Executor, ProviderAnthropic, "claude-test", verifierProbe{
+		Key:       CheckProbeThinkingBlock,
+		Group:     probeGroupSignature,
+		Prompt:    "Think privately, then answer 4.",
+		MaxTokens: 2048,
+		Neutral:   true,
+	})
+	if !sawStream {
+		t.Fatal("thinking request was not streamed")
+	}
+	if !result.Success || result.ErrorCode != "" {
+		t.Fatalf("thinking result = %+v, want streamed thinking block success", result)
+	}
+	if result.InputTokens == nil || *result.InputTokens != 20 || result.OutputTokens == nil || *result.OutputTokens != 5 {
+		t.Fatalf("thinking usage = input:%v output:%v, want 20/5", result.InputTokens, result.OutputTokens)
+	}
+}
+
+func TestAnthropicClaudeCodeSignatureRoundtripParsesStreamingThinkingSignature(t *testing.T) {
+	const signature = "sig-stream-roundtrip"
+	const thinking = "streamed private thinking"
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/messages" {
+			http.NotFound(w, r)
+			return
+		}
+		requestCount++
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if payload["stream"] != true {
+			t.Fatalf("signature request stream = %#v, want true for Claude Code profile", payload["stream"])
+		}
+		if got := r.Header.Get("x-stainless-helper-method"); got != "stream" {
+			t.Fatalf("x-stainless-helper-method = %q, want stream", got)
+		}
+		if requestCount == 1 {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte(`data: {"type":"message_start","message":{"id":"msg_sig_1","type":"message","model":"claude-test"}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"` + thinking + `"}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"` + signature + `"}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"4"}}` + "\n\n"))
+			_, _ = w.Write([]byte(`data: {"type":"message_stop"}` + "\n\n"))
+			return
+		}
+		messages, _ := payload["messages"].([]any)
+		if len(messages) < 3 {
+			t.Fatalf("roundtrip messages = %+v, want original + assistant thinking + follow-up", messages)
+		}
+		assistant, _ := messages[len(messages)-2].(map[string]any)
+		content, _ := assistant["content"].([]any)
+		block, _ := content[0].(map[string]any)
+		if block["signature"] != signature || block["thinking"] != thinking {
+			t.Fatalf("roundtrip thinking block = %+v, want streamed thinking and signature", block)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"type":"message_start","message":{"id":"msg_sig_2","type":"message","model":"claude-test"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"6"}}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"type":"message_stop"}` + "\n\n"))
+	}))
+	defer server.Close()
+
+	runner := Runner{
+		BaseURL:       server.URL,
+		Token:         "test-token",
+		ClientProfile: ClientProfileClaudeCode,
+		sessionID:     "11111111-1111-4111-8111-111111111111",
+		Executor:      NewCurlExecutor(time.Second),
+	}
+	result := runner.checkSignatureRoundtrip(context.Background(), runner.Executor, ProviderAnthropic, "claude-test", signatureRoundtripProbe())
+	if !result.Success || result.Skipped {
+		t.Fatalf("signature roundtrip result = %+v, want streaming success", result)
+	}
+	rendered := mustMarshalForTest(result)
+	if strings.Contains(rendered, signature) || strings.Contains(rendered, thinking) {
+		t.Fatalf("signature roundtrip leaked private data: %s", rendered)
 	}
 	if requestCount != 2 {
 		t.Fatalf("request count = %d, want first probe plus roundtrip", requestCount)

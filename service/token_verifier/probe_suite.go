@@ -513,9 +513,10 @@ func (r Runner) executeVerifierProbeWithTemperatureOption(ctx context.Context, e
 		if strings.TrimSpace(probe.SystemPrompt) != "" {
 			body["system"] = probe.SystemPrompt
 		}
-		if temperature != nil && *temperature > 0 {
-			body["temperature"] = *temperature
+		if r.isClaudeCodeClientProfile(provider) {
+			body["stream"] = true
 		}
+		body = r.applyAnthropicClientProfileBody(provider, body)
 	default:
 		target = r.endpoint("/v1/chat/completions")
 		messages := make([]map[string]any, 0, 2)
@@ -537,8 +538,8 @@ func (r Runner) executeVerifierProbeWithTemperatureOption(ctx context.Context, e
 		}
 	}
 
-	payload, _ := common.Marshal(body)
-	headers := providerHeaders(provider, r.Token)
+	payload, _ := r.marshalRequestBody(provider, body)
+	headers := r.requestHeadersForBody(provider, body)
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", target, headers, payload)
 	if err != nil {
@@ -549,6 +550,10 @@ func (r Runner) executeVerifierProbeWithTemperatureOption(ctx context.Context, e
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_ = common.Unmarshal(resp.Body, &decoded)
 		return resp, decoded, extractVerifierResponseText(provider, decoded), nil
+	}
+	if provider == ProviderAnthropic && body["stream"] == true {
+		decoded, content := parseVerifierAnthropicSSEResponse(string(resp.Body))
+		return resp, decoded, content, nil
 	}
 	if provider != ProviderAnthropic && streamOpenAI {
 		decoded, content := parseVerifierOpenAISSEResponse(string(resp.Body))
@@ -986,10 +991,14 @@ func (r Runner) checkThinkingBlock(ctx context.Context, executor *CurlExecutor, 
 			{"role": "user", "content": probe.Prompt},
 		},
 	}
-	payload, _ := common.Marshal(body)
-	headers := providerHeaders(provider, r.Token)
+	if r.isClaudeCodeClientProfile(provider) {
+		body["stream"] = true
+	}
+	body = r.applyAnthropicClientProfileBody(provider, body)
+	payload, _ := r.marshalRequestBody(provider, body)
+	headers := r.requestHeadersForBody(provider, body)
 	headers["Content-Type"] = "application/json"
-	headers["anthropic-beta"] = "interleaved-thinking-2025-05-14"
+	headers["anthropic-beta"] = mergeHeaderCSV("interleaved-thinking-2025-05-14", headers["anthropic-beta"])
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/messages"), headers, payload)
 	if err != nil {
 		return warningCheckResult(provider, probe.Group, probe.Key, modelName, 0, "thinking_request_failed", "Thinking block 探针请求失败，无法判断："+err.Error())
@@ -998,7 +1007,9 @@ func (r Runner) checkThinkingBlock(ctx context.Context, executor *CurlExecutor, 
 		return warningCheckResult(provider, probe.Group, probe.Key, modelName, resp.LatencyMs, "thinking_http_warning", fmt.Sprintf("HTTP %d，上游可能不支持 thinking 或 beta header", resp.StatusCode))
 	}
 	var decoded map[string]any
-	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
+	if body["stream"] == true {
+		decoded, _ = parseVerifierAnthropicSSEResponse(string(resp.Body))
+	} else if err := common.Unmarshal(resp.Body, &decoded); err != nil {
 		return warningCheckResult(provider, probe.Group, probe.Key, modelName, resp.LatencyMs, "thinking_parse_warning", "Thinking block 响应无法解析，无法判断："+err.Error())
 	}
 	inputTokens, outputTokens := extractVerifierUsage(decoded)
@@ -1118,6 +1129,10 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 			{"role": "user", "content": originalPrompt},
 		},
 	}
+	if r.isClaudeCodeClientProfile(provider) {
+		firstBody["stream"] = true
+	}
+	firstBody = r.applyAnthropicClientProfileBody(provider, firstBody)
 	firstResp, firstDecoded, err := r.doAnthropicSignatureRequest(ctx, executor, firstBody)
 	if err != nil {
 		result := failedResult(probe.Key, modelName, err, 0)
@@ -1155,6 +1170,10 @@ func (r Runner) checkSignatureRoundtrip(ctx context.Context, executor *CurlExecu
 	}
 	assistantText := extractVerifierResponseText(provider, firstDecoded)
 	roundtripBody := buildAnthropicSignatureRoundtripBody(modelName, originalPrompt, thinking, assistantText, "What is 3+3? Answer only the number.")
+	if r.isClaudeCodeClientProfile(provider) {
+		roundtripBody["stream"] = true
+	}
+	roundtripBody = r.applyAnthropicClientProfileBody(provider, roundtripBody)
 	secondResp, _, err := r.doAnthropicSignatureRequest(ctx, executor, roundtripBody)
 	if err != nil {
 		result := failedResult(probe.Key, modelName, err, firstResp.LatencyMs)
@@ -1218,8 +1237,8 @@ type anthropicThinkingBlock struct {
 }
 
 func (r Runner) doAnthropicSignatureRequest(ctx context.Context, executor *CurlExecutor, body map[string]any) (*CurlResponse, map[string]any, error) {
-	payload, _ := common.Marshal(body)
-	headers := providerHeaders(ProviderAnthropic, r.Token)
+	payload, _ := r.marshalRequestBody(ProviderAnthropic, body)
+	headers := r.requestHeadersForBody(ProviderAnthropic, body)
 	headers["Content-Type"] = "application/json"
 	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/messages"), headers, payload)
 	if err != nil {
@@ -1227,7 +1246,9 @@ func (r Runner) doAnthropicSignatureRequest(ctx context.Context, executor *CurlE
 	}
 	var decoded map[string]any
 	if len(resp.Body) > 0 {
-		if err := common.Unmarshal(resp.Body, &decoded); err != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if body["stream"] == true {
+			decoded, _ = parseVerifierAnthropicSSEResponse(string(resp.Body))
+		} else if err := common.Unmarshal(resp.Body, &decoded); err != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return resp, nil, err
 		}
 	}
@@ -1568,10 +1589,8 @@ func parseVerifierOpenAISSEResponse(raw string) (map[string]any, string) {
 			continue
 		}
 		lastDecoded = decoded
-		if chunkInput, chunkOutput := extractVerifierUsage(decoded); chunkInput != nil || chunkOutput != nil {
-			inputTokens = chunkInput
-			outputTokens = chunkOutput
-		}
+		chunkInput, chunkOutput := extractVerifierUsage(decoded)
+		mergeVerifierUsage(&inputTokens, &outputTokens, chunkInput, chunkOutput)
 		if content := extractOpenAISSEDeltaContent(decoded); content != "" {
 			fullText.WriteString(content)
 		}
@@ -1600,6 +1619,191 @@ func parseVerifierOpenAISSEResponse(raw string) (map[string]any, string) {
 		decoded["usage"] = usage
 	}
 	return decoded, responseText
+}
+
+func parseVerifierAnthropicSSEResponse(raw string) (map[string]any, string) {
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "{") {
+		var decoded map[string]any
+		if err := common.Unmarshal([]byte(trimmed), &decoded); err == nil {
+			return decoded, extractVerifierResponseText(ProviderAnthropic, decoded)
+		}
+	}
+
+	var fullText strings.Builder
+	var inputTokens *int
+	var outputTokens *int
+	var messageID string
+	var modelName string
+	contentBlocks := make([]any, 0)
+	currentTextIndex := -1
+	var lastDecoded map[string]any
+
+	for _, rawLine := range strings.Split(raw, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var decoded map[string]any
+		if err := common.Unmarshal([]byte(payload), &decoded); err != nil {
+			continue
+		}
+		lastDecoded = decoded
+		eventType, _ := decoded["type"].(string)
+		if message, ok := decoded["message"].(map[string]any); ok {
+			if value, ok := message["id"].(string); ok && value != "" {
+				messageID = value
+			}
+			if value, ok := message["model"].(string); ok && value != "" {
+				modelName = value
+			}
+			chunkInput, chunkOutput := extractVerifierUsage(message)
+			mergeVerifierUsage(&inputTokens, &outputTokens, chunkInput, chunkOutput)
+		}
+		chunkInput, chunkOutput := extractVerifierUsage(decoded)
+		mergeVerifierUsage(&inputTokens, &outputTokens, chunkInput, chunkOutput)
+		switch eventType {
+		case "content_block_start":
+			currentTextIndex = -1
+			if index, ok := numberFromAny(decoded["index"]); ok {
+				currentTextIndex = index
+			}
+			block, _ := decoded["content_block"].(map[string]any)
+			if block == nil {
+				continue
+			}
+			blockType, _ := block["type"].(string)
+			if blockType == "text" {
+				text, _ := block["text"].(string)
+				contentBlocks = append(contentBlocks, map[string]any{"type": "text", "text": text})
+				if text != "" {
+					fullText.WriteString(text)
+				}
+				continue
+			}
+			contentBlocks = append(contentBlocks, copyMap(block))
+		case "content_block_delta":
+			delta, _ := decoded["delta"].(map[string]any)
+			index := currentTextIndex
+			if parsedIndex, ok := numberFromAny(decoded["index"]); ok {
+				index = parsedIndex
+			}
+			switch deltaType, _ := delta["type"].(string); deltaType {
+			case "text_delta":
+				text, _ := delta["text"].(string)
+				if text == "" {
+					continue
+				}
+				fullText.WriteString(text)
+				appendAnthropicTextBlockDelta(contentBlocks, index, text)
+			case "thinking_delta":
+				thinking, _ := delta["thinking"].(string)
+				if thinking == "" {
+					continue
+				}
+				appendAnthropicThinkingBlockDelta(contentBlocks, index, thinking)
+			case "signature_delta":
+				signature, _ := delta["signature"].(string)
+				if signature == "" {
+					continue
+				}
+				appendAnthropicSignatureBlockDelta(contentBlocks, index, signature)
+			}
+		}
+	}
+
+	responseText := fullText.String()
+	decoded := make(map[string]any)
+	if lastDecoded != nil {
+		decoded = compactRaw(lastDecoded)
+		if decoded == nil {
+			decoded = make(map[string]any)
+		}
+	}
+	if messageID != "" {
+		decoded["id"] = messageID
+	}
+	if modelName != "" {
+		decoded["model"] = modelName
+	}
+	if len(contentBlocks) > 0 {
+		decoded["content"] = contentBlocks
+	} else if responseText != "" {
+		decoded["content"] = []any{map[string]any{"type": "text", "text": responseText}}
+	}
+	usage := make(map[string]any)
+	if inputTokens != nil {
+		usage["input_tokens"] = *inputTokens
+	}
+	if outputTokens != nil {
+		usage["output_tokens"] = *outputTokens
+	}
+	if len(usage) > 0 {
+		decoded["usage"] = usage
+	}
+	return decoded, responseText
+}
+
+func appendAnthropicTextBlockDelta(blocks []any, index int, text string) {
+	if len(blocks) == 0 {
+		return
+	}
+	block, ok := anthropicContentBlockAt(blocks, index)
+	if !ok || block["type"] != "text" {
+		return
+	}
+	block["text"] = common.Interface2String(block["text"]) + text
+}
+
+func mergeVerifierUsage(inputTokens **int, outputTokens **int, chunkInput *int, chunkOutput *int) {
+	if chunkInput != nil {
+		*inputTokens = chunkInput
+	}
+	if chunkOutput != nil {
+		*outputTokens = chunkOutput
+	}
+}
+
+func appendAnthropicThinkingBlockDelta(blocks []any, index int, thinking string) {
+	block, ok := anthropicContentBlockAt(blocks, index)
+	if !ok || block["type"] != "thinking" {
+		return
+	}
+	block["thinking"] = common.Interface2String(block["thinking"]) + thinking
+}
+
+func appendAnthropicSignatureBlockDelta(blocks []any, index int, signature string) {
+	block, ok := anthropicContentBlockAt(blocks, index)
+	if !ok || block["type"] != "thinking" {
+		return
+	}
+	block["signature"] = common.Interface2String(block["signature"]) + signature
+}
+
+func anthropicContentBlockAt(blocks []any, index int) (map[string]any, bool) {
+	if len(blocks) == 0 {
+		return nil, false
+	}
+	if index < 0 || index >= len(blocks) {
+		index = len(blocks) - 1
+	}
+	block, ok := blocks[index].(map[string]any)
+	return block, ok
+}
+
+func copyMap(input map[string]any) map[string]any {
+	if input == nil {
+		return nil
+	}
+	out := make(map[string]any, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 func extractOpenAISSEDeltaContent(decoded map[string]any) string {

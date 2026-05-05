@@ -53,3 +53,16 @@ test("token verification copy does not expose internal probe engine branding", a
       }),
   );
 });
+
+test("token verification supports Anthropic Claude Code client profile", async () => {
+  const source = await readFile(tokenVerificationPagePath, "utf8");
+
+  assert.match(source, /value:\s*'claude_code'/);
+  assert.match(source, /客户端模式/);
+  assert.match(source, /provider\s*===\s*'anthropic'/);
+  assert.match(
+    source,
+    /client_profile:\s*provider\s*===\s*'anthropic'\s*\?\s*clientProfile\s*:\s*''/,
+  );
+  assert.match(source, /probeResult\?\.client_profile\s*\|\|\s*clientProfile/);
+});

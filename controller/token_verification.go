@@ -25,12 +25,13 @@ type createTokenVerificationTaskRequest struct {
 }
 
 type createTokenVerificationProbeRequest struct {
-	URL          string `json:"url"`
-	BaseURL      string `json:"base_url"`
-	APIKey       string `json:"api_key"`
-	Model        string `json:"model"`
-	Provider     string `json:"provider"`
-	ProbeProfile string `json:"probe_profile"`
+	URL           string `json:"url"`
+	BaseURL       string `json:"base_url"`
+	APIKey        string `json:"api_key"`
+	Model         string `json:"model"`
+	Provider      string `json:"provider"`
+	ProbeProfile  string `json:"probe_profile"`
+	ClientProfile string `json:"client_profile"`
 }
 
 type tokenVerificationTaskView struct {
@@ -122,15 +123,21 @@ func CreateTokenVerificationProbe(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	clientProfile, err := normalizeTokenVerificationProbeClientProfile(req.ClientProfile, provider)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), tokenVerificationProbeTimeout(probeProfile))
 	defer cancel()
 	result, err := runDirectTokenVerificationProbe(ctx, tokenverifier.DirectProbeRequest{
-		BaseURL:      baseURL,
-		APIKey:       apiKey,
-		Model:        modelName,
-		Provider:     provider,
-		ProbeProfile: probeProfile,
+		BaseURL:       baseURL,
+		APIKey:        apiKey,
+		Model:         modelName,
+		Provider:      provider,
+		ProbeProfile:  probeProfile,
+		ClientProfile: clientProfile,
 	})
 	if err != nil {
 		common.ApiErrorMsg(c, err.Error())
@@ -283,6 +290,20 @@ func normalizeTokenVerificationProbeProfile(rawProfile string, role int) (string
 	}
 	if value == tokenverifier.ProbeProfileFull && role < common.RoleAdminUser {
 		return "", errors.New("完整检测仅管理员可用")
+	}
+	return value, nil
+}
+
+func normalizeTokenVerificationProbeClientProfile(rawProfile string, provider string) (string, error) {
+	value := strings.ToLower(strings.TrimSpace(rawProfile))
+	if value == "" || value == "default" {
+		return "", nil
+	}
+	if value != tokenverifier.ClientProfileClaudeCode {
+		return "", errors.New("客户端模式仅支持 default 或 claude_code")
+	}
+	if provider != tokenverifier.ProviderAnthropic {
+		return "", errors.New("Claude Code 客户端模式仅支持 Anthropic 协议")
 	}
 	return value, nil
 }

@@ -15,6 +15,7 @@ func RedactDirectProbeResponse(response *DirectProbeResponse, secrets ...string)
 	redacted.Provider = redactSecretString(response.Provider, normalizedSecrets)
 	redacted.Model = redactSecretString(response.Model, normalizedSecrets)
 	redacted.ProbeProfile = redactSecretString(response.ProbeProfile, normalizedSecrets)
+	redacted.ClientProfile = redactSecretString(response.ClientProfile, normalizedSecrets)
 	redacted.Results = redactCheckResults(response.Results, normalizedSecrets)
 	redacted.Report = redactReportSummary(response.Report, normalizedSecrets)
 	return &redacted

@@ -100,11 +100,37 @@ func TestNormalizeTokenVerificationProbeProfile(t *testing.T) {
 	}
 }
 
+func TestNormalizeTokenVerificationProbeClientProfile(t *testing.T) {
+	profile, err := normalizeTokenVerificationProbeClientProfile("", tokenverifier.ProviderAnthropic)
+	if err != nil {
+		t.Fatalf("expected empty client profile to pass, got %v", err)
+	}
+	if profile != "" {
+		t.Fatalf("empty client profile normalized to %q, want empty", profile)
+	}
+
+	profile, err = normalizeTokenVerificationProbeClientProfile(" Claude_Code ", tokenverifier.ProviderAnthropic)
+	if err != nil {
+		t.Fatalf("expected Claude Code profile to pass for Anthropic, got %v", err)
+	}
+	if profile != tokenverifier.ClientProfileClaudeCode {
+		t.Fatalf("client profile = %q, want %q", profile, tokenverifier.ClientProfileClaudeCode)
+	}
+
+	if _, err := normalizeTokenVerificationProbeClientProfile("claude_code", tokenverifier.ProviderOpenAI); err == nil {
+		t.Fatal("expected Claude Code profile to fail for OpenAI provider")
+	}
+	if _, err := normalizeTokenVerificationProbeClientProfile("browser", tokenverifier.ProviderAnthropic); err == nil {
+		t.Fatal("expected unsupported client profile to fail")
+	}
+}
+
 func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const secret = "sk-test-secret-value"
 	const requestedProfile = tokenverifier.ProbeProfileDeep
+	const requestedClientProfile = tokenverifier.ClientProfileClaudeCode
 	originalRunner := runDirectTokenVerificationProbe
 	runDirectTokenVerificationProbe = func(ctx context.Context, input tokenverifier.DirectProbeRequest) (*tokenverifier.DirectProbeResponse, error) {
 		if input.APIKey != secret {
@@ -113,11 +139,15 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 		if input.ProbeProfile != requestedProfile {
 			t.Fatalf("expected probe profile %q, got %q", requestedProfile, input.ProbeProfile)
 		}
+		if input.ClientProfile != requestedClientProfile {
+			t.Fatalf("expected client profile %q, got %q", requestedClientProfile, input.ClientProfile)
+		}
 		return &tokenverifier.DirectProbeResponse{
-			BaseURL:      input.BaseURL,
-			Provider:     input.Provider,
-			Model:        input.Model,
-			ProbeProfile: input.ProbeProfile,
+			BaseURL:       input.BaseURL,
+			Provider:      input.Provider,
+			Model:         input.Model,
+			ProbeProfile:  input.ProbeProfile,
+			ClientProfile: input.ClientProfile,
 			Results: []tokenverifier.CheckResult{
 				{
 					Provider:  input.Provider,
@@ -145,7 +175,7 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 		runDirectTokenVerificationProbe = originalRunner
 	})
 
-	payload := []byte(`{"url":"https://8.8.8.8/v1","api_key":"` + secret + `","model":"gpt-4o-mini","provider":"openai","probe_profile":"` + requestedProfile + `"}`)
+	payload := []byte(`{"url":"https://8.8.8.8/v1","api_key":"` + secret + `","model":"claude-opus-4-7","provider":"anthropic","probe_profile":"` + requestedProfile + `","client_profile":"` + requestedClientProfile + `"}`)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Set("id", 1)
@@ -175,5 +205,8 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 	}
 	if data["probe_profile"] != requestedProfile {
 		t.Fatalf("response probe_profile = %v, want %q", data["probe_profile"], requestedProfile)
+	}
+	if data["client_profile"] != requestedClientProfile {
+		t.Fatalf("response client_profile = %v, want %q", data["client_profile"], requestedClientProfile)
 	}
 }

@@ -225,18 +225,20 @@ type ReportSummary struct {
 }
 
 type DirectProbeRequest struct {
-	BaseURL      string
-	APIKey       string
-	Provider     string
-	Model        string
-	ProbeProfile string
+	BaseURL       string
+	APIKey        string
+	Provider      string
+	Model         string
+	ProbeProfile  string
+	ClientProfile string
 }
 
 type DirectProbeResponse struct {
-	BaseURL      string        `json:"base_url"`
-	Provider     string        `json:"provider"`
-	Model        string        `json:"model"`
-	ProbeProfile string        `json:"probe_profile"`
-	Results      []CheckResult `json:"results"`
-	Report       ReportSummary `json:"report"`
+	BaseURL       string        `json:"base_url"`
+	Provider      string        `json:"provider"`
+	Model         string        `json:"model"`
+	ProbeProfile  string        `json:"probe_profile"`
+	ClientProfile string        `json:"client_profile,omitempty"`
+	Results       []CheckResult `json:"results"`
+	Report        ReportSummary `json:"report"`
 }

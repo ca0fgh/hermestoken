@@ -40,6 +40,15 @@ const providerOptions = [
   { label: 'Anthropic', value: 'anthropic' },
 ];
 
+const clientProfileOptions = [
+  { label: 'API', value: '' },
+  { label: 'Claude Code', value: 'claude_code' },
+];
+
+const clientProfileLabelMap = {
+  claude_code: 'Claude Code',
+};
+
 const providerDefaults = {
   openai: {
     baseURL: 'https://api.openai.com',
@@ -172,6 +181,7 @@ function TokenVerification() {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(providerDefaults.openai.model);
   const [probeProfile, setProbeProfile] = useState('standard');
+  const [clientProfile, setClientProfile] = useState('');
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState(null);
 
@@ -217,8 +227,9 @@ function TokenVerification() {
       provider: probeResult?.provider || provider,
       model: probeResult?.model || model,
       probeProfile: probeResult?.probe_profile || probeProfile,
+      clientProfile: probeResult?.client_profile || clientProfile,
     }),
-    [baseURL, model, probeProfile, probeResult, provider],
+    [baseURL, clientProfile, model, probeProfile, probeResult, provider],
   );
 
   const handleProviderChange = (value) => {
@@ -228,6 +239,9 @@ function TokenVerification() {
       providerDefaults[nextProvider] || providerDefaults.openai;
 
     setProvider(nextProvider);
+    if (nextProvider !== 'anthropic') {
+      setClientProfile('');
+    }
     if (!baseURL.trim() || baseURL === previousDefaults.baseURL) {
       setBaseURL(nextDefaults.baseURL);
     }
@@ -263,6 +277,7 @@ function TokenVerification() {
           provider,
           model: trimmedModel,
           probe_profile: probeProfile,
+          client_profile: provider === 'anthropic' ? clientProfile : '',
         },
         {
           timeout: probeRequestTimeout(probeProfile),
@@ -458,6 +473,12 @@ function TokenVerification() {
             {profileLabelMap[selectedTarget.probeProfile] ||
               selectedTarget.probeProfile}
           </Tag>
+          {selectedTarget.clientProfile && (
+            <Tag color='violet'>
+              {clientProfileLabelMap[selectedTarget.clientProfile] ||
+                selectedTarget.clientProfile}
+            </Tag>
+          )}
           <Text type='secondary'>{selectedTarget.baseURL}</Text>
         </div>
 
@@ -567,6 +588,18 @@ function TokenVerification() {
                   style={{ width: '100%' }}
                 />
               </label>
+
+              {provider === 'anthropic' && (
+                <label>
+                  <Text strong>{t('客户端模式')}</Text>
+                  <Select
+                    optionList={clientProfileOptions}
+                    value={clientProfile}
+                    onChange={(value) => setClientProfile(String(value || ''))}
+                    style={{ width: '100%' }}
+                  />
+                </label>
+              )}
 
               <label>
                 <Text strong>{t('检测模型')}</Text>
