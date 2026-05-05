@@ -4404,7 +4404,7 @@
     "证据": "Bằng chứng",
     "身份指纹评估": "Đánh giá dấu vân tay danh tính",
     "LLM 探针检测": "Kiểm tra probe LLM",
-    "基于 LLMprobe-engine 探针套件发起真实请求，生成身份、完整性与安全检测报告。": "Chạy yêu cầu thật bằng bộ probe LLMprobe-engine và tạo báo cáo danh tính, tính toàn vẹn và bảo mật.",
+    "基于探针套件发起真实请求，生成身份、完整性与安全检测报告。": "Chạy yêu cầu thật bằng bộ probe và tạo báo cáo danh tính, tính toàn vẹn và bảo mật.",
     "检测配置": "Cấu hình kiểm tra",
     "探针报告": "Báo cáo probe",
     "暂无探针报告": "Chưa có báo cáo probe",

@@ -510,9 +510,7 @@ function TokenVerification() {
           <div>
             <Title heading={3}>{t('LLM 探针检测')}</Title>
             <Text type='secondary'>
-              {t(
-                '基于 LLMprobe-engine 探针套件发起真实请求，生成身份、完整性与安全检测报告。',
-              )}
+              {t('基于探针套件发起真实请求，生成身份、完整性与安全检测报告。')}
             </Text>
           </div>
           <Button

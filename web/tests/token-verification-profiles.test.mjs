@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 const tokenVerificationPagePath = new URL(
   "../classic/src/pages/TokenVerification/index.jsx",
+  import.meta.url,
+);
+const classicLocaleDir = new URL(
+  "../classic/src/i18n/locales/",
   import.meta.url,
 );
 
@@ -25,5 +29,27 @@ test("token verification profile selector exposes standard and deep to users, fu
   assert.match(
     source,
     /if\s*\(\s*!isAdminUser\s*&&\s*probeProfile\s*===\s*'full'\s*\)\s*{\s*setProbeProfile\('deep'\)/s,
+  );
+});
+
+test("token verification copy does not expose internal probe engine branding", async () => {
+  const source = await readFile(tokenVerificationPagePath, "utf8");
+  assert.doesNotMatch(source, /LLMprobe-engine/);
+
+  const localeFiles = await readdir(classicLocaleDir);
+  await Promise.all(
+    localeFiles
+      .filter((file) => file.endsWith(".json"))
+      .map(async (file) => {
+        const localeSource = await readFile(
+          new URL(file, classicLocaleDir),
+          "utf8",
+        );
+        assert.doesNotMatch(
+          localeSource,
+          /LLMprobe-engine/,
+          `${file} should not expose internal probe engine branding`,
+        );
+      }),
   );
 });

@@ -3862,7 +3862,7 @@
     "证据": "Preuves",
     "身份指纹评估": "Évaluation d'empreinte d'identité",
     "LLM 探针检测": "Détection par sondes LLM",
-    "基于 LLMprobe-engine 探针套件发起真实请求，生成身份、完整性与安全检测报告。": "Lancez des requêtes réelles avec la suite de sondes LLMprobe-engine et générez un rapport d'identité, d'intégrité et de sécurité.",
+    "基于探针套件发起真实请求，生成身份、完整性与安全检测报告。": "Lancez des requêtes réelles avec la suite de sondes et générez un rapport d'identité, d'intégrité et de sécurité.",
     "检测配置": "Configuration de détection",
     "探针报告": "Rapport de sondes",
     "暂无探针报告": "Aucun rapport de sondes pour le moment",
