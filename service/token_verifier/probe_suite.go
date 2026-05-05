@@ -432,10 +432,14 @@ func (r Runner) runVerifierProbe(ctx context.Context, executor *CurlExecutor, pr
 }
 
 func (r Runner) executeVerifierProbe(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) (*CurlResponse, map[string]any, string, error) {
-	return r.executeVerifierProbeWithTemperature(ctx, executor, provider, modelName, probe, defaultVerifierProbeTemperature(probe))
+	return r.executeVerifierProbeWithTemperatureAndStream(ctx, executor, provider, modelName, probe, defaultVerifierProbeTemperature(probe), true)
 }
 
 func (r Runner) executeVerifierProbeWithTemperature(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe, temperature float64) (*CurlResponse, map[string]any, string, error) {
+	return r.executeVerifierProbeWithTemperatureAndStream(ctx, executor, provider, modelName, probe, temperature, false)
+}
+
+func (r Runner) executeVerifierProbeWithTemperatureAndStream(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe, temperature float64, streamOpenAI bool) (*CurlResponse, map[string]any, string, error) {
 	maxTokens := probe.MaxTokens
 	if maxTokens <= 0 {
 		maxTokens = defaultProbeMaxTokens
@@ -471,7 +475,10 @@ func (r Runner) executeVerifierProbeWithTemperature(ctx context.Context, executo
 			"messages":    messages,
 			"max_tokens":  maxTokens,
 			"temperature": temperature,
-			"stream":      false,
+			"stream":      streamOpenAI,
+		}
+		if streamOpenAI {
+			body["stream_options"] = map[string]any{"include_usage": true}
 		}
 	}
 
@@ -484,6 +491,14 @@ func (r Runner) executeVerifierProbeWithTemperature(ctx context.Context, executo
 	}
 
 	var decoded map[string]any
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = common.Unmarshal(resp.Body, &decoded)
+		return resp, decoded, extractVerifierResponseText(provider, decoded), nil
+	}
+	if provider != ProviderAnthropic && streamOpenAI {
+		decoded, content := parseVerifierOpenAISSEResponse(string(resp.Body))
+		return resp, decoded, content, nil
+	}
 	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
 		return resp, nil, "", err
 	}
@@ -803,7 +818,7 @@ func (r Runner) runRepeatedVerifierProbe(ctx context.Context, executor *CurlExec
 }
 
 func (r Runner) checkCacheDetection(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
-	resp, decoded, content, err := r.executeVerifierProbe(ctx, executor, provider, modelName, probe)
+	resp, decoded, content, err := r.executeVerifierProbeWithTemperature(ctx, executor, provider, modelName, probe, defaultVerifierProbeTemperature(probe))
 	if err != nil {
 		result := failedResult(probe.Key, modelName, err, 0)
 		result.Provider = provider
@@ -1427,6 +1442,73 @@ func extractVerifierUsageFromSSE(raw string) (*int, *int) {
 		}
 	}
 	return nil, nil
+}
+
+func parseVerifierOpenAISSEResponse(raw string) (map[string]any, string) {
+	var fullText strings.Builder
+	var inputTokens *int
+	var outputTokens *int
+	var lastDecoded map[string]any
+	for _, rawLine := range strings.Split(raw, "\n") {
+		line := strings.TrimSpace(rawLine)
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var decoded map[string]any
+		if err := common.Unmarshal([]byte(payload), &decoded); err != nil {
+			continue
+		}
+		lastDecoded = decoded
+		if chunkInput, chunkOutput := extractVerifierUsage(decoded); chunkInput != nil || chunkOutput != nil {
+			inputTokens = chunkInput
+			outputTokens = chunkOutput
+		}
+		if content := extractOpenAISSEDeltaContent(decoded); content != "" {
+			fullText.WriteString(content)
+		}
+	}
+	responseText := fullText.String()
+	if lastDecoded == nil {
+		return map[string]any{}, responseText
+	}
+	decoded := compactRaw(lastDecoded)
+	if decoded == nil {
+		decoded = make(map[string]any)
+	}
+	decoded["choices"] = []any{
+		map[string]any{
+			"message": map[string]any{"content": responseText},
+		},
+	}
+	usage := make(map[string]any)
+	if inputTokens != nil {
+		usage["prompt_tokens"] = *inputTokens
+	}
+	if outputTokens != nil {
+		usage["completion_tokens"] = *outputTokens
+	}
+	if len(usage) > 0 {
+		decoded["usage"] = usage
+	}
+	return decoded, responseText
+}
+
+func extractOpenAISSEDeltaContent(decoded map[string]any) string {
+	if decoded == nil {
+		return ""
+	}
+	choices, _ := decoded["choices"].([]any)
+	if len(choices) == 0 {
+		return ""
+	}
+	choice, _ := choices[0].(map[string]any)
+	delta, _ := choice["delta"].(map[string]any)
+	content, _ := delta["content"].(string)
+	return content
 }
 
 func extractVerifierUsageFromMaps(candidates ...map[string]any) (*int, *int) {

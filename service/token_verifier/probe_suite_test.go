@@ -237,6 +237,50 @@ func TestDefaultVerifierProbeTemperatureMirrorsLLMProbeRunner(t *testing.T) {
 	}
 }
 
+func TestRunVerifierProbeUsesOpenAIStreamingLikeLLMProbeRunner(t *testing.T) {
+	var sawStream bool
+	var sawIncludeUsage bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		sawStream = payload["stream"] == true
+		if streamOptions, ok := payload["stream_options"].(map[string]any); ok {
+			sawIncludeUsage = streamOptions["include_usage"] == true
+		}
+		if !sawStream {
+			t.Fatalf("payload stream = %#v, want true", payload["stream"])
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Fortran\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"\\nLisp\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":5}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	runner := Runner{BaseURL: server.URL, Token: "test-token", Executor: NewCurlExecutor(time.Second)}
+	result := runner.runVerifierProbe(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test", verifierProbe{
+		Key:              CheckProbeInstructionFollow,
+		Group:            probeGroupQuality,
+		Prompt:           "List exactly 5 programming languages",
+		ExpectedContains: "Fortran",
+		MaxTokens:        64,
+	})
+
+	if !sawStream || !sawIncludeUsage {
+		t.Fatalf("stream=%v include_usage=%v, want both true", sawStream, sawIncludeUsage)
+	}
+	if !result.Success || result.PrivateResponseText != "Fortran\nLisp" {
+		t.Fatalf("result = %+v, want streamed response scored successfully", result)
+	}
+	if result.InputTokens == nil || *result.InputTokens != 21 || result.OutputTokens == nil || *result.OutputTokens != 5 {
+		t.Fatalf("usage = input:%v output:%v, want 21/5", result.InputTokens, result.OutputTokens)
+	}
+}
+
 func TestExtractVerifierUsageMatchesOpenAIAnthropicAndSSE(t *testing.T) {
 	inputTokens, outputTokens := extractVerifierUsage(map[string]any{
 		"usage": map[string]any{"prompt_tokens": float64(32), "completion_tokens": float64(8)},

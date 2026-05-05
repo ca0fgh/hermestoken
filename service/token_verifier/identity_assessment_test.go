@@ -153,15 +153,10 @@ func TestBuildReportIdentityAssessmentDoesNotLeakSensitivePrivateText(t *testing
 func TestRunVerifierProbeKeepsSensitiveTextPrivate(t *testing.T) {
 	const secretText = "I can't help with that private refusal style."
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		responseBytes, _ := common.Marshal(map[string]any{
-			"id":    "chatcmpl-test",
-			"model": "gpt-5.5",
-			"choices": []map[string]any{
-				{"message": map[string]any{"content": secretText}},
-			},
-			"usage": map[string]any{"prompt_tokens": 32, "completion_tokens": 8},
-		})
-		_, _ = w.Write(responseBytes)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(`data: {"id":"chatcmpl-test","model":"gpt-5.5","choices":[{"delta":{"content":"I can't help with that private refusal style."}}]}` + "\n\n"))
+		_, _ = w.Write([]byte(`data: {"usage":{"prompt_tokens":32,"completion_tokens":8}}` + "\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
 	defer server.Close()
 
