@@ -317,11 +317,11 @@ func normalizeTokenVerificationProbeClientProfile(rawProfile string, provider st
 func tokenVerificationProbeTimeout(profile string) time.Duration {
 	switch normalizeProbeProfileForTimeout(profile) {
 	case tokenverifier.ProbeProfileFull:
-		return 15 * time.Minute
+		return 6 * time.Minute
 	case tokenverifier.ProbeProfileDeep:
-		return 8 * time.Minute
+		return 3 * time.Minute
 	default:
-		return 5 * time.Minute
+		return 90 * time.Second
 	}
 }
 

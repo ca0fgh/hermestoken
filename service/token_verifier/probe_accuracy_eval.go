@@ -24,6 +24,12 @@ type identityAccuracyMetric struct {
 	IdentityRiskCorrect int
 }
 
+type realProbeCorpusCoverageRequirement struct {
+	Total    int
+	Positive int
+	Negative int
+}
+
 func evaluateLabeledProbeCorpusCases(corpus LabeledProbeCorpus) (map[CheckKey]goldenAccuracyMetric, error) {
 	probes := make(map[CheckKey]verifierProbe)
 	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
@@ -78,6 +84,9 @@ func realCorpusMissingCoverage(metrics map[CheckKey]goldenAccuracyMetric) []stri
 	missing := make([]string, 0)
 	for key, requirement := range requirements {
 		metric := metrics[key]
+		if requirement.Total > 0 && metric.Positive+metric.Negative < requirement.Total {
+			missing = append(missing, string(key)+":sample")
+		}
 		if metric.Positive < requirement.Positive {
 			missing = append(missing, string(key)+":positive")
 		}
@@ -88,11 +97,11 @@ func realCorpusMissingCoverage(metrics map[CheckKey]goldenAccuracyMetric) []stri
 	return missing
 }
 
-func realCorpusCoverageRequirements() map[CheckKey]goldenAccuracyMetric {
-	requirements := make(map[CheckKey]goldenAccuracyMetric)
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+func realCorpusCoverageRequirements() map[CheckKey]realProbeCorpusCoverageRequirement {
+	requirements := make(map[CheckKey]realProbeCorpusCoverageRequirement)
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
 		if isPassFailCorpusProbe(probe) {
-			requirements[probe.Key] = goldenAccuracyMetric{Positive: 1, Negative: 1}
+			requirements[probe.Key] = realProbeCorpusCoverageRequirement{Total: 1}
 		}
 	}
 	return requirements
@@ -115,7 +124,7 @@ func realInformationalCorpusMissingCoverage(metrics map[CheckKey]goldenAccuracyM
 
 func informationalProbeCorpusCoverageRequirements() map[CheckKey]goldenAccuracyMetric {
 	requirements := make(map[CheckKey]goldenAccuracyMetric)
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
 		if isInformationalProbeCorpusKey(probe.Key) {
 			requirements[probe.Key] = goldenAccuracyMetric{Positive: 1, Negative: 1}
 		}
@@ -159,7 +168,7 @@ func reviewOnlyProbeJudgeAuditMissingRequirements(judge *ProbeJudgeConfig, basel
 
 func reviewOnlyProbeJudgeCoverageRequirements() map[CheckKey]string {
 	requirements := make(map[CheckKey]string)
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
 		if probe.ReviewOnly && !isPassFailCorpusProbe(probe) {
 			requirements[probe.Key] = sourceProbeIDForCheckKey(probe.Key)
 		}
@@ -458,7 +467,7 @@ func realIdentityCorpusMissingCoverage(corpus IdentityAssessmentCorpus) []string
 
 func identityFeatureCorpusCoverageRequirements() []CheckKey {
 	keys := make([]CheckKey, 0)
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
 		if isIdentityFeatureCheck(probe.Key) {
 			keys = append(keys, probe.Key)
 		}

@@ -159,12 +159,12 @@ function formatProbeScore(rating) {
 
 function probeRequestTimeout(profile) {
   if (profile === 'full') {
-    return 910000;
+    return 370000;
   }
   if (profile === 'deep') {
-    return 490000;
+    return 190000;
   }
-  return 310000;
+  return 100000;
 }
 
 function probeProfileTagColor(profile) {
@@ -543,7 +543,7 @@ function TokenVerification() {
         <div className='token-verification-loading'>
           <Spin size='large' />
           <Text type='secondary'>
-            {t('正在检测中，通常需要 1 到 3 分钟。')}
+            {t('正在检测中，通常需要几十秒，完整检测可能需要数分钟。')}
           </Text>
         </div>
       );

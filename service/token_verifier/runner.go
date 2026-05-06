@@ -175,7 +175,7 @@ func (r Runner) RunProbeSuiteOnly(ctx context.Context) ([]CheckResult, error) {
 		for _, modelName := range providerModels {
 			preflight, latencyMs, ok := r.checkProbePreflight(ctx, executor, provider, modelName)
 			if ok && preflight.Outcome == preflightOutcomeAbort {
-				failedResults := failedDirectProbeSuiteResults(provider, modelName, normalizeProbeProfile(r.ProbeProfile), preflight, latencyMs)
+				failedResults := failedDirectProbeSuiteResults(provider, modelName, normalizeProbeProfile(r.ProbeProfile), r.CheckKeys, preflight, latencyMs)
 				results = append(results, filterCheckResultsByCheckKeys(failedResults, r.CheckKeys)...)
 				continue
 			}
@@ -228,8 +228,11 @@ func (r Runner) checkProbePreflight(ctx context.Context, executor *CurlExecutor,
 	return classifyPreflightResult(resp.StatusCode, resp.Body), resp.LatencyMs, true
 }
 
-func failedDirectProbeSuiteResults(provider string, modelName string, profile string, preflight preflightResult, latencyMs int64) []CheckResult {
-	probes := probeSuiteDefinitions(profile)
+func failedDirectProbeSuiteResults(provider string, modelName string, profile string, checkKeys []CheckKey, preflight preflightResult, latencyMs int64) []CheckResult {
+	probes := runtimeProbeSuiteDefinitions(profile)
+	if len(checkKeys) > 0 {
+		probes = probeSuiteDefinitions(profile)
+	}
 	results := make([]CheckResult, 0, len(probes))
 	message := preflight.Reason
 	if strings.TrimSpace(message) == "" {

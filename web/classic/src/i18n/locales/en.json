@@ -4228,7 +4228,6 @@
     "不可用": "Unavailable",
     "首字节": "TTFT",
     "速度": "Speed",
-    "正在检测中，通常需要 1 到 3 分钟。": "Detection is running. This usually takes 1 to 3 minutes.",
     "风险提示": "Risk notes",
     "清空结果": "Clear results",
     "开始检测": "Start detection",
@@ -4280,6 +4279,7 @@
     "探针清单": "Probe checklist",
     "控制是否显示 LLM 探针检测入口": "Controls whether to show the LLM probe detection entry",
     "控制是否显示市场入口": "Controls whether to show the marketplace entry",
-    "控制顶栏与演示站页脚相关入口显示状态，全局生效": "Controls top navigation and demo footer entries globally"
+    "控制顶栏与演示站页脚相关入口显示状态，全局生效": "Controls top navigation and demo footer entries globally",
+    "正在检测中，通常需要几十秒，完整检测可能需要数分钟。": "Detection is running. It usually takes seconds; full detection may take a few minutes."
   }
 }

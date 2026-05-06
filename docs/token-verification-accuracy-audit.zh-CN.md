@@ -6,16 +6,16 @@
 
 硬审计通过时，必须同时满足：
 
-- `full` profile 中每个检测项都有唯一审计路径。
-- pass/fail 检测项在真实人工标注语料中至少有 1 个正样本和 1 个负样本。
+- runtime `full` profile 中每个默认检测项都有唯一审计路径；legacy/定向检测项不作为默认硬审计要求。
+- pass/fail 检测项在真实人工标注语料中至少有 1 个可重放真实样本；正/负极性 scorer 行为由 schema golden corpus 覆盖。
 - identity / submodel / neutral fingerprint 检测项进入 report-level 身份语料，并覆盖所有 required identity checks。
 - informational 检测项在真实探针证据语料中至少有 1 个正样本和 1 个负样本。
-- review-only 检测项有 judge 配置和官方 baseline 响应。
+- runtime `full` 若包含 judge-only 检测项，则需要 judge 配置和官方 baseline 响应；当前 runtime `full` 没有 judge-only 默认项。
 - 所有真实语料都带有人工复核元数据，且不是自动生成草稿。
 
 ## 覆盖清单
 
-没有真实导出文件时，可以先查看 `full` profile 中每个检测项需要进入哪类硬审计证据：
+没有真实导出文件时，可以先查看 runtime `full` profile 中每个默认检测项需要进入哪类硬审计证据：
 
 ```bash
 go run ./scripts/token_verification_corpus \
@@ -30,12 +30,12 @@ go run ./scripts/token_verification_corpus \
 - `coverage[].audit_path`
 - `coverage[].evidence_requirement`
 
-当前 `full` profile 的硬审计路径：
+当前 runtime `full` profile 的硬审计路径：
 
-- `pass_fail_real_corpus`：47 个 pass/fail 检测项。每个 `check_key` 需要至少 1 个应通过真实样本和 1 个应失败真实样本。
-- `identity_real_corpus`：49 个 neutral / identity / submodel fingerprint 检测项。它们不按单 case 做正负样本，而是复核整份 report-level identity assessment。
+- `pass_fail_real_corpus`：28 个 pass/fail 检测项。每个 `check_key` 需要至少 1 个可重放真实样本；真实样本必须无 false positive / false negative，正/负极性 scorer 行为由 schema golden corpus 覆盖。
+- `identity_real_corpus`：6 个 neutral / identity / submodel fingerprint 检测项。它们不按单 case 做正负样本，而是复核整份 report-level identity assessment。
 - `informational_real_corpus`：2 个 informational 检测项：`probe_channel_signature`、`probe_signature_roundtrip`。
-- `review_only_judge`：3 个 review-only 检测项：`probe_zh_reasoning`、`probe_code_generation`、`probe_en_reasoning`。它们需要 judge 配置和 baseline 响应，不进入 pass/fail 真实语料。
+- 当前 runtime `full` 没有 `review_only_judge` 默认项。`probe_zh_reasoning`、`probe_code_generation`、`probe_en_reasoning` 等 legacy review-only 定向项仍可显式运行，但不再拖慢默认检测，也不作为默认硬审计要求。
 
 查看某类语料具体覆盖哪些探针：
 
@@ -143,7 +143,7 @@ go run ./scripts/token_verification_corpus \
 - 对照真实模型响应、SSE、headers、usage、roundtrip 状态和 report-level identity 结论修正标签。
 - 保留足够重放的字段，例如 `response_text`、`decoded`、`raw_sse`、`cache_header`、`context_levels`、`results`、`headers`、`raw_body`。
 - 移除不可复核、空响应、上游错误、只含截断样本且无法判断的 case。
-- 每个 pass/fail 与 informational 检测项至少保留 1 个应通过样本和 1 个应失败样本。
+- 每个 pass/fail 检测项至少保留 1 个可重放真实样本；每个 informational 检测项至少保留 1 个应通过样本和 1 个应失败样本。
 
 ## 安装真实证据
 
@@ -160,7 +160,7 @@ cp /tmp/token-verification-corpus/informational_probe_corpus_real.draft.json \
   service/token_verifier/testdata/informational_probe_corpus_real.json
 ```
 
-同时保存 review-only baseline，例如：
+如果这轮定向检测包含 legacy review-only 项，同时保存 review-only baseline，例如：
 
 ```bash
 export TOKEN_VERIFIER_PROBE_BASELINE_FILE=/tmp/token-verification-corpus/probe_baseline.draft.json
@@ -183,7 +183,7 @@ go run ./scripts/token_verification_corpus \
   -baseline /tmp/token-verification-corpus/probe_baseline.draft.json
 ```
 
-baseline 必须至少覆盖：
+仅当审计输出包含 `review_only_missing` 时，baseline 才必须覆盖对应 probe id。legacy review-only 定向项通常包括：
 
 - `zh_reasoning`
 - `code_gen`
@@ -191,7 +191,7 @@ baseline 必须至少覆盖：
 
 ## Judge 配置
 
-review-only 检测项需要 judge：
+仅当 runtime 或定向审计输出包含 `review_only_missing` 时，review-only 检测项才需要 judge：
 
 ```bash
 export TOKEN_VERIFIER_PROBE_JUDGE_BASE_URL="https://judge.example.com/v1"
@@ -257,7 +257,7 @@ go run ./scripts/token_verification_corpus \
 - `missing_coverage`
 - `target_check_keys`
 - `target_check_keys_csv`
-- `review_only_missing`
+- `review_only_missing`，仅在当前审计范围包含 judge-only 项时出现
 - `false_positive`
 - `false_negative`
 - `invalid`
@@ -278,7 +278,7 @@ export HERMESTOKEN_PROBE_OUTPUT="/tmp/token-verification-evidence-targeted.json"
 go run ./scripts/token_verification_direct_probe
 ```
 
-如果要用不同模型或配置补同一批正负样本，使用多模型环境变量并写入输出目录；不要给多模型采集配置单个 `HERMESTOKEN_PROBE_OUTPUT`，否则证据文件会被覆盖：
+如果要用不同模型或配置补同一批缺口样本，使用多模型环境变量并写入输出目录；不要给多模型采集配置单个 `HERMESTOKEN_PROBE_OUTPUT`，否则证据文件会被覆盖：
 
 ```bash
 export HERMESTOKEN_PROBE_MODELS="claude-opus-4-7,claude-sonnet-4-6,claude-haiku-4-5"
@@ -408,8 +408,6 @@ git diff --check
 - `service/token_verifier/testdata/labeled_probe_corpus_real.json`
 - `service/token_verifier/testdata/identity_assessment_corpus_real.json`
 - `service/token_verifier/testdata/informational_probe_corpus_real.json`
-- judge config
-- baseline config
-- `zh_reasoning` / `code_gen` / `en_reasoning` baseline
+- 当 `review_only_missing` 存在时，还需要对应 judge config、baseline config，以及缺口中列出的 probe baseline。
 
 此时不能宣称“所有检测项准确性已完成”，只能说明检测逻辑和审计门禁已经准备好，仍需真实模型输出与人工复核语料。

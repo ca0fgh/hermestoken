@@ -488,11 +488,17 @@ func TestBuildAccuracyAuditOutputListsMissingEvidence(t *testing.T) {
 		"labeled_probe_corpus_real.json",
 		"identity_assessment_corpus_real.json",
 		"informational_probe_corpus_real.json",
-		"judge_config",
-		"probe_zh_reasoning:baseline:zh_reasoning",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("audit output = %s, want %q", text, want)
+		}
+	}
+	for _, unwanted := range []string{
+		"judge_config",
+		"probe_zh_reasoning:baseline:zh_reasoning",
+	} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("audit output = %s, did not want legacy judge gap %q", text, unwanted)
 		}
 	}
 }
@@ -547,12 +553,18 @@ func TestBuildAccuracyGapsOutputSummarizesActionableMissingEvidence(t *testing.T
 		`"target_check_keys_by_audit_path"`,
 		`"probe_instruction_follow"`,
 		`"identity_real_corpus"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("gaps output = %s, want %q", text, want)
+		}
+	}
+	for _, unwanted := range []string{
 		`"review_only_missing"`,
 		`"review_only_judge:judge_config"`,
 		`"review_only_judge:baseline_config"`,
 	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("gaps output = %s, want %q", text, want)
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("gaps output = %s, did not want legacy judge gap %q", text, unwanted)
 		}
 	}
 }

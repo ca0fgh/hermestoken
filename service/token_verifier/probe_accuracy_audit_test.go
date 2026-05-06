@@ -18,25 +18,30 @@ func TestBuildProbeAccuracyAuditReportListsMissingEvidence(t *testing.T) {
 		"labeled_probe_corpus_real.json",
 		"identity_assessment_corpus_real.json",
 		"informational_probe_corpus_real.json",
+	} {
+		if !auditMissingContains(report.Missing, want) {
+			t.Fatalf("missing = %#v, want entry containing %q", report.Missing, want)
+		}
+	}
+	for _, unwanted := range []string{
 		"judge_config",
 		"baseline_config",
 		"probe_zh_reasoning:baseline:zh_reasoning",
 		"probe_code_generation:baseline:code_gen",
 		"probe_en_reasoning:baseline:en_reasoning",
 	} {
-		if !auditMissingContains(report.Missing, want) {
-			t.Fatalf("missing = %#v, want entry containing %q", report.Missing, want)
+		if auditMissingContains(report.Missing, unwanted) {
+			t.Fatalf("missing = %#v, did not want legacy judge entry containing %q", report.Missing, unwanted)
 		}
 	}
-	if len(report.Coverage) != len(probeSuiteDefinitions(ProbeProfileFull)) {
-		t.Fatalf("coverage count = %d, want full suite count %d", len(report.Coverage), len(probeSuiteDefinitions(ProbeProfileFull)))
+	if len(report.Coverage) != len(runtimeProbeSuiteDefinitions(ProbeProfileFull)) {
+		t.Fatalf("coverage count = %d, want runtime full suite count %d", len(report.Coverage), len(runtimeProbeSuiteDefinitions(ProbeProfileFull)))
 	}
 	assertAuditPath(t, report, CheckProbeInstructionFollow, "pass_fail_real_corpus")
-	assertAuditPath(t, report, CheckProbeZHReasoning, "review_only_judge")
+	assertNoAuditCoverage(t, report, CheckProbeZHReasoning)
 	assertAuditPath(t, report, CheckProbeChannelSignature, "informational_real_corpus")
 	assertAuditPath(t, report, CheckProbeIdentitySelfKnowledge, "identity_real_corpus")
-	assertAuditRequirement(t, report, CheckProbeInstructionFollow, "one positive and one negative")
-	assertAuditRequirement(t, report, CheckProbeZHReasoning, "probe_id=zh_reasoning")
+	assertAuditRequirement(t, report, CheckProbeInstructionFollow, "one replayable real labeled sample")
 	assertAuditRequirement(t, report, CheckProbeIdentitySelfKnowledge, "identity corpus")
 }
 
@@ -252,6 +257,15 @@ func assertAuditPath(t *testing.T, report ProbeAccuracyAuditReport, checkKey Che
 		}
 	}
 	t.Fatalf("coverage missing check %s", checkKey)
+}
+
+func assertNoAuditCoverage(t *testing.T, report ProbeAccuracyAuditReport, checkKey CheckKey) {
+	t.Helper()
+	for _, item := range report.Coverage {
+		if item.CheckKey == checkKey {
+			t.Fatalf("coverage unexpectedly includes %s: %+v", checkKey, item)
+		}
+	}
 }
 
 func assertAuditRequirement(t *testing.T, report ProbeAccuracyAuditReport, checkKey CheckKey, want string) {

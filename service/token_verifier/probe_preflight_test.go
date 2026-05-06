@@ -83,7 +83,7 @@ func TestHTTPFailedResultTreatsTransientEndpointErrorsAsUnscored(t *testing.T) {
 
 func TestFailedDirectProbeSuiteResultsAreUnscoredWhenPreflightAborts(t *testing.T) {
 	preflight := preflightResult{Outcome: preflightOutcomeAbort, Code: "authentication_failed", Reason: "认证失败（401）：bad key"}
-	results := failedDirectProbeSuiteResults(ProviderAnthropic, "claude-test", ProbeProfileStandard, preflight, 42)
+	results := failedDirectProbeSuiteResults(ProviderAnthropic, "claude-test", ProbeProfileStandard, nil, preflight, 42)
 
 	if len(results) == 0 {
 		t.Fatal("expected generated probe results")

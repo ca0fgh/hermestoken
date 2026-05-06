@@ -141,6 +141,56 @@ func TestRunProbeSuiteOnlyCanTargetSpecificCheckKeys(t *testing.T) {
 	}
 }
 
+func TestRunProbeSuiteOnlyCanTargetLegacyCheckKeysOutsideRuntimeProfile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		prompt := extractRequestPrompt(payload)
+		content := probeTestResponse(prompt)
+		if content == "" {
+			content = "OK"
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id":     "chatcmpl-targeted-legacy-test",
+			"object": "chat.completion",
+			"model":  payload["model"],
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": content}},
+			},
+			"usage": map[string]any{"prompt_tokens": 32, "completion_tokens": 4},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	runner := Runner{
+		BaseURL:      server.URL,
+		Token:        "test-token",
+		Models:       []string{"gpt-test"},
+		Providers:    []string{ProviderOpenAI},
+		ProbeProfile: ProbeProfileFull,
+		CheckKeys:    []CheckKey{CheckProbePipBundledExtra, CheckCanaryMathMul},
+		Executor:     NewCurlExecutor(time.Second),
+	}
+	results, err := runner.RunProbeSuiteOnly(context.Background())
+	if err != nil {
+		t.Fatalf("RunProbeSuiteOnly returned error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("result count = %d, want targeted legacy checks only: %+v", len(results), results)
+	}
+	if results[0].CheckKey != CheckProbePipBundledExtra || results[1].CheckKey != CheckCanaryMathMul {
+		t.Fatalf("results = %+v, want requested legacy check keys in definition order", results)
+	}
+}
+
 func TestRunDirectProbeIncludesSourceMetadataForCorpusExport(t *testing.T) {
 	var requestMu sync.Mutex
 	var firstRequestStartedAt time.Time

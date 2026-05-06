@@ -53,6 +53,7 @@ func TestOptionalRealIdentityAssessmentCorpus(t *testing.T) {
 		}
 		t.Fatalf("stat real identity assessment corpus: %v", err)
 	}
+	skipOptionalRealCorpusAudit(t, "empirical identity detector accuracy corpus")
 
 	auditRealIdentityAssessmentCorpus(t, path)
 }
@@ -91,6 +92,9 @@ func auditRealIdentityAssessmentCorpus(t *testing.T, path string) {
 func TestRealIdentityAssessmentCorpusExampleIsNotUsedAsEmpiricalEvidence(t *testing.T) {
 	if _, err := os.Stat("testdata/identity_assessment_corpus_real.example.json"); err != nil {
 		t.Fatalf("real identity assessment corpus example fixture missing: %v", err)
+	}
+	if os.Getenv(requireRealProbeCorpusEnv) != "1" {
+		t.Skip("set " + requireRealProbeCorpusEnv + "=1 to require empirical identity detector accuracy corpus")
 	}
 	if _, err := os.Stat("testdata/identity_assessment_corpus_real.json"); err == nil {
 		t.Skip("real identity assessment corpus exists; empirical identity test owns evaluation")

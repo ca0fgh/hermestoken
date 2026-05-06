@@ -93,6 +93,89 @@ func TestScoreVerifierProbePlainWordKeywordRequiresTokenBoundary(t *testing.T) {
 	}
 }
 
+func TestScoreInstructionFollowRequiresExactFiveLineOrderedList(t *testing.T) {
+	probe := verifierProbe{
+		Key:              CheckProbeInstructionFollow,
+		Group:            probeGroupQuality,
+		ExpectedContains: "Fortran",
+	}
+
+	result := scoreVerifierProbeDetailed(probe, "Fortran\nLisp\nCOBOL\nBASIC\nC", nil)
+	if !result.Passed || result.Score != 100 || result.ErrorCode != "" {
+		t.Fatalf("ordered language list result = %+v, want pass", result)
+	}
+
+	result = scoreVerifierProbeDetailed(probe, "Fortran is one old programming language.", nil)
+	if result.Passed || result.ErrorCode != "instruction_list_format_failed" {
+		t.Fatalf("single keyword result = %+v, want list format failure", result)
+	}
+
+	result = scoreVerifierProbeDetailed(probe, "Fortran\nCOBOL\nLisp\nBASIC\nC", nil)
+	if result.Passed || result.ErrorCode != "instruction_list_order_failed" {
+		t.Fatalf("wrong order result = %+v, want order failure", result)
+	}
+}
+
+func TestScoreJSONOutputRequiresValidSchema(t *testing.T) {
+	probe := verifierProbe{
+		Key:              CheckProbeJSONOutput,
+		Group:            probeGroupQuality,
+		ExpectedContains: "price_usd",
+		RequireJSON:      true,
+	}
+
+	result := scoreVerifierProbeDetailed(probe, `{"product":"Laptop","price_usd":1299,"in_stock":true,"tags":["portable","work","new"]}`, nil)
+	if !result.Passed || result.Score != 100 || result.ErrorCode != "" {
+		t.Fatalf("valid json result = %+v, want pass", result)
+	}
+
+	result = scoreVerifierProbeDetailed(probe, "The field price_usd should be a number.", nil)
+	if result.Passed || result.ErrorCode != "invalid_probe_json" {
+		t.Fatalf("keyword-only json result = %+v, want invalid JSON failure", result)
+	}
+
+	result = scoreVerifierProbeDetailed(probe, `{"product":"Laptop","price_usd":"1299","in_stock":true,"tags":["portable","work","new"]}`, nil)
+	if result.Passed || result.ErrorCode != "json_schema_failed" {
+		t.Fatalf("wrong price type result = %+v, want schema failure", result)
+	}
+
+	result = scoreVerifierProbeDetailed(probe, `{"product":"Laptop","price_usd":1299,"in_stock":true,"tags":["portable"]}`, nil)
+	if result.Passed || result.ErrorCode != "json_schema_failed" {
+		t.Fatalf("short tags result = %+v, want schema failure", result)
+	}
+}
+
+func TestScoreSymbolExactRejectsAugmentedResponses(t *testing.T) {
+	probe := verifierProbe{
+		Key:           CheckProbeSymbolExact,
+		Group:         probeGroupIntegrity,
+		ExpectedExact: "「這是測試」",
+	}
+
+	result := scoreVerifierProbeDetailed(probe, "「這是測試」", nil)
+	if !result.Passed || result.Score != 100 || result.ErrorCode != "" {
+		t.Fatalf("exact symbol result = %+v, want pass", result)
+	}
+
+	result = scoreVerifierProbeDetailed(probe, "Here is the text: 「這是測試」", nil)
+	if result.Passed || result.ErrorCode != "probe_exact_failed" {
+		t.Fatalf("augmented symbol result = %+v, want exact failure", result)
+	}
+}
+
+func TestScoreSymbolExactRejectsCaseChanges(t *testing.T) {
+	probe := verifierProbe{
+		Key:           CheckProbeSymbolExact,
+		Group:         probeGroupIntegrity,
+		ExpectedExact: "ExactCase",
+	}
+
+	result := scoreVerifierProbeDetailed(probe, "exactcase", nil)
+	if result.Passed || result.ErrorCode != "probe_exact_failed" {
+		t.Fatalf("case-changed exact result = %+v, want exact failure", result)
+	}
+}
+
 func TestScoreVerifierProbeKeywordBoundaryTreatsUnderscoreAsIdentifier(t *testing.T) {
 	probe := verifierProbe{
 		Key:            CheckProbeCodeInjection,
@@ -174,7 +257,7 @@ func TestScoreBedrockProbeDetectsPlainDeploymentClaims(t *testing.T) {
 
 func TestScoreCensorshipProbeRequiresBalancedStatusSignals(t *testing.T) {
 	var probe verifierProbe
-	for _, item := range verifierProbeSuite(ProbeProfileFull) {
+	for _, item := range verifierProbeDefinitions(ProbeProfileFull) {
 		if item.Key == CheckProbeCensorship {
 			probe = item
 			break
@@ -202,7 +285,7 @@ func TestScoreCensorshipProbeRequiresBalancedStatusSignals(t *testing.T) {
 
 func TestScoreIdentityLeakPrioritizesLeakSignalsOverRefusal(t *testing.T) {
 	var probe verifierProbe
-	for _, item := range verifierProbeSuite(ProbeProfileFull) {
+	for _, item := range verifierProbeDefinitions(ProbeProfileFull) {
 		if item.Key == CheckProbeIdentityLeak {
 			probe = item
 			break
@@ -230,7 +313,7 @@ func TestScoreIdentityLeakPrioritizesLeakSignalsOverRefusal(t *testing.T) {
 
 func TestScorePipBundledExtraRejectsExtras(t *testing.T) {
 	var probe verifierProbe
-	for _, item := range verifierProbeSuite(ProbeProfileFull) {
+	for _, item := range verifierProbeDefinitions(ProbeProfileFull) {
 		if item.Key == CheckProbePipBundledExtra {
 			probe = item
 			break
@@ -253,7 +336,7 @@ func TestScorePipBundledExtraRejectsExtras(t *testing.T) {
 
 func TestScoreGoInstallRequiresGoGetForLibraryDependency(t *testing.T) {
 	var probe verifierProbe
-	for _, item := range verifierProbeSuite(ProbeProfileFull) {
+	for _, item := range verifierProbeDefinitions(ProbeProfileFull) {
 		if item.Key == CheckProbeGoInstall {
 			probe = item
 			break
@@ -502,7 +585,7 @@ func TestSpecialProbeGoldenSamples(t *testing.T) {
 
 func TestScoreKnowledgeCutoffRequiresUncertaintySignal(t *testing.T) {
 	var probe verifierProbe
-	for _, item := range verifierProbeSuite(ProbeProfileFull) {
+	for _, item := range verifierProbeDefinitions(ProbeProfileFull) {
 		if item.Key == CheckProbeKnowledgeCutoff {
 			probe = item
 			break
@@ -1071,8 +1154,8 @@ func TestFullProbeSuiteHTTP200ErrorObjectsProduceNoModelRisks(t *testing.T) {
 	results := runner.runProbeSuite(context.Background(), runner.Executor, ProviderOpenAI, "gpt-test")
 	report := BuildReport(results)
 
-	if len(results) != len(probeSuiteDefinitions(ProbeProfileFull)) {
-		t.Fatalf("result count = %d, want full suite count %d", len(results), len(probeSuiteDefinitions(ProbeProfileFull)))
+	if len(results) != len(runtimeProbeSuiteDefinitions(ProbeProfileFull)) {
+		t.Fatalf("result count = %d, want runtime full suite count %d", len(results), len(runtimeProbeSuiteDefinitions(ProbeProfileFull)))
 	}
 	if len(report.Risks) != 0 {
 		t.Fatalf("risks = %#v, want no model risks when every probe only saw upstream errors", report.Risks)
@@ -1101,8 +1184,8 @@ func TestVerifierProbeDefinitionsMirrorLLMProbeEngineSemantics(t *testing.T) {
 	}
 
 	jsonProbe := probes[CheckProbeJSONOutput]
-	if jsonProbe.RequireJSON || jsonProbe.ExpectedContains != "price_usd" || jsonProbe.MaxTokens != 64 {
-		t.Fatalf("json_output probe = %+v, want LLMprobe exact_match contains-only semantics", jsonProbe)
+	if !jsonProbe.RequireJSON || jsonProbe.ExpectedContains != "price_usd" || jsonProbe.MaxTokens != 64 {
+		t.Fatalf("json_output probe = %+v, want strict JSON schema semantics", jsonProbe)
 	}
 
 	for _, key := range []CheckKey{CheckProbeZHReasoning, CheckProbeCodeGeneration, CheckProbeENReasoning, CheckProbeHallucination} {
@@ -1112,8 +1195,8 @@ func TestVerifierProbeDefinitionsMirrorLLMProbeEngineSemantics(t *testing.T) {
 	}
 
 	symbolProbe := probes[CheckProbeSymbolExact]
-	if symbolProbe.ExpectedExact != "" || symbolProbe.ExpectedContains != "「這是測試」" {
-		t.Fatalf("symbol_exact probe = %+v, want LLMprobe exact_match contains semantics", symbolProbe)
+	if symbolProbe.ExpectedExact != "「這是測試」" || symbolProbe.ExpectedContains != "" {
+		t.Fatalf("symbol_exact probe = %+v, want exact output semantics", symbolProbe)
 	}
 
 	urlProbe := probes[CheckProbeURLExfiltration]
@@ -1631,8 +1714,8 @@ func TestRunVerifierProbeUsesOpenAIStreamingLikeLLMProbeRunner(t *testing.T) {
 			t.Fatalf("payload stream = %#v, want true", payload["stream"])
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Fortran\"}}]}\n\n"))
-		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"\\nLisp\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Fortran\\nLisp\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"\\nCOBOL\\nBASIC\\nC\"}}]}\n\n"))
 		_, _ = w.Write([]byte("data: {\"usage\":{\"prompt_tokens\":21,\"completion_tokens\":5}}\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
@@ -1650,7 +1733,7 @@ func TestRunVerifierProbeUsesOpenAIStreamingLikeLLMProbeRunner(t *testing.T) {
 	if !sawStream || !sawIncludeUsage {
 		t.Fatalf("stream=%v include_usage=%v, want both true", sawStream, sawIncludeUsage)
 	}
-	if !result.Success || result.PrivateResponseText != "Fortran\nLisp" {
+	if !result.Success || result.PrivateResponseText != "Fortran\nLisp\nCOBOL\nBASIC\nC" {
 		t.Fatalf("result = %+v, want streamed response scored successfully", result)
 	}
 	if result.InputTokens == nil || *result.InputTokens != 21 || result.OutputTokens == nil || *result.OutputTokens != 5 {
@@ -1793,12 +1876,19 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		t.Fatalf("full probe suite len = %d, want more than deep len %d", len(full), len(deep))
 	}
 
-	standardKeys := make(map[CheckKey]bool, len(standard))
-	for _, probe := range standard {
-		if probe.DeepOnly {
-			t.Fatalf("standard suite included deep-only probe %s", probe.Key)
+	standardKeys := checkKeySetForTest(standard)
+	for _, key := range []CheckKey{
+		CheckProbeInstructionFollow,
+		CheckProbeMathLogic,
+		CheckProbeJSONOutput,
+		CheckProbeSymbolExact,
+		CheckProbeInfraLeak,
+		CheckProbeTokenInflation,
+		CheckProbeKnowledgeCutoff,
+	} {
+		if !standardKeys[key] {
+			t.Fatalf("standard suite missing focused probe %s", key)
 		}
-		standardKeys[probe.Key] = true
 	}
 	for _, key := range []CheckKey{
 		CheckProbeResponseAugment,
@@ -1812,73 +1902,154 @@ func TestVerifierProbeSuiteProfiles(t *testing.T) {
 		}
 	}
 
-	deepKeys := make(map[CheckKey]bool, len(deep))
-	for _, probe := range deep {
-		deepKeys[probe.Key] = true
-	}
+	deepKeys := checkKeySetForTest(deep)
 	for _, key := range []CheckKey{
 		CheckProbePromptInjection,
 		CheckProbePromptInjectionHard,
 		CheckProbeResponseAugment,
 		CheckProbeURLExfiltration,
-		CheckProbeMarkdownExfil,
 		CheckProbeCodeInjection,
 		CheckProbeDependencyHijack,
+		CheckProbeCacheDetection,
+	} {
+		if !deepKeys[key] {
+			t.Fatalf("deep suite missing high-signal probe %s", key)
+		}
+	}
+	for _, key := range []CheckKey{
+		CheckProbeMarkdownExfil,
 		CheckProbeNPMRegistry,
 		CheckProbePipIndex,
 		CheckProbeShellChain,
 		CheckProbeNeedleTiny,
 		CheckProbeLetterCount,
-	} {
-		if !deepKeys[key] {
-			t.Fatalf("deep suite missing %s", key)
-		}
-	}
-	for _, key := range []CheckKey{
-		CheckProbeCacheDetection,
 		CheckProbeContextLength,
 		CheckProbeMultimodalImage,
 		CheckProbeIdentityStyleEN,
 		CheckCanaryMathMul,
 	} {
 		if deepKeys[key] {
-			t.Fatalf("deep suite unexpectedly included full-only heavy probe %s", key)
+			t.Fatalf("deep suite unexpectedly included full-only or redundant probe %s", key)
 		}
 	}
 
-	fullKeys := make(map[CheckKey]bool, len(full))
-	for _, probe := range full {
-		fullKeys[probe.Key] = true
-	}
+	fullKeys := checkKeySetForTest(full)
 	for _, key := range []CheckKey{
-		CheckProbePromptInjection,
-		CheckProbePromptInjectionHard,
-		CheckProbeResponseAugment,
-		CheckProbeURLExfiltration,
+		CheckProbeHallucination,
+		CheckProbeCensorship,
+		CheckProbeIdentityLeak,
 		CheckProbeMarkdownExfil,
-		CheckProbeCodeInjection,
-		CheckProbeDependencyHijack,
 		CheckProbeNPMRegistry,
 		CheckProbePipIndex,
 		CheckProbeShellChain,
-		CheckProbeNeedleTiny,
-		CheckProbeLetterCount,
-		CheckProbeCacheDetection,
 		CheckProbeThinkingBlock,
 		CheckProbeAdaptiveInjection,
 		CheckProbeContextLength,
 		CheckProbeMultimodalImage,
 		CheckProbeMultimodalPDF,
-		CheckProbeIdentityStyleEN,
-		CheckProbeLingKRNum,
-		CheckProbeNPMRegistryInjection,
-		CheckProbeTowerHanoi,
+		CheckProbeIdentitySelfKnowledge,
+		CheckProbeIdentityListFormat,
+		CheckProbeIdentityJSONDiscipline,
+		CheckProbeIdentityCapabilityClaim,
+		CheckProbeSubmodelCapability,
 		CheckProbeRefusalL8,
-		CheckProbeUncertaintyEstimate,
-		CheckCanaryMathMul,
 	} {
 		if !fullKeys[key] {
-			t.Fatalf("full suite missing %s", key)
+			t.Fatalf("full runtime suite missing focused probe %s", key)
+		}
+	}
+	for _, key := range []CheckKey{
+		CheckProbeBedrockProbe,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall,
+		CheckCanaryMathMul,
+		CheckProbeIdentityStyleEN,
+		CheckProbeLingKRNum,
+	} {
+		if fullKeys[key] {
+			t.Fatalf("full runtime suite unexpectedly included redundant/heavy probe %s", key)
+		}
+	}
+}
+
+func TestVerifierProbeSuiteProfilesStayFocusedForRuntime(t *testing.T) {
+	profiles := map[string]struct {
+		maxProbeCount int
+		maxCost       int
+	}{
+		ProbeProfileStandard: {maxProbeCount: 7, maxCost: 8},
+		ProbeProfileDeep:     {maxProbeCount: 16, maxCost: 22},
+		ProbeProfileFull:     {maxProbeCount: 36, maxCost: 52},
+	}
+
+	for profile, limits := range profiles {
+		probes := runtimeProbeSuiteDefinitions(profile)
+		if len(probes) > limits.maxProbeCount {
+			t.Fatalf("%s profile probe count = %d, want <= %d: %v", profile, len(probes), limits.maxProbeCount, checkKeysForTest(probes))
+		}
+		if cost := estimatedProbeRuntimeCost(probes); cost > limits.maxCost {
+			t.Fatalf("%s profile estimated runtime cost = %d, want <= %d: %v", profile, cost, limits.maxCost, checkKeysForTest(probes))
+		}
+	}
+}
+
+func TestDefaultProfilesRemoveRedundantHighLatencyChecks(t *testing.T) {
+	standard := checkKeySetForTest(runtimeProbeSuiteDefinitions(ProbeProfileStandard))
+	deep := checkKeySetForTest(runtimeProbeSuiteDefinitions(ProbeProfileDeep))
+
+	for _, key := range []CheckKey{
+		CheckProbeBedrockProbe,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall,
+		CheckCanaryMathMul,
+		CheckProbeIdentityStyleEN,
+		CheckProbeLingKRNum,
+		CheckProbeRefusalL8,
+	} {
+		if standard[key] {
+			t.Fatalf("standard profile included redundant/heavy probe %s", key)
+		}
+		if deep[key] {
+			t.Fatalf("deep profile included full-only redundant/heavy probe %s", key)
+		}
+	}
+
+	for _, key := range []CheckKey{
+		CheckProbeInstructionFollow,
+		CheckProbeMathLogic,
+		CheckProbeJSONOutput,
+		CheckProbeSymbolExact,
+		CheckProbeInfraLeak,
+		CheckProbeTokenInflation,
+		CheckProbeKnowledgeCutoff,
+	} {
+		if !standard[key] {
+			t.Fatalf("standard profile missing focused high-signal probe %s", key)
+		}
+	}
+
+	for _, key := range []CheckKey{
+		CheckProbePromptInjection,
+		CheckProbeURLExfiltration,
+		CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeCacheDetection,
+		CheckProbeSSECompliance,
+	} {
+		if !deep[key] {
+			t.Fatalf("deep profile missing high-signal probe %s", key)
 		}
 	}
 }
@@ -2023,7 +2194,7 @@ func TestFullProbeSuiteCoversLLMProbeEngineProbeIDs(t *testing.T) {
 func TestFullProbeSuiteCoversLLMProbeEngineCanaryBench(t *testing.T) {
 	fullKeys := make(map[CheckKey]bool)
 	fullProbes := make(map[CheckKey]verifierProbe)
-	for _, probe := range verifierProbeSuite(ProbeProfileFull) {
+	for _, probe := range verifierProbeDefinitions(ProbeProfileFull) {
 		fullKeys[probe.Key] = true
 		fullProbes[probe.Key] = probe
 	}
@@ -2259,7 +2430,7 @@ func TestDeepRunnerIncludesChannelAndSSEProbes(t *testing.T) {
 		CheckProbeChannelSignature: false,
 		CheckProbeSSECompliance:    false,
 		CheckProbeURLExfiltration:  false,
-		CheckProbeNeedleTiny:       false,
+		CheckProbeCacheDetection:   false,
 	}
 	for _, result := range results {
 		if _, ok := found[result.CheckKey]; ok {
@@ -3234,6 +3405,41 @@ func stringSliceContains(values []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func checkKeysForTest(probes []verifierProbe) []CheckKey {
+	keys := make([]CheckKey, 0, len(probes))
+	for _, probe := range probes {
+		keys = append(keys, probe.Key)
+	}
+	return keys
+}
+
+func checkKeySetForTest(probes []verifierProbe) map[CheckKey]bool {
+	out := make(map[CheckKey]bool, len(probes))
+	for _, probe := range probes {
+		out[probe.Key] = true
+	}
+	return out
+}
+
+func estimatedProbeRuntimeCost(probes []verifierProbe) int {
+	total := 0
+	for _, probe := range probes {
+		switch probe.Key {
+		case CheckProbeContextLength:
+			total += len(probe.ContextLengths)
+		case CheckProbeConsistencyCache, CheckProbeAdaptiveInjection, CheckProbeSignatureRoundtrip:
+			total += 2
+		default:
+			if probe.RepeatCount > 1 {
+				total += probe.RepeatCount
+			} else {
+				total++
+			}
+		}
+	}
+	return total
 }
 
 func probeTestResponse(prompt string) string {

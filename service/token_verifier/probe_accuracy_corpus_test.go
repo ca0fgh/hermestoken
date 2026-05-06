@@ -35,6 +35,7 @@ func TestOptionalRealLabeledProbeCorpus(t *testing.T) {
 		}
 		t.Fatalf("stat real labeled probe corpus: %v", err)
 	}
+	skipOptionalRealCorpusAudit(t, "empirical pass/fail detector accuracy corpus")
 
 	auditRealLabeledProbeCorpus(t, path)
 }
@@ -60,6 +61,13 @@ func TestRequiredRealInformationalProbeCorpusAudit(t *testing.T) {
 		t.Skip("set " + requireRealProbeCorpusEnv + "=1 to require empirical informational detector accuracy corpus")
 	}
 	auditRealInformationalProbeCorpus(t, "testdata/informational_probe_corpus_real.json")
+}
+
+func skipOptionalRealCorpusAudit(t *testing.T, description string) {
+	t.Helper()
+	if os.Getenv(requireRealProbeCorpusEnv) != "1" {
+		t.Skip("set " + requireRealProbeCorpusEnv + "=1 to run " + description)
+	}
 }
 
 func auditRealLabeledProbeCorpus(t *testing.T, path string) {
@@ -118,12 +126,13 @@ func auditRealInformationalProbeCorpus(t *testing.T, path string) {
 	}
 }
 
-func TestRealCorpusCoverageRequirementsMatchFullProbeSuite(t *testing.T) {
+func TestRealCorpusCoverageRequirementsMatchRuntimeFullProbeSuite(t *testing.T) {
 	requirements := realCorpusCoverageRequirements()
 	if len(requirements) == 0 {
 		t.Fatal("real corpus coverage requirements must not be empty")
 	}
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+	runtimeKeys := checkKeySetForTest(runtimeProbeSuiteDefinitions(ProbeProfileFull))
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
 		requirement, ok := requirements[probe.Key]
 		if !isPassFailCorpusProbe(probe) {
 			if ok {
@@ -134,16 +143,24 @@ func TestRealCorpusCoverageRequirementsMatchFullProbeSuite(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s missing real corpus coverage requirement", probe.Key)
 		}
-		if requirement.Positive < 1 {
-			t.Fatalf("%s real corpus requirement must include positive samples: %+v", probe.Key, requirement)
+		if requirement.Total < 1 {
+			t.Fatalf("%s real corpus requirement must include at least one replayable sample: %+v", probe.Key, requirement)
 		}
-		if requirement.Negative < 1 {
-			t.Fatalf("%s real corpus requirement must include negative samples: %+v", probe.Key, requirement)
+		if requirement.Positive != 0 || requirement.Negative != 0 {
+			t.Fatalf("%s real corpus requirement should not force naturally occurring pass/fail polarity: %+v", probe.Key, requirement)
+		}
+	}
+	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+		if runtimeKeys[probe.Key] || !isPassFailCorpusProbe(probe) {
+			continue
+		}
+		if _, ok := requirements[probe.Key]; ok {
+			t.Fatalf("%s is not in runtime full suite and should not be required by default audit", probe.Key)
 		}
 	}
 }
 
-func TestHardAccuracyAuditRequirementsCoverEveryFullSuiteDetectionItem(t *testing.T) {
+func TestHardAccuracyAuditRequirementsCoverEveryRuntimeFullDetectionItem(t *testing.T) {
 	passFail := realCorpusCoverageRequirements()
 	reviewOnly := reviewOnlyProbeJudgeCoverageRequirements()
 	informational := informationalProbeCorpusCoverageRequirements()
@@ -152,7 +169,7 @@ func TestHardAccuracyAuditRequirementsCoverEveryFullSuiteDetectionItem(t *testin
 		identityFeature[checkKey] = true
 	}
 
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
 		coveredBy := make([]string, 0, 3)
 		if _, ok := passFail[probe.Key]; ok {
 			coveredBy = append(coveredBy, "pass_fail_real_corpus")
@@ -175,9 +192,41 @@ func TestHardAccuracyAuditRequirementsCoverEveryFullSuiteDetectionItem(t *testin
 	}
 }
 
+func TestDefaultAccuracyAuditDoesNotRequireLegacyTargetedChecks(t *testing.T) {
+	if _, ok := checkKeySetForTest(runtimeProbeSuiteDefinitions(ProbeProfileFull))[CheckProbeBedrockProbe]; ok {
+		t.Fatal("test requires bedrock probe to remain outside the default runtime suite")
+	}
+	if _, ok := realCorpusCoverageRequirements()[CheckProbeBedrockProbe]; ok {
+		t.Fatal("legacy targeted bedrock probe should not be required by default pass/fail audit")
+	}
+	if _, ok := reviewOnlyProbeJudgeCoverageRequirements()[CheckProbeZHReasoning]; ok {
+		t.Fatal("legacy targeted zh reasoning probe should not require default judge audit coverage")
+	}
+
+	metrics, err := evaluateLabeledProbeCorpusCases(LabeledProbeCorpus{
+		Cases: []LabeledProbeCorpusCase{
+			{
+				Name:         "legacy_targeted_bedrock_safe",
+				CheckKey:     CheckProbeBedrockProbe,
+				ResponseText: "I do not know what cloud infrastructure serves this API.",
+				WantPassed:   true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("evaluate legacy targeted corpus case: %v", err)
+	}
+	if got := metrics[CheckProbeBedrockProbe]; got.TruePositive != 1 || got.FalsePositive != 0 || got.FalseNegative != 0 {
+		t.Fatalf("legacy targeted bedrock metrics = %+v, want evaluated but not required", got)
+	}
+}
+
 func TestRealLabeledProbeCorpusExampleIsNotUsedAsEmpiricalEvidence(t *testing.T) {
 	if _, err := os.Stat("testdata/labeled_probe_corpus_real.example.json"); err != nil {
 		t.Fatalf("real corpus example fixture missing: %v", err)
+	}
+	if os.Getenv(requireRealProbeCorpusEnv) != "1" {
+		t.Skip("set " + requireRealProbeCorpusEnv + "=1 to require empirical pass/fail detector accuracy corpus")
 	}
 	if _, err := os.Stat("testdata/labeled_probe_corpus_real.json"); err == nil {
 		t.Skip("real labeled probe corpus exists; empirical accuracy test owns evaluation")
@@ -208,6 +257,9 @@ func TestInformationalProbeCorpusHarnessComputesMetrics(t *testing.T) {
 func TestRealInformationalProbeCorpusExampleIsNotUsedAsEmpiricalEvidence(t *testing.T) {
 	if _, err := os.Stat("testdata/informational_probe_corpus_real.example.json"); err != nil {
 		t.Fatalf("real informational corpus example fixture missing: %v", err)
+	}
+	if os.Getenv(requireRealProbeCorpusEnv) != "1" {
+		t.Skip("set " + requireRealProbeCorpusEnv + "=1 to require empirical informational detector accuracy corpus")
 	}
 	if _, err := os.Stat("testdata/informational_probe_corpus_real.json"); err == nil {
 		t.Skip("real informational probe corpus exists; empirical accuracy test owns evaluation")

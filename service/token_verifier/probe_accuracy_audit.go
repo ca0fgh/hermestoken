@@ -438,31 +438,31 @@ func buildProbeAccuracyJudgeAudit(judge *ProbeJudgeConfig, baseline BaselineMap)
 		RequiredProbes:  make([]string, 0),
 		Missing:         make([]string, 0),
 	}
+	requirements := reviewOnlyProbeJudgeCoverageRequirements()
+	if len(requirements) == 0 {
+		return audit
+	}
 	if judge == nil {
 		audit.Missing = append(audit.Missing, auditPathReviewOnlyJudge+":judge_config")
 	}
 	if baseline == nil {
 		audit.Missing = append(audit.Missing, auditPathReviewOnlyJudge+":baseline_config")
 	}
-	for _, probe := range probeSuiteDefinitions(ProbeProfileFull) {
-		if !auditReviewOnlyProbeRequiresJudge(probe) {
-			continue
-		}
-		probeID := sourceProbeIDForCheckKey(probe.Key)
+	for checkKey, probeID := range requirements {
 		audit.RequiredProbes = append(audit.RequiredProbes, probeID)
 		if strings.TrimSpace(probeID) == "" {
-			audit.Missing = append(audit.Missing, string(probe.Key)+":probe_id")
+			audit.Missing = append(audit.Missing, string(checkKey)+":probe_id")
 			continue
 		}
 		if strings.TrimSpace(baseline[probeID]) == "" {
-			audit.Missing = append(audit.Missing, string(probe.Key)+":baseline:"+probeID)
+			audit.Missing = append(audit.Missing, string(checkKey)+":baseline:"+probeID)
 		}
 	}
 	return audit
 }
 
 func buildProbeAccuracyCoverageItems() []ProbeAccuracyCoverageItem {
-	probes := probeSuiteDefinitions(ProbeProfileFull)
+	probes := runtimeProbeSuiteDefinitions(ProbeProfileFull)
 	items := make([]ProbeAccuracyCoverageItem, 0, len(probes))
 	for _, probe := range probes {
 		paths := probeAccuracyAuditPaths(probe)
@@ -493,7 +493,7 @@ func buildProbeAccuracyCoverageItems() []ProbeAccuracyCoverageItem {
 func probeAccuracyEvidenceRequirement(probe verifierProbe, auditPath string) string {
 	switch auditPath {
 	case auditPathPassFailRealCorpus:
-		return "manual_review.status=reviewed, manual_review.source=real_model_output, at least one positive and one negative real labeled sample for " + string(probe.Key)
+		return "manual_review.status=reviewed, manual_review.source=real_model_output, at least one replayable real labeled sample for " + string(probe.Key) + "; positive/negative scorer polarity is covered by schema golden corpus"
 	case auditPathIdentityRealCorpus:
 		return "manual_review.status=reviewed, manual_review.source=real_model_output, report-level identity corpus covering this neutral fingerprint check"
 	case auditPathInformationalRealCorpus:

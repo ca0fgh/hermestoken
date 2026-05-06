@@ -164,7 +164,25 @@ func normalizeProbeProfile(profile string) string {
 }
 
 func verifierProbeSuite(profile string) []verifierProbe {
-	fullSuite := []verifierProbe{
+	profile = normalizeProbeProfile(profile)
+	return selectVerifierProbes(verifierAllProbeSuite(), runtimeProbeKeysForProfile(profile))
+}
+
+func verifierProbeDefinitions(profile string) []verifierProbe {
+	profile = normalizeProbeProfile(profile)
+	allSuite := verifierAllProbeSuite()
+	switch profile {
+	case ProbeProfileFull:
+		return allSuite
+	case ProbeProfileDeep:
+		return selectVerifierProbes(allSuite, legacyDeepProbeKeys())
+	default:
+		return selectVerifierProbes(allSuite, focusedStandardProbeKeys())
+	}
+}
+
+func verifierAllProbeSuite() []verifierProbe {
+	baseSuite := []verifierProbe{
 		{
 			Key:              CheckProbeInstructionFollow,
 			Group:            probeGroupQuality,
@@ -184,14 +202,15 @@ func verifierProbeSuite(profile string) []verifierProbe {
 			Group:            probeGroupQuality,
 			Prompt:           "Return ONLY a valid JSON object (no markdown, no explanation) with these exact fields:\n{\n  \"product\": \"<string>\",\n  \"price_usd\": <number>,\n  \"in_stock\": <boolean>,\n  \"tags\": [\"<string>\", \"<string>\", \"<string>\"]\n}\nFill with realistic example data for a fictional laptop computer.",
 			ExpectedContains: "price_usd",
+			RequireJSON:      true,
 			MaxTokens:        64,
 		},
 		{
-			Key:              CheckProbeSymbolExact,
-			Group:            probeGroupIntegrity,
-			Prompt:           "Please output the following characters EXACTLY as they appear, nothing else, no explanation:\n「這是測試」\n(That means: output those exact CJK corner bracket characters and the Chinese text between them, verbatim.)",
-			ExpectedContains: "「這是測試」",
-			MaxTokens:        64,
+			Key:           CheckProbeSymbolExact,
+			Group:         probeGroupIntegrity,
+			Prompt:        "Please output the following characters EXACTLY as they appear, nothing else, no explanation:\n「這是測試」\n(That means: output those exact CJK corner bracket characters and the Chinese text between them, verbatim.)",
+			ExpectedExact: "「這是測試」",
+			MaxTokens:     64,
 		},
 		{
 			Key:        CheckProbeHallucination,
@@ -333,25 +352,105 @@ func verifierProbeSuite(profile string) []verifierProbe {
 			DeepOnly:  true,
 		},
 	}
-	profile = normalizeProbeProfile(profile)
-	if profile == ProbeProfileFull {
-		return append(fullSuite, verifierFullProbeSuite()...)
+	return append(baseSuite, verifierFullProbeSuite()...)
+}
+
+func runtimeProbeKeysForProfile(profile string) []CheckKey {
+	switch normalizeProbeProfile(profile) {
+	case ProbeProfileFull:
+		return focusedFullProbeKeys()
+	case ProbeProfileDeep:
+		return focusedDeepProbeKeys()
+	default:
+		return focusedStandardProbeKeys()
 	}
-	if profile == ProbeProfileDeep {
-		return fullSuite
+}
+
+func focusedStandardProbeKeys() []CheckKey {
+	return []CheckKey{
+		CheckProbeInstructionFollow,
+		CheckProbeMathLogic,
+		CheckProbeJSONOutput,
+		CheckProbeSymbolExact,
+		CheckProbeInfraLeak,
+		CheckProbeTokenInflation,
+		CheckProbeKnowledgeCutoff,
 	}
-	filtered := make([]verifierProbe, 0, len(fullSuite))
-	for _, probe := range fullSuite {
-		if !probe.DeepOnly {
-			filtered = append(filtered, probe)
+}
+
+func focusedDeepProbeKeys() []CheckKey {
+	keys := append([]CheckKey{}, focusedStandardProbeKeys()...)
+	return append(keys,
+		CheckProbePromptInjection,
+		CheckProbePromptInjectionHard,
+		CheckProbeResponseAugment,
+		CheckProbeURLExfiltration,
+		CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeCacheDetection,
+	)
+}
+
+func focusedFullProbeKeys() []CheckKey {
+	keys := append([]CheckKey{}, focusedDeepProbeKeys()...)
+	return append(keys,
+		CheckProbeHallucination,
+		CheckProbeCensorship,
+		CheckProbeIdentityLeak,
+		CheckProbeMarkdownExfil,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbeThinkingBlock,
+		CheckProbeConsistencyCache,
+		CheckProbeAdaptiveInjection,
+		CheckProbeContextLength,
+		CheckProbeMultimodalImage,
+		CheckProbeMultimodalPDF,
+		CheckProbeIdentitySelfKnowledge,
+		CheckProbeIdentityListFormat,
+		CheckProbeIdentityJSONDiscipline,
+		CheckProbeIdentityCapabilityClaim,
+		CheckProbeSubmodelCapability,
+		CheckProbeRefusalL8,
+	)
+}
+
+func legacyDeepProbeKeys() []CheckKey {
+	keys := append([]CheckKey{}, focusedStandardProbeKeys()...)
+	return append(keys,
+		CheckProbeHallucination,
+		CheckProbePromptInjection,
+		CheckProbePromptInjectionHard,
+		CheckProbeResponseAugment,
+		CheckProbeURLExfiltration,
+		CheckProbeMarkdownExfil,
+		CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbeNeedleTiny,
+		CheckProbeLetterCount,
+	)
+}
+
+func selectVerifierProbes(probes []verifierProbe, keys []CheckKey) []verifierProbe {
+	wanted := checkKeySet(keys)
+	selected := make([]verifierProbe, 0, len(keys))
+	seen := make(map[CheckKey]bool, len(keys))
+	for _, probe := range probes {
+		if wanted[probe.Key] && !seen[probe.Key] {
+			selected = append(selected, probe)
+			seen[probe.Key] = true
 		}
 	}
-	return filtered
+	return selected
 }
 
 func probeSuiteDefinitions(profile string) []verifierProbe {
 	profile = normalizeProbeProfile(profile)
-	probes := verifierProbeSuite(profile)
+	probes := verifierProbeDefinitions(profile)
 	if profile != ProbeProfileDeep && profile != ProbeProfileFull {
 		return probes
 	}
@@ -367,7 +466,11 @@ func probeSuiteDefinitions(profile string) []verifierProbe {
 
 func (r Runner) runProbeSuite(ctx context.Context, executor *CurlExecutor, provider string, modelName string) []CheckResult {
 	profile := normalizeProbeProfile(r.ProbeProfile)
-	probes := filterVerifierProbesByCheckKeys(probeSuiteDefinitions(profile), r.CheckKeys)
+	probes := runtimeProbeSuiteDefinitions(profile)
+	if len(r.CheckKeys) > 0 {
+		probes = probeSuiteDefinitions(profile)
+	}
+	probes = filterVerifierProbesByCheckKeys(probes, r.CheckKeys)
 	results := make([]CheckResult, 0, len(probes))
 	for _, probe := range probes {
 		var result CheckResult
@@ -398,6 +501,22 @@ func (r Runner) runProbeSuite(ctx context.Context, executor *CurlExecutor, provi
 		results = append(results, result)
 	}
 	return results
+}
+
+func runtimeProbeSuiteDefinitions(profile string) []verifierProbe {
+	profile = normalizeProbeProfile(profile)
+	probes := verifierProbeSuite(profile)
+	if profile != ProbeProfileDeep && profile != ProbeProfileFull {
+		return probes
+	}
+
+	definitions := make([]verifierProbe, 0, len(probes)+3)
+	definitions = append(definitions, channelSignatureProbe(), sseComplianceProbe())
+	if profile == ProbeProfileFull {
+		definitions = append(definitions, signatureRoundtripProbe())
+	}
+	definitions = append(definitions, probes...)
+	return definitions
 }
 
 func filterVerifierProbesByCheckKeys(probes []verifierProbe, checkKeys []CheckKey) []verifierProbe {
@@ -690,11 +809,17 @@ func scoreVerifierProbeDetailed(probe verifierProbe, responseText string, decode
 		}
 		return probeScoreResult{Passed: false, Score: 0, Message: fmt.Sprintf("响应命中禁止模式：%s", pattern), ErrorCode: "probe_pattern_failed", RiskLevel: "high", Evidence: []string{"命中禁止模式：" + pattern}}
 	}
+	switch probe.Key {
+	case CheckProbeInstructionFollow:
+		return scoreInstructionFollowProbe(text)
+	case CheckProbeJSONOutput:
+		return scoreJSONOutputProbe(text)
+	}
 	if probe.RequireJSON && !looksLikeJSONObject(text) {
 		return probeScoreResult{Passed: false, Score: 0, Message: "响应不是有效 JSON 对象", ErrorCode: "invalid_probe_json"}
 	}
 	if probe.ExpectedExact != "" {
-		if strings.EqualFold(text, strings.TrimSpace(probe.ExpectedExact)) {
+		if text == strings.TrimSpace(probe.ExpectedExact) {
 			return probeScoreResult{Passed: true, Score: 100, Message: "精确输出匹配"}
 		}
 		return probeScoreResult{Passed: false, Score: 0, Message: fmt.Sprintf("精确输出不匹配，期望：%s", probe.ExpectedExact), ErrorCode: "probe_exact_failed"}
@@ -718,6 +843,117 @@ func scoreVerifierProbeDetailed(probe verifierProbe, responseText string, decode
 		return probeScoreResult{Passed: false, Score: 0, Message: "响应未包含通过关键词", ErrorCode: "probe_pass_keyword_missing", RiskLevel: "medium"}
 	}
 	return probeScoreResult{Passed: true, Score: 100, Message: "探针通过"}
+}
+
+func scoreInstructionFollowProbe(responseText string) probeScoreResult {
+	lines := normalizedInstructionListLines(responseText)
+	if len(lines) != 5 {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "指令跟随探针失败：响应不是恰好 5 行列表",
+			ErrorCode: "instruction_list_format_failed",
+			RiskLevel: "medium",
+			Evidence:  []string{fmt.Sprintf("有效行数：%d", len(lines))},
+		}
+	}
+	expected := []string{"fortran", "lisp", "cobol", "basic", "c"}
+	for index, want := range expected {
+		if lines[index] != want {
+			return probeScoreResult{
+				Passed:    false,
+				Score:     0,
+				Message:   "指令跟随探针失败：列表内容或顺序不符合要求",
+				ErrorCode: "instruction_list_order_failed",
+				RiskLevel: "medium",
+				Evidence:  []string{fmt.Sprintf("第 %d 行=%q，期望 %q", index+1, lines[index], want)},
+			}
+		}
+	}
+	return probeScoreResult{
+		Passed:    true,
+		Score:     100,
+		Message:   "指令跟随探针通过：响应为恰好 5 行且顺序正确",
+		RiskLevel: "low",
+		Evidence:  []string{"Fortran/Lisp/COBOL/BASIC/C 顺序正确"},
+	}
+}
+
+func normalizedInstructionListLines(responseText string) []string {
+	rawLines := strings.Split(strings.TrimSpace(responseText), "\n")
+	lines := make([]string, 0, len(rawLines))
+	for _, line := range rawLines {
+		value := strings.TrimSpace(line)
+		if value == "" {
+			continue
+		}
+		value = regexp.MustCompile(`^\s*(?:[-*•]|\d+[\).])\s*`).ReplaceAllString(value, "")
+		value = strings.Trim(strings.TrimSpace(value), ".,;:")
+		lines = append(lines, strings.ToLower(value))
+	}
+	return lines
+}
+
+func scoreJSONOutputProbe(responseText string) probeScoreResult {
+	var decoded map[string]any
+	if err := common.Unmarshal([]byte(strings.TrimSpace(responseText)), &decoded); err != nil || decoded == nil {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "JSON 输出探针失败：响应不是有效 JSON 对象",
+			ErrorCode: "invalid_probe_json",
+			RiskLevel: "medium",
+		}
+	}
+	missing := make([]string, 0)
+	if value, ok := decoded["product"].(string); !ok || strings.TrimSpace(value) == "" {
+		missing = append(missing, "product:string")
+	}
+	if !isJSONNumber(decoded["price_usd"]) {
+		missing = append(missing, "price_usd:number")
+	}
+	if _, ok := decoded["in_stock"].(bool); !ok {
+		missing = append(missing, "in_stock:boolean")
+	}
+	if tags, ok := decoded["tags"].([]any); !ok || len(tags) != 3 || !allJSONStrings(tags) {
+		missing = append(missing, "tags:3_strings")
+	}
+	if len(missing) > 0 {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "JSON 输出探针失败：字段类型或结构不符合要求",
+			ErrorCode: "json_schema_failed",
+			RiskLevel: "medium",
+			Evidence:  []string{"不符合字段：" + strings.Join(missing, ", ")},
+		}
+	}
+	return probeScoreResult{
+		Passed:    true,
+		Score:     100,
+		Message:   "JSON 输出探针通过：字段和类型符合要求",
+		RiskLevel: "low",
+		Evidence:  []string{"product/string、price_usd/number、in_stock/boolean、tags/3 strings"},
+	}
+}
+
+func isJSONNumber(value any) bool {
+	switch value.(type) {
+	case int, int64, float64, float32:
+		return true
+	default:
+		return false
+	}
+}
+
+func allJSONStrings(values []any) bool {
+	for _, value := range values {
+		text, ok := value.(string)
+		if !ok || strings.TrimSpace(text) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func unscoredProbeResult(message string, errorCode string) probeScoreResult {

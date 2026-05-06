@@ -1,10 +1,10 @@
 {
-  "description": "real model capture 2026-05-06 anthropic/claude-sonnet-4-6 via timicc Claude Code client profile",
+  "description": "Merged reviewed identity runtime corpus 2026-05-06",
   "manual_review": {
     "status": "reviewed",
     "source": "real_model_output",
-    "reviewed_by": "temporary-local-audit",
-    "reviewed_at": "2026-05-06T00:00:00Z"
+    "reviewed_by": "merged-local-audit",
+    "reviewed_at": "2026-05-06T09:01:27Z"
   },
   "cases": [
     {
@@ -1420,6 +1420,976 @@
       "want_predicted_model": "Claude Opus 4.6",
       "want_top_candidate_family": "anthropic",
       "want_identity_risk": false
+    },
+    {
+      "name": "gpt_5_5_identity_assessment_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_identity_self_knowledge",
+        "task_id": "direct-probe-a9e7923a-6688-4665-8302-f8419888d97f",
+        "captured_at": "2026-05-06T08:57:20Z"
+      },
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 9783,
+          "ttft_ms": 839,
+          "input_tokens": 42,
+          "output_tokens": 170,
+          "tokens_ps": 17,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_0f41c10458aa5dae0169fb027954c8819190c17697b26b9ee8",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_sample": "I’m an AI assistant created by **OpenAI**.\n\nI don’t have access to the exact API model identifier or version being used for this session unless it’s provided by the application or API configuration. So I can’t reliably say something like “GPT-4.1” or “GPT-4o” without risking being inaccurate.",
+            "usage": {
+              "completion_tokens": 170,
+              "prompt_tokens": 42
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_list_format",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 11982,
+          "ttft_ms": 879,
+          "input_tokens": 35,
+          "output_tokens": 131,
+          "tokens_ps": 11,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_0ade9efeeb9aeee80169fb02831fb0819189ecf91783dc409d",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_sample": "1. **Supports brain function** — Sleep helps with memory, learning, focus, decision-making, and emotional regulation.\n\n2. **Strengthens the immune system** — Adequate sleep helps your body fight infections and recover from illness.\n\n3. **Promotes physical recovery** — During sleep, the body repairs tissues, restores energy, and supports muscle growth and healing.\n\n4. **Helps regulate hormones and metabolism** — Sleep affects appetite, blood sugar control, stress hormones, and weight management.\n\n5. **Supports heart health** — Consistent, quality sleep helps maintain healthy blood pressure and lowers the risk of cardiovascular problems.",
+            "usage": {
+              "completion_tokens": 131,
+              "prompt_tokens": 35
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_json_discipline",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 4804,
+          "ttft_ms": 1537,
+          "input_tokens": 65,
+          "output_tokens": 31,
+          "tokens_ps": 6,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_027b6534b0db78770169fb028f9ce08191bc8531752f7e7976",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_sample": "{\"name\":\"Maya Thompson\",\"age\":34,\"city\":\"Seattle\"}",
+            "usage": {
+              "completion_tokens": 31,
+              "prompt_tokens": 65
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_capability_claim",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 9060,
+          "ttft_ms": 960,
+          "input_tokens": 36,
+          "output_tokens": 118,
+          "tokens_ps": 13,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_0628d43f3c6a11cb0169fb0293f83c8191a9e6a20fe15a4972",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_sample": "I can’t check live market prices directly from here. To get the current Bitcoin price, check a real-time source such as:\n\n- Coinbase\n- Binance\n- Kraken\n- CoinMarketCap\n- CoinGecko\n- Google search: “BTC price”\n\nIf you want, I can also show you a quick Python or JavaScript snippet to fetch the live BTC price from a public API.",
+            "usage": {
+              "completion_tokens": 118,
+              "prompt_tokens": 36
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "submodel",
+          "check_key": "probe_submodel_capability",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 9437,
+          "ttft_ms": 893,
+          "input_tokens": 124,
+          "output_tokens": 215,
+          "tokens_ps": 23,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_0768b1384f4300820169fb029cffdc8191a9952b56f5f0fcb4",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_sample": "1. 3\n2. Tuesday\n3. 6\n4. 541\n5. etadommocca",
+            "usage": {
+              "completion_tokens": 215,
+              "prompt_tokens": 124
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "submodel",
+          "check_key": "probe_refusal_l8",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 16010,
+          "ttft_ms": 937,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_05d802214fc296850169fb02a670ac8191bd9bffa2ec62540e",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_redacted": true
+          }
+        }
+      ],
+      "want_identity_status": "match",
+      "want_verdict_status": "clean_match",
+      "want_predicted_family": "openai",
+      "want_top_candidate_family": "openai",
+      "want_identity_risk": false,
+      "want_no_predicted_model": true
+    },
+    {
+      "name": "anthropic_identity_features_replayed_as_openai_plain_mismatch",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "check_key": "probe_pip_index",
+        "task_id": "direct-probe-d59ef4a5-6a7e-4d77-b9e3-b7a5d7d511bf",
+        "captured_at": "2026-05-06T01:39:49Z",
+        "notes": "Real Anthropic identity-feature outputs replayed with declared result provider/model openai/gpt-5.5 to validate report-level cross-family mismatch detection."
+      },
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_style_en",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 11714,
+          "ttft_ms": 2680,
+          "input_tokens": 56,
+          "output_tokens": 360,
+          "tokens_ps": 31,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_013xTqVtXGs1urD8krhrgBNa",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "This is worth answering honestly rather than just telling you what sounds good.\n\n**I think the most important skill is rigorous problem decomposition - the ability to clearly define what you're actually trying to solve before writing a line of code.**\n\nHere's my reasoning. In 2025, AI tools can generate code faster than most engineers can type it. This shifts the bottleneck dramatically. The constraint is no longer \"can you implement this?\" but \"do you actually understand what needs to be built, why, and what the tradeoffs are?\" Engineers who jump straight to implementation - whether writing it themselves or prompting an AI - without doing this thinking will produce fast, confident, wrong solutions.\n\n**This connects to something deeper: intellectual honesty about uncertainty.** A lot of engineers treat admitting \"I don't fully understand this requirement\" or \"I'm not sure this approach is right\" as weakness. It's actually the foundation of good engineering. The engineers who will be most valuable aren't those who use AI tools to appear maximally productive - they're the ones who slow down enough to catch the flawed assumptions that AI tools enthusiastically build on top of.\n\n**I'd also push back on the common answer of \"learn AI/ML tools.\"** Those matter, but they're somewhat learnable on demand. What's harder to develop quickly is the judgment to evaluate whether AI-generated code is actually correct, secure, and maintainable - which requires deep fundamentals in algorithms, security, and system design. Superficial AI tool fluency without that foundation is potentially worse than not using the tools at all.\n\nThe honest summary: think more carefully, not just faster. That's harder than it sounds.",
+            "usage": {
+              "input_tokens": 56,
+              "output_tokens": 360
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_style_zh_tw",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 16438,
+          "ttft_ms": 1154,
+          "input_tokens": 65,
+          "output_tokens": 702,
+          "tokens_ps": 43,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01UkJRV7crhuXQHk81TUkiLv",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "# 面對重大決策時的思考方式\n\n這是個值得認真回答的問題。我不想給你一份「決策清單」，而是分享我真正認為重要的東西。\n\n---\n\n## 首先：區分「想清楚了」和「想舒服了」\n\n人很容易把兩件事搞混。我們蒐集資訊、反覆思考，有時候不是為了找到真相，而是為了替已經偏好的選項找到足夠的理由。\n\n**真正的思考需要一點不舒服** ——願意認真考慮自己可能是錯的，願意讓最好的論據贏，而不是讓自己的直覺贏。\n\n---\n\n## 其次：搞清楚你在決策什麼\n\n很多重大決策的困難，其實來自沒有想清楚「問題本身」。\n\n- 你以為你在選職業，其實你在選一種生活方式\n- 你以為你在選伴侶，其實你在選你想成為什麼樣的人\n- 你以為你在選要不要冒險，其實你在選你更害怕哪種後悔\n\n**把問題挖深一層，答案常常會變。**\n\n---\n\n## 第三：接受不確定性，而不是消除它\n\n人有強烈的衝動想要在決策前「確定」。但重大決策幾乎從來不會有完全確定的時刻。\n\n更健康的方式是問：**「在這個程度的不確定下，哪個選擇讓我有足夠的理由行動？」** 而不是「我要等到確定再說」——因為那一天可能不會來。\n\n---\n\n## 最後，也是我最看重的：\n\n**想清楚你的決策會傷害誰、幫助誰。**\n\n重大決策很少只影響自己。一個人在思考時能真實地把他人的處境放進來——不是作為藉口，而是作為真正的考量——我認為這才是思考成熟的標誌。\n\n---\n\n你問的是「最重要的」，我的答案是：**誠實面對自己在想什麼、為什麼這樣想。** 其他的技巧都建立在這個基礎上。\n\n你目前面對的是什麼樣的決策？如果你願意說，我們可以更具體地討論。",
+            "usage": {
+              "input_tokens": 65,
+              "output_tokens": 702
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_reasoning_shape",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5869,
+          "ttft_ms": 1454,
+          "input_tokens": 62,
+          "output_tokens": 329,
+          "tokens_ps": 56,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01MKezLSoFjdFmChaVR7ghxi",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "## Solving the Bat and Ball Problem\n\nLet me define variables and set up equations.\n\n**Let:**\n- Ball cost = x\n- Bat cost = y\n\n**Two equations from the problem:**\n1. `x + y = 1.10` (together they cost $1.10)\n2. `y = x + 1.00` (bat costs $1.00 MORE than the ball)\n\n**Substituting equation 2 into equation 1:**\n\n```\nx + (x + 1.00) = 1.10\n2x + 1.00 = 1.10\n2x = 0.10\nx = 0.05\n```\n\n**The ball costs $0.05 (5 cents)**\n\n---\n\n### Checking the answer:\n- Ball = $0.05\n- Bat = $1.05\n- Difference: $1.05 - $0.05 = **$1.00 ✓**\n- Total: $0.05 + $1.05 = **$1.10 ✓**\n\n---\n\n### Why the intuitive answer of $0.10 is wrong:\nMany people instinctively answer **10 cents**, but if the ball were $0.10, the bat would be $1.10, and the total would be **$1.20** — not $1.10. The correct answer is **5 cents**.",
+            "usage": {
+              "input_tokens": 62,
+              "output_tokens": 329
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3830,
+          "ttft_ms": 2259,
+          "input_tokens": 47,
+          "output_tokens": 96,
+          "tokens_ps": 25,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01Dk2pMgFA44h6ehZJL1NGpB",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "I'm Claude, an AI assistant made by Anthropic. I'm specifically running as **Claude Code**, Anthropic's official CLI (command-line interface) tool.\n\nRegarding my exact model version, I don't have access to that specific information. If you need to know the precise version, you could check the Anthropic API or CLI configuration you're using to interact with me.\n\nIs there something I can help you with today?",
+            "usage": {
+              "input_tokens": 47,
+              "output_tokens": 96
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_list_format",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5435,
+          "ttft_ms": 1861,
+          "input_tokens": 41,
+          "output_tokens": 208,
+          "tokens_ps": 38,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01UvQapHnr5cg9yWYSPCxuiZ",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "Here are the **top 5 reasons why sleep is important for health**:\n\n1. **Brain Function & Memory** – Sleep consolidates memories, enhances learning, and supports cognitive processes like problem-solving and decision-making.\n\n2. **Physical Recovery & Growth** – During sleep, the body repairs tissues, builds muscle, and releases growth hormones essential for physical restoration.\n\n3. **Immune System Support** – Adequate sleep strengthens the immune system, helping the body fight off infections and illness more effectively.\n\n4. **Heart & Metabolic Health** – Quality sleep helps regulate blood pressure, blood sugar, and reduces the risk of heart disease, diabetes, and obesity.\n\n5. **Mental & Emotional Well-being** – Sleep plays a critical role in regulating mood, reducing stress, and lowering the risk of anxiety and depression.\n\n> 💤 Most adults need **7–9 hours** of sleep per night for optimal health.",
+            "usage": {
+              "input_tokens": 41,
+              "output_tokens": 208
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 7448,
+          "ttft_ms": 3937,
+          "input_tokens": 50,
+          "output_tokens": 63,
+          "tokens_ps": 8,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01SjopZw5gsBEzPTw64LSZni",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "1167fb0e84b0d776168464c0235aae10955a2c20c2c0df8bd24be37c7be10b1a",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 50,
+              "output_tokens": 63
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_json_discipline",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2830,
+          "ttft_ms": 2277,
+          "input_tokens": 74,
+          "output_tokens": 25,
+          "tokens_ps": 9,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01Wa9dgoisXNtzdrajPSf6f1",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "{\"name\": \"Marcus Delgado\", \"age\": 34, \"city\": \"Portland\"}",
+            "usage": {
+              "input_tokens": 74,
+              "output_tokens": 25
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_capability_claim",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 4991,
+          "ttft_ms": 2303,
+          "input_tokens": 41,
+          "output_tokens": 149,
+          "tokens_ps": 30,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01SF4DDzRyHDCfM92shaTwm9",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "I don't have the ability to access the internet, check live data, or retrieve real-time information. I can't look up the current Bitcoin price.\n\nTo get the **live Bitcoin price**, here are some reliable options:\n\n- **Google** – Just search \"Bitcoin price\"\n- **CoinMarketCap** – coinmarketcap.com\n- **CoinGecko** – coingecko.com\n- **Binance / Coinbase / Kraken** – Major exchange websites\n- **Bloomberg or Reuters** – For financial news with price data\n\nThese sources update in real time and will give you the most accurate current price. 📈",
+            "usage": {
+              "input_tokens": 41,
+              "output_tokens": 149
+            }
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_kr_num",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2169,
+          "ttft_ms": 1852,
+          "input_tokens": 55,
+          "output_tokens": 7,
+          "tokens_ps": 2,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "사십이": 10
+            },
+            "hashes": {
+              "1dd13e05bc2fa71fd6fdb81974d70d439357aabb7dfa4fec9dcd83fa168ac344": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "사십이",
+              "사십이",
+              "사십이",
+              "사십이",
+              "사십이"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_jp_pm",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3460,
+          "ttft_ms": 2719,
+          "input_tokens": 49,
+          "output_tokens": 10,
+          "tokens_ps": 4,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "岸田文雄": 10
+            },
+            "hashes": {
+              "263b41d635255ded4f6b178d08e7e7b45a505488c27b72d2d769f553f1f03219": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "岸田文雄",
+              "岸田文雄",
+              "岸田文雄",
+              "岸田文雄",
+              "岸田文雄"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_fr_pm",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3158,
+          "ttft_ms": 2894,
+          "input_tokens": 43,
+          "output_tokens": 7,
+          "tokens_ps": 3,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "François Bayrou": 10
+            },
+            "hashes": {
+              "39af103f88e466d58d0982f505fd47c9828c347abf28aacb9275a0146ca89029": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "François Bayrou",
+              "François Bayrou",
+              "François Bayrou",
+              "François Bayrou",
+              "François Bayrou"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_ru_pres",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2396,
+          "ttft_ms": 2041,
+          "input_tokens": 39,
+          "output_tokens": 10,
+          "tokens_ps": 6,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Владимир Путин": 10
+            },
+            "hashes": {
+              "6434d6ff29d620682b578e47774bfeb4917ba8362f1dd16dea93074f59b3efec": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Владимир Путин",
+              "Владимир Путин",
+              "Владимир Путин",
+              "Владимир Путин",
+              "Владимир Путин"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_token_count_num",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2384,
+          "ttft_ms": 2188,
+          "input_tokens": 47,
+          "output_tokens": 5,
+          "tokens_ps": 4,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "1": 1,
+              "3": 9
+            },
+            "hashes": {
+              "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce": 9,
+              "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b": 1
+            },
+            "repeat_count": 10,
+            "samples": [
+              "3",
+              "1",
+              "3",
+              "3",
+              "3"
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_token_split_word",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "skipped": true,
+          "success": false,
+          "score": 0,
+          "latency_ms": 8370,
+          "error_code": "request_failed",
+          "message": "Post \"[REDACTED_BASE_URL]/v1/messages\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+          "risk_level": "unknown",
+          "evidence": [
+            "请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"
+          ]
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_token_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5679,
+          "ttft_ms": 5355,
+          "input_tokens": 38,
+          "output_tokens": 12,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "Byte pair encoding": 1,
+              "Byte pair encoding (BPE).": 9
+            },
+            "hashes": {
+              "9d79a73483bca3d885c16005d9f5861cafe9436d55c7423964da25709c7dfc9b": 1,
+              "feb6ae30dc36d4b666d4d9773407bb8352b32d970eb9695bb8a09f04d149a1c5": 9
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding"
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_code_reverse_list",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "skipped": true,
+          "success": false,
+          "score": 0,
+          "latency_ms": 7888,
+          "error_code": "request_failed",
+          "message": "Post \"[REDACTED_BASE_URL]/v1/messages\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+          "risk_level": "unknown",
+          "evidence": [
+            "请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"
+          ]
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_code_comment_lang",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "skipped": true,
+          "success": false,
+          "score": 0,
+          "error_code": "request_failed",
+          "message": "Post \"[REDACTED_BASE_URL]/v1/messages\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+          "risk_level": "unknown",
+          "evidence": [
+            "请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"
+          ]
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_code_error_style",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 4632,
+          "ttft_ms": 3965,
+          "input_tokens": 40,
+          "output_tokens": 39,
+          "tokens_ps": 1,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```": 10
+            },
+            "hashes": {
+              "14b1f6f22ff021381d226a98729960fc02885196b5453953b8b28775d20096a5": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_meta_context_len",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2234,
+          "ttft_ms": 1867,
+          "input_tokens": 42,
+          "output_tokens": 6,
+          "tokens_ps": 3,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "200000": 10
+            },
+            "hashes": {
+              "b552e632666bbf6125e3109e28a4fecc08340d017e44109dadbf497a280b8f82": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "200000",
+              "200000",
+              "200000",
+              "200000",
+              "200000"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_meta_thinking_mode",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1627,
+          "ttft_ms": 1362,
+          "input_tokens": 50,
+          "output_tokens": 5,
+          "tokens_ps": 4,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "Yes": 2,
+              "Yes.": 8
+            },
+            "hashes": {
+              "5f9a2b795615ba6a3d5455fd5624d773fbca5bcd16249c421fd37411dc9837da": 8,
+              "85a39ab345d672ff8ca9b9c6876f3adcacf45ee7c1e2dbd2408fd338bd55e07e": 2
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Yes.",
+              "Yes",
+              "Yes.",
+              "Yes",
+              "Yes."
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_meta_creator",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1477,
+          "ttft_ms": 1293,
+          "input_tokens": 36,
+          "output_tokens": 6,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Anthropic": 10
+            },
+            "hashes": {
+              "744205e43529c1fc39bc4ed37dbcd1e91facc78d2a2d136bc893b023ac3c75f5": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Anthropic",
+              "Anthropic",
+              "Anthropic",
+              "Anthropic",
+              "Anthropic"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_uk_pm",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1944,
+          "ttft_ms": 1694,
+          "input_tokens": 39,
+          "output_tokens": 9,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Keir Starmer": 10
+            },
+            "hashes": {
+              "d258bdff0f7f9f38d3651e25e3cc11df517d21652e3e2639b5e5838fc2725531": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Keir Starmer",
+              "Keir Starmer",
+              "Keir Starmer",
+              "Keir Starmer",
+              "Keir Starmer"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_kr_crisis",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2132,
+          "ttft_ms": 1137,
+          "input_tokens": 48,
+          "output_tokens": 48,
+          "tokens_ps": 22,
+          "message": "重复采样完成 5 次，唯一响应 4 个",
+          "raw": {
+            "distribution": {
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law briefly before it was overturned by the National Assembly, and he was subsequently i...": 2,
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, and he was subsequently impe...": 1,
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, leading to his impeachment b...": 1,
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was swiftly rejected by the National Assembly, and he subsequently faced impe...": 1
+            },
+            "hashes": {
+              "6a964362c5845df878b7dda5ff5facc97c06a0be21c2e4ebf8f29f5978d92b90": 1,
+              "94385435733fd4c06098651912c0f90417bcc0d1a41b38156488a92889f02f68": 1,
+              "a8af70ad9e1cbf9f72088b1bd077c142e7575dcb12128dd3e648381e38812f03": 1,
+              "d2ac2ca6edabedbe0d0558f0fdebdf8973a924fb89515a8cc9b512c7f1c797b2": 2
+            },
+            "repeat_count": 5,
+            "samples": [
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was swiftly rejected by the National Assembly, and he subsequently faced impe...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law briefly before it was overturned by the National Assembly, and he was subsequently i...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law briefly before it was overturned by the National Assembly, and he was subsequently i...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, leading to his impeachment b...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, and he was subsequently impe..."
+            ],
+            "unique_count": 4
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_de_chan",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1486,
+          "ttft_ms": 1305,
+          "input_tokens": 36,
+          "output_tokens": 7,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Friedrich Merz": 10
+            },
+            "hashes": {
+              "c47dcc4ec78a61eb15b050edbf2b7b874546f27a8b77ac8e9c6afee355e3b012": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Friedrich Merz",
+              "Friedrich Merz",
+              "Friedrich Merz",
+              "Friedrich Merz",
+              "Friedrich Merz"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_comp_py_float",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1449,
+          "ttft_ms": 1186,
+          "input_tokens": 55,
+          "output_tokens": 12,
+          "tokens_ps": 8,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "0.30000000000000004": 10
+            },
+            "hashes": {
+              "06bad31060c1212ae832de4c031f7b31e3b48aed57858294478cb19450cf34ca": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "0.30000000000000004",
+              "0.30000000000000004",
+              "0.30000000000000004",
+              "0.30000000000000004",
+              "0.30000000000000004"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_comp_large_exp",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1509,
+          "ttft_ms": 1233,
+          "input_tokens": 44,
+          "output_tokens": 8,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "4294967296": 10
+            },
+            "hashes": {
+              "6c1ca4002509bc24e93aa4211830738fce7e205e41364e11301ac5a0635cb4b5": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "4294967296",
+              "4294967296",
+              "4294967296",
+              "4294967296",
+              "4294967296"
+            ],
+            "unique_count": 1
+          }
+        }
+      ],
+      "want_identity_status": "mismatch",
+      "want_verdict_status": "plain_mismatch",
+      "want_predicted_family": "anthropic",
+      "want_top_candidate_family": "anthropic",
+      "want_identity_risk": true,
+      "want_no_predicted_family": false,
+      "want_no_predicted_model": false
+    },
+    {
+      "name": "gpt_5_5_list_format_only_insufficient_data",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_identity_self_knowledge",
+        "task_id": "direct-probe-a9e7923a-6688-4665-8302-f8419888d97f",
+        "captured_at": "2026-05-06T08:57:20Z",
+        "notes": "Real OpenAI capture replayed with only the list-format identity feature to validate insufficient-data handling."
+      },
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_list_format",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 11982,
+          "ttft_ms": 879,
+          "input_tokens": 35,
+          "output_tokens": 131,
+          "tokens_ps": 11,
+          "message": "信息性探针已完成",
+          "raw": {
+            "choices_count": 1,
+            "id": "resp_0ade9efeeb9aeee80169fb02831fb0819189ecf91783dc409d",
+            "model": "gpt-5.5",
+            "object": "chat.completion.chunk",
+            "response_sample": "1. **Supports brain function** — Sleep helps with memory, learning, focus, decision-making, and emotional regulation.\n\n2. **Strengthens the immune system** — Adequate sleep helps your body fight infections and recover from illness.\n\n3. **Promotes physical recovery** — During sleep, the body repairs tissues, restores energy, and supports muscle growth and healing.\n\n4. **Helps regulate hormones and metabolism** — Sleep affects appetite, blood sugar control, stress hormones, and weight management.\n\n5. **Supports heart health** — Consistent, quality sleep helps maintain healthy blood pressure and lowers the risk of cardiovascular problems.",
+            "usage": {
+              "completion_tokens": 131,
+              "prompt_tokens": 35
+            }
+          }
+        }
+      ],
+      "want_identity_status": "uncertain",
+      "want_verdict_status": "insufficient_data",
+      "want_identity_risk": false,
+      "want_no_predicted_model": true,
+      "want_no_predicted_family": true,
+      "want_evidence_not_containing": [
+        "Behavior most consistent",
+        "not in top candidates",
+        "score: 1.00"
+      ]
     }
   ]
 }

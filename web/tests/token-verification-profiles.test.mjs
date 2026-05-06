@@ -30,6 +30,9 @@ test("token verification profile selector exposes standard and deep to users, fu
     source,
     /if\s*\(\s*!isAdminUser\s*&&\s*probeProfile\s*===\s*'full'\s*\)\s*{\s*setProbeProfile\('deep'\)/s,
   );
+  assert.match(source, /return\s+100000/);
+  assert.match(source, /return\s+190000/);
+  assert.match(source, /return\s+370000/);
 });
 
 test("token verification copy does not expose internal probe engine branding", async () => {
@@ -125,6 +128,7 @@ test("token verification locale files define structured risk copy", async () => 
     "客户端模式",
     "当前信号不足，建议重跑 Deep/Full 探针或查看原始响应",
     "交叉判定数据不足，不能作为身份不一致结论",
+    "正在检测中，通常需要几十秒，完整检测可能需要数分钟。",
   ];
   const localeFiles = await readdir(classicLocaleDir);
   await Promise.all(

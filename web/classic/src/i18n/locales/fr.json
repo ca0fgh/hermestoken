@@ -3827,7 +3827,6 @@
     "不可用": "Indisponible",
     "首字节": "TTFT",
     "速度": "Vitesse",
-    "正在检测中，通常需要 1 到 3 分钟。": "Détection en cours. Elle prend généralement 1 à 3 minutes.",
     "风险提示": "Notes de risque",
     "清空结果": "Effacer les résultats",
     "开始检测": "Démarrer la détection",
@@ -3879,6 +3878,7 @@
     "探针清单": "Liste des sondes",
     "控制是否显示 LLM 探针检测入口": "Contrôle l'affichage de l'entrée de détection par sondes LLM",
     "控制是否显示市场入口": "Contrôle l'affichage de l'entrée du marché",
-    "控制顶栏与演示站页脚相关入口显示状态，全局生效": "Contrôle globalement les entrées de la barre supérieure et du pied de page du site de démonstration"
+    "控制顶栏与演示站页脚相关入口显示状态，全局生效": "Contrôle globalement les entrées de la barre supérieure et du pied de page du site de démonstration",
+    "正在检测中，通常需要几十秒，完整检测可能需要数分钟。": "Détection en cours. Elle prend généralement quelques secondes ; la détection complète peut prendre quelques minutes."
   }
 }

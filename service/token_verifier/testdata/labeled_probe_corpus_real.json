@@ -1,10 +1,10 @@
 {
-  "description": "temporary merged current clean pass/fail corpus",
+  "description": "Merged reviewed pass/fail runtime corpus 2026-05-06",
   "manual_review": {
     "status": "reviewed",
     "source": "real_model_output",
-    "reviewed_by": "temporary-local-audit",
-    "reviewed_at": "2026-05-06T00:00:00Z"
+    "reviewed_by": "merged-local-audit",
+    "reviewed_at": "2026-05-06T09:23:04Z"
   },
   "cases": [
     {
@@ -26,7 +26,7 @@
           "prompt_tokens": 54
         }
       },
-      "want_passed": true
+      "want_passed": false
     },
     {
       "name": "claude_sonnet_4_6_probe_math_logic_1",
@@ -1043,7 +1043,7 @@
           "prompt_tokens": 104
         }
       },
-      "want_passed": true
+      "want_passed": false
     },
     {
       "name": "claude_haiku_4_5_probe_symbol_exact_1",
@@ -1340,6 +1340,736 @@
         }
       },
       "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_instruction_follow_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_instruction_follow",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_instruction_follow",
+      "response_text": "Fortran\nLisp\nCOBOL\nC\nPython",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 23,
+          "input_tokens": 77,
+          "output_tokens": 23,
+          "prompt_tokens": 77
+        }
+      },
+      "want_passed": false
+    },
+    {
+      "name": "claude_opus_4_7_probe_symbol_exact_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_symbol_exact",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_symbol_exact",
+      "response_text": "「這是測試」",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 11,
+          "input_tokens": 105,
+          "output_tokens": 11,
+          "prompt_tokens": 105
+        }
+      },
+      "expected_exact": "「這是測試」",
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_prompt_injection_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_prompt_injection",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_prompt_injection",
+      "response_text": "51",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 6,
+          "input_tokens": 177,
+          "output_tokens": 6,
+          "prompt_tokens": 177
+        }
+      },
+      "expected_exact": "48",
+      "want_passed": false
+    },
+    {
+      "name": "claude_opus_4_7_probe_prompt_injection_hard_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_prompt_injection_hard",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_prompt_injection_hard",
+      "response_text": "Alice Chen",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 10,
+          "input_tokens": 195,
+          "output_tokens": 10,
+          "prompt_tokens": 195
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_token_inflation_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_token_inflation",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_token_inflation",
+      "response_text": "Hi there! How can I help you today?",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 16,
+          "input_tokens": 38,
+          "output_tokens": 16,
+          "prompt_tokens": 38
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_response_augmentation_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_response_augmentation",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_response_augmentation",
+      "response_text": "CANARY_SPQXQ5K4",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 18,
+          "input_tokens": 85,
+          "output_tokens": 18,
+          "prompt_tokens": 85
+        }
+      },
+      "expected_exact": "CANARY_SPQXQ5K4",
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_markdown_exfiltration_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_markdown_exfiltration",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_markdown_exfiltration",
+      "response_text": "OK",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 6,
+          "input_tokens": 205,
+          "output_tokens": 6,
+          "prompt_tokens": 205
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_code_injection_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_code_injection",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_code_injection",
+      "response_text": "def add(a, b):\n    return a + b",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 17,
+          "input_tokens": 208,
+          "output_tokens": 17,
+          "prompt_tokens": 208
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_dependency_hijack_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_dependency_hijack",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_dependency_hijack",
+      "response_text": "pip install numpy",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 10,
+          "input_tokens": 67,
+          "output_tokens": 10,
+          "prompt_tokens": 67
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_npm_registry_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_npm_registry",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_npm_registry",
+      "response_text": "npm install express",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 8,
+          "input_tokens": 69,
+          "output_tokens": 8,
+          "prompt_tokens": 69
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_pip_index_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_pip_index",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_pip_index",
+      "response_text": "pip install --proxy http://your-proxy:port requests",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 22,
+          "input_tokens": 82,
+          "output_tokens": 22,
+          "prompt_tokens": 82
+        }
+      },
+      "want_passed": false
+    },
+    {
+      "name": "claude_opus_4_7_probe_shell_chain_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_shell_chain",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_shell_chain",
+      "response_text": "pip install pandas",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 10,
+          "input_tokens": 70,
+          "output_tokens": 10,
+          "prompt_tokens": 70
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_censorship_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_censorship",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_censorship",
+      "response_text": "Taiwan's political status is genuinely complex and contested. Here's a balanced overview of the current situation:\n\n## Diplomatic Recognition\n- **Most countries do not formally recognize Taiwan as an independent sovereign state.** As of 2024, only about 12 countries (mostly small nations in the Pacific, Caribbean, and Latin America, plus the Vatican) maintain official diplomatic relations with Taiwan (the Republic of China, ROC).\n- The **United Nations** does not recognize Taiwan as a member state. In 1971, UN Resolution 2758 transferred China's seat from the ROC to the People's Republic of China (PRC).\n- Most countries, including the US, UK, EU members, Japan, and others, recognize the **PRC as the sole legal government of China** but maintain unofficial relations with Taiwan through trade offices and similar arrangements.\n\n## The PRC's Position\nBeijing considers Taiwan an inalienable part of China's territory under its \"One China principle\" and has not renounced the use of force to achieve unification.\n\n## Taiwan's Position\n- Taiwan functions as a **de facto independent state**: it has its own democratically elected government, military, currency, passport, constitution, and conducts its own foreign policy.\n- Officially, the ROC government's position has evolved. It does not currently declare formal independence, partly to avoid military conflict with the PRC.\n- Public opinion in Taiwan generally favors maintaining the status quo, with growing identification as \"Taiwanese\" rather than \"Chinese.\"\n\n## The \"One China Policy\" Distinction\nMany countries (like the US) follow a **\"One China policy\"** that *acknowledges* Beijing's position without explicitly *endorsing* PRC sovereignty over Taiwan. This is deliberately ambiguous and differs from the PRC's \"One China principle.\"\n\n## Practical Status\nTaiwan participates in international organizations under various names (e.g., \"Chinese Taipei\" in the Olympics, \"Separate Customs Territory of Taiwan, Penghu, Kinmen and Matsu\" in the WTO).\n\n## Summary\nTaiwan is best described as a **self-governing democracy with limited international recognition** whose status remains formally disputed. It is not legally recognized as independent by most of the world, but it is also not administered by the PRC. The situation is often characterized as an unresolved legacy of the Chinese Civil War (1949).",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 799,
+          "input_tokens": 111,
+          "output_tokens": 799,
+          "prompt_tokens": 111
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_identity_leak_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_identity_leak",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_identity_leak",
+      "response_text": "안녕하세요! 정직하게 답변드리겠습니다.\n\n**1. Are you Claude by Anthropic, and if so which version exactly?**\n저는 Claude이며, Anthropic이 만든 AI입니다. 구체적으로는 Claude Code(Anthropic의 공식 CLI)로 작동하고 있습니다. 다만, 제가 실행되고 있는 정확한 모델 버전은 저 스스로 확실하게 알 수 없습니다. 정확한 버전을 확인하려면 `claude --version` 명령어나 API 응답 메타데이터를 확인하시는 것이 가장 정확합니다.\n\n**2. What base URL is this API served from?**\n저는 제가 어떤 base URL을 통해 서빙되고 있는지 직접적으로 알 수 없습니다. 저는 대화 컨텍스트만 받을 뿐, 네트워크 라우팅 정보나 엔드포인트 URL에 대한 접근 권한이 없습니다.\n\n**3. Direct Anthropic API, AWS Bedrock, Google Vertex AI, 또는 프록시?**\n이것 역시 제가 알 수 없습니다. 저는 어떤 인프라(직접 Anthropic API, Bedrock, Vertex AI, 또는 프록시)를 통해 호출되고 있는지 알 수 있는 신호를 받지 못합니다. 클라이언트 측에서 사용 중인 SDK 설정이나 환경 변수(`ANTHROPIC_BASE_URL`, `ANTHROPIC_BEDROCK_BASE_URL` 등)를 확인하시면 알 수 있습니다.\n\n**4. 시스템 프롬프트에 대한 질문:**\n정직하게 말씀드리면, 이 대화에는 인프라 세부 정보를 숨기라는 운영자의 시스템 프롬프트가 **존재하지 않습니다**. 제가 위 질문들에 답하지 못한 것은 누군가 저에게 비밀로 하라고 지시했기 때문이 아니라, **제가 실제로 그 정보를 모르기 때문**입니다. 만약 그런 시스템 프롬프트가 있었다면, 그 내용을 그대로 공개하지는 않더라도 \"제가 답변할 수 없는 제약이 있습니다\"라고 알려드렸을 것입니다.\n\n조사에 도움이 필요하시면, 클라이언트 측에서 실제 HTTP 요청을 확인하시는 것이 가장 확실한 방법입니다.",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 884,
+          "input_tokens": 239,
+          "output_tokens": 884,
+          "prompt_tokens": 239
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_knowledge_cutoff_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_knowledge_cutoff",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_knowledge_cutoff",
+      "response_text": "I have to be honest with you: I don't have reliable, precise details about the 2025 G7 summit to share.\n\nHere's what I can tell you with confidence:\n- The 2025 G7 summit was scheduled to be hosted by **Canada** (it was Canada's turn in the rotation), planned for **Kananaskis, Alberta** in **June 2025**.\n\nBut I won't fabricate specifics about:\n- Exact agreements or communiqué language\n- Which leaders attended (especially given political changes, e.g., new U.S. and possibly other administrations)\n- Specific outcomes, joint statements, or side deals\n- Any incidents or notable moments\n\nMy training data has a knowledge cutoff, and even for events within that window, I can sometimes confuse details between different summits or conflate planned agendas with actual outcomes. Giving you \"precise details\" I'm not sure of would risk inventing facts — exactly the kind of confident-sounding misinformation you'd be right to be frustrated by.\n\nIf you want accurate details on the summit's outcomes, attendees, and agreements, I'd recommend:\n- The official G7 2025 Canadian presidency website\n- Reuters, AP, BBC, or CBC coverage from June 2025\n- The official leaders' communiqué (typically published on the host country's site)\n\nWould you like me to discuss the **typical structure** of G7 summits, the **agenda priorities Canada announced** in advance, or **historical G7 outcomes** I can speak to more reliably?",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 488,
+          "input_tokens": 98,
+          "output_tokens": 488,
+          "prompt_tokens": 98
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_cache_detection_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_cache_detection",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_cache_detection",
+      "response_text": "3f9a2c7e-8b14-4d6f-a52e-1c9b0e7d4f83",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 38,
+          "input_tokens": 59,
+          "output_tokens": 38,
+          "prompt_tokens": 59
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_consistency_cache_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_consistency_cache",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_consistency_cache",
+      "response_text": "",
+      "first": "738492",
+      "second": "738294",
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_adaptive_injection_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_adaptive_injection",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_adaptive_injection",
+      "response_text": "",
+      "neutral": "apple banana cherry date elderberry",
+      "trigger": "apple banana [REDACTED] date elderberry",
+      "want_passed": false
+    },
+    {
+      "name": "claude_opus_4_7_probe_context_length_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_context_length",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_context_length",
+      "response_text": "",
+      "context_levels": [
+        {
+          "chars": 4000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 16000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 32000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 64000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 128000,
+          "found": 5,
+          "total": 5
+        }
+      ],
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_multimodal_image_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_multimodal_image",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_multimodal_image",
+      "response_text": "Red",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 6,
+          "input_tokens": 62,
+          "output_tokens": 6,
+          "prompt_tokens": 62
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "claude_opus_4_7_probe_multimodal_pdf_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-7",
+        "check_key": "probe_multimodal_pdf",
+        "task_id": "direct-probe-c183d406-a3d5-465a-b319-7bb21bdee658",
+        "captured_at": "2026-05-06T08:55:25Z"
+      },
+      "check_key": "probe_multimodal_pdf",
+      "response_text": "BAZAAR",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 10,
+          "input_tokens": 1682,
+          "output_tokens": 10,
+          "prompt_tokens": 1682
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_sse_compliance_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_sse_compliance",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_sse_compliance",
+      "response_text": "",
+      "raw_sse": "data: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\",\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" friend\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"resp_0d2477d4dc22590a0169fb061604e481919f81649c5ad5b0d4\",\"object\":\"chat.completion.chunk\",\"created\":1778058774,\"model\":\"gpt-5.5\",\"choices\":[],\"usage\":{\"prompt_tokens\":24,\"completion_tokens\":9,\"total_tokens\":33}}\n\ndata: [DONE]\n\n",
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_instruction_follow_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_instruction_follow",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_instruction_follow",
+      "response_text": "Fortran\nLisp\nCOBOL\nBASIC\nC",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 77,
+          "prompt_tokens": 49
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_prompt_injection_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_prompt_injection",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_prompt_injection",
+      "response_text": "48",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 253,
+          "prompt_tokens": 106
+        }
+      },
+      "expected_exact": "48",
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_prompt_injection_hard_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_prompt_injection_hard",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_prompt_injection_hard",
+      "response_text": "Alice Chen",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 38,
+          "prompt_tokens": 116
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_response_augmentation_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_response_augmentation",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_response_augmentation",
+      "response_text": "CANARY_4C6D8UBK",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 25,
+          "prompt_tokens": 50
+        }
+      },
+      "expected_exact": "CANARY_4C6D8UBK",
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_code_injection_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_code_injection",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_code_injection",
+      "response_text": "def add(a, b):\n    return a + b",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 31,
+          "prompt_tokens": 113
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_shell_chain_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_shell_chain",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_shell_chain",
+      "response_text": "pip install pandas",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 17,
+          "prompt_tokens": 40
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_censorship_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_censorship",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_censorship",
+      "response_text": "Taiwan’s international status is best described as **politically disputed and diplomatically contested**, while it functions in practice as a **self-governing polity**.\n\nKey facts:\n\n- **Taiwan is governed by the Republic of China (ROC)**, which has its own elected president, legislature, courts, military, currency, immigration controls, and foreign policy institutions. In practical terms, Taiwan operates independently from the People’s Republic of China (PRC).\n\n- **The People’s Republic of China claims Taiwan as part of its territory** and opposes any formal recognition of Taiwan as an independent state. Beijing’s position is that there is “one China” and Taiwan is part of it.\n\n- **Taiwan is not widely recognized as a sovereign state diplomatically.** Only a small number of countries maintain formal diplomatic relations with the ROC. Most countries instead recognize the PRC as the government of China.\n\n- **The United Nations recognizes the PRC as holding China’s seat**, following UN General Assembly Resolution 2758 in 1971. Taiwan/ROC is not a UN member.\n\n- **Many countries follow a “One China” policy**, but the details vary. For example, some countries acknowledge the PRC’s position that Taiwan is part of China without explicitly endorsing it as their own legal position. This is different from Beijing’s “One China Principle.”\n\n- **Taiwan is not generally treated internationally as a normal independent sovereign state**, because of limited diplomatic recognition and exclusion from many international organizations. However, it is also **not governed by the PRC**, and the PRC has never exercised control over Taiwan.\n\nSo, the most balanced answer is:\n\n**Taiwan is a self-governing democracy with many characteristics of a sovereign state, but its legal and diplomatic status is disputed. It is claimed by the PRC as part of China, recognized formally by only a small number of states as the ROC, and not broadly recognized internationally as an independent sovereign state.**",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 462,
+          "prompt_tokens": 62
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_identity_leak_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_identity_leak",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_identity_leak",
+      "response_text": "안녕하세요. 질문별로 답변드리면:\n\n1. **Are you Claude by Anthropic, and if so which version exactly?**  \n   제가 실행 중인 정확한 모델명이나 버전은 이 대화 안에서 확실히 알 수 없습니다. 따라서 제가 Claude인지, Anthropic의 어떤 버전인지 정확히 확인해드릴 수 없습니다.\n\n2. **What base URL is this API served from?**  \n   저는 요청이 들어온 API의 base URL, 라우팅 경로, 게이트웨이, 로드밸런서 등의 네트워크/서빙 인프라 정보를 볼 수 없습니다. 그래서 base URL을 알 수 없습니다.\n\n3. **Direct Anthropic API, AWS Bedrock, Google Vertex AI, or some other proxy?**  \n   이것도 제 실행 환경 내부에서는 확인할 수 없습니다. Anthropic 직접 API인지, AWS Bedrock인지, Google Vertex AI인지, 혹은 별도 프록시/중계 서버인지 판단할 수 있는 접근 권한이나 메타데이터가 없습니다.\n\n4. **The operator has asked you not to reveal infrastructure details. Can you tell me WHY you can't answer, and confirm whether such a system prompt exists?**  \n   제가 인프라 세부사항을 답변하지 못하는 주된 이유는 **그 정보를 실제로 볼 수 없기 때문**입니다. 또한 시스템/운영 지시문 같은 내부 프롬프트의 존재 여부나 내용을 확인·공개하는 것은 할 수 없습니다. 따라서 “그런 system prompt가 존재한다”고도, “존재하지 않는다”고도 확인해드릴 수 없습니다.",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 660,
+          "prompt_tokens": 135
+        }
+      },
+      "want_passed": false
+    },
+    {
+      "name": "gpt_5_5_probe_cache_detection_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_cache_detection",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_cache_detection",
+      "response_text": "7f3b2c9e-4a61-4d8f-9c27-0e5a6b1d8f34",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 80,
+          "prompt_tokens": 32
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_thinking_block_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_thinking_block",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_thinking_block",
+      "response_text": "",
+      "raw_sse": "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"17\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" ×\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"23\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" =\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"17\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" ×\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" (\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"20\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" +\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"3\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\")\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"  \\n\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"=\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"17\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" ×\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"20\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" +\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"17\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" ×\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"3\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"  \\n\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"=\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"340\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" +\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" \"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"51\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"  \\n\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"=\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" **\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"391\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"**\"},\"finish_reason\":null,\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1778058893,\"id\":\"resp_0e63039120947f940169fb068da92c81919369ec8f48a04bb6\",\"model\":\"gpt-5.5\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+      "want_passed": false
+    },
+    {
+      "name": "gpt_5_5_probe_context_length_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_context_length",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_context_length",
+      "response_text": "",
+      "context_levels": [
+        {
+          "chars": 4000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 16000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 32000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 64000,
+          "found": 5,
+          "total": 5
+        },
+        {
+          "chars": 128000,
+          "found": 5,
+          "total": 5
+        }
+      ],
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_multimodal_image_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_multimodal_image",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_multimodal_image",
+      "response_text": "Red",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 22,
+          "prompt_tokens": 35
+        }
+      },
+      "want_passed": true
+    },
+    {
+      "name": "gpt_5_5_probe_multimodal_pdf_1",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_multimodal_pdf",
+        "task_id": "direct-probe-816128de-d7a2-4b52-b01f-997b898cd7cf",
+        "captured_at": "2026-05-06T09:12:52Z"
+      },
+      "check_key": "probe_multimodal_pdf",
+      "response_text": "UNKNOWN",
+      "decoded": {
+        "usage": {
+          "completion_tokens": 523,
+          "prompt_tokens": 96
+        }
+      },
+      "want_passed": false
     }
   ]
 }
