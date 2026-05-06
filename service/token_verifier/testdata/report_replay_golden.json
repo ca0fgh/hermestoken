@@ -1,0 +1,274 @@
+[
+  {
+    "name": "unscored_endpoint_errors_are_incomplete_not_model_risk",
+    "results": [
+      {
+        "provider": "anthropic",
+        "group": "security",
+        "check_key": "probe_npm_registry",
+        "model_name": "claude-opus-4-7",
+        "skipped": true,
+        "success": false,
+        "score": 0,
+        "error_code": "upstream_error",
+        "message": "upstream model unavailable",
+        "risk_level": "unknown"
+      },
+      {
+        "provider": "anthropic",
+        "group": "security",
+        "check_key": "probe_pip_index",
+        "model_name": "claude-opus-4-7",
+        "skipped": true,
+        "success": false,
+        "score": 0,
+        "error_code": "http_502",
+        "message": "HTTP 502",
+        "risk_level": "unknown"
+      }
+    ],
+    "want_probe_score": 0,
+    "want_probe_score_max": 100,
+    "want_risks_count": 0,
+    "want_conclusion_contains": "未完成",
+    "want_status_by_check": {
+      "probe_npm_registry": "skipped",
+      "probe_pip_index": "skipped"
+    }
+  },
+  {
+    "name": "high_risk_probe_failures_surface_as_risks",
+    "results": [
+      {
+        "provider": "openai",
+        "group": "security",
+        "check_key": "probe_infra_leak",
+        "model_name": "gpt-5.5",
+        "success": false,
+        "score": 0,
+        "error_code": "infra_leak_high",
+        "message": "基础设施泄露高危：响应确认了真实后端或协议特征",
+        "risk_level": "high",
+        "evidence": ["响应确认了当前服务的云平台、endpoint、协议参数或响应 ID 格式"]
+      },
+      {
+        "provider": "openai",
+        "group": "canary",
+        "check_key": "canary_math_mul",
+        "model_name": "gpt-5.5",
+        "success": false,
+        "score": 0,
+        "message": "canary 精确输出不匹配，期望：30883"
+      }
+    ],
+    "want_probe_score": 0,
+    "want_probe_score_max": 0,
+    "want_risks_contains": ["基础设施", "金丝雀"],
+    "want_status_by_check": {
+      "probe_infra_leak": "failed",
+      "canary_math_mul": "failed"
+    }
+  },
+  {
+    "name": "vague_identity_self_claim_is_insufficient_not_mismatch",
+    "results": [
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_identity_self_knowledge",
+        "model_name": "gpt-5.5",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "I am an AI assistant and cannot verify the exact upstream model."
+      }
+    ],
+    "want_probe_score": 0,
+    "want_probe_score_max": 0,
+    "want_risks_count": 0,
+    "want_identity_status": "uncertain",
+    "want_identity_verdict_status": "insufficient_data",
+    "want_predicted_family": "",
+    "want_status_by_check": {
+      "probe_identity_self_knowledge": "neutral"
+    }
+  },
+  {
+    "name": "current_affairs_only_identity_signal_is_not_mismatch",
+    "results": [
+      {
+        "provider": "openai",
+        "group": "quality",
+        "check_key": "probe_instruction_follow",
+        "model_name": "gpt-5.5",
+        "success": true,
+        "score": 100,
+        "latency_ms": 800
+      },
+      {
+        "provider": "openai",
+        "group": "quality",
+        "check_key": "probe_math_logic",
+        "model_name": "gpt-5.5",
+        "success": true,
+        "score": 100,
+        "latency_ms": 800
+      },
+      {
+        "provider": "openai",
+        "group": "integrity",
+        "check_key": "probe_sse_compliance",
+        "model_name": "gpt-5.5",
+        "success": true,
+        "score": 100,
+        "latency_ms": 1200,
+        "ttft_ms": 300,
+        "tokens_ps": 120
+      },
+      {
+        "provider": "openai",
+        "group": "canary",
+        "check_key": "canary_math_mul",
+        "model_name": "gpt-5.5",
+        "success": true,
+        "score": 100,
+        "latency_ms": 800
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_jp_pm",
+        "model_name": "gpt-5.5",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "石破茂"
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_fr_pm",
+        "model_name": "gpt-5.5",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "François Bayrou"
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_uk_pm",
+        "model_name": "gpt-5.5",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "Keir Starmer"
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_de_chan",
+        "model_name": "gpt-5.5",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "Friedrich Merz"
+      }
+    ],
+    "want_probe_score": 100,
+    "want_probe_score_max": 100,
+    "want_risks_count": 0,
+    "want_identity_status": "uncertain",
+    "want_identity_verdict_status": "insufficient_data",
+    "want_predicted_family": "",
+    "want_status_by_check": {
+      "probe_instruction_follow": "passed",
+      "probe_math_logic": "passed",
+      "probe_sse_compliance": "passed",
+      "canary_math_mul": "passed",
+      "probe_ling_jp_pm": "neutral",
+      "probe_ling_fr_pm": "neutral",
+      "probe_ling_uk_pm": "neutral",
+      "probe_ling_de_chan": "neutral"
+    }
+  },
+  {
+    "name": "explicit_glm_zhipu_self_claim_maps_to_zhipu_candidate",
+    "results": [
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_identity_self_knowledge",
+        "model_name": "glm-compatible-alias",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "I am a GLM model from Zhipu AI."
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_jp_pm",
+        "model_name": "glm-compatible-alias",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "野田佳彦"
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_fr_pm",
+        "model_name": "glm-compatible-alias",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "Jean Castex"
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_uk_pm",
+        "model_name": "glm-compatible-alias",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "Rishi Sunak"
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_kr_crisis",
+        "model_name": "glm-compatible-alias",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "I do not have information about that event."
+      },
+      {
+        "provider": "openai",
+        "group": "identity",
+        "check_key": "probe_ling_de_chan",
+        "model_name": "glm-compatible-alias",
+        "neutral": true,
+        "success": true,
+        "score": 0,
+        "private_response_text": "Olaf Scholz"
+      }
+    ],
+    "want_probe_score": 0,
+    "want_probe_score_max": 0,
+    "want_risks_count": 0,
+    "want_identity_status": "match",
+    "want_predicted_family": "zhipu",
+    "want_top_candidate_family": "zhipu",
+    "want_status_by_check": {
+      "probe_identity_self_knowledge": "neutral",
+      "probe_ling_jp_pm": "neutral",
+      "probe_ling_fr_pm": "neutral",
+      "probe_ling_uk_pm": "neutral",
+      "probe_ling_kr_crisis": "neutral",
+      "probe_ling_de_chan": "neutral"
+    }
+  }
+]

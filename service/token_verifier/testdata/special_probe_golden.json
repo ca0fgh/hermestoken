@@ -1,0 +1,209 @@
+{
+  "token_inflation": [
+    {
+      "name": "at_limit",
+      "prompt_tokens": 50,
+      "want_passed": true,
+      "want_score": 100
+    },
+    {
+      "name": "over_limit",
+      "prompt_tokens": 51,
+      "want_passed": false,
+      "want_score": 0,
+      "want_error_code": "token_inflation"
+    },
+    {
+      "name": "missing_usage",
+      "want_passed": true,
+      "want_score": 0,
+      "want_skipped": true,
+      "want_error_code": "usage_missing"
+    }
+  ],
+  "sse_compliance": [
+    {
+      "name": "valid_delta",
+      "raw": "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n",
+      "want_passed": true,
+      "want_warning": false,
+      "want_data_lines": 1
+    },
+    {
+      "name": "missing_choices_warning",
+      "raw": "data: {\"model\":\"gpt-test\"}\n\ndata: [DONE]\n\n",
+      "want_passed": true,
+      "want_warning": true,
+      "want_missing_choices_count": 1
+    },
+    {
+      "name": "invalid_json",
+      "raw": "data: {not-json}\n\n",
+      "want_passed": false
+    }
+  ],
+  "cache_headers": [
+    {
+      "name": "miss_uppercase",
+      "value": "MISS",
+      "want_hit": false
+    },
+    {
+      "name": "bypass",
+      "value": "BYPASS",
+      "want_hit": false
+    },
+    {
+      "name": "dynamic",
+      "value": "DYNAMIC",
+      "want_hit": false
+    },
+    {
+      "name": "no_cache",
+      "value": "no-cache",
+      "want_hit": false
+    },
+    {
+      "name": "hit_uppercase",
+      "value": "HIT",
+      "want_hit": true
+    },
+    {
+      "name": "stale",
+      "value": "STALE",
+      "want_hit": true
+    },
+    {
+      "name": "revalidated",
+      "value": "REVALIDATED",
+      "want_hit": true
+    },
+    {
+      "name": "cached",
+      "value": "cached",
+      "want_hit": true
+    }
+  ],
+  "thinking_sse": [
+    {
+      "name": "text_only_anthropic",
+      "raw": "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"4\"}}\n\ndata: [DONE]\n\n",
+      "want_thinking": false,
+      "want_text": "4"
+    },
+    {
+      "name": "anthropic_thinking_block",
+      "raw": "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"private\"}}\n\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"4\"}}\n\ndata: [DONE]\n\n",
+      "want_thinking": true,
+      "want_text": "4"
+    },
+    {
+      "name": "openai_thinking_delta_type",
+      "raw": "data: {\"choices\":[{\"delta\":{\"type\":\"thinking\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"4\"}}]}\n\ndata: [DONE]\n\n",
+      "want_thinking": true,
+      "want_text": "4"
+    }
+  ],
+  "consistency_cache": [
+    {
+      "name": "different_random_outputs",
+      "first": "18342",
+      "second": "927451",
+      "want_passed": true,
+      "want_score": 100
+    },
+    {
+      "name": "identical_random_outputs",
+      "first": "424242",
+      "second": "424242",
+      "want_passed": false,
+      "want_score": 50,
+      "want_error_code": "possible_cache_hit"
+    },
+    {
+      "name": "empty_random_output",
+      "first": "",
+      "second": "927451",
+      "want_passed": false,
+      "want_score": 0,
+      "want_skipped": true,
+      "want_error_code": "consistency_unassessable"
+    }
+  ],
+  "adaptive_injection": [
+    {
+      "name": "identical_outputs",
+      "neutral": "same-router-response",
+      "trigger": "same-router-response",
+      "want_passed": true,
+      "want_score": 100
+    },
+    {
+      "name": "diverged_outputs",
+      "neutral": "apple banana cherry date elderberry",
+      "trigger": "apple banana aws_secret_access_key date elderberry",
+      "want_passed": false,
+      "want_score": 0,
+      "want_error_code": "adaptive_probe_diverged"
+    },
+    {
+      "name": "empty_trigger",
+      "neutral": "same-router-response",
+      "trigger": "",
+      "want_passed": false,
+      "want_score": 0,
+      "want_skipped": true,
+      "want_error_code": "adaptive_unassessable"
+    }
+  ],
+  "context_length": [
+    {
+      "name": "all_levels_pass",
+      "levels": [
+        {"chars": 4000, "found": 5, "total": 5},
+        {"chars": 16000, "found": 4, "total": 5}
+      ],
+      "want_passed": true,
+      "want_score": 100
+    },
+    {
+      "name": "truncated_after_first_level",
+      "levels": [
+        {"chars": 4000, "found": 5, "total": 5},
+        {"chars": 16000, "found": 2, "total": 5}
+      ],
+      "want_passed": false,
+      "want_score": 50,
+      "want_error_code": "context_truncated_warning"
+    },
+    {
+      "name": "smallest_level_failed",
+      "levels": [
+        {"chars": 4000, "found": 1, "total": 5}
+      ],
+      "want_passed": false,
+      "want_score": 0,
+      "want_error_code": "context_smallest_failed"
+    }
+  ],
+  "unassessable_results": [
+    {
+      "name": "consistency_request_failed",
+      "check_key": "probe_consistency_cache",
+      "error_code": "consistency_unassessable",
+      "message": "一次或多次请求失败，无法评估一致性"
+    },
+    {
+      "name": "adaptive_empty_response",
+      "check_key": "probe_adaptive_injection",
+      "error_code": "adaptive_unassessable",
+      "message": "One or both requests failed — cannot assess"
+    },
+    {
+      "name": "context_empty_response",
+      "check_key": "probe_context_length",
+      "error_code": "context_unassessable",
+      "message": "Context 长度探针请求失败，无法评估：empty_response"
+    }
+  ]
+}

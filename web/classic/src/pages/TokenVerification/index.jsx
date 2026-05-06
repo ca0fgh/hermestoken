@@ -27,9 +27,13 @@ import {
   Tag,
   Typography,
 } from '@douyinfe/semi-ui';
-import { IconPlayCircle, IconRefresh } from '@douyinfe/semi-icons';
+import {
+  IconDownload,
+  IconPlayCircle,
+  IconRefresh,
+} from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
-import { API, showError, showSuccess } from '../../helpers';
+import { API, downloadTextAsFile, showError, showSuccess } from '../../helpers';
 import { UserContext } from '../../context/User';
 import './index.css';
 
@@ -173,6 +177,19 @@ function probeProfileTagColor(profile) {
   return 'light-blue';
 }
 
+function buildProbeEvidenceFilename(result) {
+  const compactPart = (value, fallback) =>
+    String(value || fallback)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || fallback;
+  const provider = compactPart(result?.provider, 'provider');
+  const model = compactPart(result?.model, 'model');
+  const profile = compactPart(result?.probe_profile, 'profile');
+  return `token-verification-evidence-${provider}-${model}-${profile}.json`;
+}
+
 function probeStatusMeta(record, t) {
   const normalizedStatus =
     record.status || (record.success || record.passed ? 'passed' : 'failed');
@@ -247,6 +264,16 @@ function renderProbeMessage(value, record) {
       ))}
     </div>
   );
+}
+
+function renderIdentityPredictedFamily(value, record, t) {
+  if (
+    record.status === 'uncertain' ||
+    record.verdict?.status === 'insufficient_data'
+  ) {
+    return t('证据不足');
+  }
+  return value || '-';
 }
 
 function renderIdentityEvidence(items = [], record = {}, t = (value) => value) {
@@ -389,6 +416,16 @@ function TokenVerification() {
     }
   };
 
+  function exportProbeEvidence() {
+    if (!probeResult) {
+      return;
+    }
+    downloadTextAsFile(
+      `${JSON.stringify(probeResult, null, 2)}\n`,
+      buildProbeEvidenceFilename(probeResult),
+    );
+  }
+
   const checklistColumns = [
     {
       title: t('分组'),
@@ -443,7 +480,8 @@ function TokenVerification() {
       title: t('预测家族'),
       dataIndex: 'predicted_family',
       width: 120,
-      render: (value) => value || '-',
+      render: (value, record) =>
+        renderIdentityPredictedFamily(value, record, t),
     },
     {
       title: t('置信度'),
@@ -612,6 +650,14 @@ function TokenVerification() {
             onClick={() => setProbeResult(null)}
           >
             {t('清空结果')}
+          </Button>
+          <Button
+            type='tertiary'
+            icon={<IconDownload />}
+            disabled={!probeResult || probing}
+            onClick={exportProbeEvidence}
+          >
+            {t('导出证据')}
           </Button>
         </div>
 

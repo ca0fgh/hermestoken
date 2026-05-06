@@ -37,6 +37,42 @@ func TestSourceWeightedCandidatesProduceNormalizedScores(t *testing.T) {
 	}
 }
 
+func TestSourceWeightedCandidatesDoNotAmplifyVagueSelfClaim(t *testing.T) {
+	responses := map[CheckKey]string{
+		CheckProbeIdentitySelfKnowledge: "unknown",
+	}
+	results := []CheckResult{
+		identityProbeResultFor(ProviderOpenAI, "gpt-5.5", CheckProbeIdentitySelfKnowledge, responses[CheckProbeIdentitySelfKnowledge]),
+	}
+
+	candidates := sourceBehavioralIdentityCandidates(results, responses)
+
+	if len(candidates) == 0 {
+		t.Fatal("expected weak source behavioral candidate")
+	}
+	if candidates[0].Score >= identityMismatchScoreThreshold {
+		t.Fatalf("top candidate = %+v, want vague-only signal below mismatch threshold", candidates[0])
+	}
+}
+
+func TestSourceWeightedCandidatesRecognizeExplicitZhipuSelfClaim(t *testing.T) {
+	responses := map[CheckKey]string{
+		CheckProbeIdentitySelfKnowledge: "I am a GLM model from Zhipu AI.",
+	}
+	results := []CheckResult{
+		identityProbeResultFor(ProviderOpenAI, "gpt-5.5", CheckProbeIdentitySelfKnowledge, responses[CheckProbeIdentitySelfKnowledge]),
+	}
+
+	candidates := sourceBehavioralIdentityCandidates(results, responses)
+
+	if len(candidates) == 0 || candidates[0].Family != "zhipu" {
+		t.Fatalf("candidates = %+v, want explicit GLM/Zhipu self-claim to lead", candidates)
+	}
+	if candidates[0].Score < identityMismatchScoreThreshold {
+		t.Fatalf("top candidate = %+v, want explicit GLM/Zhipu signal above mismatch threshold", candidates[0])
+	}
+}
+
 func TestAggregateSourceTimingFeaturesIncludesOutputLengthBuckets(t *testing.T) {
 	features := aggregateSourceTimingFeatures([]CheckResult{
 		{CheckKey: CheckProbeIdentityStyleEN, TTFTMs: 400, TokensPS: 10, OutputTokens: intPtr(25)},
@@ -148,7 +184,7 @@ func TestSourceFingerprintTextInputsUseLLMProbeSuiteOrder(t *testing.T) {
 	}
 }
 
-func TestBuildReportWithOptionsUsesOptionalJudgeSignalOnHigherFusedScore(t *testing.T) {
+func TestBuildReportWithOptionsUsesOptionalJudgeSignalWithoutOverclaiming(t *testing.T) {
 	const apiKey = "judge-secret-token"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		responseBytes, _ := common.Marshal(map[string]any{
@@ -171,8 +207,12 @@ func TestBuildReportWithOptionsUsesOptionalJudgeSignalOnHigherFusedScore(t *test
 	if len(report.IdentityAssessments) != 1 {
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
-	if report.IdentityAssessments[0].PredictedFamily != "anthropic" {
-		t.Fatalf("assessment = %+v, want optional judge to affect fused predicted family", report.IdentityAssessments[0])
+	assessment := report.IdentityAssessments[0]
+	if len(assessment.Candidates) == 0 || assessment.Candidates[0].Family != "anthropic" {
+		t.Fatalf("assessment = %+v, want optional judge to affect fused candidate ordering", assessment)
+	}
+	if assessment.Status != identityStatusUncertain || assessment.PredictedFamily != "" {
+		t.Fatalf("assessment = %+v, want single judge signal to stay uncertain without predicted family", assessment)
 	}
 	if strings.Contains(mustMarshalForTest(report), apiKey) {
 		t.Fatal("report leaked judge API key")

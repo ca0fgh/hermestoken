@@ -1,0 +1,71 @@
+{
+  "description": "Reviewed real-model informational probe corpus assembled from timicc captures on 2026-05-06.",
+  "manual_review": {
+    "status": "reviewed",
+    "source": "real_model_output",
+    "reviewed_by": "codex",
+    "reviewed_at": "2026-05-06T02:20:00Z",
+    "notes": "Channel positive/negative use the same real Anthropic relay response with correct and intentionally wrong expected channels; signature roundtrip cases use real successful and failed roundtrip captures. API secrets are not included."
+  },
+  "cases": [
+    {
+      "name": "claude_haiku_4_5_probe_channel_signature_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5",
+        "check_key": "probe_channel_signature",
+        "task_id": "direct-probe-27c72839-879f-4fe3-beae-55002d3838c5",
+        "captured_at": "2026-05-06T02:09:02Z"
+      },
+      "check_key": "probe_channel_signature",
+      "message_id": "msg_01XmUS8yeWhRVPwtC5AiVHF7",
+      "raw_body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01XmUS8yeWhRVPwtC5AiVHF7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":28,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":1,\"service_tier\":\"standard\",\"inference_geo\":\"not_available\"}}    }\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"} }\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"OK\"}      }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0      }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null},\"usage\":{\"input_tokens\":28,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":4},\"context_management\":{\"applied_edits\":[]}               }\n\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"        }\n\n\n",
+      "want_channel": "anthropic-relay",
+      "want_passed": true
+    },
+    {
+      "name": "claude_haiku_4_5_probe_channel_signature_1_wrong_channel",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5",
+        "check_key": "probe_channel_signature",
+        "task_id": "direct-probe-27c72839-879f-4fe3-beae-55002d3838c5",
+        "captured_at": "2026-05-06T02:09:02Z",
+        "notes": "negative control: same real response evidence with intentionally wrong expected channel"
+      },
+      "check_key": "probe_channel_signature",
+      "message_id": "msg_01XmUS8yeWhRVPwtC5AiVHF7",
+      "raw_body": "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-haiku-4-5-20251001\",\"id\":\"msg_01XmUS8yeWhRVPwtC5AiVHF7\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"stop_details\":null,\"usage\":{\"input_tokens\":28,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":1,\"service_tier\":\"standard\",\"inference_geo\":\"not_available\"}}    }\n\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"} }\n\n\nevent: ping\ndata: {\"type\": \"ping\"}\n\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"OK\"}      }\n\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0      }\n\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"stop_details\":null},\"usage\":{\"input_tokens\":28,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":4},\"context_management\":{\"applied_edits\":[]}               }\n\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"        }\n\n\n",
+      "want_channel": "aws-bedrock",
+      "want_passed": false
+    },
+    {
+      "name": "claude_opus_4_6_probe_signature_roundtrip_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-6",
+        "check_key": "probe_signature_roundtrip",
+        "task_id": "direct-probe-54a5f12a-39a2-4991-a146-0f9b7809f1c5",
+        "captured_at": "2026-05-06T01:13:29Z"
+      },
+      "check_key": "probe_signature_roundtrip",
+      "thinking_present": true,
+      "roundtrip_status": 200,
+      "want_passed": true
+    },
+    {
+      "name": "claude_sonnet_4_6_probe_signature_roundtrip_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "check_key": "probe_signature_roundtrip",
+        "task_id": "direct-probe-d59ef4a5-6a7e-4d77-b9e3-b7a5d7d511bf",
+        "captured_at": "2026-05-06T01:39:49Z"
+      },
+      "check_key": "probe_signature_roundtrip",
+      "thinking_present": true,
+      "roundtrip_status": 502,
+      "want_passed": false
+    }
+  ]
+}

@@ -58,6 +58,8 @@ var (
 	sourceFamilyBaselinesErr  error
 )
 
+const sourceMinimumRawForFullCandidateScore = 3.0
+
 func sourceBehavioralIdentityCandidates(results []CheckResult, responses map[CheckKey]string) []IdentityCandidateSummary {
 	baselines := loadSourceFamilyBaselines()
 	if len(baselines) == 0 {
@@ -75,7 +77,7 @@ func sourceBehavioralIdentityCandidatesFromFeatures(features sourceFingerprintFe
 		reasons     []string
 	}
 	rawScores := make([]familyRawScore, 0, len(baselines))
-	maxRaw := 1.0
+	maxRaw := sourceMinimumRawForFullCandidateScore
 	for _, baseline := range baselines {
 		raw := 0.0
 		reasons := make([]string, 0)
@@ -171,7 +173,7 @@ func extractSourceSelfClaim(responses map[string]string) map[string]float64 {
 	selfText := strings.ToLower(responses["identity_self_knowledge"])
 	vague := strings.TrimSpace(selfText) != "" && !sourceHas(selfText,
 		"claude", "anthropic", "chatgpt", "gpt", "openai", "qwen", "通义",
-		"gemini", "llama", "mistral", "deepseek", "kiro", "amazon q",
+		"gemini", "llama", "mistral", "deepseek", "kiro", "amazon q", "glm", "zhipu", "智谱",
 	)
 	return map[string]float64{
 		"claude":   boolFloat(sourceHas(selfText, "claude", "anthropic")),
@@ -182,6 +184,7 @@ func extractSourceSelfClaim(responses map[string]string) map[string]float64 {
 		"mistral":  boolFloat(strings.Contains(selfText, "mistral")),
 		"deepseek": boolFloat(strings.Contains(selfText, "deepseek")),
 		"kiro":     boolFloat(sourceHas(selfText, "kiro", "amazon q developer", "kiro-cli")),
+		"zhipu":    boolFloat(sourceHas(selfText, "glm", "zhipu", "智谱")),
 		"vague":    boolFloat(vague),
 	}
 }

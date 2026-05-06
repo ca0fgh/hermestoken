@@ -1,6 +1,7 @@
 package token_verifier
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -122,6 +123,67 @@ func TestBuildReportDoesNotTreatSkippedEndpointMessagesAsRisks(t *testing.T) {
 	}
 }
 
+func TestBuildReportGoldenReplays(t *testing.T) {
+	for _, replay := range loadReportGoldenReplays(t) {
+		replay := replay
+		t.Run(replay.Name, func(t *testing.T) {
+			results := make([]CheckResult, 0, len(replay.Results))
+			for _, result := range replay.Results {
+				results = append(results, result.CheckResult)
+				results[len(results)-1].PrivateResponseText = result.PrivateResponseText
+			}
+			report := BuildReport(results)
+
+			if report.ProbeScore != replay.WantProbeScore || report.ProbeScoreMax != replay.WantProbeScoreMax {
+				t.Fatalf("score range = %d-%d, want %d-%d", report.ProbeScore, report.ProbeScoreMax, replay.WantProbeScore, replay.WantProbeScoreMax)
+			}
+			if replay.WantRisksCount != nil && len(report.Risks) != *replay.WantRisksCount {
+				t.Fatalf("risks = %#v, want count %d", report.Risks, *replay.WantRisksCount)
+			}
+			joinedRisks := strings.Join(report.Risks, "\n")
+			for _, want := range replay.WantRisksContains {
+				if !strings.Contains(joinedRisks, want) {
+					t.Fatalf("risks = %#v, want substring %q", report.Risks, want)
+				}
+			}
+			if replay.WantConclusionContains != "" && !strings.Contains(report.Conclusion, replay.WantConclusionContains) {
+				t.Fatalf("conclusion = %q, want substring %q", report.Conclusion, replay.WantConclusionContains)
+			}
+			for checkKey, wantStatus := range replay.WantStatusByCheck {
+				item := findChecklistItemForTest(report.Checklist, CheckKey(checkKey))
+				if item == nil {
+					t.Fatalf("checklist missing %s in %+v", checkKey, report.Checklist)
+				}
+				if item.Status != wantStatus {
+					t.Fatalf("%s status = %q, want %q", checkKey, item.Status, wantStatus)
+				}
+			}
+			if replay.WantIdentityStatus != "" {
+				if len(report.IdentityAssessments) != 1 {
+					t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
+				}
+				assessment := report.IdentityAssessments[0]
+				if assessment.Status != replay.WantIdentityStatus {
+					t.Fatalf("identity status = %q, want %q: %+v", assessment.Status, replay.WantIdentityStatus, assessment)
+				}
+				if assessment.PredictedFamily != replay.WantPredictedFamily {
+					t.Fatalf("predicted family = %q, want %q: %+v", assessment.PredictedFamily, replay.WantPredictedFamily, assessment)
+				}
+				if replay.WantIdentityVerdictStatus != "" {
+					if assessment.Verdict == nil || assessment.Verdict.Status != replay.WantIdentityVerdictStatus {
+						t.Fatalf("identity verdict = %+v, want status %q", assessment.Verdict, replay.WantIdentityVerdictStatus)
+					}
+				}
+				if replay.WantTopCandidateFamily != "" {
+					if len(assessment.Candidates) == 0 || assessment.Candidates[0].Family != replay.WantTopCandidateFamily {
+						t.Fatalf("top candidates = %+v, want family %q", assessment.Candidates, replay.WantTopCandidateFamily)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestBuildReportCountsWarningsAsHalfPointWithoutRisk(t *testing.T) {
 	report := BuildReport([]CheckResult{
 		{
@@ -145,6 +207,54 @@ func TestBuildReportCountsWarningsAsHalfPointWithoutRisk(t *testing.T) {
 	if got := report.Checklist[0].Status; got != "warning" {
 		t.Fatalf("warning checklist status = %q, want warning", got)
 	}
+}
+
+type reportGoldenReplay struct {
+	Name    string `json:"name"`
+	Results []struct {
+		CheckResult
+		PrivateResponseText string `json:"private_response_text"`
+	} `json:"results"`
+	WantProbeScore            int               `json:"want_probe_score"`
+	WantProbeScoreMax         int               `json:"want_probe_score_max"`
+	WantRisksCount            *int              `json:"want_risks_count"`
+	WantRisksContains         []string          `json:"want_risks_contains"`
+	WantConclusionContains    string            `json:"want_conclusion_contains"`
+	WantStatusByCheck         map[string]string `json:"want_status_by_check"`
+	WantIdentityStatus        string            `json:"want_identity_status"`
+	WantIdentityVerdictStatus string            `json:"want_identity_verdict_status"`
+	WantPredictedFamily       string            `json:"want_predicted_family"`
+	WantTopCandidateFamily    string            `json:"want_top_candidate_family"`
+}
+
+func loadReportGoldenReplays(t *testing.T) []reportGoldenReplay {
+	t.Helper()
+	data, err := os.ReadFile("testdata/report_replay_golden.json")
+	if err != nil {
+		t.Fatalf("read report replay golden samples: %v", err)
+	}
+	var replays []reportGoldenReplay
+	if err := common.Unmarshal(data, &replays); err != nil {
+		t.Fatalf("parse report replay golden samples: %v", err)
+	}
+	if len(replays) == 0 {
+		t.Fatal("report replay golden samples must not be empty")
+	}
+	for _, replay := range replays {
+		if strings.TrimSpace(replay.Name) == "" || len(replay.Results) == 0 {
+			t.Fatalf("invalid report replay sample: %+v", replay)
+		}
+	}
+	return replays
+}
+
+func findChecklistItemForTest(items []ChecklistItem, checkKey CheckKey) *ChecklistItem {
+	for i := range items {
+		if items[i].CheckKey == string(checkKey) {
+			return &items[i]
+		}
+	}
+	return nil
 }
 
 func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {

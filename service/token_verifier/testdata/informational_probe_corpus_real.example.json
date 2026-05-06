@@ -1,0 +1,42 @@
+{
+  "description": "Example only. Copy this file to informational_probe_corpus_real.json and replace every case with manually labeled real probe evidence before using it as empirical informational accuracy evidence.",
+  "manual_review": {
+    "status": "reviewed",
+    "source": "real_model_output",
+    "reviewed_by": "replace-with-reviewer",
+    "reviewed_at": "2026-05-06T00:00:00Z",
+    "notes": "Example metadata shape only. Do not use this example file as empirical evidence."
+  },
+  "cases": [
+    {
+      "name": "channel_signature_real_output_example",
+      "source": {
+        "provider": "openrouter",
+        "model": "gpt-5.5",
+        "check_key": "probe_channel_signature",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_channel_signature",
+      "headers": {"x-generation-id": "gen-real-example"},
+      "message_id": "gen-real-example",
+      "raw_body": "{\"id\":\"gen-real-example\"}",
+      "want_channel": "openrouter",
+      "want_passed": true
+    },
+    {
+      "name": "signature_roundtrip_real_output_example",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-test",
+        "check_key": "probe_signature_roundtrip",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_signature_roundtrip",
+      "thinking_present": true,
+      "roundtrip_status": 200,
+      "want_passed": true
+    }
+  ]
+}

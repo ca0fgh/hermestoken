@@ -741,6 +741,11 @@
       "signals": [
         [
           "selfClaim",
+          "zhipu",
+          4
+        ],
+        [
+          "selfClaim",
           "vague",
           1.5
         ],

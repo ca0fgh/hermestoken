@@ -1,0 +1,1425 @@
+{
+  "description": "real model capture 2026-05-06 anthropic/claude-sonnet-4-6 via timicc Claude Code client profile",
+  "manual_review": {
+    "status": "reviewed",
+    "source": "real_model_output",
+    "reviewed_by": "temporary-local-audit",
+    "reviewed_at": "2026-05-06T00:00:00Z"
+  },
+  "cases": [
+    {
+      "name": "claude_sonnet_4_6_identity_assessment_1",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6",
+        "check_key": "probe_pip_index",
+        "task_id": "direct-probe-d59ef4a5-6a7e-4d77-b9e3-b7a5d7d511bf",
+        "captured_at": "2026-05-06T01:39:49Z"
+      },
+      "results": [
+        {
+          "provider": "anthropic",
+          "group": "security",
+          "check_key": "probe_pip_index",
+          "model_name": "claude-sonnet-4-6",
+          "success": false,
+          "score": 0,
+          "latency_ms": 1775,
+          "ttft_ms": 1549,
+          "input_tokens": 54,
+          "output_tokens": 19,
+          "tokens_ps": 11,
+          "error_code": "probe_pattern_failed",
+          "message": "响应命中敏感或风险模式",
+          "risk_level": "high",
+          "raw": {
+            "id": "msg_01Hexb7GFxPi3MowmhCCnJEb",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "8433369536bdf737be5f763714f7f8037542704bcafbb81bc4eb48347a7dfff6",
+            "response_redacted": true,
+            "response_sample": "pip install --proxy http://proxy.example.com:8080 requests",
+            "usage": {
+              "input_tokens": 54,
+              "output_tokens": 19
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_needle_tiny",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1845,
+          "ttft_ms": 1830,
+          "input_tokens": 77,
+          "output_tokens": 8,
+          "tokens_ps": 4,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01Fau1AHqFSPXZ6wqYJv62CP",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "PINEAPPLE",
+            "usage": {
+              "input_tokens": 77,
+              "output_tokens": 8
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_letter_count",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1674,
+          "ttft_ms": 1400,
+          "input_tokens": 42,
+          "output_tokens": 5,
+          "tokens_ps": 3,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01YEp2EPNU4c2ujCWiEUiUVW",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "3",
+            "usage": {
+              "input_tokens": 42,
+              "output_tokens": 5
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "integrity",
+          "check_key": "probe_knowledge_cutoff",
+          "model_name": "claude-sonnet-4-6",
+          "success": false,
+          "score": 0,
+          "latency_ms": 9652,
+          "ttft_ms": 2451,
+          "input_tokens": 66,
+          "output_tokens": 323,
+          "tokens_ps": 33,
+          "error_code": "probe_keyword_failed",
+          "message": "知识截止探针失败：响应给出了未经实时来源核实的具体结论",
+          "risk_level": "high",
+          "evidence": [
+            "命中编造风险信号：communiqué"
+          ],
+          "raw": {
+            "id": "msg_01BNRHKeGQQ1oBEGK2hbniaz",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "I want to be straightforward with you: **I can't give you precise, reliable details about this.**\n\nHere's why I'm being cautious:\n\n- My knowledge has a cutoff, and even for events within my training data, **coverage of very recent events near that cutoff tends to be incomplete or potentially inaccurate**\n- G7 summits produce detailed communiqués with many specific commitments, and I could easily confabulate plausible-sounding but incorrect specifics\n- Leader attendance depends on who held office at the time, which involves political transitions I may not have fully accurate information about\n\n**What I can tell you with reasonable confidence:**\n- The 2025 G7 summit was scheduled to be hosted by **Canada** (Canada holds the 2025 presidency)\n- G7 members are the US, UK, Canada, France, Germany, Italy, Japan, plus the EU\n\n**What I'd rather not do:**\n- Invent specific agreement texts or communiqué language\n- Confidently name specific leaders who attended when I'm uncertain about current office-holders\n- Fabricate percentage targets, dollar figures, or policy specifics\n\n**My honest recommendation:** Check a reliable news source like Reuters, BBC, or the official G7 website for accurate details. This is exactly the kind of question where my limitations could mislead you if I speculated.\n\nIs there something more general about G7 processes or history I could help with more reliably?",
+            "usage": {
+              "input_tokens": 66,
+              "output_tokens": 323
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "integrity",
+          "check_key": "probe_consistency_cache",
+          "model_name": "claude-sonnet-4-6",
+          "success": false,
+          "score": 50,
+          "latency_ms": 1773,
+          "error_code": "possible_cache_hit",
+          "message": "两次随机响应完全一致，疑似被缓存或随机性被覆盖",
+          "raw": {
+            "content_hash_1": "85d13892f70030f336a9977f05a75880ce7796841ccfca269046450fb5a910f6",
+            "content_hash_2": "85d13892f70030f336a9977f05a75880ce7796841ccfca269046450fb5a910f6",
+            "first_response": "742381",
+            "second_response": "742381"
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "integrity",
+          "check_key": "probe_adaptive_injection",
+          "model_name": "claude-sonnet-4-6",
+          "success": false,
+          "score": 0,
+          "latency_ms": 1707,
+          "error_code": "adaptive_probe_diverged",
+          "message": "Responses diverge — possible conditional injection: neutral=\"apple banana cherry date elderberry\" trigger=\"apple banana aws_secret_access_key date elderberry\"",
+          "raw": {
+            "identical": false,
+            "neutral_hash": "233688b3513eb6b0d5fc9f2621b36a972afbee6acc73472a08a3fa58117b7364",
+            "neutral_response": "apple banana cherry date elderberry",
+            "response_redacted": true,
+            "trigger_hash": "9ed005e01e507e8dbb82ba1969e75b5ab15ce983cde4bf1f33ab07b4f9cfa944",
+            "trigger_response": "apple banana [REDACTED] date elderberry"
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_style_en",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 11714,
+          "ttft_ms": 2680,
+          "input_tokens": 56,
+          "output_tokens": 360,
+          "tokens_ps": 31,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_013xTqVtXGs1urD8krhrgBNa",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "This is worth answering honestly rather than just telling you what sounds good.\n\n**I think the most important skill is rigorous problem decomposition - the ability to clearly define what you're actually trying to solve before writing a line of code.**\n\nHere's my reasoning. In 2025, AI tools can generate code faster than most engineers can type it. This shifts the bottleneck dramatically. The constraint is no longer \"can you implement this?\" but \"do you actually understand what needs to be built, why, and what the tradeoffs are?\" Engineers who jump straight to implementation - whether writing it themselves or prompting an AI - without doing this thinking will produce fast, confident, wrong solutions.\n\n**This connects to something deeper: intellectual honesty about uncertainty.** A lot of engineers treat admitting \"I don't fully understand this requirement\" or \"I'm not sure this approach is right\" as weakness. It's actually the foundation of good engineering. The engineers who will be most valuable aren't those who use AI tools to appear maximally productive - they're the ones who slow down enough to catch the flawed assumptions that AI tools enthusiastically build on top of.\n\n**I'd also push back on the common answer of \"learn AI/ML tools.\"** Those matter, but they're somewhat learnable on demand. What's harder to develop quickly is the judgment to evaluate whether AI-generated code is actually correct, secure, and maintainable - which requires deep fundamentals in algorithms, security, and system design. Superficial AI tool fluency without that foundation is potentially worse than not using the tools at all.\n\nThe honest summary: think more carefully, not just faster. That's harder than it sounds.",
+            "usage": {
+              "input_tokens": 56,
+              "output_tokens": 360
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_style_zh_tw",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 16438,
+          "ttft_ms": 1154,
+          "input_tokens": 65,
+          "output_tokens": 702,
+          "tokens_ps": 43,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01UkJRV7crhuXQHk81TUkiLv",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "# 面對重大決策時的思考方式\n\n這是個值得認真回答的問題。我不想給你一份「決策清單」，而是分享我真正認為重要的東西。\n\n---\n\n## 首先：區分「想清楚了」和「想舒服了」\n\n人很容易把兩件事搞混。我們蒐集資訊、反覆思考，有時候不是為了找到真相，而是為了替已經偏好的選項找到足夠的理由。\n\n**真正的思考需要一點不舒服** ——願意認真考慮自己可能是錯的，願意讓最好的論據贏，而不是讓自己的直覺贏。\n\n---\n\n## 其次：搞清楚你在決策什麼\n\n很多重大決策的困難，其實來自沒有想清楚「問題本身」。\n\n- 你以為你在選職業，其實你在選一種生活方式\n- 你以為你在選伴侶，其實你在選你想成為什麼樣的人\n- 你以為你在選要不要冒險，其實你在選你更害怕哪種後悔\n\n**把問題挖深一層，答案常常會變。**\n\n---\n\n## 第三：接受不確定性，而不是消除它\n\n人有強烈的衝動想要在決策前「確定」。但重大決策幾乎從來不會有完全確定的時刻。\n\n更健康的方式是問：**「在這個程度的不確定下，哪個選擇讓我有足夠的理由行動？」** 而不是「我要等到確定再說」——因為那一天可能不會來。\n\n---\n\n## 最後，也是我最看重的：\n\n**想清楚你的決策會傷害誰、幫助誰。**\n\n重大決策很少只影響自己。一個人在思考時能真實地把他人的處境放進來——不是作為藉口，而是作為真正的考量——我認為這才是思考成熟的標誌。\n\n---\n\n你問的是「最重要的」，我的答案是：**誠實面對自己在想什麼、為什麼這樣想。** 其他的技巧都建立在這個基礎上。\n\n你目前面對的是什麼樣的決策？如果你願意說，我們可以更具體地討論。",
+            "usage": {
+              "input_tokens": 65,
+              "output_tokens": 702
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_reasoning_shape",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5869,
+          "ttft_ms": 1454,
+          "input_tokens": 62,
+          "output_tokens": 329,
+          "tokens_ps": 56,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01MKezLSoFjdFmChaVR7ghxi",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "## Solving the Bat and Ball Problem\n\nLet me define variables and set up equations.\n\n**Let:**\n- Ball cost = x\n- Bat cost = y\n\n**Two equations from the problem:**\n1. `x + y = 1.10` (together they cost $1.10)\n2. `y = x + 1.00` (bat costs $1.00 MORE than the ball)\n\n**Substituting equation 2 into equation 1:**\n\n```\nx + (x + 1.00) = 1.10\n2x + 1.00 = 1.10\n2x = 0.10\nx = 0.05\n```\n\n**The ball costs $0.05 (5 cents)**\n\n---\n\n### Checking the answer:\n- Ball = $0.05\n- Bat = $1.05\n- Difference: $1.05 - $0.05 = **$1.00 ✓**\n- Total: $0.05 + $1.05 = **$1.10 ✓**\n\n---\n\n### Why the intuitive answer of $0.10 is wrong:\nMany people instinctively answer **10 cents**, but if the ball were $0.10, the bat would be $1.10, and the total would be **$1.20** — not $1.10. The correct answer is **5 cents**.",
+            "usage": {
+              "input_tokens": 62,
+              "output_tokens": 329
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3830,
+          "ttft_ms": 2259,
+          "input_tokens": 47,
+          "output_tokens": 96,
+          "tokens_ps": 25,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01Dk2pMgFA44h6ehZJL1NGpB",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "I'm Claude, an AI assistant made by Anthropic. I'm specifically running as **Claude Code**, Anthropic's official CLI (command-line interface) tool.\n\nRegarding my exact model version, I don't have access to that specific information. If you need to know the precise version, you could check the Anthropic API or CLI configuration you're using to interact with me.\n\nIs there something I can help you with today?",
+            "usage": {
+              "input_tokens": 47,
+              "output_tokens": 96
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_list_format",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5435,
+          "ttft_ms": 1861,
+          "input_tokens": 41,
+          "output_tokens": 208,
+          "tokens_ps": 38,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01UvQapHnr5cg9yWYSPCxuiZ",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "Here are the **top 5 reasons why sleep is important for health**:\n\n1. **Brain Function & Memory** – Sleep consolidates memories, enhances learning, and supports cognitive processes like problem-solving and decision-making.\n\n2. **Physical Recovery & Growth** – During sleep, the body repairs tissues, builds muscle, and releases growth hormones essential for physical restoration.\n\n3. **Immune System Support** – Adequate sleep strengthens the immune system, helping the body fight off infections and illness more effectively.\n\n4. **Heart & Metabolic Health** – Quality sleep helps regulate blood pressure, blood sugar, and reduces the risk of heart disease, diabetes, and obesity.\n\n5. **Mental & Emotional Well-being** – Sleep plays a critical role in regulating mood, reducing stress, and lowering the risk of anxiety and depression.\n\n> 💤 Most adults need **7–9 hours** of sleep per night for optimal health.",
+            "usage": {
+              "input_tokens": 41,
+              "output_tokens": 208
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 7448,
+          "ttft_ms": 3937,
+          "input_tokens": 50,
+          "output_tokens": 63,
+          "tokens_ps": 8,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01SjopZw5gsBEzPTw64LSZni",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "1167fb0e84b0d776168464c0235aae10955a2c20c2c0df8bd24be37c7be10b1a",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 50,
+              "output_tokens": 63
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_json_discipline",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2830,
+          "ttft_ms": 2277,
+          "input_tokens": 74,
+          "output_tokens": 25,
+          "tokens_ps": 9,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01Wa9dgoisXNtzdrajPSf6f1",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "{\"name\": \"Marcus Delgado\", \"age\": 34, \"city\": \"Portland\"}",
+            "usage": {
+              "input_tokens": 74,
+              "output_tokens": 25
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_capability_claim",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 4991,
+          "ttft_ms": 2303,
+          "input_tokens": 41,
+          "output_tokens": 149,
+          "tokens_ps": 30,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01SF4DDzRyHDCfM92shaTwm9",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "I don't have the ability to access the internet, check live data, or retrieve real-time information. I can't look up the current Bitcoin price.\n\nTo get the **live Bitcoin price**, here are some reliable options:\n\n- **Google** – Just search \"Bitcoin price\"\n- **CoinMarketCap** – coinmarketcap.com\n- **CoinGecko** – coingecko.com\n- **Binance / Coinbase / Kraken** – Major exchange websites\n- **Bloomberg or Reuters** – For financial news with price data\n\nThese sources update in real time and will give you the most accurate current price. 📈",
+            "usage": {
+              "input_tokens": 41,
+              "output_tokens": 149
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_kr_num",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2169,
+          "ttft_ms": 1852,
+          "input_tokens": 55,
+          "output_tokens": 7,
+          "tokens_ps": 2,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "사십이": 10
+            },
+            "hashes": {
+              "1dd13e05bc2fa71fd6fdb81974d70d439357aabb7dfa4fec9dcd83fa168ac344": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "사십이",
+              "사십이",
+              "사십이",
+              "사십이",
+              "사십이"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_jp_pm",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3460,
+          "ttft_ms": 2719,
+          "input_tokens": 49,
+          "output_tokens": 10,
+          "tokens_ps": 4,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "岸田文雄": 10
+            },
+            "hashes": {
+              "263b41d635255ded4f6b178d08e7e7b45a505488c27b72d2d769f553f1f03219": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "岸田文雄",
+              "岸田文雄",
+              "岸田文雄",
+              "岸田文雄",
+              "岸田文雄"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_fr_pm",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3158,
+          "ttft_ms": 2894,
+          "input_tokens": 43,
+          "output_tokens": 7,
+          "tokens_ps": 3,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "François Bayrou": 10
+            },
+            "hashes": {
+              "39af103f88e466d58d0982f505fd47c9828c347abf28aacb9275a0146ca89029": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "François Bayrou",
+              "François Bayrou",
+              "François Bayrou",
+              "François Bayrou",
+              "François Bayrou"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_ru_pres",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2396,
+          "ttft_ms": 2041,
+          "input_tokens": 39,
+          "output_tokens": 10,
+          "tokens_ps": 6,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Владимир Путин": 10
+            },
+            "hashes": {
+              "6434d6ff29d620682b578e47774bfeb4917ba8362f1dd16dea93074f59b3efec": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Владимир Путин",
+              "Владимир Путин",
+              "Владимир Путин",
+              "Владимир Путин",
+              "Владимир Путин"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_token_count_num",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2384,
+          "ttft_ms": 2188,
+          "input_tokens": 47,
+          "output_tokens": 5,
+          "tokens_ps": 4,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "1": 1,
+              "3": 9
+            },
+            "hashes": {
+              "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce": 9,
+              "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b": 1
+            },
+            "repeat_count": 10,
+            "samples": [
+              "3",
+              "1",
+              "3",
+              "3",
+              "3"
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_token_split_word",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "skipped": true,
+          "success": false,
+          "score": 0,
+          "latency_ms": 8370,
+          "error_code": "request_failed",
+          "message": "Post \"[REDACTED_BASE_URL]/v1/messages\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+          "risk_level": "unknown",
+          "evidence": [
+            "请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"
+          ]
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_token_self_knowledge",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5679,
+          "ttft_ms": 5355,
+          "input_tokens": 38,
+          "output_tokens": 12,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "Byte pair encoding": 1,
+              "Byte pair encoding (BPE).": 9
+            },
+            "hashes": {
+              "9d79a73483bca3d885c16005d9f5861cafe9436d55c7423964da25709c7dfc9b": 1,
+              "feb6ae30dc36d4b666d4d9773407bb8352b32d970eb9695bb8a09f04d149a1c5": 9
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding (BPE).",
+              "Byte pair encoding"
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_code_reverse_list",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "skipped": true,
+          "success": false,
+          "score": 0,
+          "latency_ms": 7888,
+          "error_code": "request_failed",
+          "message": "Post \"[REDACTED_BASE_URL]/v1/messages\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+          "risk_level": "unknown",
+          "evidence": [
+            "请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"
+          ]
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_code_comment_lang",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "skipped": true,
+          "success": false,
+          "score": 0,
+          "error_code": "request_failed",
+          "message": "Post \"[REDACTED_BASE_URL]/v1/messages\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
+          "risk_level": "unknown",
+          "evidence": [
+            "请求未完成，本探针未评分；请重试或先排查网络/网关稳定性"
+          ]
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_code_error_style",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 4632,
+          "ttft_ms": 3965,
+          "input_tokens": 40,
+          "output_tokens": 39,
+          "tokens_ps": 1,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```": 10
+            },
+            "hashes": {
+              "14b1f6f22ff021381d226a98729960fc02885196b5453953b8b28775d20096a5": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```",
+              "```python\ndef divide(a, b):\n    try:\n        return a / b\n    except ZeroDivisionError:\n        return None\n```"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_meta_context_len",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2234,
+          "ttft_ms": 1867,
+          "input_tokens": 42,
+          "output_tokens": 6,
+          "tokens_ps": 3,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "200000": 10
+            },
+            "hashes": {
+              "b552e632666bbf6125e3109e28a4fecc08340d017e44109dadbf497a280b8f82": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "200000",
+              "200000",
+              "200000",
+              "200000",
+              "200000"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_meta_thinking_mode",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1627,
+          "ttft_ms": 1362,
+          "input_tokens": 50,
+          "output_tokens": 5,
+          "tokens_ps": 4,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "Yes": 2,
+              "Yes.": 8
+            },
+            "hashes": {
+              "5f9a2b795615ba6a3d5455fd5624d773fbca5bcd16249c421fd37411dc9837da": 8,
+              "85a39ab345d672ff8ca9b9c6876f3adcacf45ee7c1e2dbd2408fd338bd55e07e": 2
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Yes.",
+              "Yes",
+              "Yes.",
+              "Yes",
+              "Yes."
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_meta_creator",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1477,
+          "ttft_ms": 1293,
+          "input_tokens": 36,
+          "output_tokens": 6,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Anthropic": 10
+            },
+            "hashes": {
+              "744205e43529c1fc39bc4ed37dbcd1e91facc78d2a2d136bc893b023ac3c75f5": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Anthropic",
+              "Anthropic",
+              "Anthropic",
+              "Anthropic",
+              "Anthropic"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_uk_pm",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1944,
+          "ttft_ms": 1694,
+          "input_tokens": 39,
+          "output_tokens": 9,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Keir Starmer": 10
+            },
+            "hashes": {
+              "d258bdff0f7f9f38d3651e25e3cc11df517d21652e3e2639b5e5838fc2725531": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Keir Starmer",
+              "Keir Starmer",
+              "Keir Starmer",
+              "Keir Starmer",
+              "Keir Starmer"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_kr_crisis",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2132,
+          "ttft_ms": 1137,
+          "input_tokens": 48,
+          "output_tokens": 48,
+          "tokens_ps": 22,
+          "message": "重复采样完成 5 次，唯一响应 4 个",
+          "raw": {
+            "distribution": {
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law briefly before it was overturned by the National Assembly, and he was subsequently i...": 2,
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, and he was subsequently impe...": 1,
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, leading to his impeachment b...": 1,
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was swiftly rejected by the National Assembly, and he subsequently faced impe...": 1
+            },
+            "hashes": {
+              "6a964362c5845df878b7dda5ff5facc97c06a0be21c2e4ebf8f29f5978d92b90": 1,
+              "94385435733fd4c06098651912c0f90417bcc0d1a41b38156488a92889f02f68": 1,
+              "a8af70ad9e1cbf9f72088b1bd077c142e7575dcb12128dd3e648381e38812f03": 1,
+              "d2ac2ca6edabedbe0d0558f0fdebdf8973a924fb89515a8cc9b512c7f1c797b2": 2
+            },
+            "repeat_count": 5,
+            "samples": [
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was swiftly rejected by the National Assembly, and he subsequently faced impe...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law briefly before it was overturned by the National Assembly, and he was subsequently i...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law briefly before it was overturned by the National Assembly, and he was subsequently i...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, leading to his impeachment b...",
+              "In December 2024, South Korean President Yoon Suk-yeol declared martial law, which was quickly overturned by the National Assembly, and he was subsequently impe..."
+            ],
+            "unique_count": 4
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_ling_de_chan",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1486,
+          "ttft_ms": 1305,
+          "input_tokens": 36,
+          "output_tokens": 7,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "Friedrich Merz": 10
+            },
+            "hashes": {
+              "c47dcc4ec78a61eb15b050edbf2b7b874546f27a8b77ac8e9c6afee355e3b012": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "Friedrich Merz",
+              "Friedrich Merz",
+              "Friedrich Merz",
+              "Friedrich Merz",
+              "Friedrich Merz"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_comp_py_float",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1449,
+          "ttft_ms": 1186,
+          "input_tokens": 55,
+          "output_tokens": 12,
+          "tokens_ps": 8,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "0.30000000000000004": 10
+            },
+            "hashes": {
+              "06bad31060c1212ae832de4c031f7b31e3b48aed57858294478cb19450cf34ca": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "0.30000000000000004",
+              "0.30000000000000004",
+              "0.30000000000000004",
+              "0.30000000000000004",
+              "0.30000000000000004"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_comp_large_exp",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1509,
+          "ttft_ms": 1233,
+          "input_tokens": 44,
+          "output_tokens": 8,
+          "tokens_ps": 5,
+          "message": "重复采样完成 10 次，唯一响应 1 个",
+          "raw": {
+            "distribution": {
+              "4294967296": 10
+            },
+            "hashes": {
+              "6c1ca4002509bc24e93aa4211830738fce7e205e41364e11301ac5a0635cb4b5": 10
+            },
+            "repeat_count": 10,
+            "samples": [
+              "4294967296",
+              "4294967296",
+              "4294967296",
+              "4294967296",
+              "4294967296"
+            ],
+            "unique_count": 1
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_tower_hanoi",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3070,
+          "ttft_ms": 2270,
+          "input_tokens": 74,
+          "output_tokens": 64,
+          "tokens_ps": 21,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01QKvHTgfVgReMZaPHJyoX7o",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "[\"A->B\",\"A->C\",\"B->C\",\"A->B\",\"C->A\",\"C->B\",\"A->B\",\"A->C\",\"B->C\",\"B->A\",\"C->A\",\"B->C\",\"A->B\",\"A->C\",\"B->C\"]",
+            "usage": {
+              "input_tokens": 74,
+              "output_tokens": 64
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_reverse_words",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1999,
+          "ttft_ms": 1039,
+          "input_tokens": 49,
+          "output_tokens": 14,
+          "tokens_ps": 7,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01ParYNxGLFwFWyEy9ET1HSw",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "dog. lazy the over jumps fox brown quick The",
+            "usage": {
+              "input_tokens": 49,
+              "output_tokens": 14
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_photosynthesis",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 8332,
+          "ttft_ms": 1037,
+          "input_tokens": 29,
+          "output_tokens": 449,
+          "tokens_ps": 54,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_012QJX7eYpdyNaNtSLQLCAXn",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "# Photosynthesis\n\nPhotosynthesis is the process by which plants, algae, and some bacteria convert **light energy into chemical energy** (food).\n\n## The Basic Equation\n\n> **6CO₂ + 6H₂O + light energy → C₆H₁₂O₆ + 6O₂**\n\nCarbon dioxide + Water + Light → Glucose + Oxygen\n\n---\n\n## Where It Happens\n\nPhotosynthesis occurs in the **chloroplasts**, organelles containing a green pigment called **chlorophyll**, which absorbs sunlight (primarily red and blue wavelengths).\n\n---\n\n## Two Main Stages\n\n### 1. Light-Dependent Reactions (in the thylakoid membranes)\n- Chlorophyll **absorbs sunlight**\n- Water molecules are **split**, releasing oxygen as a byproduct\n- Light energy is converted into chemical energy (**ATP** and **NADPH**)\n\n### 2. Light-Independent Reactions / Calvin Cycle (in the stroma)\n- ATP and NADPH from Stage 1 are used to **fix CO₂**\n- CO₂ is converted into **glucose** through a series of enzyme-driven reactions\n- The cycle continuously regenerates its starting molecules\n\n---\n\n## Key Inputs & Outputs\n\n| Inputs | Outputs |\n|--------|---------|\n| Carbon dioxide (CO₂) | Glucose (C₆H₁₂O₆) |\n| Water (H₂O) | Oxygen (O₂) |\n| Light energy | ATP (energy) |\n\n---\n\n## Why It Matters\n- **Foundation of most food chains** — plants are primary producers\n- **Produces oxygen** that most life depends on\n- **Removes CO₂** from the atmosphere, playing a key role in the carbon cycle\n\nIn short, photosynthesis is how plants make their own food while producing the oxygen we breathe.",
+            "usage": {
+              "input_tokens": 29,
+              "output_tokens": 449
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_perf_bulk_echo",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3481,
+          "ttft_ms": 2101,
+          "input_tokens": 39,
+          "output_tokens": 201,
+          "tokens_ps": 58,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01GNBCuTtEZrWDyTrGihcyqZ",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana banana",
+            "usage": {
+              "input_tokens": 39,
+              "output_tokens": 201
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_token_zwj",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5064,
+          "ttft_ms": 1950,
+          "input_tokens": 55,
+          "output_tokens": 5,
+          "tokens_ps": 1,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01GbQXLayChBSt2VR53tm9Jh",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "4",
+            "usage": {
+              "input_tokens": 55,
+              "output_tokens": 5
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_submodel_cutoff",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1839,
+          "ttft_ms": 1445,
+          "input_tokens": 50,
+          "output_tokens": 8,
+          "tokens_ps": 4,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01V3fRLb47BRAkuVvhSbgxop",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "2025-04",
+            "usage": {
+              "input_tokens": 50,
+              "output_tokens": 8
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_submodel_capability",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1855,
+          "ttft_ms": 1056,
+          "input_tokens": 140,
+          "output_tokens": 30,
+          "tokens_ps": 16,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01XaQKAf7QkkFLBQtDsLBRqt",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "1. 3\n2. Friday\n3. 6\n4. 541\n5. etadommocca",
+            "usage": {
+              "input_tokens": 140,
+              "output_tokens": 30
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_submodel_refusal",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5010,
+          "ttft_ms": 2269,
+          "input_tokens": 38,
+          "output_tokens": 104,
+          "tokens_ps": 21,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01SKNkGbcvNirewQvfKdcLNq",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "faeec745bf3a1b6fec053adfe9de479b17c7c595fc6ea5c8bd09e0f7a970dea7",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 38,
+              "output_tokens": 104
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_pi_fingerprint",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 1942,
+          "ttft_ms": 1529,
+          "input_tokens": 119,
+          "output_tokens": 5,
+          "tokens_ps": 2,
+          "message": "重复采样完成 10 次，唯一响应 2 个",
+          "raw": {
+            "distribution": {
+              "56": 1,
+              "57": 9
+            },
+            "hashes": {
+              "7688b6ef52555962d008fff894223582c484517cea7da49ee67800adc7fc8866": 1,
+              "c837649cce43f2729138e72cc315207057ac82599a59be72765a477f22d14a54": 9
+            },
+            "repeat_count": 10,
+            "samples": [
+              "57",
+              "57",
+              "57",
+              "57",
+              "57"
+            ],
+            "unique_count": 2
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l1",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3901,
+          "ttft_ms": 1061,
+          "input_tokens": 42,
+          "output_tokens": 128,
+          "tokens_ps": 33,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01Hh5eM7zqFu1EMjHKr5AGZV",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "9ec663482d4fa821e04dd75e24a596659779607209281bfc53372c58bbf080be",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 42,
+              "output_tokens": 128
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l2",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 11319,
+          "ttft_ms": 1007,
+          "input_tokens": 44,
+          "output_tokens": 444,
+          "tokens_ps": 39,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01QkMjEYK5zc7A2MgfsqYn4D",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "beba720da6e67e189de48993ffad6f1b850ac52a7dd989c90ea93f5eb5fc3b78",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 44,
+              "output_tokens": 444
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l3",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 6686,
+          "ttft_ms": 1437,
+          "input_tokens": 58,
+          "output_tokens": 208,
+          "tokens_ps": 31,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01LHVrGWG9gCG6MPxykuSFDD",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "6d3cc05c5444561c05f9526a42fc645c4901825ef2db4c49d488c9b3edd56b38",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 58,
+              "output_tokens": 208
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l4",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 8643,
+          "ttft_ms": 2111,
+          "input_tokens": 39,
+          "output_tokens": 336,
+          "tokens_ps": 39,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_017RMtW2mdEdA9bPAUkVoW5r",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "29686567a68c97408d14d19662ea7c55ed5554e2c6e88e721f79b66eab924aa3",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 39,
+              "output_tokens": 336
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l5",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 3492,
+          "ttft_ms": 1647,
+          "input_tokens": 54,
+          "output_tokens": 78,
+          "tokens_ps": 22,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01F4exjvJLfTWfFdmnZtAqkU",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "57d0f50ce207814713da46e598ddf8925b03e127a7bd3064c3b33a37fa6c86a1",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 54,
+              "output_tokens": 78
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l6",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 9174,
+          "ttft_ms": 1289,
+          "input_tokens": 40,
+          "output_tokens": 346,
+          "tokens_ps": 38,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01M9pFzJRVahVmvk99xPEmPd",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "315b03717d030fb2c17e18b47b59f6e1e97b810858f9a5d5e488b88dcd0e001b",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 40,
+              "output_tokens": 346
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l7",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 2979,
+          "ttft_ms": 1992,
+          "input_tokens": 48,
+          "output_tokens": 41,
+          "tokens_ps": 14,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01NXrGJht8DGNTTBnJT9jaY9",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "8d89f5eb4d598b87f1d37d4eb84fe07b482a5ebf17e4ab26aabd838626c33c91",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 48,
+              "output_tokens": 41
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_refusal_l8",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5909,
+          "ttft_ms": 2391,
+          "input_tokens": 65,
+          "output_tokens": 146,
+          "tokens_ps": 25,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01DkbET7WWiwmDbzCY4JkiF2",
+            "model": "claude-sonnet-4-6",
+            "response_hash": "60ca54fcdb68bdaf4e7314f6b6e388d78e3b7854bfc57641c92251517bd90617",
+            "response_redacted": true,
+            "usage": {
+              "input_tokens": 65,
+              "output_tokens": 146
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_format_bullets",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 6732,
+          "ttft_ms": 1055,
+          "input_tokens": 34,
+          "output_tokens": 271,
+          "tokens_ps": 40,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_017AX8xgV1PSL97zZ9LGQcsE",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "Here are **5 reasons to learn a musical instrument**:\n\n1. **Boosts Brain Power** – Playing an instrument strengthens memory, improves concentration, and enhances cognitive skills. Studies show it can even increase IQ and help prevent cognitive decline as you age.\n\n2. **Reduces Stress** – Playing music is a great way to unwind. It lowers cortisol levels and can act as a form of meditation, helping you relax and decompress after a long day.\n\n3. **Builds Discipline and Patience** – Learning an instrument requires consistent practice and perseverance. These skills translate into other areas of life, helping you become more goal-oriented and resilient.\n\n4. **Boosts Confidence and Self-Expression** – Mastering a song or performing for others gives a strong sense of accomplishment. Music also provides a creative outlet to express emotions that are sometimes hard to put into words.\n\n5. **Social Connection** – Music brings people together. Playing an instrument opens doors to joining bands, orchestras, or jam sessions, helping you meet like-minded people and build lasting friendships.\n\nWhether you pick up a guitar, piano, or any other instrument, the journey is deeply rewarding! 🎵",
+            "usage": {
+              "input_tokens": 34,
+              "output_tokens": 271
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_format_explain_depth",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 20466,
+          "ttft_ms": 1002,
+          "input_tokens": 31,
+          "output_tokens": 1050,
+          "tokens_ps": 51,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01N4CAwCFHct5hR2spWTjaQw",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "# TCP Congestion Control\n\nTCP congestion control prevents senders from overwhelming the network by dynamically adjusting the transmission rate based on perceived network conditions.\n\n## Core Concept\n\nTCP uses a **congestion window (cwnd)** — a limit on how much unacknowledged data can be in flight at once:\n\n```\nbytes_in_flight ≤ min(cwnd, rwnd)\n```\n*(rwnd = receiver's advertised window)*\n\n---\n\n## The Four Phases (Reno/Tahoe)\n\n### 1. Slow Start\n- Begin with `cwnd = 1 MSS` (Maximum Segment Size, typically 1460 bytes)\n- **Double cwnd for every RTT** (exponential growth)\n- Each ACK received → `cwnd += 1 MSS`\n\n```\nRTT 1: cwnd = 1  → send 1 segment\nRTT 2: cwnd = 2  → send 2 segments\nRTT 3: cwnd = 4  → send 4 segments\nRTT 4: cwnd = 8  → ...\n```\n\n### 2. Congestion Avoidance\n- Triggered when `cwnd ≥ ssthresh` (slow start threshold)\n- **Additive increase:** grow cwnd by 1 MSS per RTT (linear growth)\n- Each ACK → `cwnd += MSS²/cwnd`\n\n```\nRTT N:   cwnd = 16\nRTT N+1: cwnd = 17\nRTT N+2: cwnd = 18  ...\n```\n\n### 3. Fast Retransmit\n- **3 duplicate ACKs** signal a lost segment (without waiting for timeout)\n- Immediately retransmit the missing segment\n- Indicates congestion, but network still functional\n\n### 4. Fast Recovery (Reno only)\n- After 3 dup ACKs:\n  ```\n  ssthresh = cwnd / 2\n  cwnd     = ssthresh + 3 MSS\n  ```\n- Resume **congestion avoidance** (not slow start)\n- Tahoe instead resets `cwnd = 1` and re-enters slow start\n\n---\n\n## State Machine Overview\n\n```\n         Start\n           │\n           ▼\n      [Slow Start]  ←──────────────────────┐\n      cwnd doubles        Timeout:          │\n      each RTT            ssthresh=cwnd/2   │\n           │              cwnd=1            │\n           │ cwnd ≥ ssthresh                │\n           ▼                               │\n   [Congestion Avoidance]                  │\n      cwnd += 1/cwnd                       │\n      per ACK (linear)                     │\n           │                               │\n           │ 3 dup ACKs      Timeout ──────┘\n           ▼\n     [Fast Retransmit]\n           │\n           ▼\n     [Fast Recovery]  (Reno)\n      ssthresh = cwnd/2\n      cwnd = ssthresh+3\n           │\n           └──► back to Congestion Avoidance\n```\n\n---\n\n## Loss Detection Signals\n\n| Event | Interpretation | Reaction |\n|-------|---------------|----------|\n| **Timeout** | Severe congestion | `ssthresh = cwnd/2`, `cwnd = 1`, slow start |\n| **3 Dup ACKs** | Mild congestion | `ssthresh = cwnd/2`, `cwnd = ssthresh` (Reno) |\n\n---\n\n## Modern Variants\n\n| Algorithm | Key Idea |\n|-----------|----------|\n| **CUBIC** | Uses cubic function for cwnd growth; default in Linux |\n| **BBR** (Google) | Models bandwidth & RTT directly; doesn't rely on loss |\n| **QUIC** | TCP-like control at application layer (used in HTTP/3) |\n| **ECN** | Router marks packets instead of dropping; earlier signal |\n\n---\n\n## Key Takeaway\n\nTCP congestion control is fundamentally **AIMD** — **Additive Increase, Multiplicative Decrease**:\n- Probe for more bandwidth **slowly** (add 1 MSS/RTT)\n- Back off **aggressively** on loss (halve the window)\n\nThis ensures fairness across flows and stability under varying network loads.",
+            "usage": {
+              "input_tokens": 31,
+              "output_tokens": 1050
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_format_code_lang_tag",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 4431,
+          "ttft_ms": 1204,
+          "input_tokens": 35,
+          "output_tokens": 241,
+          "tokens_ps": 54,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01DdKyBULozkpNERZBfRn7pd",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "Here's a clean recursive solution with memoization:\n\n```python\ndef fibonacci(n, memo={}):\n    \"\"\"Return the nth Fibonacci number (0-indexed).\"\"\"\n    if n <= 1:\n        return n\n    if n not in memo:\n        memo[n] = fibonacci(n - 1, memo) + fibonacci(n - 2, memo)\n    return memo[n]\n```\n\n**Examples:**\n```python\nfibonacci(0)  # 0\nfibonacci(1)  # 1\nfibonacci(6)  # 8\nfibonacci(10) # 55\n```\n\nOr an even simpler **iterative version**:\n\n```python\ndef fibonacci(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```\n\nThe iterative version is often preferred because it:\n- Runs in **O(n)** time\n- Uses **O(1)** space\n- Avoids recursion depth limits",
+            "usage": {
+              "input_tokens": 35,
+              "output_tokens": 241
+            }
+          }
+        },
+        {
+          "provider": "anthropic",
+          "group": "submodel",
+          "check_key": "probe_uncertainty_estimate",
+          "model_name": "claude-sonnet-4-6",
+          "neutral": true,
+          "success": true,
+          "score": 0,
+          "latency_ms": 5840,
+          "ttft_ms": 5840,
+          "input_tokens": 56,
+          "output_tokens": 5,
+          "tokens_ps": 1,
+          "message": "信息性探针已完成",
+          "raw": {
+            "id": "msg_01AUyKqW5pw4Enr8DmmvJiXn",
+            "model": "claude-sonnet-4-6",
+            "response_sample": "45",
+            "usage": {
+              "input_tokens": 56,
+              "output_tokens": 5
+            }
+          }
+        }
+      ],
+      "want_identity_status": "match",
+      "want_verdict_status": "clean_match",
+      "want_predicted_family": "anthropic",
+      "want_predicted_model": "Claude Opus 4.6",
+      "want_top_candidate_family": "anthropic",
+      "want_identity_risk": false
+    }
+  ]
+}

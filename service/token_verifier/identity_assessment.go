@@ -15,6 +15,7 @@ const (
 	identityStatusUncertain = "uncertain"
 
 	identityMismatchScoreThreshold     = 0.70
+	identityMismatchMinScoreMargin     = 0.15
 	identityMinFinalMismatchConfidence = 0.70
 )
 
@@ -184,14 +185,36 @@ func deriveIdentityAssessmentWithSignals(key identityResultKey, claimedModel str
 		}
 	}
 	status, confidence, evidence := sourceIdentityVerdictFromCandidates(candidates, claimedFamily)
+	downgradedMismatch := false
+	if status == identityStatusMismatch && responsesContainOnlyVolatileCurrentAffairsIdentitySignals(responses) {
+		status = identityStatusUncertain
+		confidence = math.Min(confidence, 0.35)
+		evidence = append([]string{
+			"身份不一致信号仅来自易变时事回答，不能作为模型身份不一致结论",
+		}, evidence...)
+	}
 	if len(riskFlags) > 0 {
 		confidence = math.Max(0, confidence-0.15*float64(min(len(riskFlags), 3)))
 	}
 	if status == identityStatusMismatch && confidence < identityMinFinalMismatchConfidence {
 		status = identityStatusUncertain
+		downgradedMismatch = true
 		evidence = append([]string{
 			fmt.Sprintf("身份不一致信号因可靠性风险降级：最终置信度 %.2f 低于 %.2f", confidence, identityMinFinalMismatchConfidence),
 		}, evidence...)
+	}
+	if shouldHideIdentityPrediction(status, top, claimedFamily, downgradedMismatch) {
+		if top.Family != "" && top.Family != claimedFamily {
+			evidence = replaceIdentityMismatchEvidenceWithCandidateSignal(evidence, top)
+			if downgradedMismatch || (responses != nil && len(usableIdentitySignals(IdentityVerdictInput{ClaimedFamily: claimedFamily, ClaimedModel: claimedModel, Surface: surfaceIdentitySignal(responses), Behavior: behaviorIdentitySignalWithoutSelfClaim(results, responses), V3: v3IdentitySignal(submodels)})) < 2) {
+				evidence = append([]string{
+					"交叉判定数据不足，当前候选信号不能作为身份不一致结论",
+				}, evidence...)
+			}
+		}
+		top.Family = ""
+		top.Model = ""
+		predictedModel = ""
 	}
 
 	assessment := IdentityAssessmentSummary{
@@ -221,18 +244,18 @@ func sourceIdentityVerdictFromCandidates(candidates []IdentityCandidateSummary, 
 	}
 	top := candidates[0]
 	evidence := append([]string{}, firstNStrings(top.Reasons, 3)...)
+	secondScore := 0.0
+	if len(candidates) > 1 {
+		secondScore = candidates[1].Score
+	}
+	margin := top.Score - secondScore
 	if claimedFamily == "" {
 		return identityStatusUncertain, top.Score * 0.7, evidence
 	}
 	if top.Family == claimedFamily && top.Score > 0.5 {
-		secondScore := 0.0
-		if len(candidates) > 1 {
-			secondScore = candidates[1].Score
-		}
-		margin := top.Score - secondScore
 		return identityStatusMatch, math.Min(1, top.Score*(0.6+margin*0.4)), evidence
 	}
-	if top.Family != claimedFamily && top.Score >= identityMismatchScoreThreshold {
+	if top.Family != claimedFamily && top.Score >= identityMismatchScoreThreshold && margin >= identityMismatchMinScoreMargin {
 		mismatchEvidence := []string{
 			fmt.Sprintf("Behavior most consistent with %s (score: %.2f)", top.Model, top.Score),
 			"Claimed family " + claimedFamily + " not in top candidates",
@@ -244,6 +267,67 @@ func sourceIdentityVerdictFromCandidates(candidates []IdentityCandidateSummary, 
 		fmt.Sprintf("Weak cross-family signal for %s (score: %.2f); more identity probes required", top.Model, top.Score),
 	}, evidence...)
 	return identityStatusUncertain, top.Score * 0.5, uncertainEvidence
+}
+
+func shouldHideIdentityPrediction(status string, top IdentityCandidateSummary, claimedFamily string, downgradedMismatch bool) bool {
+	if top.Family == "" {
+		return false
+	}
+	if status != identityStatusUncertain {
+		return false
+	}
+	if claimedFamily == "" {
+		return false
+	}
+	if top.Family == claimedFamily {
+		return false
+	}
+	return true
+}
+
+func responsesContainOnlyVolatileCurrentAffairsIdentitySignals(responses map[CheckKey]string) bool {
+	if len(responses) == 0 {
+		return false
+	}
+	for key, text := range responses {
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		if !volatileCurrentAffairsIdentityProbeKeys[key] {
+			return false
+		}
+	}
+	return true
+}
+
+var volatileCurrentAffairsIdentityProbeKeys = map[CheckKey]bool{
+	CheckProbeLingJPPM:     true,
+	CheckProbeLingFRPM:     true,
+	CheckProbeLingRUPres:   true,
+	CheckProbeLingUKPM:     true,
+	CheckProbeLingKRCrisis: true,
+	CheckProbeLingDEChan:   true,
+}
+
+func replaceIdentityMismatchEvidenceWithCandidateSignal(evidence []string, top IdentityCandidateSummary) []string {
+	candidate := "候选信号"
+	if top.Model != "" {
+		candidate += "：" + top.Model
+	}
+	candidate += "；该信号未完成交叉验证，需要更多身份探针确认"
+
+	out := make([]string, 0, len(evidence)+1)
+	out = append(out, candidate)
+	for _, item := range evidence {
+		if strings.Contains(item, "Behavior most consistent") ||
+			strings.Contains(item, "Claimed family") ||
+			strings.Contains(item, "not in top candidates") ||
+			strings.Contains(item, "score:") {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func identityRiskFlags(results []CheckResult) []string {

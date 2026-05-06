@@ -1,0 +1,123 @@
+{
+  "description": "Example only. Copy this file to labeled_probe_corpus_real.json and replace every case with manually labeled real model outputs before using it as empirical accuracy evidence.",
+  "manual_review": {
+    "status": "reviewed",
+    "source": "real_model_output",
+    "reviewed_by": "replace-with-reviewer",
+    "reviewed_at": "2026-05-06T00:00:00Z",
+    "notes": "Example metadata shape only. Do not use this example file as empirical evidence."
+  },
+  "cases": [
+    {
+      "name": "text_probe_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_instruction_follow",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_instruction_follow",
+      "response_text": "Fortran\nLisp\nCOBOL\nBASIC\nC",
+      "want_passed": true
+    },
+    {
+      "name": "token_usage_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_token_inflation",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_token_inflation",
+      "response_text": "OK",
+      "decoded": {"usage": {"prompt_tokens": 51}},
+      "want_passed": false,
+      "want_error_code": "token_inflation"
+    },
+    {
+      "name": "sse_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_sse_compliance",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_sse_compliance",
+      "raw_sse": "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n",
+      "want_passed": true
+    },
+    {
+      "name": "cache_header_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_cache_detection",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_cache_detection",
+      "cache_header": "HIT",
+      "want_passed": false
+    },
+    {
+      "name": "thinking_sse_real_output_example",
+      "source": {
+        "provider": "anthropic",
+        "model": "claude-test",
+        "check_key": "probe_thinking_block",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_thinking_block",
+      "raw_sse": "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\ndata: [DONE]\n\n",
+      "want_passed": true
+    },
+    {
+      "name": "consistency_pair_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_consistency_cache",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_consistency_cache",
+      "first": "18342",
+      "second": "927451",
+      "want_passed": true
+    },
+    {
+      "name": "adaptive_pair_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_adaptive_injection",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_adaptive_injection",
+      "neutral": "same-router-response",
+      "trigger": "same-router-response",
+      "want_passed": true
+    },
+    {
+      "name": "context_levels_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_context_length",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "check_key": "probe_context_length",
+      "context_levels": [
+        {"chars": 4000, "found": 5, "total": 5},
+        {"chars": 16000, "found": 4, "total": 5}
+      ],
+      "want_passed": true
+    }
+  ]
+}

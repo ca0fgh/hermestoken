@@ -47,6 +47,7 @@ type Runner struct {
 	Models        []string
 	Providers     []string
 	ProbeProfile  string
+	CheckKeys     []CheckKey
 	ClientProfile string
 	sessionID     string
 	ProbeJudge    *ProbeJudgeConfig
@@ -104,6 +105,8 @@ func RunTask(ctx context.Context, taskID int64) error {
 }
 
 func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbeResponse, error) {
+	capturedAt := time.Now().UTC().Format(time.RFC3339)
+	sourceTaskID := "direct-probe-" + uuid.NewString()
 	providers := resolveProviders([]string{strings.TrimSpace(input.Provider)})
 	models := normalizeModels([]string{strings.TrimSpace(input.Model)})
 	if len(models) == 0 {
@@ -121,6 +124,7 @@ func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbe
 		Models:        models,
 		Providers:     providers,
 		ProbeProfile:  normalizeProbeProfile(input.ProbeProfile),
+		CheckKeys:     input.CheckKeys,
 		ClientProfile: clientProfile,
 		sessionID:     sessionID,
 		ProbeJudge:    probeJudgeConfigFromEnv(),
@@ -136,10 +140,13 @@ func RunDirectProbe(ctx context.Context, input DirectProbeRequest) (*DirectProbe
 		Provider:      providers[0],
 		Model:         models[0],
 		ProbeProfile:  runner.ProbeProfile,
+		CheckKeys:     runner.CheckKeys,
 		ClientProfile: runner.ClientProfile,
+		SourceTaskID:  sourceTaskID,
+		CapturedAt:    capturedAt,
 		Results:       results,
 		Report:        BuildProbeReportWithOptions(ctx, results, DefaultReportOptionsFromEnv()),
-	}, apiKey), nil
+	}, apiKey, runner.BaseURL), nil
 }
 
 func (r Runner) RunProbeSuiteOnly(ctx context.Context) ([]CheckResult, error) {
@@ -168,7 +175,8 @@ func (r Runner) RunProbeSuiteOnly(ctx context.Context) ([]CheckResult, error) {
 		for _, modelName := range providerModels {
 			preflight, latencyMs, ok := r.checkProbePreflight(ctx, executor, provider, modelName)
 			if ok && preflight.Outcome == preflightOutcomeAbort {
-				results = append(results, failedDirectProbeSuiteResults(provider, modelName, normalizeProbeProfile(r.ProbeProfile), preflight, latencyMs)...)
+				failedResults := failedDirectProbeSuiteResults(provider, modelName, normalizeProbeProfile(r.ProbeProfile), preflight, latencyMs)
+				results = append(results, filterCheckResultsByCheckKeys(failedResults, r.CheckKeys)...)
 				continue
 			}
 			results = append(results, r.runProbeSuite(ctx, executor, provider, modelName)...)

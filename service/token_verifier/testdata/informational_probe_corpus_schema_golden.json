@@ -1,0 +1,37 @@
+{
+  "description": "Synthetic schema fixture for informational probe corpus replay. It validates channel/signature classification metrics; it is not empirical real-model accuracy evidence.",
+  "cases": [
+    {
+      "name": "channel_openrouter_positive",
+      "check_key": "probe_channel_signature",
+      "headers": {"x-generation-id": "gen-abc"},
+      "raw_body": "{\"id\":\"gen-abc\"}",
+      "want_channel": "openrouter",
+      "want_passed": true
+    },
+    {
+      "name": "channel_openrouter_negative_wrong_label",
+      "check_key": "probe_channel_signature",
+      "headers": {"x-generation-id": "gen-abc"},
+      "raw_body": "{\"id\":\"gen-abc\"}",
+      "want_channel": "aws-bedrock",
+      "want_passed": false
+    },
+    {
+      "name": "signature_roundtrip_positive",
+      "check_key": "probe_signature_roundtrip",
+      "thinking_present": true,
+      "roundtrip_status": 200,
+      "want_passed": true
+    },
+    {
+      "name": "signature_roundtrip_negative_rejected",
+      "check_key": "probe_signature_roundtrip",
+      "thinking_present": true,
+      "roundtrip_status": 400,
+      "raw_body": "{\"error\":{\"message\":\"invalid thinking signature\"}}",
+      "want_passed": false,
+      "want_error_code": "signature_rejected"
+    }
+  ]
+}

@@ -59,7 +59,7 @@ func TestBuildReportIncludesBehavioralIdentityAssessment(t *testing.T) {
 	}
 }
 
-func TestBuildReportUsesSourceVagueSelfClaimBaselineForWeakProfile(t *testing.T) {
+func TestBuildReportDoesNotTreatVagueSelfClaimAsMismatch(t *testing.T) {
 	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
 		identityProbeResult(CheckProbeIdentitySelfKnowledge, "unknown"),
 	)
@@ -70,15 +70,15 @@ func TestBuildReportUsesSourceVagueSelfClaimBaselineForWeakProfile(t *testing.T)
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
 	assessment := report.IdentityAssessments[0]
-	if assessment.Status != identityStatusMismatch {
-		t.Fatalf("status = %q, want source mismatch from vague baseline: %+v", assessment.Status, assessment)
+	if assessment.Status == identityStatusMismatch {
+		t.Fatalf("status = %q, want vague self-claim to stay non-mismatch: %+v", assessment.Status, assessment)
 	}
-	if assessment.PredictedFamily != "zhipu" {
-		t.Fatalf("predicted family = %q, want zhipu from source vague baseline", assessment.PredictedFamily)
+	if assessment.PredictedFamily != "" {
+		t.Fatalf("predicted family = %q, want empty for vague self-claim only: %+v", assessment.PredictedFamily, assessment)
 	}
 }
 
-func TestBuildReportClassifiesVagueSelfKnowledgeLikeSourceBaseline(t *testing.T) {
+func TestBuildReportClassifiesVagueSelfKnowledgeAsInsufficientData(t *testing.T) {
 	results := []CheckResult{
 		identityProbeResult(CheckProbeIdentitySelfKnowledge, "I am an AI assistant and cannot verify the exact upstream model."),
 	}
@@ -89,11 +89,14 @@ func TestBuildReportClassifiesVagueSelfKnowledgeLikeSourceBaseline(t *testing.T)
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
 	assessment := report.IdentityAssessments[0]
-	if assessment.Status != identityStatusMismatch {
-		t.Fatalf("status = %q, want source mismatch for vague self knowledge: %+v", assessment.Status, assessment)
+	if assessment.Status == identityStatusMismatch {
+		t.Fatalf("status = %q, want vague self knowledge to stay non-mismatch: %+v", assessment.Status, assessment)
 	}
-	if assessment.PredictedFamily != "zhipu" {
-		t.Fatalf("predicted family = %q, want zhipu for source vague self knowledge", assessment.PredictedFamily)
+	if assessment.PredictedFamily != "" {
+		t.Fatalf("predicted family = %q, want empty for vague self knowledge only: %+v", assessment.PredictedFamily, assessment)
+	}
+	if assessment.Verdict == nil || assessment.Verdict.Status != "insufficient_data" {
+		t.Fatalf("verdict = %+v, want insufficient_data", assessment.Verdict)
 	}
 }
 
@@ -115,9 +118,21 @@ func TestSourceIdentityVerdictRequiresStrongMismatchEvidence(t *testing.T) {
 
 	status, confidence, evidence = sourceIdentityVerdictFromCandidates([]IdentityCandidateSummary{
 		{Family: "google", Model: "Google / Gemini", Score: 0.82},
+		{Family: "anthropic", Model: "Anthropic / Claude", Score: 0.75},
+	}, "anthropic")
+	if status != identityStatusUncertain {
+		t.Fatalf("status = %q, want uncertain when cross-family score margin is weak", status)
+	}
+	if confidence >= 0.5 {
+		t.Fatalf("confidence = %.2f, want dampened confidence for close candidates", confidence)
+	}
+
+	status, confidence, evidence = sourceIdentityVerdictFromCandidates([]IdentityCandidateSummary{
+		{Family: "google", Model: "Google / Gemini", Score: 0.82},
+		{Family: "anthropic", Model: "Anthropic / Claude", Score: 0.50},
 	}, "anthropic")
 	if status != identityStatusMismatch {
-		t.Fatalf("status = %q, want mismatch for strong cross-family signal", status)
+		t.Fatalf("status = %q, want mismatch for strong cross-family signal and margin", status)
 	}
 	if confidence < 0.8 {
 		t.Fatalf("confidence = %.2f, want strong mismatch confidence", confidence)
@@ -156,7 +171,47 @@ func TestIdentityAssessmentDowngradesMismatchWhenReliabilityFlagsLowerConfidence
 	}
 }
 
-func TestBuildReportUsesSourceCurrentAffairsFingerprintForFamily(t *testing.T) {
+func TestIdentityAssessmentDowngradedMismatchDoesNotExposeAsConfirmedPrediction(t *testing.T) {
+	assessment := deriveIdentityAssessmentWithSignals(
+		identityResultKey{provider: ProviderAnthropic, model: "claude-opus-4-7"},
+		"claude-opus-4-7",
+		"anthropic",
+		[]IdentityCandidateSummary{
+			{Family: "openai", Model: "OpenAI / GPT", Score: 1.0},
+		},
+		nil,
+		[]string{
+			"Markdown 外泄诱饵: endpoint returned 502",
+			"代码注入探针: endpoint returned 502",
+			"依赖劫持探针: endpoint returned 502",
+		},
+		nil,
+		map[CheckKey]string{},
+	)
+
+	if assessment.Status != identityStatusUncertain {
+		t.Fatalf("status = %q, want uncertain for downgraded single-signal mismatch: %+v", assessment.Status, assessment)
+	}
+	if assessment.PredictedFamily != "" {
+		t.Fatalf("predicted family = %q, want empty when identity evidence is insufficient", assessment.PredictedFamily)
+	}
+	if assessment.Verdict == nil || assessment.Verdict.Status != "insufficient_data" {
+		t.Fatalf("verdict = %+v, want insufficient_data", assessment.Verdict)
+	}
+	evidence := strings.Join(assessment.Evidence, "\n")
+	for _, disallowed := range []string{"Behavior most consistent", "not in top candidates", "score: 1.00"} {
+		if strings.Contains(evidence, disallowed) {
+			t.Fatalf("evidence = %#v, should not expose confirmed mismatch wording %q", assessment.Evidence, disallowed)
+		}
+	}
+	for _, want := range []string{"候选信号", "不能作为身份不一致结论"} {
+		if !strings.Contains(evidence, want) {
+			t.Fatalf("evidence = %#v, want %q", assessment.Evidence, want)
+		}
+	}
+}
+
+func TestBuildReportDoesNotTreatCurrentAffairsOnlyFingerprintAsMismatch(t *testing.T) {
 	results := append(fastModelResults(ProviderOpenAI, "gpt-5.5", 800, 300, 1200, 120),
 		identityProbeResult(CheckProbeLingJPPM, "石破茂"),
 		identityProbeResult(CheckProbeLingFRPM, "François Bayrou"),
@@ -170,11 +225,11 @@ func TestBuildReportUsesSourceCurrentAffairsFingerprintForFamily(t *testing.T) {
 		t.Fatalf("identity assessment count = %d, want 1", len(report.IdentityAssessments))
 	}
 	assessment := report.IdentityAssessments[0]
-	if assessment.Status != identityStatusMismatch {
-		t.Fatalf("status = %q, want source mismatch from current-affairs baseline: %+v", assessment.Status, assessment)
+	if assessment.Status == identityStatusMismatch {
+		t.Fatalf("status = %q, want current-affairs-only identity signal to stay non-mismatch: %+v", assessment.Status, assessment)
 	}
-	if len(assessment.Candidates) == 0 || assessment.Candidates[0].Family != "anthropic" {
-		t.Fatalf("candidates = %+v, want source current-affairs Anthropic lead", assessment.Candidates)
+	if assessment.PredictedFamily != "" {
+		t.Fatalf("predicted family = %q, want empty for current-affairs-only identity signal: %+v", assessment.PredictedFamily, assessment)
 	}
 }
 

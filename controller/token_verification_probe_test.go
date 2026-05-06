@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ca0fgh/hermestoken/common"
 	tokenverifier "github.com/ca0fgh/hermestoken/service/token_verifier"
@@ -208,5 +209,16 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 	}
 	if data["client_profile"] != requestedClientProfile {
 		t.Fatalf("response client_profile = %v, want %q", data["client_profile"], requestedClientProfile)
+	}
+	sourceTaskID, ok := data["source_task_id"].(string)
+	if !ok || strings.TrimSpace(sourceTaskID) == "" {
+		t.Fatalf("response source_task_id = %#v, want exportable source id", data["source_task_id"])
+	}
+	capturedAt, ok := data["captured_at"].(string)
+	if !ok || strings.TrimSpace(capturedAt) == "" {
+		t.Fatalf("response captured_at = %#v, want RFC3339 capture time", data["captured_at"])
+	}
+	if _, err := time.Parse(time.RFC3339, capturedAt); err != nil {
+		t.Fatalf("response captured_at = %q, want RFC3339: %v", capturedAt, err)
 	}
 }

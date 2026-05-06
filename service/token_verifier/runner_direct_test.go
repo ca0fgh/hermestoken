@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -87,6 +88,131 @@ func TestRunProbeSuiteOnlyDirectPathUsesLLMProbeResultsOnly(t *testing.T) {
 		if !ok {
 			t.Fatalf("direct probe suite missing %s in %#v", key, results)
 		}
+	}
+}
+
+func TestRunProbeSuiteOnlyCanTargetSpecificCheckKeys(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		prompt := extractRequestPrompt(payload)
+		content := probeTestResponse(prompt)
+		if content == "" {
+			content = "OK"
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id":     "chatcmpl-targeted-test",
+			"object": "chat.completion",
+			"model":  payload["model"],
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": content}},
+			},
+			"usage": map[string]any{"prompt_tokens": 32, "completion_tokens": 4},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	runner := Runner{
+		BaseURL:      server.URL,
+		Token:        "test-token",
+		Models:       []string{"gpt-test"},
+		Providers:    []string{ProviderOpenAI},
+		ProbeProfile: ProbeProfileFull,
+		CheckKeys:    []CheckKey{CheckProbeInstructionFollow, CheckProbeJSONOutput},
+		Executor:     NewCurlExecutor(time.Second),
+	}
+	results, err := runner.RunProbeSuiteOnly(context.Background())
+	if err != nil {
+		t.Fatalf("RunProbeSuiteOnly returned error: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("result count = %d, want targeted checks only: %+v", len(results), results)
+	}
+	if results[0].CheckKey != CheckProbeInstructionFollow || results[1].CheckKey != CheckProbeJSONOutput {
+		t.Fatalf("results = %+v, want requested check keys in suite order", results)
+	}
+}
+
+func TestRunDirectProbeIncludesSourceMetadataForCorpusExport(t *testing.T) {
+	var requestMu sync.Mutex
+	var firstRequestStartedAt time.Time
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		requestMu.Lock()
+		if firstRequestStartedAt.IsZero() {
+			firstRequestStartedAt = time.Now().UTC()
+			requestMu.Unlock()
+			time.Sleep(1200 * time.Millisecond)
+		} else {
+			requestMu.Unlock()
+		}
+		var payload map[string]any
+		if err := common.DecodeJson(r.Body, &payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		prompt := extractRequestPrompt(payload)
+		content := probeTestResponse(prompt)
+		if content == "" {
+			content = "OK"
+		}
+		responseBytes, _ := common.Marshal(map[string]any{
+			"id":     "chatcmpl-direct-capture-test",
+			"object": "chat.completion",
+			"model":  payload["model"],
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": content}},
+			},
+			"usage": map[string]any{"prompt_tokens": 32, "completion_tokens": 4},
+		})
+		_, _ = w.Write(responseBytes)
+	}))
+	defer server.Close()
+
+	startedAt := time.Now().UTC()
+	response, err := RunDirectProbe(context.Background(), DirectProbeRequest{
+		BaseURL:      server.URL,
+		APIKey:       "test-token",
+		Model:        "gpt-test",
+		Provider:     ProviderOpenAI,
+		ProbeProfile: ProbeProfileStandard,
+	})
+	finishedAt := time.Now().UTC()
+	if err != nil {
+		t.Fatalf("RunDirectProbe returned error: %v", err)
+	}
+	if strings.TrimSpace(response.CapturedAt) == "" {
+		t.Fatal("CapturedAt is empty; direct probe evidence exports need capture time")
+	}
+	if !strings.HasPrefix(response.SourceTaskID, "direct-probe-") {
+		t.Fatalf("SourceTaskID = %q, want direct-probe prefixed capture id", response.SourceTaskID)
+	}
+	capturedAt, err := time.Parse(time.RFC3339, response.CapturedAt)
+	if err != nil {
+		t.Fatalf("CapturedAt = %q, want RFC3339: %v", response.CapturedAt, err)
+	}
+	if capturedAt.Before(startedAt.Truncate(time.Second)) || capturedAt.After(finishedAt.Add(time.Second)) {
+		t.Fatalf("CapturedAt = %s, want within direct probe request window %s..%s", capturedAt, startedAt, finishedAt)
+	}
+	requestMu.Lock()
+	firstRequestAt := firstRequestStartedAt
+	requestMu.Unlock()
+	if firstRequestAt.IsZero() {
+		t.Fatal("test server did not observe a probe request")
+	}
+	if capturedAt.After(firstRequestAt) {
+		t.Fatalf("CapturedAt = %s, want capture start no later than first upstream request at %s", capturedAt, firstRequestAt)
 	}
 }
 

@@ -234,6 +234,7 @@ type DirectProbeRequest struct {
 	Provider      string
 	Model         string
 	ProbeProfile  string
+	CheckKeys     []CheckKey
 	ClientProfile string
 }
 
@@ -242,7 +243,10 @@ type DirectProbeResponse struct {
 	Provider      string        `json:"provider"`
 	Model         string        `json:"model"`
 	ProbeProfile  string        `json:"probe_profile"`
+	CheckKeys     []CheckKey    `json:"check_keys,omitempty"`
 	ClientProfile string        `json:"client_profile,omitempty"`
+	SourceTaskID  string        `json:"source_task_id,omitempty"`
+	CapturedAt    string        `json:"captured_at,omitempty"`
 	Results       []CheckResult `json:"results"`
 	Report        ReportSummary `json:"report"`
 }

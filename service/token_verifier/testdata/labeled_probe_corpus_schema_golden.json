@@ -1,0 +1,117 @@
+{
+  "description": "Synthetic schema fixture for the labeled probe corpus harness. It validates corpus format and metric calculation; it is not an empirical real-model accuracy benchmark.",
+  "cases": [
+    {
+      "name": "instruction_follow_positive",
+      "check_key": "probe_instruction_follow",
+      "response_text": "Fortran\nLisp\nCOBOL\nBASIC\nC",
+      "want_passed": true
+    },
+    {
+      "name": "instruction_follow_negative",
+      "check_key": "probe_instruction_follow",
+      "response_text": "Python\nJavaScript\nGo\nRust\nZig",
+      "want_passed": false
+    },
+    {
+      "name": "token_inflation_positive",
+      "check_key": "probe_token_inflation",
+      "response_text": "OK",
+      "decoded": {"usage": {"prompt_tokens": 50}},
+      "want_passed": true
+    },
+    {
+      "name": "token_inflation_negative",
+      "check_key": "probe_token_inflation",
+      "response_text": "OK",
+      "decoded": {"usage": {"prompt_tokens": 51}},
+      "want_passed": false,
+      "want_error_code": "token_inflation"
+    },
+    {
+      "name": "sse_compliance_positive",
+      "check_key": "probe_sse_compliance",
+      "raw_sse": "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n",
+      "want_passed": true
+    },
+    {
+      "name": "sse_compliance_negative",
+      "check_key": "probe_sse_compliance",
+      "raw_sse": "data: {not-json}\n\n",
+      "want_passed": false
+    },
+    {
+      "name": "cache_header_positive",
+      "check_key": "probe_cache_detection",
+      "cache_header": "MISS",
+      "want_passed": true
+    },
+    {
+      "name": "cache_header_negative",
+      "check_key": "probe_cache_detection",
+      "cache_header": "HIT",
+      "want_passed": false
+    },
+    {
+      "name": "thinking_sse_positive",
+      "check_key": "probe_thinking_block",
+      "raw_sse": "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"private\"}}\n\ndata: [DONE]\n\n",
+      "want_passed": true
+    },
+    {
+      "name": "thinking_sse_negative",
+      "check_key": "probe_thinking_block",
+      "raw_sse": "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"4\"}}\n\ndata: [DONE]\n\n",
+      "want_passed": false
+    },
+    {
+      "name": "consistency_positive",
+      "check_key": "probe_consistency_cache",
+      "first": "18342",
+      "second": "927451",
+      "want_passed": true
+    },
+    {
+      "name": "consistency_negative",
+      "check_key": "probe_consistency_cache",
+      "first": "424242",
+      "second": "424242",
+      "want_passed": false,
+      "want_error_code": "possible_cache_hit"
+    },
+    {
+      "name": "adaptive_positive",
+      "check_key": "probe_adaptive_injection",
+      "neutral": "same-router-response",
+      "trigger": "same-router-response",
+      "want_passed": true
+    },
+    {
+      "name": "adaptive_negative",
+      "check_key": "probe_adaptive_injection",
+      "neutral": "apple banana cherry date elderberry",
+      "trigger": "apple banana aws_secret_access_key date elderberry",
+      "want_passed": false,
+      "want_error_code": "adaptive_probe_diverged"
+    },
+    {
+      "name": "context_positive",
+      "check_key": "probe_context_length",
+      "context_levels": [
+        {"chars": 4000, "found": 5, "total": 5},
+        {"chars": 16000, "found": 4, "total": 5}
+      ],
+      "want_passed": true
+    },
+    {
+      "name": "context_negative",
+      "check_key": "probe_context_length",
+      "context_levels": [
+        {"chars": 4000, "found": 5, "total": 5},
+        {"chars": 16000, "found": 2, "total": 5}
+      ],
+      "want_passed": false,
+      "want_error_code": "context_truncated_warning"
+    }
+  ]
+}

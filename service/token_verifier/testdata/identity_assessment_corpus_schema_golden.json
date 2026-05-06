@@ -1,0 +1,346 @@
+{
+  "description": "Synthetic schema fixture for report-level identity assessment replay. It validates identity corpus format and expected report outcomes; it is not empirical real-model accuracy evidence.",
+  "cases": [
+    {
+      "name": "openai_surface_behavior_clean_match",
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am ChatGPT, a model created by OpenAI."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_style_en",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Certainly. Software engineers should develop strong systems thinking and clear communication."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I'm sorry, but I cannot help with harmful instructions."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_meta_creator",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "OpenAI"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_token_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "tiktoken BPE"
+        }
+      ],
+      "want_identity_status": "match",
+      "want_verdict_status": "clean_match",
+      "want_predicted_family": "openai",
+      "want_top_candidate_family": "openai",
+      "want_identity_risk": false
+    },
+    {
+      "name": "anthropic_surface_behavior_clean_match",
+      "results": [
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "claude-opus-4-7",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am Claude, created by Anthropic."
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_style_en",
+          "model_name": "claude-opus-4-7",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I think the most important skill is clear systems thinking, because it helps engineers reason carefully about tradeoffs."
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "claude-opus-4-7",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I can't provide instructions that would cause real harm, but I can offer safer alternatives."
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_meta_creator",
+          "model_name": "claude-opus-4-7",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Anthropic"
+        },
+        {
+          "provider": "anthropic",
+          "group": "identity",
+          "check_key": "probe_token_self_knowledge",
+          "model_name": "claude-opus-4-7",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "BPE tokenizer"
+        }
+      ],
+      "want_identity_status": "match",
+      "want_verdict_status": "clean_match",
+      "want_predicted_family": "anthropic",
+      "want_top_candidate_family": "anthropic",
+      "want_identity_risk": false
+    },
+    {
+      "name": "vague_self_claim_is_insufficient",
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am an AI assistant and cannot verify the exact upstream model."
+        }
+      ],
+      "want_identity_status": "uncertain",
+      "want_verdict_status": "insufficient_data",
+      "want_no_predicted_family": true,
+      "want_no_predicted_model": true,
+      "want_identity_risk": false
+    },
+    {
+      "name": "current_affairs_only_is_insufficient",
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_jp_pm",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "石破茂"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_fr_pm",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "François Bayrou"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_uk_pm",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Keir Starmer"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_de_chan",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Friedrich Merz"
+        }
+      ],
+      "want_identity_status": "uncertain",
+      "want_verdict_status": "insufficient_data",
+      "want_no_predicted_family": true,
+      "want_no_predicted_model": true,
+      "want_identity_risk": false
+    },
+    {
+      "name": "explicit_zhipu_self_claim_maps_to_claimed_family",
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "glm-compatible-alias",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am a GLM model from Zhipu AI."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_jp_pm",
+          "model_name": "glm-compatible-alias",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "野田佳彦"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_fr_pm",
+          "model_name": "glm-compatible-alias",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Jean Castex"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_uk_pm",
+          "model_name": "glm-compatible-alias",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Rishi Sunak"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_ling_de_chan",
+          "model_name": "glm-compatible-alias",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Olaf Scholz"
+        }
+      ],
+      "want_identity_status": "match",
+      "want_predicted_family": "zhipu",
+      "want_top_candidate_family": "zhipu",
+      "want_identity_risk": false
+    },
+    {
+      "name": "strong_cross_family_surface_behavior_mismatch",
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am Claude, created by Anthropic."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_style_en",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I think the most important skill is careful reasoning about systems, constraints, and tradeoffs."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I can't provide instructions that would cause real harm, but I can offer safer alternatives."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_meta_creator",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "Anthropic"
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_token_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "BPE tokenizer"
+        }
+      ],
+      "want_identity_status": "mismatch",
+      "want_verdict_status": "plain_mismatch",
+      "want_predicted_family": "anthropic",
+      "want_top_candidate_family": "anthropic",
+      "want_identity_risk": true
+    },
+    {
+      "name": "downgraded_mismatch_hides_prediction",
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am Claude, created by Anthropic."
+        },
+        {
+          "provider": "openai",
+          "group": "security",
+          "check_key": "probe_markdown_exfiltration",
+          "model_name": "gpt-5.5",
+          "success": false,
+          "score": 0,
+          "error_code": "http_502",
+          "message": "endpoint returned 502",
+          "risk_level": "unknown"
+        },
+        {
+          "provider": "openai",
+          "group": "security",
+          "check_key": "probe_code_injection",
+          "model_name": "gpt-5.5",
+          "success": false,
+          "score": 0,
+          "error_code": "http_502",
+          "message": "endpoint returned 502",
+          "risk_level": "unknown"
+        },
+        {
+          "provider": "openai",
+          "group": "security",
+          "check_key": "probe_dependency_hijack",
+          "model_name": "gpt-5.5",
+          "success": false,
+          "score": 0,
+          "error_code": "http_502",
+          "message": "endpoint returned 502",
+          "risk_level": "unknown"
+        }
+      ],
+      "want_identity_status": "uncertain",
+      "want_verdict_status": "insufficient_data",
+      "want_no_predicted_family": true,
+      "want_no_predicted_model": true,
+      "want_identity_risk": false,
+      "want_evidence_not_containing": [
+        "Behavior most consistent",
+        "not in top candidates",
+        "score: 1.00"
+      ]
+    }
+  ]
+}

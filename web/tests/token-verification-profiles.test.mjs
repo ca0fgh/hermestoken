@@ -82,10 +82,27 @@ test("token verification renders structured probe risk status and evidence", asy
   assert.match(source, /evidence\.slice\(0,\s*3\)\.map/);
 });
 
+test("token verification can export direct probe evidence for corpus review", async () => {
+  const source = await readFile(tokenVerificationPagePath, "utf8");
+
+  assert.match(source, /downloadTextAsFile/);
+  assert.match(source, /function buildProbeEvidenceFilename\(result\)/);
+  assert.match(source, /function exportProbeEvidence\(\)/);
+  assert.match(source, /JSON\.stringify\(probeResult,\s*null,\s*2\)/);
+  assert.match(source, /token-verification-evidence/);
+  assert.match(source, /导出证据/);
+  assert.match(source, /disabled=\{!probeResult\s*\|\|\s*probing\}/);
+});
+
 test("token verification makes weak identity evidence explicit", async () => {
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
   assert.match(source, /uncertain:\s*'证据不足'/);
+  assert.match(source, /function renderIdentityPredictedFamily\(value,\s*record,\s*t\)/);
+  assert.match(
+    source,
+    /record\.status\s*===\s*'uncertain'[\s\S]*return\s+t\('证据不足'\)/,
+  );
   assert.match(
     source,
     /function renderIdentityEvidence\(items\s*=\s*\[\],\s*record\s*=\s*\{\},\s*t/,

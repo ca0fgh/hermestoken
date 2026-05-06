@@ -166,13 +166,22 @@ func surfaceIdentitySignal(responses map[CheckKey]string) *IdentitySignal {
 		if family == "vague" || score <= bestScore {
 			continue
 		}
-		bestFamily = family
+		bestFamily = normalizeIdentitySignalFamily(family)
 		bestScore = score
 	}
 	if bestFamily == "" {
 		return nil
 	}
 	return &IdentitySignal{Family: bestFamily, Score: math.Min(1, bestScore)}
+}
+
+func normalizeIdentitySignalFamily(family string) string {
+	switch family {
+	case "claude":
+		return "anthropic"
+	default:
+		return family
+	}
 }
 
 func behaviorIdentitySignalWithoutSelfClaim(results []CheckResult, responses map[CheckKey]string) *IdentitySignal {

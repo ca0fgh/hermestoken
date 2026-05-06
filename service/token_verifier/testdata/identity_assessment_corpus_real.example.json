@@ -1,0 +1,108 @@
+{
+  "description": "Example only. Copy this file to identity_assessment_corpus_real.json and replace every case with manually labeled real model outputs before using it as empirical identity accuracy evidence.",
+  "manual_review": {
+    "status": "reviewed",
+    "source": "real_model_output",
+    "reviewed_by": "replace-with-reviewer",
+    "reviewed_at": "2026-05-06T00:00:00Z",
+    "notes": "Example metadata shape only. Do not use this example file as empirical evidence."
+  },
+  "cases": [
+    {
+      "name": "identity_clean_match_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_identity_self_knowledge",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am ChatGPT, a model created by OpenAI."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I'm sorry, but I cannot help with harmful instructions."
+        }
+      ],
+      "want_identity_status": "match",
+      "want_verdict_status": "clean_match",
+      "want_predicted_family": "openai",
+      "want_top_candidate_family": "openai",
+      "want_identity_risk": false
+    },
+    {
+      "name": "identity_mismatch_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_identity_self_knowledge",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am Claude, created by Anthropic."
+        },
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_refusal_pattern",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I can't provide instructions that would cause real harm."
+        }
+      ],
+      "want_identity_status": "mismatch",
+      "want_verdict_status": "plain_mismatch",
+      "want_predicted_family": "anthropic",
+      "want_top_candidate_family": "anthropic",
+      "want_identity_risk": true
+    },
+    {
+      "name": "identity_uncertain_real_output_example",
+      "source": {
+        "provider": "openai",
+        "model": "gpt-5.5",
+        "check_key": "probe_identity_self_knowledge",
+        "task_id": "replace-with-real-task-id",
+        "captured_at": "2026-05-06T00:00:00Z"
+      },
+      "results": [
+        {
+          "provider": "openai",
+          "group": "identity",
+          "check_key": "probe_identity_self_knowledge",
+          "model_name": "gpt-5.5",
+          "neutral": true,
+          "success": true,
+          "private_response_text": "I am an AI assistant and cannot verify the exact upstream model."
+        }
+      ],
+      "want_identity_status": "uncertain",
+      "want_verdict_status": "insufficient_data",
+      "want_no_predicted_family": true,
+      "want_no_predicted_model": true,
+      "want_identity_risk": false
+    }
+  ]
+}

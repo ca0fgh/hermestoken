@@ -143,6 +143,12 @@ func CreateTokenVerificationProbe(c *gin.Context) {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}
+	if strings.TrimSpace(result.CapturedAt) == "" {
+		result.CapturedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if strings.TrimSpace(result.SourceTaskID) == "" {
+		result.SourceTaskID = "direct-probe-" + result.CapturedAt
+	}
 	common.ApiSuccess(c, tokenverifier.RedactDirectProbeResponse(result, apiKey))
 }
 

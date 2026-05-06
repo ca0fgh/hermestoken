@@ -10,9 +10,11 @@ import (
 func TestRedactDirectProbeResponseRedactsNestedSecretFields(t *testing.T) {
 	const secret = "sk-test-secret-value"
 	response := &DirectProbeResponse{
-		BaseURL:  "https://api.example.com",
-		Provider: ProviderOpenAI,
-		Model:    "gpt-5.5",
+		BaseURL:      "https://api.example.com",
+		Provider:     ProviderOpenAI,
+		Model:        "gpt-5.5",
+		SourceTaskID: "task-" + secret,
+		CapturedAt:   "2026-05-06T12:34:56Z " + secret,
 		Results: []CheckResult{
 			{
 				Provider:  ProviderOpenAI,
@@ -106,5 +108,36 @@ func TestRedactDirectProbeResponseRedactsNestedSecretFields(t *testing.T) {
 	}
 	if !strings.Contains(string(originalPayload), secret) {
 		t.Fatal("redaction should not mutate the original response")
+	}
+}
+
+func TestRedactDirectProbeResponseRedactsBaseURLFromErrors(t *testing.T) {
+	const baseURL = "https://relay.example.com"
+	response := &DirectProbeResponse{
+		BaseURL: baseURL,
+		Results: []CheckResult{
+			{
+				CheckKey: CheckProbeIdentitySelfKnowledge,
+				Message:  `Post "` + baseURL + `/v1/messages": context deadline exceeded`,
+				Raw: map[string]any{
+					"error": `Post "` + baseURL + `/v1/messages": context deadline exceeded`,
+				},
+			},
+		},
+		Report: ReportSummary{
+			Risks: []string{`Post "` + baseURL + `/v1/messages": context deadline exceeded`},
+		},
+	}
+
+	redacted := RedactDirectProbeResponse(response, baseURL)
+	payload, err := common.Marshal(redacted)
+	if err != nil {
+		t.Fatalf("failed to marshal redacted response: %v", err)
+	}
+	if strings.Contains(string(payload), baseURL) {
+		t.Fatalf("redacted response still contains base URL: %s", string(payload))
+	}
+	if !strings.Contains(string(payload), "[REDACTED]/v1/messages") {
+		t.Fatalf("expected redacted upstream URL marker: %s", string(payload))
 	}
 }

@@ -9,35 +9,33 @@ type InMemoryRateLimiter struct {
 	store              map[string]*[]int64
 	mutex              sync.Mutex
 	expirationDuration time.Duration
+	lastCleanup        int64
 }
 
 func (l *InMemoryRateLimiter) Init(expirationDuration time.Duration) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
 	if l.store == nil {
-		l.mutex.Lock()
-		if l.store == nil {
-			l.store = make(map[string]*[]int64)
-			l.expirationDuration = expirationDuration
-			if expirationDuration > 0 {
-				go l.clearExpiredItems()
-			}
-		}
-		l.mutex.Unlock()
+		l.store = make(map[string]*[]int64)
 	}
+	l.expirationDuration = expirationDuration
 }
 
-func (l *InMemoryRateLimiter) clearExpiredItems() {
-	for {
-		time.Sleep(l.expirationDuration)
-		l.mutex.Lock()
-		now := time.Now().Unix()
-		for key := range l.store {
-			queue := l.store[key]
-			size := len(*queue)
-			if size == 0 || now-(*queue)[size-1] > int64(l.expirationDuration.Seconds()) {
-				delete(l.store, key)
-			}
+func (l *InMemoryRateLimiter) deleteExpiredItemsLocked(expirationDuration time.Duration) {
+	if expirationDuration <= 0 || l.store == nil {
+		return
+	}
+	now := time.Now().Unix()
+	if l.lastCleanup > 0 && now-l.lastCleanup < int64(expirationDuration.Seconds()) {
+		return
+	}
+	l.lastCleanup = now
+	for key := range l.store {
+		queue := l.store[key]
+		size := len(*queue)
+		if size == 0 || now-(*queue)[size-1] > int64(expirationDuration.Seconds()) {
+			delete(l.store, key)
 		}
-		l.mutex.Unlock()
 	}
 }
 
@@ -45,6 +43,10 @@ func (l *InMemoryRateLimiter) clearExpiredItems() {
 func (l *InMemoryRateLimiter) Request(key string, maxRequestNum int, duration int64) bool {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
+	if l.store == nil {
+		l.store = make(map[string]*[]int64)
+	}
+	l.deleteExpiredItemsLocked(l.expirationDuration)
 	// [old <-- new]
 	queue, ok := l.store[key]
 	now := time.Now().Unix()

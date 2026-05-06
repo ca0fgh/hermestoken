@@ -35,3 +35,16 @@ func TestComputeIdentityVerdictSpoofSelfclaimForged(t *testing.T) {
 		t.Fatalf("true family = %q, want anthropic", verdict.TrueFamily)
 	}
 }
+
+func TestSurfaceIdentitySignalNormalizesClaudeToAnthropicFamily(t *testing.T) {
+	signal := surfaceIdentitySignal(map[CheckKey]string{
+		CheckProbeIdentitySelfKnowledge: "I am Claude, created by Anthropic.",
+	})
+
+	if signal == nil {
+		t.Fatal("surface signal missing for explicit Claude self-claim")
+	}
+	if signal.Family != "anthropic" {
+		t.Fatalf("surface family = %q, want anthropic", signal.Family)
+	}
+}
