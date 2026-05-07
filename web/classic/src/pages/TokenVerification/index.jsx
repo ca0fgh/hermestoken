@@ -44,11 +44,6 @@ const providerOptions = [
   { label: 'Anthropic', value: 'anthropic' },
 ];
 
-const clientProfileOptions = [
-  { label: 'API', value: '' },
-  { label: 'Claude Code', value: 'claude_code' },
-];
-
 const clientProfileLabelMap = {
   claude_code: 'Claude Code',
 };
@@ -68,6 +63,11 @@ const providerModelPresets = {
   openai: ['gpt-5.5', 'gpt-5.4'],
   anthropic: ['claude-opus-4-7', 'claude-opus-4-6'],
 };
+
+function clientProfileForProvider(provider) {
+  const normalizedProvider = String(provider || '').toLowerCase();
+  return normalizedProvider === 'anthropic' ? 'claude_code' : '';
+}
 
 const groupLabels = {
   core: '基础检测',
@@ -294,12 +294,11 @@ function renderIdentityEvidence(items = [], record = {}, t = (value) => value) {
 function TokenVerification() {
   const { t } = useTranslation();
   const [userState] = useContext(UserContext);
-  const [provider, setProvider] = useState('openai');
-  const [baseURL, setBaseURL] = useState(providerDefaults.openai.baseURL);
+  const [provider, setProvider] = useState('anthropic');
+  const [baseURL, setBaseURL] = useState(providerDefaults.anthropic.baseURL);
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState(providerDefaults.openai.model);
+  const [model, setModel] = useState(providerDefaults.anthropic.model);
   const [probeProfile, setProbeProfile] = useState('standard');
-  const [clientProfile, setClientProfile] = useState('');
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState(null);
 
@@ -345,9 +344,10 @@ function TokenVerification() {
       provider: probeResult?.provider || provider,
       model: probeResult?.model || model,
       probeProfile: probeResult?.probe_profile || probeProfile,
-      clientProfile: probeResult?.client_profile || clientProfile,
+      clientProfile:
+        probeResult?.client_profile || clientProfileForProvider(provider),
     }),
-    [baseURL, clientProfile, model, probeProfile, probeResult, provider],
+    [baseURL, model, probeProfile, probeResult, provider],
   );
 
   const handleProviderChange = (value) => {
@@ -357,9 +357,6 @@ function TokenVerification() {
       providerDefaults[nextProvider] || providerDefaults.openai;
 
     setProvider(nextProvider);
-    if (nextProvider !== 'anthropic') {
-      setClientProfile('');
-    }
     if (!baseURL.trim() || baseURL === previousDefaults.baseURL) {
       setBaseURL(nextDefaults.baseURL);
     }
@@ -395,7 +392,7 @@ function TokenVerification() {
           provider,
           model: trimmedModel,
           probe_profile: probeProfile,
-          client_profile: provider === 'anthropic' ? clientProfile : '',
+          client_profile: clientProfileForProvider(provider),
         },
         {
           timeout: probeRequestTimeout(probeProfile),
@@ -709,11 +706,10 @@ function TokenVerification() {
               {provider === 'anthropic' && (
                 <label>
                   <Text strong>{t('客户端模式')}</Text>
-                  <Select
-                    optionList={clientProfileOptions}
-                    value={clientProfile}
-                    onChange={(value) => setClientProfile(String(value || ''))}
-                    style={{ width: '100%' }}
+                  <Input
+                    readonly
+                    value={clientProfileLabelMap.claude_code}
+                    onChange={() => {}}
                   />
                 </label>
               )}

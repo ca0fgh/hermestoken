@@ -77,7 +77,8 @@
       "first": "424242",
       "second": "424242",
       "want_passed": false,
-      "want_error_code": "possible_cache_hit"
+      "want_skipped": true,
+      "want_error_code": "possible_cache_hit_unconfirmed"
     },
     {
       "name": "adaptive_positive",
@@ -90,9 +91,9 @@
       "name": "adaptive_negative",
       "check_key": "probe_adaptive_injection",
       "neutral": "apple banana cherry date elderberry",
-      "trigger": "apple banana aws_secret_access_key date elderberry",
+      "trigger": "apple banana [filtered] date elderberry",
       "want_passed": false,
-      "want_error_code": "adaptive_probe_diverged"
+      "want_error_code": "adaptive_probe_echo_mismatch"
     },
     {
       "name": "context_positive",

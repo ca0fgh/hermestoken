@@ -22,9 +22,38 @@ type BillingPreferenceRequest struct {
 	BillingPreference string `json:"billing_preference"`
 }
 
+const subscriptionReferralRequiredMessage = "该用户未开通订阅返佣"
+
+func userHasActiveSubscriptionReferral(userID int) (bool, error) {
+	return model.HasAnyActiveReferralTemplateBindingByUser(userID, model.ReferralTypeSubscription)
+}
+
+func requireActiveSubscriptionReferral(c *gin.Context) bool {
+	active, err := userHasActiveSubscriptionReferral(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	if !active {
+		common.ApiErrorMsg(c, subscriptionReferralRequiredMessage)
+		return false
+	}
+	return true
+}
+
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
+	active, err := userHasActiveSubscriptionReferral(c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !active {
+		common.ApiSuccess(c, []SubscriptionPlanDTO{})
+		return
+	}
+
 	var plans []model.SubscriptionPlan
 	if err := model.DB.Where("enabled = ?", true).Order("sort_order desc, id desc").Find(&plans).Error; err != nil {
 		common.ApiError(c, err)

@@ -138,6 +138,7 @@ func withSubscriptionEpaySettings(t *testing.T) {
 func TestSubscriptionRequestStripePayPassesQuantityAndStoresAggregateTotal(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionPaymentUser(t, db, 1, "stripe@example.com", "stripe_user", "cus_subscription")
+	seedActiveSubscriptionReferralBinding(t, user.Id, "default", model.ReferralLevelTypeDirect, 0)
 	plan := seedSubscriptionPlan(t, db, "stripe-plan")
 	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
 		"price_amount":    30.0,
@@ -231,6 +232,7 @@ func TestSubscriptionRequestStripePayPassesQuantityAndStoresAggregateTotal(t *te
 func TestSubscriptionRequestCreemPayPassesQuantityAndStoresAggregateTotal(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionPaymentUser(t, db, 1, "creem@example.com", "creem_user", "")
+	seedActiveSubscriptionReferralBinding(t, user.Id, "default", model.ReferralLevelTypeDirect, 0)
 	plan := seedSubscriptionPlan(t, db, "creem-plan")
 	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
 		"price_amount":     12.5,
@@ -319,7 +321,8 @@ func TestSubscriptionRequestCreemPayPassesQuantityAndStoresAggregateTotal(t *tes
 
 func TestSubscriptionRequestEpayConvertsUsdTotalToGatewayAmount(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
-	seedSubscriptionPaymentUser(t, db, 1, "epay@example.com", "epay_user", "")
+	user := seedSubscriptionPaymentUser(t, db, 1, "epay@example.com", "epay_user", "")
+	seedActiveSubscriptionReferralBinding(t, user.Id, "default", model.ReferralLevelTypeDirect, 0)
 	plan := seedSubscriptionPlan(t, db, "epay-plan")
 	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
 		"price_amount": 10.25,
@@ -412,6 +415,7 @@ func TestSubscriptionRequestWalletPayDeductsBalanceAndCreatesSubscriptions(t *te
 	})
 
 	user := seedSubscriptionPaymentUser(t, db, 1, "wallet@example.com", "wallet_user", "")
+	seedActiveSubscriptionReferralBinding(t, user.Id, "default", model.ReferralLevelTypeDirect, 0)
 	user.Quota = 1000
 	if err := db.Save(user).Error; err != nil {
 		t.Fatalf("failed to seed user quota: %v", err)
@@ -492,6 +496,57 @@ func TestSubscriptionRequestWalletPayDeductsBalanceAndCreatesSubscriptions(t *te
 	}
 }
 
+func TestSubscriptionRequestWalletPayRejectsUserWithoutSubscriptionReferralBinding(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+
+	user := seedSubscriptionPaymentUser(t, db, 1, "wallet-disabled@example.com", "wallet_disabled_user", "")
+	user.Quota = 1000
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to seed user quota: %v", err)
+	}
+	plan := seedSubscriptionPlan(t, db, "wallet-disabled-plan")
+	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
+		"price_amount": 3.5,
+		"stock_total":  10,
+	})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/wallet/pay", map[string]interface{}{
+		"plan_id":  plan.Id,
+		"quantity": 1,
+	}, user.Id)
+
+	SubscriptionRequestWalletPay(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected http status 200, got %d", recorder.Code)
+	}
+	response := decodeSubscriptionPaymentResponse(t, recorder.Body.Bytes())
+	if !strings.Contains(response.Message, "订阅返佣") {
+		t.Fatalf("expected subscription referral disabled message, got %s body=%s", response.Message, recorder.Body.String())
+	}
+
+	var reloadedUser model.User
+	if err := db.First(&reloadedUser, user.Id).Error; err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if reloadedUser.Quota != 1000 {
+		t.Fatalf("expected user quota to stay 1000, got %d", reloadedUser.Quota)
+	}
+
+	var orderCount int64
+	if err := db.Model(&model.SubscriptionOrder{}).Count(&orderCount).Error; err != nil {
+		t.Fatalf("failed to count subscription orders: %v", err)
+	}
+	if orderCount != 0 {
+		t.Fatalf("expected no subscription order when subscription referral is disabled, found %d", orderCount)
+	}
+}
+
 func TestSubscriptionRequestWalletPayRejectsInsufficientBalanceWithoutSideEffects(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit
@@ -501,6 +556,7 @@ func TestSubscriptionRequestWalletPayRejectsInsufficientBalanceWithoutSideEffect
 	})
 
 	user := seedSubscriptionPaymentUser(t, db, 1, "wallet-low@example.com", "wallet_low_user", "")
+	seedActiveSubscriptionReferralBinding(t, user.Id, "default", model.ReferralLevelTypeDirect, 0)
 	user.Quota = 100
 	if err := db.Save(user).Error; err != nil {
 		t.Fatalf("failed to seed user quota: %v", err)

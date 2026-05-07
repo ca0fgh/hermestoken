@@ -117,8 +117,9 @@
       "first": "424242",
       "second": "424242",
       "want_passed": false,
-      "want_score": 50,
-      "want_error_code": "possible_cache_hit"
+      "want_score": 0,
+      "want_skipped": true,
+      "want_error_code": "possible_cache_hit_unconfirmed"
     },
     {
       "name": "empty_random_output",
@@ -139,12 +140,12 @@
       "want_score": 100
     },
     {
-      "name": "diverged_outputs",
+      "name": "trigger_filtered",
       "neutral": "apple banana cherry date elderberry",
-      "trigger": "apple banana aws_secret_access_key date elderberry",
+      "trigger": "apple banana [filtered] date elderberry",
       "want_passed": false,
       "want_score": 0,
-      "want_error_code": "adaptive_probe_diverged"
+      "want_error_code": "adaptive_probe_echo_mismatch"
     },
     {
       "name": "empty_trigger",

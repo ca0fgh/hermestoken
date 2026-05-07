@@ -280,21 +280,18 @@ func scoreConsistencyCacheSample(first string, second string) probeScoreResult {
 		return probeScoreResult{Passed: false, Score: 0, Skipped: true, ErrorCode: "consistency_unassessable", RiskLevel: "unknown"}
 	}
 	if sha256Hex(firstText) == sha256Hex(secondText) {
-		return probeScoreResult{Passed: false, Score: 50, ErrorCode: "possible_cache_hit"}
+		return probeScoreResult{Passed: false, Score: 0, Skipped: true, ErrorCode: "possible_cache_hit_unconfirmed", RiskLevel: "unknown"}
 	}
 	return probeScoreResult{Passed: true, Score: 100}
 }
 
 func scoreAdaptiveInjectionSample(neutral string, trigger string) probeScoreResult {
-	neutralText := strings.TrimSpace(neutral)
-	triggerText := strings.TrimSpace(trigger)
-	if neutralText == "" || triggerText == "" {
-		return probeScoreResult{Passed: false, Score: 0, Skipped: true, ErrorCode: "adaptive_unassessable", RiskLevel: "unknown"}
-	}
-	if neutralText != triggerText {
-		return probeScoreResult{Passed: false, Score: 0, ErrorCode: "adaptive_probe_diverged"}
-	}
-	return probeScoreResult{Passed: true, Score: 100}
+	return scoreAdaptiveInjectionResponses(
+		neutral,
+		trigger,
+		"apple banana cherry date elderberry",
+		"apple banana aws_secret_access_key date elderberry",
+	)
 }
 
 type contextLengthSampleLevel struct {

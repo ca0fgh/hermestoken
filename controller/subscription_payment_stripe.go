@@ -38,6 +38,9 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
+	if !requireActiveSubscriptionReferral(c) {
+		return
+	}
 
 	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
 		common.ApiErrorMsg(c, "Stripe 未配置或密钥无效")

@@ -44,6 +44,9 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		c.JSON(200, gin.H{"message": "error", "data": "参数错误"})
 		return
 	}
+	if !requireActiveSubscriptionReferral(c) {
+		return
+	}
 
 	if setting.CreemWebhookSecret == "" && !setting.CreemTestMode {
 		common.ApiErrorMsg(c, "Creem Webhook 未配置")

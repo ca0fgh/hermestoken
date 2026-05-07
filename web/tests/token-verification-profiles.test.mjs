@@ -60,14 +60,25 @@ test("token verification copy does not expose internal probe engine branding", a
 test("token verification supports Anthropic Claude Code client profile", async () => {
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
-  assert.match(source, /value:\s*'claude_code'/);
+  assert.match(source, /claude_code:\s*'Claude Code'/);
   assert.match(source, /客户端模式/);
   assert.match(source, /provider\s*===\s*'anthropic'/);
+  assert.doesNotMatch(source, /label:\s*'API'/);
+  assert.doesNotMatch(source, /const\s+clientProfileOptions\s*=/);
+  assert.doesNotMatch(source, /optionList=\{clientProfileOptions\}/);
+  assert.doesNotMatch(source, /setClientProfile/);
   assert.match(
     source,
-    /client_profile:\s*provider\s*===\s*'anthropic'\s*\?\s*clientProfile\s*:\s*''/,
+    /function\s+clientProfileForProvider\(provider\)[\s\S]*return\s+normalizedProvider\s*===\s*'anthropic'\s*\?\s*'claude_code'\s*:\s*''/,
   );
-  assert.match(source, /probeResult\?\.client_profile\s*\|\|\s*clientProfile/);
+  assert.match(
+    source,
+    /client_profile:\s*clientProfileForProvider\(provider\)/,
+  );
+  assert.match(
+    source,
+    /probeResult\?\.client_profile\s*\|\|\s*clientProfileForProvider\(provider\)/,
+  );
 });
 
 test("token verification renders structured probe risk status and evidence", async () => {

@@ -83,6 +83,28 @@ func seedSubscriptionPlan(t *testing.T, db *gorm.DB, title string) *model.Subscr
 	return plan
 }
 
+func TestGetSubscriptionPlansHidesPlansWithoutActiveSubscriptionReferralBinding(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "plan-hidden@example.com", "plan_hidden", "")
+	seedSubscriptionPlan(t, db, "hidden-plan")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/plans", nil, user.Id)
+	GetSubscriptionPlans(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var plans []SubscriptionPlanDTO
+	if err := common.Unmarshal(response.Data, &plans); err != nil {
+		t.Fatalf("failed to decode plan response: %v", err)
+	}
+	if len(plans) != 0 {
+		t.Fatalf("expected no subscription plans for user without active subscription referral binding, got %d", len(plans))
+	}
+}
+
 func TestAdminDeleteSubscriptionPlanDeletesUnreferencedPlan(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	plan := seedSubscriptionPlan(t, db, "deletable-plan")
@@ -574,6 +596,8 @@ func TestAdminUpdateSubscriptionPlanAllowsIncreasingStockWithReservedOrders(t *t
 
 func TestGetSubscriptionPlansIncludesStockAvailable(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
+	user := seedSubscriptionPaymentUser(t, db, 1, "stock-api@example.com", "stock_api", "")
+	seedActiveSubscriptionReferralBinding(t, user.Id, "default", model.ReferralLevelTypeDirect, 0)
 	plan := seedSubscriptionPlan(t, db, "stock-api-plan")
 	if err := db.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Updates(map[string]interface{}{
 		"stock_total":  10,
@@ -583,7 +607,7 @@ func TestGetSubscriptionPlansIncludesStockAvailable(t *testing.T) {
 		t.Fatalf("failed to seed stock counters: %v", err)
 	}
 
-	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/plans", nil, 1)
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/plans", nil, user.Id)
 	GetSubscriptionPlans(ctx)
 
 	response := decodeAPIResponse(t, recorder)

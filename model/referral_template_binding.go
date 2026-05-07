@@ -144,6 +144,19 @@ func ListReferralTemplateBindingsByUser(userID int, referralType string) ([]Refe
 	return views, nil
 }
 
+func HasAnyActiveReferralTemplateBindingByUser(userID int, referralType string) (bool, error) {
+	views, err := ListReferralTemplateBindingsByUser(userID, referralType)
+	if err != nil {
+		return false, err
+	}
+	for _, view := range views {
+		if view.Template.Enabled {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func ListReferralTemplateBindingBundlesByUser(userID int, referralType string) ([]ReferralTemplateBindingBundleView, error) {
 	views, err := ListReferralTemplateBindingsByUser(userID, referralType)
 	if err != nil {

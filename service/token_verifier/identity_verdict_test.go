@@ -36,6 +36,23 @@ func TestComputeIdentityVerdictSpoofSelfclaimForged(t *testing.T) {
 	}
 }
 
+func TestComputeIdentityVerdictDoesNotTreatSingleWeakBehaviorSignalAsSpoof(t *testing.T) {
+	verdict := computeIdentityVerdict(IdentityVerdictInput{
+		ClaimedFamily: "anthropic",
+		ClaimedModel:  "claude-opus-4-7",
+		Surface:       &IdentitySignal{Family: "anthropic", Score: 0.80},
+		Behavior:      &IdentitySignal{Family: "openai", Score: 0.72},
+		V3:            &IdentitySubmodelSignal{Family: "anthropic", ModelID: "claude-opus-4-7", DisplayName: "Claude Opus 4.7", Score: 0.40},
+	})
+
+	if verdict.Status != "ambiguous" {
+		t.Fatalf("verdict = %+v, want ambiguous for uncorroborated single cross-signal", verdict)
+	}
+	if verdict.SpoofMethod != "" || verdict.ConfidenceBand != "low" {
+		t.Fatalf("verdict = %+v, want no spoof method with low confidence", verdict)
+	}
+}
+
 func TestSurfaceIdentitySignalNormalizesClaudeToAnthropicFamily(t *testing.T) {
 	signal := surfaceIdentitySignal(map[CheckKey]string{
 		CheckProbeIdentitySelfKnowledge: "I am Claude, created by Anthropic.",

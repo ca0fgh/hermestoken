@@ -420,6 +420,12 @@ const TopUp = () => {
   const getSubscriptionPlans = async () => {
     setSubscriptionLoading(true);
     try {
+      const referralRes = await API.get('/api/user/referral/subscription');
+      if (!referralRes.data?.success || !referralRes.data?.data?.enabled) {
+        setSubscriptionPlans([]);
+        return;
+      }
+
       const res = await API.get('/api/subscription/plans');
       if (res.data?.success) {
         setSubscriptionPlans(res.data.data || []);

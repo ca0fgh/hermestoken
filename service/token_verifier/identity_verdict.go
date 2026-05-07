@@ -87,10 +87,10 @@ func computeIdentityVerdict(input IdentityVerdictInput) IdentityVerdictSummary {
 				diverging = append(diverging, signal)
 			}
 		}
-		if len(diverging) == 1 && diverging[0].label == "behavior" && diverging[0].score >= 0.70 {
+		if len(diverging) == 1 && diverging[0].label == "behavior" && diverging[0].score >= 0.70 && hasCorroboratedMatchingIdentitySignals(matching) {
 			return IdentityVerdictSummary{Status: "spoof_selfclaim_forged", TrueFamily: diverging[0].family, SpoofMethod: "selfclaim_forged", ConfidenceBand: "medium", Reasoning: reasoning}
 		}
-		if len(diverging) == 1 && diverging[0].label == "surface" && diverging[0].score >= 0.50 {
+		if len(diverging) == 1 && diverging[0].label == "surface" && diverging[0].score >= 0.50 && hasCorroboratedMatchingIdentitySignals(matching) {
 			return IdentityVerdictSummary{Status: "spoof_behavior_induced", TrueFamily: diverging[0].family, SpoofMethod: "behavior_induced", ConfidenceBand: "medium", Reasoning: reasoning}
 		}
 		if len(diverging) >= 2 {
@@ -128,6 +128,16 @@ func computeIdentityVerdict(input IdentityVerdictInput) IdentityVerdictSummary {
 	}
 
 	return IdentityVerdictSummary{Status: "insufficient_data", ConfidenceBand: "low", Reasoning: reasoning}
+}
+
+func hasCorroboratedMatchingIdentitySignals(signals []identityVote) bool {
+	strongCount := 0
+	for _, signal := range signals {
+		if signal.score >= 0.70 {
+			strongCount++
+		}
+	}
+	return strongCount >= 2
 }
 
 type identityVote struct {

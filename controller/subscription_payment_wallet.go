@@ -26,6 +26,9 @@ func SubscriptionRequestWalletPay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
+	if !requireActiveSubscriptionReferral(c) {
+		return
+	}
 	randomPart := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo := fmt.Sprintf("SUBWALUSR%dNO%s", userId, randomPart)
 	result, err := model.PurchaseSubscriptionWithWallet(userId, req.PlanId, quantity, tradeNo)
