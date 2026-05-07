@@ -338,6 +338,35 @@ func TestBuildLabeledProbeCorpusDraftPreservesSanitizedLegacyFunctionCallRisk(t 
 	}
 }
 
+func TestBuildLabeledProbeCorpusDraftPreservesMalformedToolCallRisk(t *testing.T) {
+	corpus := BuildLabeledProbeCorpusDraftFromResults("", []CheckResult{
+		{
+			CheckKey:  CheckProbeToolCallIntegrity,
+			Success:   false,
+			ErrorCode: "tool_call_arguments_unverifiable",
+			RiskLevel: "high",
+			Raw: map[string]any{
+				"tool_call_payload": map[string]any{
+					"choices": []any{
+						map[string]any{
+							"message": map[string]any{
+								"tool_calls": "not-an-array",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if len(corpus.Cases) != 1 {
+		t.Fatalf("case count = %d, want 1", len(corpus.Cases))
+	}
+	replayed := scoreLabeledProbeCorpusCase(verifierProbe{Key: CheckProbeToolCallIntegrity}, corpus.Cases[0])
+	if replayed.Passed || replayed.ErrorCode != "tool_call_arguments_unverifiable" {
+		t.Fatalf("malformed tool-call replay result = %+v, want unverifiable argument failure", replayed)
+	}
+}
+
 func TestBuildLabeledProbeCorpusDraftDeduplicatesMirroredLegacyFunctionCall(t *testing.T) {
 	expected := toolCallIntegrityExpectedCommand()
 	corpus := BuildLabeledProbeCorpusDraftFromResults("", []CheckResult{

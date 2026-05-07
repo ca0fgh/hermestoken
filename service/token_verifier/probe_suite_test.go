@@ -733,6 +733,37 @@ func TestScoreToolCallIntegrityDetectsPayloadMutation(t *testing.T) {
 		t.Fatalf("malformed tool-call payload result = %+v, want high-risk unverifiable arguments", malformedArguments)
 	}
 
+	malformedToolCallsShape := scoreToolCallIntegrityPayload(map[string]any{
+		"choices": []any{
+			map[string]any{
+				"message": map[string]any{
+					"tool_calls": map[string]any{
+						"function": map[string]any{
+							"name":      toolCallIntegrityFunctionName,
+							"arguments": `{"command":"` + expected + `"}`,
+						},
+					},
+				},
+			},
+		},
+	}, expected)
+	if malformedToolCallsShape.Passed || malformedToolCallsShape.Score != 0 || malformedToolCallsShape.ErrorCode != "tool_call_arguments_unverifiable" || malformedToolCallsShape.RiskLevel != "high" {
+		t.Fatalf("malformed tool_calls shape result = %+v, want high-risk unverifiable arguments", malformedToolCallsShape)
+	}
+
+	malformedFunctionCallShape := scoreToolCallIntegrityPayload(map[string]any{
+		"choices": []any{
+			map[string]any{
+				"message": map[string]any{
+					"function_call": `{"name":"` + toolCallIntegrityFunctionName + `","arguments":{"command":"` + expected + `"}}`,
+				},
+			},
+		},
+	}, expected)
+	if malformedFunctionCallShape.Passed || malformedFunctionCallShape.Score != 0 || malformedFunctionCallShape.ErrorCode != "tool_call_arguments_unverifiable" || malformedFunctionCallShape.RiskLevel != "high" {
+		t.Fatalf("malformed function_call shape result = %+v, want high-risk unverifiable arguments", malformedFunctionCallShape)
+	}
+
 	extraUnexpectedTool := scoreToolCallIntegrityPayload(map[string]any{
 		"choices": []any{
 			map[string]any{

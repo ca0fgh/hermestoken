@@ -2536,7 +2536,13 @@ func extractOpenAIToolOrFunctionCalls(rawToolCalls any, rawFunctionCall any, exp
 }
 
 func extractOpenAIToolCallCommands(rawToolCalls any, expectedToolName string) toolCallCommandExtraction {
-	toolCalls, _ := rawToolCalls.([]any)
+	if rawToolCalls == nil {
+		return toolCallCommandExtraction{}
+	}
+	toolCalls, ok := rawToolCalls.([]any)
+	if !ok {
+		return toolCallCommandExtraction{HasToolCalls: true, HasMalformedExpected: true}
+	}
 	if len(toolCalls) == 0 {
 		return toolCallCommandExtraction{}
 	}
@@ -2568,7 +2574,13 @@ func extractOpenAIToolCallCommands(rawToolCalls any, expectedToolName string) to
 
 func extractOpenAIFunctionCallCommand(rawFunctionCall any, expectedToolName string) toolCallCommandExtraction {
 	functionCall, ok := rawFunctionCall.(map[string]any)
-	if !ok || len(functionCall) == 0 {
+	if !ok {
+		if rawFunctionCall != nil {
+			return toolCallCommandExtraction{HasToolCalls: true, HasMalformedExpected: true}
+		}
+		return toolCallCommandExtraction{}
+	}
+	if len(functionCall) == 0 {
 		return toolCallCommandExtraction{}
 	}
 	extraction := toolCallCommandExtraction{HasToolCalls: true}
@@ -2698,11 +2710,25 @@ func containsSanitizedToolCall(toolCalls []any, candidate any) bool {
 }
 
 func sanitizedOpenAIToolCalls(rawToolCalls any) []any {
-	toolCalls, _ := rawToolCalls.([]any)
+	if rawToolCalls == nil {
+		return nil
+	}
+	toolCalls, ok := rawToolCalls.([]any)
+	if !ok {
+		return []any{sanitizedMalformedExpectedToolCall()}
+	}
 	out := make([]any, 0, len(toolCalls))
 	for _, rawToolCall := range toolCalls {
-		toolCall, _ := rawToolCall.(map[string]any)
-		function, _ := toolCall["function"].(map[string]any)
+		toolCall, ok := rawToolCall.(map[string]any)
+		if !ok {
+			out = append(out, sanitizedMalformedExpectedToolCall())
+			continue
+		}
+		function, ok := toolCall["function"].(map[string]any)
+		if !ok {
+			out = append(out, sanitizedMalformedExpectedToolCall())
+			continue
+		}
 		name := strings.TrimSpace(common.Interface2String(function["name"]))
 		if name == "" {
 			name = "[MISSING]"
@@ -2722,7 +2748,13 @@ func sanitizedOpenAIToolCalls(rawToolCalls any) []any {
 
 func sanitizedOpenAIFunctionCall(rawFunctionCall any) any {
 	functionCall, ok := rawFunctionCall.(map[string]any)
-	if !ok || len(functionCall) == 0 {
+	if !ok {
+		if rawFunctionCall != nil {
+			return sanitizedMalformedExpectedToolCall()
+		}
+		return nil
+	}
+	if len(functionCall) == 0 {
 		return nil
 	}
 	name := strings.TrimSpace(common.Interface2String(functionCall["name"]))
@@ -2736,6 +2768,18 @@ func sanitizedOpenAIFunctionCall(rawFunctionCall any) any {
 		"function": map[string]any{
 			"name":      name,
 			"arguments": sanitizedToolArguments(functionCall["arguments"]),
+		},
+	}
+}
+
+func sanitizedMalformedExpectedToolCall() any {
+	return map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name": toolCallIntegrityFunctionName,
+			"arguments": map[string]any{
+				"command_present": false,
+			},
 		},
 	}
 }
