@@ -4282,6 +4282,18 @@
     "控制是否显示 LLM 探针检测入口": "Controls whether to show the LLM probe detection entry",
     "控制是否显示市场入口": "Controls whether to show the marketplace entry",
     "控制顶栏与演示站页脚相关入口显示状态，全局生效": "Controls top navigation and demo footer entries globally",
-    "正在检测中，通常需要几十秒，完整检测可能需要数分钟。": "Detection is running. It usually takes seconds; full detection may take a few minutes."
+    "正在检测中，通常需要几十秒，完整检测可能需要数分钟。": "Detection is running. It usually takes seconds; full detection may take a few minutes.",
+    "检测已排队": "Detection queued",
+    "检测并解除买断订单": "Detect and release fixed order",
+    "将重新检测该托管 Key。若当前检测分数比托管时卖家检测分数低 5 分或更多，系统会解除订单并退还剩余金额。": "The hosted key will be detected again. If the current score is at least 5 points lower than the seller score at hosting time, the order will be released and the remaining amount refunded.",
+    "订单已解除，剩余金额已退还": "Order released and remaining amount refunded",
+    "检测或解除失败": "Failed to detect or release order",
+    "可退金额": "Refundable amount",
+    "检测并解除": "Detect and release",
+    "检测完成，该订单可以解除": "Detection complete. This order can be released.",
+    "检测完成，该订单不满足解除条件": "Detection complete. This order does not meet release conditions.",
+    "解除买断订单": "Release fixed order",
+    "该订单最近一次检测已不合格。解除后将退还剩余金额并移除令牌绑定。": "This order has failed the latest detection. Releasing it will refund the remaining amount and remove token bindings.",
+    "解除订单": "Release order"
   }
 }

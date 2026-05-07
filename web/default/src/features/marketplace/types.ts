@@ -22,6 +22,13 @@ export type MarketplaceHealthStatus =
   | 'failed'
 export type MarketplaceCapacityStatus = 'available' | 'busy' | 'exhausted'
 export type MarketplaceRiskStatus = 'normal' | 'watching' | 'risk_paused'
+export type MarketplaceProbeStatus =
+  | 'unscored'
+  | 'pending'
+  | 'running'
+  | 'passed'
+  | 'warning'
+  | 'failed'
 export type MarketplaceRouteStatus =
   | 'route_available'
   | 'route_unlisted'
@@ -122,6 +129,11 @@ export type MarketplaceCredential = {
   capacity_status: MarketplaceCapacityStatus
   route_status: MarketplaceRouteStatus
   risk_status: MarketplaceRiskStatus
+  probe_status: MarketplaceProbeStatus
+  probe_score: number
+  probe_score_max: number
+  probe_grade: string
+  probe_checked_at: number
   fixed_order_sold_quota?: number
   created_at: number
   updated_at: number
@@ -187,6 +199,19 @@ export type MarketplaceFixedOrder = {
   remaining_quota: number
   spent_quota: number
   expired_quota: number
+  refunded_quota: number
+  purchase_probe_status: string
+  purchase_probe_score: number
+  purchase_probe_score_max: number
+  purchase_probe_grade: string
+  purchase_probe_checked_at: number
+  refund_probe_status: string
+  refund_probe_score: number
+  refund_probe_score_max: number
+  refund_probe_grade: string
+  refund_probe_checked_at: number
+  refund_probe_error: string
+  refunded_at: number
   multiplier_snapshot: number
   official_price_snapshot: string
   buyer_price_snapshot: string

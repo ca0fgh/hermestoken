@@ -888,6 +888,11 @@ function renderMarketplaceProbeScore(record, t) {
   );
 }
 
+function marketplaceProbeInProgress(record) {
+  const status = String(record?.probe_status || '').trim();
+  return status === 'pending' || status === 'running';
+}
+
 function marketplaceResponseTimeColor(responseTime, healthStatus) {
   if (healthStatus === 'failed') return 'red';
   if (healthStatus === 'degraded') return 'orange';
@@ -3044,6 +3049,7 @@ function FixedOrdersTab({ buyerTokens, onBuyerTokensChange }) {
   const [visibleTokenKeys, setVisibleTokenKeys] = useState({});
   const [resolvedTokenKeys, setResolvedTokenKeys] = useState({});
   const [loadingTokenKeys, setLoadingTokenKeys] = useState({});
+  const [probingOrderId, setProbingOrderId] = useState(null);
   const enabledTokens = useMemo(
     () => buyerTokens.filter((token) => token.status === 1),
     [buyerTokens],
@@ -3220,6 +3226,103 @@ function FixedOrdersTab({ buyerTokens, onBuyerTokensChange }) {
     }
   };
 
+  const probeFixedOrder = async (record) => {
+    if (!record?.id) return;
+    setProbingOrderId(record.id);
+    try {
+      const response = await API.post(
+        `/api/marketplace/fixed-orders/${record.id}/probe`,
+        null,
+        { skipErrorHandler: true },
+      );
+      ensureSuccess(response);
+      const updatedOrder = response?.data?.data;
+      setItems((current) =>
+        current.map((item) =>
+          item.id === updatedOrder?.id ? { ...item, ...updatedOrder } : item,
+        ),
+      );
+      const scoreDrop =
+        Number(updatedOrder?.purchase_probe_score) -
+        Number(updatedOrder?.refund_probe_score);
+      showSuccess(
+        scoreDrop >= 5
+          ? t('检测完成，该订单可以解除')
+          : t('检测完成，该订单不满足解除条件'),
+      );
+      await load();
+    } catch (error) {
+      showError(error.message || t('检测失败'));
+    } finally {
+      setProbingOrderId(null);
+    }
+  };
+
+  const releaseFixedOrder = async (record) => {
+    if (!record?.id) return;
+    Modal.confirm({
+      title: t('解除买断订单'),
+      content: t(
+        '该订单最近一次检测已不合格。解除后将退还剩余金额并移除令牌绑定。',
+      ),
+      okText: t('解除订单'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setProbingOrderId(record.id);
+        try {
+          const response = await API.post(
+            `/api/marketplace/fixed-orders/${record.id}/release`,
+            null,
+            { skipErrorHandler: true },
+          );
+          ensureSuccess(response);
+          const updatedOrder = response?.data?.data;
+          setItems((current) =>
+            current.map((item) =>
+              item.id === updatedOrder?.id ? { ...item, ...updatedOrder } : item,
+            ),
+          );
+          const refundedQuota = Number(updatedOrder?.refunded_quota) || 0;
+          showSuccess(
+            refundedQuota > 0
+              ? `${t('订单已解除，剩余金额已退还')}：${formatMarketplaceQuotaUSD(
+                  refundedQuota,
+                )}`
+              : t('订单已解除，剩余金额已退还'),
+          );
+          onBuyerTokensChange?.(
+            buyerTokens.map((token) => {
+              const nextOrderIds = marketplaceTokenFixedOrderIds(token).filter(
+                (orderId) => orderId !== record.id,
+              );
+              return {
+                ...token,
+                marketplace_fixed_order_id: nextOrderIds[0] || 0,
+                marketplace_fixed_order_ids: nextOrderIds,
+              };
+            }),
+          );
+          await load();
+        } catch (error) {
+          showError(error.message || t('检测或解除失败'));
+        } finally {
+          setProbingOrderId(null);
+        }
+      },
+    });
+  };
+
+  const canProbeAndRefundFixedOrder = (record) =>
+    record?.status === 'active' &&
+    Number(record?.remaining_quota) > 0 &&
+    Number(record?.purchase_probe_score) > 0;
+
+  const canReleaseFixedOrder = (record) =>
+    canProbeAndRefundFixedOrder(record) &&
+    Number(record?.refund_probe_checked_at) > 0 &&
+    Number(record?.purchase_probe_score) - Number(record?.refund_probe_score) >=
+      5;
+
   return (
     <>
       <Table
@@ -3242,8 +3345,38 @@ function FixedOrdersTab({ buyerTokens, onBuyerTokensChange }) {
               formatMarketplaceQuotaUSD(record.spent_quota),
           },
           {
+            title: t('可退金额'),
+            render: (_, record) =>
+              formatMarketplaceQuotaUSD(record.remaining_quota),
+          },
+          {
             title: t('状态'),
             render: (_, record) => renderFixedOrderCombinedStatus(record, t),
+          },
+          {
+            title: t('操作'),
+            render: (_, record) => (
+              <Space>
+                <Button
+                  size='small'
+                  disabled={!canProbeAndRefundFixedOrder(record)}
+                  loading={probingOrderId === record.id}
+                  onClick={() => probeFixedOrder(record)}
+                >
+                  {t('检测')}
+                </Button>
+                <Button
+                  size='small'
+                  type='danger'
+                  theme='light'
+                  disabled={!canReleaseFixedOrder(record)}
+                  loading={probingOrderId === record.id}
+                  onClick={() => releaseFixedOrder(record)}
+                >
+                  {t('解除订单')}
+                </Button>
+              </Space>
+            ),
           },
           {
             title: t('调用'),
@@ -3642,7 +3775,7 @@ function SellerTab() {
         `/api/marketplace/seller/credentials/${record.id}/${action}`,
       );
       ensureSuccess(response);
-      showSuccess(t('操作成功'));
+      showSuccess(action === 'probe' ? t('检测已排队') : t('操作成功'));
       load();
     } catch (error) {
       showError(error.message);
@@ -4360,6 +4493,15 @@ function SellerTab() {
                   }
                 >
                   {record.service_status === 'enabled' ? t('禁用') : t('启用')}
+                </Button>
+                <Button
+                  size='small'
+                  disabled={marketplaceProbeInProgress(record)}
+                  onClick={() => callAction(record, 'probe')}
+                >
+                  {marketplaceProbeInProgress(record)
+                    ? t('检测中')
+                    : t('检测')}
                 </Button>
                 <Button
                   size='small'

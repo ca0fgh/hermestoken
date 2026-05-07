@@ -79,6 +79,16 @@ test("token verification renders structured probe risk status and evidence", asy
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
   assert.match(source, /function probeStatusMeta\(record,\s*t\)/);
+  assert.match(source, /function renderProbeCheckName\(name,\s*record,\s*t\)/);
+  assert.match(
+    source,
+    /<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>/,
+  );
+  assert.doesNotMatch(
+    source,
+    /<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>[\s\S]*<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>/,
+  );
+  assert.match(source, /record\.check_description/);
   assert.match(source, /record\.error_code\s*===\s*'judge_unconfigured'/);
   assert.match(source, /label:\s*t\('未评分'\)/);
   assert.match(source, /riskLevel\s*===\s*'high'/);
@@ -86,6 +96,8 @@ test("token verification renders structured probe risk status and evidence", asy
   assert.match(source, /riskLevel\s*===\s*'medium'/);
   assert.match(source, /label:\s*t\('中危'\)/);
   assert.match(source, /label:\s*t\('低风险'\)/);
+  assert.match(source, /title:\s*t\('分数'\)/);
+  assert.match(source, /dataIndex:\s*'score'/);
   assert.match(source, /Array\.isArray\(record\.evidence\)/);
   assert.match(source, /evidence\.slice\(0,\s*3\)\.map/);
 });
@@ -106,7 +118,10 @@ test("token verification makes weak identity evidence explicit", async () => {
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
   assert.match(source, /uncertain:\s*'证据不足'/);
-  assert.match(source, /function renderIdentityPredictedFamily\(value,\s*record,\s*t\)/);
+  assert.match(
+    source,
+    /function renderIdentityPredictedFamily\(value,\s*record,\s*t\)/,
+  );
   assert.match(
     source,
     /record\.status\s*===\s*'uncertain'[\s\S]*return\s+t\('证据不足'\)/,
@@ -116,10 +131,7 @@ test("token verification makes weak identity evidence explicit", async () => {
     /function renderIdentityEvidence\(items\s*=\s*\[\],\s*record\s*=\s*\{\},\s*t/,
   );
   assert.match(source, /record\.verdict\?\.status\s*===\s*'insufficient_data'/);
-  assert.match(
-    source,
-    /t\('当前信号不足，建议重跑完整探针或查看原始响应'\)/,
-  );
+  assert.match(source, /t\('当前信号不足，建议重跑完整探针或查看原始响应'\)/);
   assert.match(source, /不能作为身份不一致结论/);
 });
 

@@ -699,6 +699,42 @@ func TestSellerMarketplaceCredentialLifecycleActionsUpdateStatus(t *testing.T) {
 	}
 }
 
+func TestSellerProbeMarketplaceCredentialQueuesOwnedCredential(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"probe_status":     model.MarketplaceProbeStatusUnscored,
+			"probe_score":      0,
+			"probe_score_max":  0,
+			"probe_checked_at": 0,
+		}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/seller/credentials/1/probe", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerProbeMarketplaceCredential(ctx)
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	updated := decodeMarketplaceCredentialResponse(t, response)
+	assert.Equal(t, model.MarketplaceProbeStatusPending, updated.ProbeStatus)
+	assert.Zero(t, updated.ProbeCheckedAt)
+}
+
+func TestSellerProbeMarketplaceCredentialRejectsOtherSeller(t *testing.T) {
+	setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/seller/credentials/1/probe", nil, 11)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerProbeMarketplaceCredential(ctx)
+	response := decodeAPIResponse(t, recorder)
+
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "not found")
+}
+
 func TestSellerTestMarketplaceCredentialDoesNotExposeSecret(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	testUser := &model.User{

@@ -300,16 +300,17 @@ func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 		t.Fatalf("checklist item = %#v, want object", checklist[0])
 	}
 	assertOnlyJSONKeys(t, item, map[string]bool{
-		"provider":   true,
-		"group":      true,
-		"check_key":  true,
-		"check_name": true,
-		"model_name": true,
-		"passed":     true,
-		"status":     true,
-		"score":      true,
-		"risk_level": true,
-		"evidence":   true,
+		"provider":          true,
+		"group":             true,
+		"check_key":         true,
+		"check_name":        true,
+		"check_description": true,
+		"model_name":        true,
+		"passed":            true,
+		"status":            true,
+		"score":             true,
+		"risk_level":        true,
+		"evidence":          true,
 	})
 	finalRating, ok := rendered["final_rating"].(map[string]any)
 	if !ok {
@@ -323,6 +324,58 @@ func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 		"probe_score":     true,
 		"probe_score_max": true,
 	})
+}
+
+func TestBuildReportAddsUsableDescriptionsForRuntimeFullProbeItems(t *testing.T) {
+	results := make([]CheckResult, 0)
+	for _, probe := range runtimeProbeSuiteDefinitions(ProbeProfileFull) {
+		results = append(results, CheckResult{
+			Provider:  ProviderOpenAI,
+			Group:     probe.Group,
+			CheckKey:  probe.Key,
+			ModelName: "gpt-5.5",
+			Success:   true,
+			Score:     100,
+		})
+	}
+
+	report := BuildReport(results)
+	if len(report.Checklist) != len(results) {
+		t.Fatalf("checklist count = %d, want %d", len(report.Checklist), len(results))
+	}
+	for _, item := range report.Checklist {
+		if strings.TrimSpace(item.CheckName) == "" {
+			t.Fatalf("%s check name is empty", item.CheckKey)
+		}
+		if strings.TrimSpace(item.CheckDescription) == "" {
+			t.Fatalf("%s check description is empty", item.CheckKey)
+		}
+		if item.CheckDescription == item.CheckName {
+			t.Fatalf("%s description duplicates name %q", item.CheckKey, item.CheckName)
+		}
+	}
+}
+
+func TestAllFullProbeDefinitionsHaveSpecificDescriptions(t *testing.T) {
+	genericDescription := checkDescription("")
+	seen := make(map[CheckKey]bool)
+	probes := append(probeSuiteDefinitions(ProbeProfileFull), verifierCanaryProbeSuite()...)
+	for _, probe := range probes {
+		if seen[probe.Key] {
+			continue
+		}
+		seen[probe.Key] = true
+		description := strings.TrimSpace(checkDescription(probe.Key))
+		if description == "" {
+			t.Fatalf("%s description is empty", probe.Key)
+		}
+		if description == genericDescription {
+			t.Fatalf("%s uses generic description %q", probe.Key, description)
+		}
+		if description == checkDisplayName(probe.Key) {
+			t.Fatalf("%s description duplicates display name %q", probe.Key, description)
+		}
+	}
 }
 
 func TestBuildReportCarriesProbeRiskEvidence(t *testing.T) {

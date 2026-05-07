@@ -34,11 +34,12 @@ func TestRedactDirectProbeResponseRedactsNestedSecretFields(t *testing.T) {
 			Conclusion: "report " + secret,
 			Checklist: []ChecklistItem{
 				{
-					Provider:  ProviderOpenAI,
-					CheckKey:  string(CheckProbeInstructionFollow),
-					CheckName: "probe " + secret,
-					ModelName: "gpt-5.5",
-					Message:   "check " + secret,
+					Provider:         ProviderOpenAI,
+					CheckKey:         string(CheckProbeInstructionFollow),
+					CheckName:        "probe " + secret,
+					CheckDescription: "description " + secret,
+					ModelName:        "gpt-5.5",
+					Message:          "check " + secret,
 				},
 			},
 			IdentityAssessments: []IdentityAssessmentSummary{

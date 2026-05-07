@@ -251,6 +251,30 @@ export async function listMarketplaceFixedOrders(params: {
   return res.data
 }
 
+export async function probeMarketplaceFixedOrder(fixedOrderId: number) {
+  const res = await api.post<ApiResponse<MarketplaceFixedOrder>>(
+    `/api/marketplace/fixed-orders/${fixedOrderId}/probe`,
+    undefined,
+    {
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    } as Record<string, unknown>
+  )
+  return res.data
+}
+
+export async function releaseMarketplaceFixedOrder(fixedOrderId: number) {
+  const res = await api.post<ApiResponse<MarketplaceFixedOrder>>(
+    `/api/marketplace/fixed-orders/${fixedOrderId}/release`,
+    undefined,
+    {
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    } as Record<string, unknown>
+  )
+  return res.data
+}
+
 export async function bindMarketplaceFixedOrderToken(request: {
   token_id: number
   fixed_order_ids: number[]
@@ -412,6 +436,18 @@ export async function setSellerMarketplaceCredentialEnabled(
 export async function testSellerMarketplaceCredential(credentialId: number) {
   const res = await api.post<ApiResponse<{ status: string }>>(
     `/api/marketplace/seller/credentials/${credentialId}/test`
+  )
+  return res.data
+}
+
+export async function probeSellerMarketplaceCredential(credentialId: number) {
+  const res = await api.post<ApiResponse<MarketplaceCredential>>(
+    `/api/marketplace/seller/credentials/${credentialId}/probe`,
+    undefined,
+    {
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    } as Record<string, unknown>
   )
   return res.data
 }

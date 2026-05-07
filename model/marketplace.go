@@ -138,6 +138,19 @@ type MarketplaceFixedOrder struct {
 	RemainingQuota          int64   `json:"remaining_quota" gorm:"bigint;not null;default:0"`
 	SpentQuota              int64   `json:"spent_quota" gorm:"bigint;not null;default:0"`
 	ExpiredQuota            int64   `json:"expired_quota" gorm:"bigint;not null;default:0"`
+	RefundedQuota           int64   `json:"refunded_quota" gorm:"bigint;not null;default:0"`
+	PurchaseProbeStatus     string  `json:"purchase_probe_status" gorm:"type:varchar(32);not null;default:''"`
+	PurchaseProbeScore      int     `json:"purchase_probe_score" gorm:"not null;default:0"`
+	PurchaseProbeScoreMax   int     `json:"purchase_probe_score_max" gorm:"not null;default:0"`
+	PurchaseProbeGrade      string  `json:"purchase_probe_grade" gorm:"type:varchar(16);not null;default:''"`
+	PurchaseProbeCheckedAt  int64   `json:"purchase_probe_checked_at" gorm:"bigint;not null;default:0"`
+	RefundProbeStatus       string  `json:"refund_probe_status" gorm:"type:varchar(32);not null;default:''"`
+	RefundProbeScore        int     `json:"refund_probe_score" gorm:"not null;default:0"`
+	RefundProbeScoreMax     int     `json:"refund_probe_score_max" gorm:"not null;default:0"`
+	RefundProbeGrade        string  `json:"refund_probe_grade" gorm:"type:varchar(16);not null;default:''"`
+	RefundProbeCheckedAt    int64   `json:"refund_probe_checked_at" gorm:"bigint;not null;default:0"`
+	RefundProbeError        string  `json:"refund_probe_error" gorm:"type:varchar(255);not null;default:''"`
+	RefundedAt              int64   `json:"refunded_at" gorm:"bigint;not null;default:0;index"`
 	MultiplierSnapshot      float64 `json:"multiplier_snapshot" gorm:"type:decimal(10,4);not null;default:1"`
 	OfficialPriceSnapshot   string  `json:"official_price_snapshot" gorm:"type:text"`
 	BuyerPriceSnapshot      string  `json:"buyer_price_snapshot" gorm:"type:text"`

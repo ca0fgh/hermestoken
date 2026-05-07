@@ -253,6 +253,31 @@ function renderProbeMessage(value, record) {
   );
 }
 
+function renderProbeCheckName(name, record, t) {
+  const description = record.check_description;
+  return (
+    <div className='token-verification-check-name'>
+      <Text>{name || record.check_key || '-'}</Text>
+      {description && (
+        <Text type='secondary' size='small'>
+          {t(description)}
+        </Text>
+      )}
+    </div>
+  );
+}
+
+function renderProbeScore(value, record) {
+  if (record.skipped || record.status === 'skipped') {
+    return '-';
+  }
+  const score = Number(value);
+  if (!Number.isFinite(score)) {
+    return '-';
+  }
+  return `${score}/100`;
+}
+
 function renderIdentityPredictedFamily(value, record, t) {
   if (
     record.status === 'uncertain' ||
@@ -407,7 +432,7 @@ function TokenVerification() {
     {
       title: t('检测项'),
       dataIndex: 'check_name',
-      render: (name, record) => name || record.check_key,
+      render: (name, record) => renderProbeCheckName(name, record, t),
     },
     {
       title: t('结果'),
@@ -417,6 +442,12 @@ function TokenVerification() {
         const meta = probeStatusMeta(record, t);
         return <Tag color={meta.color}>{meta.label}</Tag>;
       },
+    },
+    {
+      title: t('分数'),
+      dataIndex: 'score',
+      width: 80,
+      render: renderProbeScore,
     },
     {
       title: t('延迟'),
@@ -707,9 +738,7 @@ function TokenVerification() {
                 <Select
                   optionList={profileOptions}
                   value={probeProfile}
-                  onChange={(value) =>
-                    setProbeProfile(String(value || 'full'))
-                  }
+                  onChange={(value) => setProbeProfile(String(value || 'full'))}
                   style={{ width: '100%' }}
                 />
               </label>

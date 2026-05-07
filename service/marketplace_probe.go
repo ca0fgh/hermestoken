@@ -138,6 +138,40 @@ func RunMarketplaceCredentialProbe(ctx context.Context, credentialID int) error 
 	})
 }
 
+func RequestSellerMarketplaceCredentialProbe(sellerUserID int, credentialID int) (*model.MarketplaceCredential, error) {
+	if err := validateMarketplaceEnabled(); err != nil {
+		return nil, err
+	}
+	if sellerUserID <= 0 {
+		return nil, errors.New("seller user id is required")
+	}
+	if credentialID <= 0 {
+		return nil, errors.New("marketplace credential id is required")
+	}
+
+	var credential model.MarketplaceCredential
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := marketplaceForUpdate(tx).
+			Where("id = ? AND seller_user_id = ?", credentialID, sellerUserID).
+			First(&credential).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("marketplace credential not found")
+			}
+			return err
+		}
+		if marketplaceCredentialProbeInProgress(credential.ProbeStatus) {
+			return errors.New("marketplace credential probe is already in progress")
+		}
+		setMarketplaceCredentialProbePending(&credential)
+		return tx.Save(&credential).Error
+	}); err != nil {
+		return nil, err
+	}
+
+	EnqueueMarketplaceCredentialProbe(credential.ID)
+	return &credential, nil
+}
+
 func setMarketplaceCredentialProbePending(credential *model.MarketplaceCredential) {
 	if credential == nil {
 		return
@@ -153,6 +187,15 @@ func setMarketplaceCredentialProbePending(credential *model.MarketplaceCredentia
 	credential.ProbeModel = ""
 	credential.ProbeClientProfile = ""
 	credential.ProbeScoringVersion = ""
+}
+
+func marketplaceCredentialProbeInProgress(status string) bool {
+	switch strings.TrimSpace(status) {
+	case model.MarketplaceProbeStatusPending, model.MarketplaceProbeStatusRunning:
+		return true
+	default:
+		return false
+	}
 }
 
 func marketplaceCredentialProbeTargetChanged(changedFields []string, keyReplaced bool) bool {

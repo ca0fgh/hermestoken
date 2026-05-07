@@ -242,6 +242,21 @@ func SellerUpdateMarketplaceCredential(c *gin.Context) {
 	common.ApiSuccess(c, credential)
 }
 
+func SellerProbeMarketplaceCredential(c *gin.Context) {
+	userID := c.GetInt("id")
+	credentialID, err := marketplaceCredentialIDParam(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	credential, err := service.RequestSellerMarketplaceCredentialProbe(userID, credentialID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, credential)
+}
+
 func SellerDeleteMarketplaceCredential(c *gin.Context) {
 	userID := c.GetInt("id")
 	credentialID, err := marketplaceCredentialIDParam(c)

@@ -92,6 +92,11 @@ type marketplaceFixedOrderResponse struct {
 	PurchasedQuota          int64   `json:"purchased_quota"`
 	RemainingQuota          int64   `json:"remaining_quota"`
 	SpentQuota              int64   `json:"spent_quota"`
+	RefundedQuota           int64   `json:"refunded_quota"`
+	PurchaseProbeScore      int     `json:"purchase_probe_score"`
+	PurchaseProbeScoreMax   int     `json:"purchase_probe_score_max"`
+	RefundProbeScore        int     `json:"refund_probe_score"`
+	RefundedAt              int64   `json:"refunded_at"`
 	MultiplierSnapshot      float64 `json:"multiplier_snapshot"`
 	PlatformFeeRateSnapshot float64 `json:"platform_fee_rate_snapshot"`
 	OfficialPriceSnapshot   string  `json:"official_price_snapshot"`
@@ -532,6 +537,8 @@ func TestBuyerMarketplaceFixedOrderPurchaseEscrowsQuotaAndKeepsListingAvailable(
 	assert.Equal(t, model.MarketplaceFixedOrderStatusActive, order.Status)
 	assert.Equal(t, 1.25, order.MultiplierSnapshot)
 	assert.Equal(t, 0.0, order.PlatformFeeRateSnapshot)
+	assert.Zero(t, order.PurchaseProbeScore)
+	assert.Zero(t, order.PurchaseProbeScoreMax)
 	assert.Contains(t, order.OfficialPriceSnapshot, "gpt-4o-mini")
 	assert.Contains(t, order.BuyerPriceSnapshot, "gpt-4o-mini")
 	assert.Greater(t, order.ExpiresAt, int64(0))
@@ -550,6 +557,44 @@ func TestBuyerMarketplaceFixedOrderPurchaseEscrowsQuotaAndKeepsListingAvailable(
 	listResponse := decodeAPIResponse(t, listRecorder)
 	require.True(t, listResponse.Success, listResponse.Message)
 	assert.Contains(t, listRecorder.Body.String(), fmt.Sprintf(`"id":%d`, credential.ID))
+}
+
+func TestBuyerMarketplaceFixedOrderPurchaseSnapshotsProbeScore(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	buyerID := 20
+	seedMarketplaceUser(t, db, buyerID, 10000)
+	credential := createHealthyMarketplaceCredential(t, db, 10, "test-key-probe-snapshot")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"probe_status":     model.MarketplaceProbeStatusPassed,
+			"probe_score":      91,
+			"probe_score_max":  96,
+			"probe_grade":      "A",
+			"probe_checked_at": int64(1710000040),
+		}).Error)
+
+	ctx, recorder := newAuthenticatedContext(
+		t,
+		http.MethodPost,
+		"/api/marketplace/fixed-orders",
+		map[string]any{
+			"credential_id":   credential.ID,
+			"purchased_quota": 2500,
+		},
+		buyerID,
+	)
+	BuyerCreateMarketplaceFixedOrder(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var order marketplaceFixedOrderResponse
+	require.NoError(t, json.Unmarshal(response.Data, &order))
+	assert.Equal(t, 91, order.PurchaseProbeScore)
+	assert.Equal(t, 96, order.PurchaseProbeScoreMax)
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, order.ProbeStatus)
+	assert.Equal(t, 91, order.ProbeScore)
+	assert.Equal(t, 96, order.ProbeScoreMax)
 }
 
 func TestBuyerMarketplaceFixedOrderPurchaseUsesUnlimitedSellerTimeCondition(t *testing.T) {
