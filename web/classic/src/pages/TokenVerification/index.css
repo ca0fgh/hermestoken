@@ -133,21 +133,42 @@
 }
 
 .token-verification-check-name {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
   min-width: 260px;
   line-height: 1.45;
 }
 
-.token-verification-check-meta {
-  display: block;
+.token-verification-check-name__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
 }
 
-.token-verification-check-meta span {
-  margin-right: 6px;
-  color: var(--semi-color-text-1);
-  font-weight: 600;
+.token-verification-check-help {
+  display: inline-flex;
+  align-items: center;
+  color: var(--semi-color-text-2);
+  cursor: help;
+}
+
+.token-verification-check-help:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--semi-color-focus-border);
+  outline-offset: 2px;
+}
+
+.token-verification-check-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+.token-verification-check-tooltip__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .token-verification-probe-message {

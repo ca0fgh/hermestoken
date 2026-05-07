@@ -25,10 +25,12 @@ import {
   Spin,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import {
   IconDownload,
+  IconInfoCircle,
   IconPlayCircle,
   IconRefresh,
 } from '@douyinfe/semi-icons';
@@ -253,6 +255,40 @@ function renderProbeMessage(value, record) {
   );
 }
 
+function renderProbeMetadataTooltip(items, t) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+
+  return (
+    <Tooltip
+      position='right'
+      showArrow
+      content={
+        <div className='token-verification-check-tooltip'>
+          {items.map((item) => (
+            <div
+              className='token-verification-check-tooltip__item'
+              key={item.label}
+            >
+              <Text strong size='small'>
+                {item.label}
+              </Text>
+              <Text type='secondary' size='small'>
+                {t(item.value)}
+              </Text>
+            </div>
+          ))}
+        </div>
+      }
+    >
+      <span className='token-verification-check-help' tabIndex={0}>
+        <IconInfoCircle size='small' />
+      </span>
+    </Tooltip>
+  );
+}
+
 function renderProbeCheckName(name, record, t) {
   const metadataItems = [
     {
@@ -274,18 +310,10 @@ function renderProbeCheckName(name, record, t) {
   ].filter((item) => item.value);
   return (
     <div className='token-verification-check-name'>
-      <Text>{name || record.check_key || '-'}</Text>
-      {metadataItems.map((item) => (
-        <Text
-          className='token-verification-check-meta'
-          key={item.label}
-          type='secondary'
-          size='small'
-        >
-          <span>{item.label}</span>
-          {t(item.value)}
-        </Text>
-      ))}
+      <div className='token-verification-check-name__title'>
+        <Text>{name || record.check_key || '-'}</Text>
+        {renderProbeMetadataTooltip(metadataItems, t)}
+      </div>
     </div>
   );
 }
