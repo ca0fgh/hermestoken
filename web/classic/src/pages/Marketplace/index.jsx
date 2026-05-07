@@ -86,10 +86,12 @@ import {
 } from '../../helpers/quota';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import MarketplaceCredentialModelTestModal from '../../components/table/channels/modals/ModelTestModal';
+import ModelSelectModal from '../../components/table/channels/modals/ModelSelectModal';
 import './index.css';
 
 const { Text, Title } = Typography;
 const PAGE_SIZE = 20;
+const MARKETPLACE_STATUS_REFRESH_INTERVAL_MS = 10_000;
 const FILTER_RANGE_FALLBACK_PAGE_SIZE = 1000;
 const MARKETPLACE_FILTER_ALL_VALUE = '__all__';
 const MARKETPLACE_VENDOR_VALUE_PREFIX = 'vendor:';
@@ -111,6 +113,47 @@ const defaultFilters = {
   min_concurrency_limit: '',
   max_concurrency_limit: '',
 };
+
+function useVisibleMarketplaceRefresh(refresh, delay) {
+  const refreshRef = useRef(refresh);
+  const refreshingRef = useRef(false);
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  useEffect(() => {
+    if (
+      !delay ||
+      typeof window === 'undefined' ||
+      typeof document === 'undefined'
+    ) {
+      return undefined;
+    }
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== 'visible' || refreshingRef.current) {
+        return;
+      }
+
+      refreshingRef.current = true;
+      Promise.resolve()
+        .then(() => refreshRef.current?.())
+        .catch(() => {})
+        .finally(() => {
+          refreshingRef.current = false;
+        });
+    };
+
+    const timer = window.setInterval(refreshIfVisible, delay);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [delay]);
+}
 
 function normalizeMarketplacePoolFilters(filters = {}) {
   return {
@@ -2417,8 +2460,10 @@ function OrdersTab() {
     buyFeeRate,
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const response = await API.get('/api/marketplace/orders', {
         params: compactParams(filters),
@@ -2427,15 +2472,24 @@ function OrdersTab() {
       setItems(pageItems(response));
       setTotal(pageTotal(response));
     } catch (error) {
-      showError(error.message);
+      if (!silent) {
+        showError(error.message);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [filters]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useVisibleMarketplaceRefresh(
+    () => load({ silent: true }),
+    MARKETPLACE_STATUS_REFRESH_INTERVAL_MS,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -3212,6 +3266,8 @@ function SellerTab() {
   const [modelTablePage, setModelTablePage] = useState(1);
   const [selectedEndpointType, setSelectedEndpointType] = useState('');
   const [isStreamTest, setIsStreamTest] = useState(false);
+  const [modelSelectOpen, setModelSelectOpen] = useState(false);
+  const [fetchedModelCandidates, setFetchedModelCandidates] = useState([]);
   const allSelectingRef = useRef(false);
   const shouldStopBatchTestingRef = useRef(false);
   const pricedModelsRef = useRef([]);
@@ -3220,8 +3276,10 @@ function SellerTab() {
 
   const patch = (next) => setForm({ ...form, ...next });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const response = await API.get('/api/marketplace/seller/credentials', {
         params: { p: 1, page_size: PAGE_SIZE },
@@ -3229,15 +3287,24 @@ function SellerTab() {
       ensureSuccess(response);
       setItems(pageItems(response));
     } catch (error) {
-      showError(error.message);
+      if (!silent) {
+        showError(error.message);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useVisibleMarketplaceRefresh(
+    () => load({ silent: true }),
+    MARKETPLACE_STATUS_REFRESH_INTERVAL_MS,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -3432,8 +3499,10 @@ function SellerTab() {
           ...fetchedModels,
         ]),
       );
+      setFetchedModelCandidates(fetchedModels);
+      setModelSelectOpen(true);
       showSuccess(
-        t('已获取 {{count}} 个模型，可在下拉框中选择', {
+        t('已获取 {{count}} 个模型，请选择要填入的模型', {
           count: fetchedModels.length,
         }),
       );
@@ -4135,6 +4204,16 @@ function SellerTab() {
           </Col>
         </Row>
       </Card>
+      <ModelSelectModal
+        visible={modelSelectOpen}
+        models={fetchedModelCandidates}
+        selected={selectedModels}
+        onConfirm={(models) => {
+          setSelectedModels(models);
+          setModelSelectOpen(false);
+        }}
+        onCancel={() => setModelSelectOpen(false)}
+      />
       <Table
         rowKey='id'
         columns={[
