@@ -1,7 +1,7 @@
 name: hermestoken-prod
 
 services:
-  hermestoken:
+  new-api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -18,7 +18,7 @@ services:
       - ${APP_DATA_DIR:-./data-prod}:/data
       - ${APP_LOG_DIR:-./logs-prod}:/app/logs
     environment:
-      SQL_DSN: "postgresql://root:${POSTGRES_PASSWORD:?set in .env.production}@postgres:5432/hermestoken?sslmode=disable"
+      SQL_DSN: "postgresql://root:${POSTGRES_PASSWORD:?set in .env.production}@postgres:5432/new-api?sslmode=disable"
       REDIS_CONN_STRING: "redis://redis"
       TZ: "${TZ:-Asia/Shanghai}"
       SESSION_SECRET: "${SESSION_SECRET:?set in .env.production}"
@@ -54,13 +54,13 @@ services:
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set in .env.production}"
-      POSTGRES_DB: hermestoken
+      POSTGRES_DB: new-api
     volumes:
       - pg_data_prod:/var/lib/postgresql
     networks:
       - hermestoken-prod-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U root -d hermestoken" ]
+      test: [ "CMD-SHELL", "pg_isready -U root -d new-api" ]
       interval: 10s
       timeout: 5s
       retries: 10
