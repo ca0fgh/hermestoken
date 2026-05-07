@@ -666,7 +666,9 @@
       "response_text": "",
       "first": "742381",
       "second": "742381",
-      "want_passed": false
+      "want_passed": false,
+      "want_skipped": true,
+      "want_error_code": "possible_cache_hit_unconfirmed"
     },
     {
       "name": "claude_sonnet_4_6_probe_adaptive_injection_1",

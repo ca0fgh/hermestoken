@@ -15,7 +15,7 @@ test("classic seller escrow table labels quota limit and consumed quota", async 
   assert.match(pageSource, /t\('已消耗额度'\)/);
   assert.match(
     pageSource,
-    /title:\s*t\('额度'\),\s*render:\s*\(_,\s*record\)\s*=>\s*renderSellerQuotaUsage\(record,\s*t\)/,
+    /title:\s*t\('额度'\),[\s\S]*?render:\s*\(_,\s*record\)\s*=>\s*renderSellerQuotaUsage\(record,\s*t\)/,
   );
 });
 
@@ -66,7 +66,7 @@ test("seller escrow views omit sold fixed-order exposure", async () => {
   );
 });
 
-test("fixed-order buyer views omit remaining amount", async () => {
+test("fixed-order buyer views show refundable remaining amount", async () => {
   const [classicSource, defaultSource] = await Promise.all([
     readClassicSource("pages/Marketplace/index.jsx"),
     readDefaultSource("features/marketplace/components/fixed-orders-tab.tsx"),
@@ -74,16 +74,22 @@ test("fixed-order buyer views omit remaining amount", async () => {
 
   assert.match(classicSource, /title:\s*t\('已买断金额'\)/);
   assert.match(classicSource, /title:\s*t\('已消耗金额'\)/);
+  assert.match(classicSource, /title:\s*t\('可退金额'\)/);
+  assert.match(classicSource, /t\('检测'\)/);
+  assert.match(classicSource, /t\('解除订单'\)/);
   assert.doesNotMatch(classicSource, /title:\s*t\('剩余金额'\)/);
-  assert.doesNotMatch(
+  assert.match(
     classicSource,
     /formatMarketplaceQuotaUSD\(record\.remaining_quota\)/,
   );
 
   assert.match(defaultSource, /label=\{t\('Purchased amount'\)\}/);
   assert.match(defaultSource, /label=\{t\('Spent amount'\)\}/);
+  assert.match(defaultSource, /label=\{t\('Refundable amount'\)\}/);
+  assert.match(defaultSource, /t\('Detect'\)/);
+  assert.match(defaultSource, /t\('Release order'\)/);
   assert.doesNotMatch(defaultSource, /label=\{t\('Remaining amount'\)\}/);
-  assert.doesNotMatch(
+  assert.match(
     defaultSource,
     /formatMarketplaceQuotaUSD\(order\.remaining_quota\)/,
   );

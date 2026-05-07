@@ -26,6 +26,13 @@ const (
 	MarketplaceRiskStatusWatching   = "watching"
 	MarketplaceRiskStatusRiskPaused = "risk_paused"
 
+	MarketplaceProbeStatusUnscored = "unscored"
+	MarketplaceProbeStatusPending  = "pending"
+	MarketplaceProbeStatusRunning  = "running"
+	MarketplaceProbeStatusPassed   = "passed"
+	MarketplaceProbeStatusWarning  = "warning"
+	MarketplaceProbeStatusFailed   = "failed"
+
 	MarketplaceRouteStatusAvailable  = "route_available"
 	MarketplaceRouteStatusUnlisted   = "route_unlisted"
 	MarketplaceRouteStatusDisabled   = "route_disabled"
@@ -55,38 +62,49 @@ const (
 )
 
 type MarketplaceCredential struct {
-	ID                 int     `json:"id"`
-	SellerUserID       int     `json:"seller_user_id" gorm:"not null;index"`
-	VendorType         int     `json:"vendor_type" gorm:"not null;index"`
-	VendorNameSnapshot string  `json:"vendor_name_snapshot" gorm:"type:varchar(64);not null;default:''"`
-	EncryptedAPIKey    string  `json:"-" gorm:"column:encrypted_api_key;type:text;not null"`
-	KeyFingerprint     string  `json:"key_fingerprint" gorm:"type:varchar(128);not null;index"`
-	OpenAIOrganization string  `json:"openai_organization" gorm:"type:varchar(255);not null;default:''"`
-	TestModel          string  `json:"test_model" gorm:"type:varchar(255);not null;default:''"`
-	BaseURL            string  `json:"base_url" gorm:"column:base_url;type:varchar(1024);not null;default:''"`
-	Other              string  `json:"other" gorm:"type:text"`
-	ModelMapping       string  `json:"model_mapping" gorm:"type:text"`
-	StatusCodeMapping  string  `json:"status_code_mapping" gorm:"type:varchar(1024);not null;default:''"`
-	Setting            string  `json:"setting" gorm:"type:text"`
-	ParamOverride      string  `json:"param_override" gorm:"type:text"`
-	HeaderOverride     string  `json:"header_override" gorm:"type:text"`
-	OtherSettings      string  `json:"settings" gorm:"column:settings;type:text"`
-	Models             string  `json:"models" gorm:"type:text;not null"`
-	QuotaMode          string  `json:"quota_mode" gorm:"type:varchar(32);not null;default:'unlimited';index"`
-	QuotaLimit         int64   `json:"quota_limit" gorm:"bigint;not null;default:0"`
-	TimeMode           string  `json:"time_mode" gorm:"type:varchar(32);not null;default:'unlimited';index"`
-	TimeLimitSeconds   int64   `json:"time_limit_seconds" gorm:"bigint;not null;default:0"`
-	Multiplier         float64 `json:"multiplier" gorm:"type:decimal(10,4);not null;default:1"`
-	ConcurrencyLimit   int     `json:"concurrency_limit" gorm:"not null;default:1"`
-	ListingStatus      string  `json:"listing_status" gorm:"type:varchar(32);not null;default:'listed';index"`
-	ServiceStatus      string  `json:"service_status" gorm:"type:varchar(32);not null;default:'enabled';index"`
-	HealthStatus       string  `json:"health_status" gorm:"type:varchar(32);not null;default:'untested';index"`
-	CapacityStatus     string  `json:"capacity_status" gorm:"type:varchar(32);not null;default:'available';index"`
-	RiskStatus         string  `json:"risk_status" gorm:"type:varchar(32);not null;default:'normal';index"`
-	ResponseTime       int     `json:"response_time" gorm:"not null;default:0"`
-	TestTime           int64   `json:"test_time" gorm:"bigint;not null;default:0"`
-	CreatedAt          int64   `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt          int64   `json:"updated_at" gorm:"autoUpdateTime"`
+	ID                  int     `json:"id"`
+	SellerUserID        int     `json:"seller_user_id" gorm:"not null;index"`
+	VendorType          int     `json:"vendor_type" gorm:"not null;index"`
+	VendorNameSnapshot  string  `json:"vendor_name_snapshot" gorm:"type:varchar(64);not null;default:''"`
+	EncryptedAPIKey     string  `json:"-" gorm:"column:encrypted_api_key;type:text;not null"`
+	KeyFingerprint      string  `json:"key_fingerprint" gorm:"type:varchar(128);not null;index"`
+	OpenAIOrganization  string  `json:"openai_organization" gorm:"type:varchar(255);not null;default:''"`
+	TestModel           string  `json:"test_model" gorm:"type:varchar(255);not null;default:''"`
+	BaseURL             string  `json:"base_url" gorm:"column:base_url;type:varchar(1024);not null;default:''"`
+	Other               string  `json:"other" gorm:"type:text"`
+	ModelMapping        string  `json:"model_mapping" gorm:"type:text"`
+	StatusCodeMapping   string  `json:"status_code_mapping" gorm:"type:varchar(1024);not null;default:''"`
+	Setting             string  `json:"setting" gorm:"type:text"`
+	ParamOverride       string  `json:"param_override" gorm:"type:text"`
+	HeaderOverride      string  `json:"header_override" gorm:"type:text"`
+	OtherSettings       string  `json:"settings" gorm:"column:settings;type:text"`
+	Models              string  `json:"models" gorm:"type:text;not null"`
+	QuotaMode           string  `json:"quota_mode" gorm:"type:varchar(32);not null;default:'unlimited';index"`
+	QuotaLimit          int64   `json:"quota_limit" gorm:"bigint;not null;default:0"`
+	TimeMode            string  `json:"time_mode" gorm:"type:varchar(32);not null;default:'unlimited';index"`
+	TimeLimitSeconds    int64   `json:"time_limit_seconds" gorm:"bigint;not null;default:0"`
+	Multiplier          float64 `json:"multiplier" gorm:"type:decimal(10,4);not null;default:1"`
+	ConcurrencyLimit    int     `json:"concurrency_limit" gorm:"not null;default:1"`
+	ListingStatus       string  `json:"listing_status" gorm:"type:varchar(32);not null;default:'listed';index"`
+	ServiceStatus       string  `json:"service_status" gorm:"type:varchar(32);not null;default:'enabled';index"`
+	HealthStatus        string  `json:"health_status" gorm:"type:varchar(32);not null;default:'untested';index"`
+	CapacityStatus      string  `json:"capacity_status" gorm:"type:varchar(32);not null;default:'available';index"`
+	RiskStatus          string  `json:"risk_status" gorm:"type:varchar(32);not null;default:'normal';index"`
+	ProbeStatus         string  `json:"probe_status" gorm:"type:varchar(32);not null;default:'unscored';index"`
+	ProbeScore          int     `json:"probe_score" gorm:"not null;default:0"`
+	ProbeScoreMax       int     `json:"probe_score_max" gorm:"not null;default:0"`
+	ProbeGrade          string  `json:"probe_grade" gorm:"type:varchar(16);not null;default:''"`
+	ProbeCheckedAt      int64   `json:"probe_checked_at" gorm:"bigint;not null;default:0;index"`
+	ProbeError          string  `json:"probe_error" gorm:"type:varchar(255);not null;default:''"`
+	ProbeProvider       string  `json:"probe_provider" gorm:"type:varchar(32);not null;default:''"`
+	ProbeProfile        string  `json:"probe_profile" gorm:"type:varchar(32);not null;default:''"`
+	ProbeModel          string  `json:"probe_model" gorm:"type:varchar(191);not null;default:''"`
+	ProbeClientProfile  string  `json:"probe_client_profile" gorm:"type:varchar(32);not null;default:''"`
+	ProbeScoringVersion string  `json:"probe_scoring_version" gorm:"type:varchar(32);not null;default:''"`
+	ResponseTime        int     `json:"response_time" gorm:"not null;default:0"`
+	TestTime            int64   `json:"test_time" gorm:"bigint;not null;default:0"`
+	CreatedAt           int64   `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt           int64   `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 type MarketplaceCredentialStats struct {
@@ -120,6 +138,19 @@ type MarketplaceFixedOrder struct {
 	RemainingQuota          int64   `json:"remaining_quota" gorm:"bigint;not null;default:0"`
 	SpentQuota              int64   `json:"spent_quota" gorm:"bigint;not null;default:0"`
 	ExpiredQuota            int64   `json:"expired_quota" gorm:"bigint;not null;default:0"`
+	RefundedQuota           int64   `json:"refunded_quota" gorm:"bigint;not null;default:0"`
+	PurchaseProbeStatus     string  `json:"purchase_probe_status" gorm:"type:varchar(32);not null;default:''"`
+	PurchaseProbeScore      int     `json:"purchase_probe_score" gorm:"not null;default:0"`
+	PurchaseProbeScoreMax   int     `json:"purchase_probe_score_max" gorm:"not null;default:0"`
+	PurchaseProbeGrade      string  `json:"purchase_probe_grade" gorm:"type:varchar(16);not null;default:''"`
+	PurchaseProbeCheckedAt  int64   `json:"purchase_probe_checked_at" gorm:"bigint;not null;default:0"`
+	RefundProbeStatus       string  `json:"refund_probe_status" gorm:"type:varchar(32);not null;default:''"`
+	RefundProbeScore        int     `json:"refund_probe_score" gorm:"not null;default:0"`
+	RefundProbeScoreMax     int     `json:"refund_probe_score_max" gorm:"not null;default:0"`
+	RefundProbeGrade        string  `json:"refund_probe_grade" gorm:"type:varchar(16);not null;default:''"`
+	RefundProbeCheckedAt    int64   `json:"refund_probe_checked_at" gorm:"bigint;not null;default:0"`
+	RefundProbeError        string  `json:"refund_probe_error" gorm:"type:varchar(255);not null;default:''"`
+	RefundedAt              int64   `json:"refunded_at" gorm:"bigint;not null;default:0;index"`
 	MultiplierSnapshot      float64 `json:"multiplier_snapshot" gorm:"type:decimal(10,4);not null;default:1"`
 	OfficialPriceSnapshot   string  `json:"official_price_snapshot" gorm:"type:text"`
 	BuyerPriceSnapshot      string  `json:"buyer_price_snapshot" gorm:"type:text"`

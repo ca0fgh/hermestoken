@@ -80,6 +80,7 @@ func redactChecklistItems(items []ChecklistItem, secrets []string) []ChecklistIt
 		redacted[i].Group = redactSecretString(item.Group, secrets)
 		redacted[i].CheckKey = redactSecretString(item.CheckKey, secrets)
 		redacted[i].CheckName = redactSecretString(item.CheckName, secrets)
+		redacted[i].CheckDescription = redactSecretString(item.CheckDescription, secrets)
 		redacted[i].ModelName = redactSecretString(item.ModelName, secrets)
 		redacted[i].Status = redactSecretString(item.Status, secrets)
 		redacted[i].ErrorCode = redactSecretString(item.ErrorCode, secrets)

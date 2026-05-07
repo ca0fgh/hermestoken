@@ -11,27 +11,21 @@ const classicLocaleDir = new URL(
   import.meta.url,
 );
 
-test("token verification profile selector exposes standard and deep to users, full to admins", async () => {
+test("token verification profile selector only exposes full detection", async () => {
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
-  assert.match(source, /value:\s*'standard'/);
-  assert.match(source, /value:\s*'deep'/);
   assert.match(source, /value:\s*'full'/);
-  assert.match(source, /深度检测/);
-  assert.match(
-    source,
-    /if\s*\(\s*isAdminUser\s*\)\s*{\s*options\.push\(\{\s*label:\s*t\('完整检测'\),\s*value:\s*'full'\s*\}\)/s,
-  );
+  assert.doesNotMatch(source, /value:\s*'standard'/);
+  assert.doesNotMatch(source, /value:\s*'deep'/);
+  assert.doesNotMatch(source, /标准检测/);
+  assert.doesNotMatch(source, /深度检测/);
+  assert.doesNotMatch(source, /isAdminUser/);
   assert.doesNotMatch(
     source,
     /probe_profile:\s*isAdminUser\s*\?\s*probeProfile\s*:\s*'standard'/,
   );
-  assert.match(
-    source,
-    /if\s*\(\s*!isAdminUser\s*&&\s*probeProfile\s*===\s*'full'\s*\)\s*{\s*setProbeProfile\('deep'\)/s,
-  );
-  assert.match(source, /return\s+100000/);
-  assert.match(source, /return\s+190000/);
+  assert.doesNotMatch(source, /return\s+100000/);
+  assert.doesNotMatch(source, /return\s+190000/);
   assert.match(source, /return\s+370000/);
 });
 
@@ -85,6 +79,22 @@ test("token verification renders structured probe risk status and evidence", asy
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
   assert.match(source, /function probeStatusMeta\(record,\s*t\)/);
+  assert.match(source, /function renderProbeCheckName\(name,\s*record,\s*t\)/);
+  assert.match(
+    source,
+    /<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>/,
+  );
+  assert.doesNotMatch(
+    source,
+    /<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>[\s\S]*<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>/,
+  );
+  assert.match(source, /record\.check_description/);
+  assert.match(source, /record\.coverage/);
+  assert.match(source, /record\.limitation/);
+  assert.match(source, /record\.recommended_action/);
+  assert.match(source, /检测覆盖/);
+  assert.match(source, /检测局限/);
+  assert.match(source, /建议动作/);
   assert.match(source, /record\.error_code\s*===\s*'judge_unconfigured'/);
   assert.match(source, /label:\s*t\('未评分'\)/);
   assert.match(source, /riskLevel\s*===\s*'high'/);
@@ -92,6 +102,8 @@ test("token verification renders structured probe risk status and evidence", asy
   assert.match(source, /riskLevel\s*===\s*'medium'/);
   assert.match(source, /label:\s*t\('中危'\)/);
   assert.match(source, /label:\s*t\('低风险'\)/);
+  assert.match(source, /title:\s*t\('分数'\)/);
+  assert.match(source, /dataIndex:\s*'score'/);
   assert.match(source, /Array\.isArray\(record\.evidence\)/);
   assert.match(source, /evidence\.slice\(0,\s*3\)\.map/);
 });
@@ -112,7 +124,10 @@ test("token verification makes weak identity evidence explicit", async () => {
   const source = await readFile(tokenVerificationPagePath, "utf8");
 
   assert.match(source, /uncertain:\s*'证据不足'/);
-  assert.match(source, /function renderIdentityPredictedFamily\(value,\s*record,\s*t\)/);
+  assert.match(
+    source,
+    /function renderIdentityPredictedFamily\(value,\s*record,\s*t\)/,
+  );
   assert.match(
     source,
     /record\.status\s*===\s*'uncertain'[\s\S]*return\s+t\('证据不足'\)/,
@@ -122,10 +137,7 @@ test("token verification makes weak identity evidence explicit", async () => {
     /function renderIdentityEvidence\(items\s*=\s*\[\],\s*record\s*=\s*\{\},\s*t/,
   );
   assert.match(source, /record\.verdict\?\.status\s*===\s*'insufficient_data'/);
-  assert.match(
-    source,
-    /t\('当前信号不足，建议重跑 Deep\/Full 探针或查看原始响应'\)/,
-  );
+  assert.match(source, /t\('当前信号不足，建议重跑完整探针或查看原始响应'\)/);
   assert.match(source, /不能作为身份不一致结论/);
 });
 
@@ -137,7 +149,7 @@ test("token verification locale files define structured risk copy", async () => 
     "低风险",
     "证据不足",
     "客户端模式",
-    "当前信号不足，建议重跑 Deep/Full 探针或查看原始响应",
+    "当前信号不足，建议重跑完整探针或查看原始响应",
     "交叉判定数据不足，不能作为身份不一致结论",
     "正在检测中，通常需要几十秒，完整检测可能需要数分钟。",
   ];

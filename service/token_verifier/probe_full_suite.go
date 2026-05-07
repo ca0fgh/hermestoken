@@ -164,6 +164,12 @@ func verifierFullProbeSuite() []verifierProbe {
 			Sensitive:             true,
 		},
 		{
+			Key:       CheckProbeToolCallIntegrity,
+			Group:     probeGroupIntegrity,
+			MaxTokens: 128,
+			Sensitive: true,
+		},
+		{
 			Key:            CheckProbeContextLength,
 			Group:          probeGroupIntegrity,
 			ContextLengths: []int{4000, 16000, 32000, 64000, 128000},
