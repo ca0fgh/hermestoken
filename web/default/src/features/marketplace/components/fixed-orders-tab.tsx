@@ -41,6 +41,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import { API_KEY_STATUS } from '@/features/keys/constants'
@@ -52,6 +53,8 @@ import type { ApiKey, GetApiKeysResponse } from '@/features/keys/types'
 import {
   bindMarketplaceFixedOrderTokens,
   listMarketplaceFixedOrders,
+  probeMarketplaceFixedOrder,
+  releaseMarketplaceFixedOrder,
 } from '../api'
 import {
   fixedOrderRelayHeaderSnippet,
@@ -291,6 +294,7 @@ export function FixedOrdersTab() {
   const [loadingTokenKeys, setLoadingTokenKeys] = useState<
     Record<number, boolean>
   >({})
+  const [releaseOrderId, setReleaseOrderId] = useState<number | null>(null)
   const ordersQuery = useQuery({
     queryKey: ['marketplace', 'fixed-orders'],
     queryFn: () =>
@@ -372,6 +376,135 @@ export function FixedOrdersTab() {
       toast.error(
         error instanceof Error ? error.message : t('Failed to bind tokens')
       )
+    },
+  })
+  const probeMutation = useMutation({
+    mutationFn: (fixedOrderId: number) => probeMarketplaceFixedOrder(fixedOrderId),
+    onSuccess: (response) => {
+      if (!response.success || !response.data) {
+        toast.error(response.message || t('Detection failed'))
+        return
+      }
+      const order = response.data
+      const scoreDrop =
+        Number(order.purchase_probe_score) - Number(order.refund_probe_score)
+      const releaseAvailable = scoreDrop >= 5
+      toast.success(
+        releaseAvailable
+          ? t('Detection complete. This order can be released.')
+          : t('Detection complete. This order does not meet release conditions.')
+      )
+      queryClient.setQueryData<
+        Awaited<ReturnType<typeof listMarketplaceFixedOrders>>
+      >(['marketplace', 'fixed-orders'], (current) => {
+        if (!current?.data?.items) return current
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            items: current.data.items.map((item) =>
+              item.id === order.id ? { ...item, ...order } : item
+            ),
+          },
+        }
+      })
+      queryClient.setQueryData<GetApiKeysResponse>(
+        ['marketplace', 'buyer-console-tokens'],
+        (current) => {
+          if (!current?.data?.items) return current
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              items: current.data.items.map((token) => {
+                const nextOrderIds = marketplaceTokenFixedOrderIds(token).filter(
+                  (orderId) => orderId !== order.id
+                )
+                return {
+                  ...token,
+                  marketplace_fixed_order_id: nextOrderIds[0] ?? 0,
+                  marketplace_fixed_order_ids: nextOrderIds,
+                }
+              }),
+            },
+          }
+        }
+      )
+      void queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'fixed-orders'],
+      })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Detection failed'))
+    },
+  })
+  const releaseMutation = useMutation({
+    mutationFn: (fixedOrderId: number) =>
+      releaseMarketplaceFixedOrder(fixedOrderId),
+    onSuccess: (response) => {
+      if (!response.success || !response.data) {
+        toast.error(response.message || t('Failed to release order'))
+        setReleaseOrderId(null)
+        void queryClient.invalidateQueries({
+          queryKey: ['marketplace', 'fixed-orders'],
+        })
+        return
+      }
+      const order = response.data
+      toast.success(
+        `${t('Order released and remaining amount refunded')}: ${formatMarketplaceQuotaUSD(order.refunded_quota)}`
+      )
+      queryClient.setQueryData<
+        Awaited<ReturnType<typeof listMarketplaceFixedOrders>>
+      >(['marketplace', 'fixed-orders'], (current) => {
+        if (!current?.data?.items) return current
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            items: current.data.items.map((item) =>
+              item.id === order.id ? { ...item, ...order } : item
+            ),
+          },
+        }
+      })
+      queryClient.setQueryData<GetApiKeysResponse>(
+        ['marketplace', 'buyer-console-tokens'],
+        (current) => {
+          if (!current?.data?.items) return current
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              items: current.data.items.map((token) => {
+                const nextOrderIds = marketplaceTokenFixedOrderIds(token).filter(
+                  (orderId) => orderId !== order.id
+                )
+                return {
+                  ...token,
+                  marketplace_fixed_order_id: nextOrderIds[0] ?? 0,
+                  marketplace_fixed_order_ids: nextOrderIds,
+                }
+              }),
+            },
+          }
+        }
+      )
+      void queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'fixed-orders'],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['marketplace', 'buyer-console-tokens'],
+      })
+      setReleaseOrderId(null)
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : t('Failed to release order')
+      )
+      setReleaseOrderId(null)
     },
   })
   const { items: orders, total } = unwrapPage(ordersQuery.data)
@@ -485,6 +618,21 @@ export function FixedOrdersTab() {
     })
   }
 
+  const canProbeAndReleaseOrder = (order: (typeof orders)[number]) =>
+    order.status === 'active' &&
+    Number(order.remaining_quota) > 0 &&
+    Number(order.purchase_probe_score) > 0
+
+  const canReleaseOrder = (order: (typeof orders)[number]) =>
+    canProbeAndReleaseOrder(order) &&
+    Number(order.refund_probe_checked_at) > 0 &&
+    Number(order.purchase_probe_score) - Number(order.refund_probe_score) >= 5
+
+  const confirmProbeAndReleaseOrder = () => {
+    if (!releaseOrderId || releaseMutation.isPending) return
+    releaseMutation.mutate(releaseOrderId)
+  }
+
   return (
     <div className='space-y-4'>
       <div className='grid gap-3 xl:grid-cols-2'>
@@ -517,12 +665,41 @@ export function FixedOrdersTab() {
                 label={t('Spent amount')}
                 value={formatMarketplaceQuotaUSD(order.spent_quota)}
               />
+              <StatPill
+                label={t('Refundable amount')}
+                value={formatMarketplaceQuotaUSD(order.remaining_quota)}
+              />
             </div>
             <div className='mt-4 space-y-2'>
               <MetricProgress
                 label={t('Usage')}
                 value={marketplaceFixedOrderUsage(order)}
               />
+              <div className='grid gap-2 sm:grid-cols-2'>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  disabled={!canProbeAndReleaseOrder(order) || probeMutation.isPending}
+                  onClick={() => probeMutation.mutate(order.id)}
+                >
+                  {probeMutation.isPending && probeMutation.variables === order.id
+                    ? t('Detecting...')
+                    : t('Detect')}
+                </Button>
+                <Button
+                  type='button'
+                  variant='destructive'
+                  size='sm'
+                  disabled={!canReleaseOrder(order) || releaseMutation.isPending}
+                  onClick={() => setReleaseOrderId(order.id)}
+                >
+                  {releaseMutation.isPending &&
+                  releaseMutation.variables === order.id
+                    ? t('Releasing...')
+                    : t('Release order')}
+                </Button>
+              </div>
               <CallSnippet
                 orderId={order.id}
                 compact
@@ -611,6 +788,25 @@ export function FixedOrdersTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        destructive
+        open={releaseOrderId !== null}
+        onOpenChange={(open) => {
+          if (!open && !probeMutation.isPending) {
+            setReleaseOrderId(null)
+          }
+        }}
+        title={t('Release fixed order')}
+        desc={t(
+          'This order has failed the latest detection. Releasing it will refund the remaining amount and remove token bindings.'
+        )}
+        confirmText={
+          releaseMutation.isPending ? t('Releasing...') : t('Release order')
+        }
+        isLoading={releaseMutation.isPending}
+        disabled={!releaseOrderId}
+        handleConfirm={confirmProbeAndReleaseOrder}
+      />
     </div>
   )
 }

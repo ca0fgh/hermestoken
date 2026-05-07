@@ -132,6 +132,24 @@
   gap: 6px;
 }
 
+.token-verification-check-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 260px;
+  line-height: 1.45;
+}
+
+.token-verification-check-meta {
+  display: block;
+}
+
+.token-verification-check-meta span {
+  margin-right: 6px;
+  color: var(--semi-color-text-1);
+  font-weight: 600;
+}
+
 .token-verification-probe-message {
   display: flex;
   flex-direction: column;

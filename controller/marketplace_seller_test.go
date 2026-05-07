@@ -51,6 +51,11 @@ type marketplaceCredentialResponse struct {
 	CapacityStatus     string  `json:"capacity_status"`
 	RouteStatus        string  `json:"route_status"`
 	RiskStatus         string  `json:"risk_status"`
+	ProbeStatus        string  `json:"probe_status"`
+	ProbeScore         int     `json:"probe_score"`
+	ProbeScoreMax      int     `json:"probe_score_max"`
+	ProbeGrade         string  `json:"probe_grade"`
+	ProbeCheckedAt     int64   `json:"probe_checked_at"`
 	ResponseTime       int     `json:"response_time"`
 	TestTime           int64   `json:"test_time"`
 	CurrentConcurrency int     `json:"current_concurrency"`
@@ -264,6 +269,9 @@ func TestSellerCreateMarketplaceCredentialEncryptsKeyAndWritesInitialRows(t *tes
 	require.NoError(t, db.First(&stored, credential.ID).Error)
 	assert.NotContains(t, stored.EncryptedAPIKey, "seller-secret-placeholder")
 	assert.NotEmpty(t, stored.EncryptedAPIKey)
+	assert.Equal(t, model.MarketplaceProbeStatusPending, stored.ProbeStatus)
+	assert.Equal(t, 0, stored.ProbeScore)
+	assert.Equal(t, 0, stored.ProbeScoreMax)
 
 	var stats model.MarketplaceCredentialStats
 	require.NoError(t, db.First(&stats, "credential_id = ?", credential.ID).Error)
@@ -435,9 +443,14 @@ func TestSellerListMarketplaceCredentialsIncludesStatsAndFreshCapacity(t *testin
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", credential.ID).
 		Updates(map[string]any{
-			"quota_mode":      model.MarketplaceQuotaModeLimited,
-			"quota_limit":     100000,
-			"capacity_status": model.MarketplaceCapacityStatusAvailable,
+			"quota_mode":       model.MarketplaceQuotaModeLimited,
+			"quota_limit":      100000,
+			"capacity_status":  model.MarketplaceCapacityStatusAvailable,
+			"probe_status":     model.MarketplaceProbeStatusPassed,
+			"probe_score":      91,
+			"probe_score_max":  96,
+			"probe_grade":      "A",
+			"probe_checked_at": int64(1710000000),
 		}).Error)
 	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
 		Where("credential_id = ?", credential.ID).
@@ -460,6 +473,11 @@ func TestSellerListMarketplaceCredentialsIncludesStatsAndFreshCapacity(t *testin
 	assert.Equal(t, 1, items[0].CurrentConcurrency)
 	assert.Equal(t, model.MarketplaceCapacityStatusExhausted, items[0].CapacityStatus)
 	assert.Equal(t, model.MarketplaceRouteStatusExhausted, items[0].RouteStatus)
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, items[0].ProbeStatus)
+	assert.Equal(t, 91, items[0].ProbeScore)
+	assert.Equal(t, 96, items[0].ProbeScoreMax)
+	assert.Equal(t, "A", items[0].ProbeGrade)
+	assert.Equal(t, int64(1710000000), items[0].ProbeCheckedAt)
 }
 
 func TestSellerListMarketplaceCredentialsReportsFailedHealthAsNotRoutable(t *testing.T) {
@@ -549,6 +567,77 @@ func TestSellerMarketplaceCredentialOwnershipIsolation(t *testing.T) {
 	assert.NotContains(t, recorder.Body.String(), "seller-secret-placeholder")
 }
 
+func TestSellerDeleteMarketplaceCredentialRemovesOwnedCredentialAndStats(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/seller/credentials/1", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerDeleteMarketplaceCredential(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	assert.NotContains(t, recorder.Body.String(), "seller-secret-placeholder")
+
+	var credentialCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Count(&credentialCount).Error)
+	assert.Equal(t, int64(0), credentialCount)
+
+	var statsCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
+		Where("credential_id = ?", credential.ID).
+		Count(&statsCount).Error)
+	assert.Equal(t, int64(0), statsCount)
+}
+
+func TestSellerDeleteMarketplaceCredentialRejectsOtherSeller(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/seller/credentials/1", nil, 11)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerDeleteMarketplaceCredential(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.NotContains(t, recorder.Body.String(), "seller-secret-placeholder")
+
+	var credentialCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Count(&credentialCount).Error)
+	assert.Equal(t, int64(1), credentialCount)
+}
+
+func TestSellerDeleteMarketplaceCredentialRejectsActiveFixedOrders(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+	require.NoError(t, db.Create(&model.MarketplaceFixedOrder{
+		BuyerUserID:    20,
+		SellerUserID:   10,
+		CredentialID:   credential.ID,
+		PurchasedQuota: 1000,
+		RemainingQuota: 1000,
+		Status:         model.MarketplaceFixedOrderStatusActive,
+	}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/seller/credentials/1", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerDeleteMarketplaceCredential(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "active fixed orders")
+
+	var credentialCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Count(&credentialCount).Error)
+	assert.Equal(t, int64(1), credentialCount)
+}
+
 func TestSellerUpdateMarketplaceCredentialEditsConfigAndReplacesKey(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
@@ -608,6 +697,42 @@ func TestSellerMarketplaceCredentialLifecycleActionsUpdateStatus(t *testing.T) {
 		require.True(t, response.Success, "%s: %s", action.name, response.Message)
 		assert.Contains(t, recorder.Body.String(), action.wantValue)
 	}
+}
+
+func TestSellerProbeMarketplaceCredentialQueuesOwnedCredential(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"probe_status":     model.MarketplaceProbeStatusUnscored,
+			"probe_score":      0,
+			"probe_score_max":  0,
+			"probe_checked_at": 0,
+		}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/seller/credentials/1/probe", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerProbeMarketplaceCredential(ctx)
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	updated := decodeMarketplaceCredentialResponse(t, response)
+	assert.Equal(t, model.MarketplaceProbeStatusPending, updated.ProbeStatus)
+	assert.Zero(t, updated.ProbeCheckedAt)
+}
+
+func TestSellerProbeMarketplaceCredentialRejectsOtherSeller(t *testing.T) {
+	setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/seller/credentials/1/probe", nil, 11)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerProbeMarketplaceCredential(ctx)
+	response := decodeAPIResponse(t, recorder)
+
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "not found")
 }
 
 func TestSellerTestMarketplaceCredentialDoesNotExposeSecret(t *testing.T) {

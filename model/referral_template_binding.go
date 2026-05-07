@@ -345,6 +345,214 @@ func loadReferralTemplateBundleRowsTx(tx *gorm.DB, templateID int) ([]ReferralTe
 	return bundleRows, nil
 }
 
+func subscriptionReferralTemplateCapBps(template ReferralTemplate) int {
+	if template.LevelType == ReferralLevelTypeTeam {
+		return template.TeamCapBps
+	}
+	return template.DirectCapBps
+}
+
+func findLowestEnabledSubscriptionReferralTemplateIDTx(tx *gorm.DB) (int, error) {
+	if tx == nil {
+		tx = DB
+	}
+	if tx == nil {
+		return 0, errors.New("database is not initialized")
+	}
+
+	var rows []ReferralTemplate
+	if err := tx.Where(
+		"referral_type = ? AND enabled = ?",
+		ReferralTypeSubscription,
+		true,
+	).Order("id ASC").Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, gorm.ErrRecordNotFound
+	}
+
+	type bundleCandidate struct {
+		templateID int
+		capBps     int
+	}
+
+	candidatesByBundleKey := make(map[string]bundleCandidate, len(rows))
+	bundleKeys := make([]string, 0, len(rows))
+	for _, row := range rows {
+		bundleKey := referralTemplateBundleKeyForRow(row)
+		candidate, exists := candidatesByBundleKey[bundleKey]
+		rowCapBps := subscriptionReferralTemplateCapBps(row)
+		if !exists {
+			candidatesByBundleKey[bundleKey] = bundleCandidate{
+				templateID: row.Id,
+				capBps:     rowCapBps,
+			}
+			bundleKeys = append(bundleKeys, bundleKey)
+			continue
+		}
+		if rowCapBps < candidate.capBps || (rowCapBps == candidate.capBps && row.Id < candidate.templateID) {
+			candidatesByBundleKey[bundleKey] = bundleCandidate{
+				templateID: row.Id,
+				capBps:     rowCapBps,
+			}
+		}
+	}
+
+	sort.Slice(bundleKeys, func(i, j int) bool {
+		left := candidatesByBundleKey[bundleKeys[i]]
+		right := candidatesByBundleKey[bundleKeys[j]]
+		if left.capBps != right.capBps {
+			return left.capBps < right.capBps
+		}
+		return left.templateID < right.templateID
+	})
+	return candidatesByBundleKey[bundleKeys[0]].templateID, nil
+}
+
+func hasAnyActiveReferralTemplateBindingByUserTx(tx *gorm.DB, userID int, referralType string) (bool, error) {
+	if tx == nil {
+		tx = DB
+	}
+	if tx == nil {
+		return false, errors.New("database is not initialized")
+	}
+	if userID <= 0 {
+		return false, errors.New("invalid user id")
+	}
+
+	var count int64
+	if err := tx.Model(&ReferralTemplateBinding{}).
+		Joins("JOIN referral_templates ON referral_templates.id = referral_template_bindings.template_id").
+		Where(
+			"referral_template_bindings.user_id = ? AND referral_template_bindings.referral_type = ? AND referral_templates.referral_type = ? AND referral_templates.enabled = ?",
+			userID,
+			strings.TrimSpace(referralType),
+			strings.TrimSpace(referralType),
+			true,
+		).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func upsertReferralTemplateBindingBundleForUserTx(tx *gorm.DB, userID int, referralType string, templateID int, replaceBindingIDs []int, operatorID int) ([]ReferralTemplateBinding, error) {
+	if tx == nil {
+		tx = DB
+	}
+	if tx == nil {
+		return nil, errors.New("database is not initialized")
+	}
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+	if templateID <= 0 {
+		return nil, errors.New("template_id is required")
+	}
+
+	bundleRows, err := loadReferralTemplateBundleRowsTx(tx, templateID)
+	if err != nil {
+		return nil, err
+	}
+	if len(bundleRows) == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	effectiveReferralType := strings.TrimSpace(referralType)
+	if effectiveReferralType == "" {
+		effectiveReferralType = strings.TrimSpace(bundleRows[0].ReferralType)
+	}
+
+	normalizedReplaceBindingIDs := normalizeBindingIDs(replaceBindingIDs)
+	if len(normalizedReplaceBindingIDs) > 0 {
+		if err := tx.Where(
+			"id IN ? AND user_id = ? AND referral_type = ?",
+			normalizedReplaceBindingIDs,
+			userID,
+			effectiveReferralType,
+		).Delete(&ReferralTemplateBinding{}).Error; err != nil {
+			return nil, err
+		}
+	}
+
+	savedBindings := make([]ReferralTemplateBinding, 0, len(bundleRows))
+	for _, row := range bundleRows {
+		binding := ReferralTemplateBinding{
+			UserId:       userID,
+			ReferralType: effectiveReferralType,
+			TemplateId:   row.Id,
+			CreatedBy:    operatorID,
+			UpdatedBy:    operatorID,
+		}
+		if err := binding.validateWithTemplateID(tx); err != nil {
+			return nil, err
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "user_id"},
+				{Name: "referral_type"},
+				{Name: "group"},
+			},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"template_id": binding.TemplateId,
+				"updated_by":  binding.UpdatedBy,
+				"updated_at":  common.GetTimestamp(),
+			}),
+		}).Create(&binding).Error; err != nil {
+			return nil, err
+		}
+		if err := tx.Where(
+			"user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
+			binding.UserId,
+			binding.ReferralType,
+			binding.Group,
+		).First(&binding).Error; err != nil {
+			return nil, err
+		}
+		savedBindings = append(savedBindings, binding)
+	}
+
+	sort.Slice(savedBindings, func(i, j int) bool {
+		return savedBindings[i].Group < savedBindings[j].Group
+	})
+	return savedBindings, nil
+}
+
+func AssignLowestSubscriptionReferralTemplateForInvitedUser(tx *gorm.DB, inviteeUserID int, inviterUserID int) error {
+	if inviteeUserID <= 0 {
+		return errors.New("invalid invitee user id")
+	}
+	if inviterUserID <= 0 {
+		return nil
+	}
+	if tx == nil {
+		tx = DB
+	}
+	if tx == nil {
+		return errors.New("database is not initialized")
+	}
+
+	hasActiveBinding, err := hasAnyActiveReferralTemplateBindingByUserTx(tx, inviterUserID, ReferralTypeSubscription)
+	if err != nil {
+		return err
+	}
+	if !hasActiveBinding {
+		return nil
+	}
+
+	templateID, err := findLowestEnabledSubscriptionReferralTemplateIDTx(tx)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = upsertReferralTemplateBindingBundleForUserTx(tx, inviteeUserID, ReferralTypeSubscription, templateID, nil, 0)
+	return err
+}
+
 func UpsertReferralTemplateBinding(binding *ReferralTemplateBinding) (*ReferralTemplateBinding, error) {
 	if binding == nil {
 		return nil, errors.New("binding is required")
@@ -393,77 +601,13 @@ func UpsertReferralTemplateBindingBundleForUser(userID int, referralType string,
 
 	savedBindings := make([]ReferralTemplateBinding, 0)
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		bundleRows, err := loadReferralTemplateBundleRowsTx(tx, templateID)
-		if err != nil {
-			return err
-		}
-		if len(bundleRows) == 0 {
-			return gorm.ErrRecordNotFound
-		}
-
-		effectiveReferralType := strings.TrimSpace(referralType)
-		if effectiveReferralType == "" {
-			effectiveReferralType = strings.TrimSpace(bundleRows[0].ReferralType)
-		}
-
-		normalizedReplaceBindingIDs := normalizeBindingIDs(replaceBindingIDs)
-		if len(normalizedReplaceBindingIDs) > 0 {
-			if err := tx.Where(
-				"id IN ? AND user_id = ? AND referral_type = ?",
-				normalizedReplaceBindingIDs,
-				userID,
-				effectiveReferralType,
-			).Delete(&ReferralTemplateBinding{}).Error; err != nil {
-				return err
-			}
-		}
-
-		savedBindings = make([]ReferralTemplateBinding, 0, len(bundleRows))
-		for _, row := range bundleRows {
-			binding := ReferralTemplateBinding{
-				UserId:       userID,
-				ReferralType: effectiveReferralType,
-				TemplateId:   row.Id,
-				CreatedBy:    operatorID,
-				UpdatedBy:    operatorID,
-			}
-			if err := binding.validateWithTemplateID(tx); err != nil {
-				return err
-			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{
-					{Name: "user_id"},
-					{Name: "referral_type"},
-					{Name: "group"},
-				},
-				DoUpdates: clause.Assignments(map[string]interface{}{
-					"template_id": binding.TemplateId,
-					"updated_by":  binding.UpdatedBy,
-					"updated_at":  common.GetTimestamp(),
-				}),
-			}).Create(&binding).Error; err != nil {
-				return err
-			}
-			if err := tx.Where(
-				"user_id = ? AND referral_type = ? AND "+commonGroupCol+" = ?",
-				binding.UserId,
-				binding.ReferralType,
-				binding.Group,
-			).First(&binding).Error; err != nil {
-				return err
-			}
-			savedBindings = append(savedBindings, binding)
-		}
-
-		return nil
+		var err error
+		savedBindings, err = upsertReferralTemplateBindingBundleForUserTx(tx, userID, referralType, templateID, replaceBindingIDs, operatorID)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	sort.Slice(savedBindings, func(i, j int) bool {
-		return savedBindings[i].Group < savedBindings[j].Group
-	})
 	return savedBindings, nil
 }
 

@@ -49,6 +49,8 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
     keyFormSource,
     keyGroupComboboxSource,
     multiSelectSource,
+    defaultEnLocaleSource,
+    defaultZhLocaleSource,
   ] = await Promise.all([
     readDefaultSource("routes/_authenticated/marketplace/index.tsx"),
     readDefaultSource("hooks/use-sidebar-data.ts"),
@@ -81,6 +83,8 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
     readDefaultSource("features/keys/lib/api-key-form.ts"),
     readDefaultSource("features/keys/components/api-key-group-combobox.tsx"),
     readDefaultSource("components/multi-select.tsx"),
+    readDefaultSource("i18n/locales/en.json"),
+    readDefaultSource("i18n/locales/zh.json"),
   ]);
 
   assert.match(
@@ -103,6 +107,8 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
 
   assert.match(apiSource, /\/api\/marketplace\/orders/);
   assert.match(apiSource, /\/api\/marketplace\/fixed-orders/);
+  assert.match(apiSource, /\/probe/);
+  assert.match(apiSource, /\/release/);
   assert.match(apiSource, /\/bind-token/);
   assert.match(apiSource, /\/bind-tokens/);
   assert.match(apiSource, /fixed_order_ids/);
@@ -250,6 +256,15 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(callSnippetSource, /!orderId/);
   assert.match(callSnippetSource, /\{!orderId\s*\?\s*\(\s*<pre/);
   assert.match(fixedOrdersTabSource, /bindMarketplaceFixedOrderTokens/);
+  assert.match(fixedOrdersTabSource, /probeMarketplaceFixedOrder/);
+  assert.match(fixedOrdersTabSource, /releaseMarketplaceFixedOrder/);
+  assert.match(fixedOrdersTabSource, /Detect/);
+  assert.match(fixedOrdersTabSource, /Release order/);
+  assert.match(fixedOrdersTabSource, /Refundable amount/);
+  assert.match(fixedOrdersTabSource, /ConfirmDialog/);
+  assert.match(fixedOrdersTabSource, /releaseOrderId/);
+  assert.match(fixedOrdersTabSource, /Release fixed order/);
+  assert.match(fixedOrdersTabSource, /canReleaseOrder/);
   assert.match(fixedOrdersTabSource, /getApiKeys/);
   assert.match(
     `${fixedOrdersTabSource}\n${callSnippetSource}`,
@@ -333,6 +348,15 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(keyConstantsSource, /DEFAULT_GROUP\s*=\s*''/);
   assert.match(keyFormSource, /group:\s*data\.group\s*\|\|\s*DEFAULT_GROUP/);
   assert.match(keyFormSource, /DEFAULT_MARKETPLACE_ROUTE_ORDER/);
+
+  const defaultEnLocale = JSON.parse(defaultEnLocaleSource).translation;
+  const defaultZhLocale = JSON.parse(defaultZhLocaleSource).translation;
+  assert.equal(
+    defaultEnLocale["Release fixed order"],
+    "Release fixed order",
+  );
+  assert.equal(defaultZhLocale["Refundable amount"], "可退金额");
+  assert.equal(defaultZhLocale["Release order"], "解除订单");
   assert.match(keyFormSource, /DEFAULT_MARKETPLACE_ROUTE_ENABLED/);
   assert.match(keyFormSource, /normalizeMarketplaceRouteOrder/);
   assert.match(keyFormSource, /normalizeMarketplaceRouteEnabled/);
@@ -652,7 +676,11 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   );
   assert.doesNotMatch(pageSource, /showEvents/);
   assert.doesNotMatch(pageSource, /历史状态变更/);
-  assert.doesNotMatch(pageSource, /ModelSelectModal/);
+  assert.match(pageSource, /import ModelSelectModal/);
+  assert.match(pageSource, /modelSelectOpen,\s*setModelSelectOpen/);
+  assert.match(pageSource, /fetchedModelCandidates,\s*setFetchedModelCandidates/);
+  assert.match(pageSource, /setFetchedModelCandidates\(fetchedModels\)/);
+  assert.match(pageSource, /setModelSelectOpen\(true\)/);
   assert.doesNotMatch(pageSource, /openSellerModelModal/);
   assert.doesNotMatch(pageSource, /sellerModelModalVisible/);
   assert.match(
@@ -691,7 +719,13 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
     /label:\s*\(\s*<span className='flex items-center gap-1'>/,
   );
   assert.doesNotMatch(sellerTabSource, /models=\{fullModels\}/);
-  assert.doesNotMatch(sellerTabSource, /selected=\{selectedModels\}/);
+  assert.match(sellerTabSource, /<ModelSelectModal/);
+  assert.match(sellerTabSource, /models=\{fetchedModelCandidates\}/);
+  assert.match(sellerTabSource, /selected=\{selectedModels\}/);
+  assert.match(
+    sellerTabSource,
+    /onConfirm=\{\(models\) => \{\s*setSelectedModels\(models\);\s*setModelSelectOpen\(false\);/,
+  );
   assert.match(pageSource, /getModelCategories/);
   assert.match(sellerTabSource, /loadPricedModels\(\{ silent: true \}\)/);
   assert.match(
@@ -704,7 +738,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.doesNotMatch(sellerTabSource, /setFullModels\(models\)/);
   assert.doesNotMatch(sellerTabSource, /setFullModels\(selectableModels\)/);
   assert.doesNotMatch(sellerTabSource, /setSellerModelModalVisible\(true\)/);
-  assert.match(pageSource, /已获取 \{\{count\}\} 个模型，可在下拉框中选择/);
+  assert.match(pageSource, /已获取 \{\{count\}\} 个模型，请选择要填入的模型/);
   assert.doesNotMatch(pageSource, /模型列表加载失败，点击重试/);
   assert.doesNotMatch(sellerTabSource, />\s*\{t\('选择模型'\)\}/);
   assert.match(sellerTabSource, /fetchUpstreamModels/);

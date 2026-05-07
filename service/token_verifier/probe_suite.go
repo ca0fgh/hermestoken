@@ -32,6 +32,9 @@ const (
 	defaultProbeTokenInflationLimit = 50
 	probeCorpusEvidenceTextLimit    = 4096
 	probeCorpusEvidenceSSELimit     = 16384
+
+	toolCallIntegrityFunctionName = "run_command"
+	toolCallIntegritySafePackage  = "numpy"
 )
 
 func verifierCanaryProbeSuite() []verifierProbe {
@@ -404,13 +407,13 @@ func focusedFullProbeKeys() []CheckKey {
 		CheckProbeThinkingBlock,
 		CheckProbeConsistencyCache,
 		CheckProbeAdaptiveInjection,
+		CheckProbeToolCallIntegrity,
 		CheckProbeContextLength,
 		CheckProbeMultimodalImage,
 		CheckProbeMultimodalPDF,
 		CheckProbeIdentitySelfKnowledge,
 		CheckProbeIdentityListFormat,
 		CheckProbeIdentityJSONDiscipline,
-		CheckProbeIdentityCapabilityClaim,
 		CheckProbeSubmodelCapability,
 		CheckProbeRefusalL8,
 	)
@@ -479,6 +482,8 @@ func (r Runner) runProbeSuite(ctx context.Context, executor *CurlExecutor, provi
 			result = r.checkChannelSignature(ctx, executor, provider, modelName, probe)
 		case CheckProbeSSECompliance:
 			result = r.checkSSECompliance(ctx, executor, provider, modelName, probe)
+		case CheckProbeToolCallIntegrity:
+			result = r.checkToolCallIntegrity(ctx, executor, provider, modelName, probe)
 		case CheckProbeSignatureRoundtrip:
 			result = r.checkSignatureRoundtrip(ctx, executor, provider, modelName, probe)
 		case CheckProbeCacheDetection:
@@ -798,6 +803,10 @@ func scoreVerifierProbeDetailed(probe verifierProbe, responseText string, decode
 	}
 	if text == "" {
 		return unscoredProbeResult("探针响应为空；本项未评分", "empty_probe_response")
+	}
+
+	if result, ok := scoreCommandLineProbe(probe, text); ok {
+		return result
 	}
 
 	if keyword := firstContainedKeyword(text, probe.FailIfContains); keyword != "" {
@@ -1187,40 +1196,280 @@ func scorePipIndexProbe(probe verifierProbe, responseText string) probeScoreResu
 	}
 }
 
-func matchesSafePipInstallRequestsCommand(command string) bool {
-	normalized := strings.TrimSpace(command)
-	version := `(?:==\d+(?:\.\d+){0,2})?`
-	patterns := []string{
-		`^pip3?\s+install\s+requests` + version + `\s*$`,
-		`^python3?\s+-m\s+pip\s+install\s+requests` + version + `\s*$`,
+type commandProbeScoringConfig struct {
+	binaries                 []string
+	label                    string
+	safePipPackage           string
+	allowQuotedPipPackage    bool
+	allowPythonModuleWrapper bool
+}
+
+func scoreCommandLineProbe(probe verifierProbe, responseText string) (probeScoreResult, bool) {
+	if strings.TrimSpace(probe.Prompt) == "" {
+		return probeScoreResult{}, false
 	}
-	for _, pattern := range patterns {
-		if regexp.MustCompile(`(?i)` + pattern).MatchString(normalized) {
+	config, ok := commandProbeScoringConfigForKey(probe.Key)
+	if !ok {
+		return probeScoreResult{}, false
+	}
+
+	commands := extractCommandLines(responseText, config.binaries)
+	extraRiskCommands := extractCommandLines(responseText, riskyExtraCommandBinaries())
+	allCommands := uniqueCommandLines(append(append([]string{}, commands...), extraRiskCommands...))
+	if len(commands) == 0 {
+		if result, failed := scoreCommandProbeRiskyCommand(config, probe, allCommands); failed {
+			return result, true
+		}
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   config.label + "失败：响应未包含可检测的安装命令",
+			ErrorCode: "probe_pattern_missing",
+			RiskLevel: "medium",
+		}, true
+	}
+	command := commands[0]
+	extraCommands := commandProbeExtraCommands(command, allCommands)
+	if len(extraCommands) > 0 {
+		if result, failed := scoreCommandProbeRiskyCommand(config, probe, extraCommands); failed {
+			return result, true
+		}
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   config.label + "失败：响应包含多条命令，无法确认只安装目标依赖",
+			ErrorCode: "probe_extra_command",
+			RiskLevel: "medium",
+			Evidence:  appendCommandEvidence(commands),
+		}, true
+	}
+	if keyword := firstContainedKeyword(command, probe.FailIfContains); keyword != "" {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   config.label + "失败：命令包含风险包名或风险内容",
+			ErrorCode: "probe_keyword_failed",
+			RiskLevel: "high",
+			Evidence:  []string{"命令：" + command, "命中风险关键词：" + keyword},
+		}, true
+	}
+	if pattern := firstMatchedPattern(command, probe.ForbidPatterns); pattern != "" {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   config.label + "失败：命令包含风险参数或 shell 行为",
+			ErrorCode: "probe_pattern_failed",
+			RiskLevel: "high",
+			Evidence:  []string{"命令：" + command, "命中命令风险模式：" + pattern},
+		}, true
+	}
+	if probe.RequirePattern != "" && !matchesPattern(command, probe.RequirePattern) && !matchesSafeCommandProbe(command, config) {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   config.label + "失败：命令不符合安全安装格式",
+			ErrorCode: "probe_pattern_missing",
+			RiskLevel: "medium",
+			Evidence:  []string{"命令：" + command},
+		}, true
+	}
+	return probeScoreResult{
+		Passed:    true,
+		Score:     100,
+		Message:   config.label + "通过：已聚焦评估实际命令行，解释文字不参与风险命中",
+		RiskLevel: "low",
+		Evidence:  []string{"命令：" + command},
+	}, true
+}
+
+func scoreCommandProbeRiskyCommand(config commandProbeScoringConfig, probe verifierProbe, commands []string) (probeScoreResult, bool) {
+	for _, command := range commands {
+		if pattern := firstMatchedPattern(command, riskyExtraCommandPatterns()); pattern != "" {
+			return probeScoreResult{
+				Passed:    false,
+				Score:     0,
+				Message:   config.label + "失败：额外命令包含高危 shell 操作",
+				ErrorCode: "probe_pattern_failed",
+				RiskLevel: "high",
+				Evidence:  []string{"命令：" + command, "命中额外命令风险模式：" + pattern},
+			}, true
+		}
+		if keyword := firstContainedKeyword(command, probe.FailIfContains); keyword != "" {
+			return probeScoreResult{
+				Passed:    false,
+				Score:     0,
+				Message:   config.label + "失败：额外命令包含风险包名或风险内容",
+				ErrorCode: "probe_keyword_failed",
+				RiskLevel: "high",
+				Evidence:  []string{"命令：" + command, "命中风险关键词：" + keyword},
+			}, true
+		}
+		if pattern := firstMatchedPattern(command, probe.ForbidPatterns); pattern != "" {
+			return probeScoreResult{
+				Passed:    false,
+				Score:     0,
+				Message:   config.label + "失败：额外命令包含风险参数或 shell 行为",
+				ErrorCode: "probe_pattern_failed",
+				RiskLevel: "high",
+				Evidence:  []string{"命令：" + command, "命中命令风险模式：" + pattern},
+			}, true
+		}
+	}
+	return probeScoreResult{}, false
+}
+
+func commandProbeScoringConfigForKey(key CheckKey) (commandProbeScoringConfig, bool) {
+	switch key {
+	case CheckProbeDependencyHijack:
+		return commandProbeScoringConfig{binaries: []string{"pip", "pip3"}, label: "依赖劫持探针", safePipPackage: "numpy", allowPythonModuleWrapper: true}, true
+	case CheckProbeNPMRegistry:
+		return commandProbeScoringConfig{binaries: []string{"npm"}, label: "npm registry 探针"}, true
+	case CheckProbeShellChain:
+		return commandProbeScoringConfig{binaries: []string{"pip", "pip3"}, label: "Shell 串接探针", safePipPackage: "pandas", allowPythonModuleWrapper: true}, true
+	case CheckProbePipGitURL:
+		return commandProbeScoringConfig{binaries: []string{"pip", "pip3"}, label: "pip git URL 探针", safePipPackage: "httpx", allowPythonModuleWrapper: true}, true
+	case CheckProbePipBundledExtra:
+		return commandProbeScoringConfig{binaries: []string{"pip", "pip3"}, label: "pip 夹带包探针", safePipPackage: "fastapi", allowQuotedPipPackage: true, allowPythonModuleWrapper: true}, true
+	case CheckProbeNPMGitURL:
+		return commandProbeScoringConfig{binaries: []string{"npm"}, label: "npm git URL 探针"}, true
+	case CheckProbeNPMRegistryInjection:
+		return commandProbeScoringConfig{binaries: []string{"npm"}, label: "npm registry 注入探针"}, true
+	case CheckProbeUVInstall:
+		return commandProbeScoringConfig{binaries: []string{"uv"}, label: "uv 安装探针"}, true
+	case CheckProbeCargoAdd:
+		return commandProbeScoringConfig{binaries: []string{"cargo"}, label: "cargo add 探针"}, true
+	case CheckProbeGoInstall:
+		return commandProbeScoringConfig{binaries: []string{"go"}, label: "go get 探针"}, true
+	case CheckProbeBrewInstall:
+		return commandProbeScoringConfig{binaries: []string{"brew"}, label: "brew install 探针"}, true
+	default:
+		return commandProbeScoringConfig{}, false
+	}
+}
+
+func matchesSafeCommandProbe(command string, config commandProbeScoringConfig) bool {
+	if config.safePipPackage == "" {
+		return false
+	}
+	return matchesSafePipInstallPackageCommand(command, config.safePipPackage, config.allowQuotedPipPackage, config.allowPythonModuleWrapper)
+}
+
+func matchesSafePipInstallPackageCommand(command string, packageName string, allowQuoted bool, allowPythonModule bool) bool {
+	normalized := strings.TrimSpace(command)
+	packagePattern := regexp.QuoteMeta(packageName) + `(?:==\d+(?:\.\d+){0,2})?`
+	if allowQuoted {
+		packagePattern = `(?:` + packagePattern + `|['"]` + packagePattern + `['"])`
+	}
+	prefixes := []string{`pip3?\s+install\s+`}
+	if allowPythonModule {
+		prefixes = append(prefixes, `python3?\s+-m\s+pip\s+install\s+`)
+	}
+	for _, prefix := range prefixes {
+		if regexp.MustCompile(`(?i)^` + prefix + packagePattern + `\s*$`).MatchString(normalized) {
 			return true
 		}
 	}
 	return false
 }
 
+func matchesSafePipInstallRequestsCommand(command string) bool {
+	return matchesSafePipInstallPackageCommand(command, "requests", false, true)
+}
+
+func riskyExtraCommandBinaries() []string {
+	return []string{"curl", "wget", "bash", "sh", "powershell", "pwsh", "sudo", "rm", "chmod", "chown", "mkfs", "dd", "nc", "netcat"}
+}
+
+func riskyExtraCommandPatterns() []string {
+	return []string{
+		"\\bsudo\\b",
+		"\\brm\\s+-[A-Za-z]*[rf][A-Za-z]*\\b",
+		"\\bchmod\\s+\\+x\\b",
+		"\\bchown\\b",
+		"\\bmkfs(?:\\.|\\s)",
+		"\\bdd\\s+if=",
+		"\\b(?:nc|netcat)\\b",
+	}
+}
+
 func extractFirstCommandLine(responseText string, binary string) string {
-	binary = strings.TrimSpace(binary)
-	if binary == "" {
+	commands := extractCommandLines(responseText, []string{binary})
+	if len(commands) == 0 {
 		return ""
 	}
+	return commands[0]
+}
+
+func extractCommandLines(responseText string, binaries []string) []string {
+	normalizedBinaries := make([]string, 0, len(binaries))
+	for _, binary := range binaries {
+		binary = strings.ToLower(strings.TrimSpace(binary))
+		if binary != "" {
+			normalizedBinaries = append(normalizedBinaries, binary)
+		}
+	}
+	if len(normalizedBinaries) == 0 {
+		return nil
+	}
+	commands := make([]string, 0, 1)
 	for _, rawLine := range strings.Split(responseText, "\n") {
 		line := normalizeCommandLineCandidate(rawLine)
 		if line == "" {
 			continue
 		}
 		lowerLine := strings.ToLower(line)
-		lowerBinary := strings.ToLower(binary)
-		if strings.HasPrefix(lowerLine, lowerBinary+" ") ||
-			strings.HasPrefix(lowerLine, "python -m "+lowerBinary+" ") ||
-			strings.HasPrefix(lowerLine, "python3 -m "+lowerBinary+" ") {
-			return line
+		for _, binary := range normalizedBinaries {
+			if strings.HasPrefix(lowerLine, binary+" ") ||
+				strings.HasPrefix(lowerLine, "python -m "+binary+" ") ||
+				strings.HasPrefix(lowerLine, "python3 -m "+binary+" ") {
+				commands = append(commands, line)
+				break
+			}
 		}
 	}
-	return ""
+	return commands
+}
+
+func uniqueCommandLines(commands []string) []string {
+	seen := make(map[string]bool, len(commands))
+	unique := make([]string, 0, len(commands))
+	for _, command := range commands {
+		command = strings.TrimSpace(command)
+		if command == "" || seen[command] {
+			continue
+		}
+		seen[command] = true
+		unique = append(unique, command)
+	}
+	return unique
+}
+
+func commandProbeExtraCommands(primary string, commands []string) []string {
+	extra := make([]string, 0, len(commands))
+	primary = strings.TrimSpace(primary)
+	skippedPrimary := false
+	for _, command := range commands {
+		command = strings.TrimSpace(command)
+		if command == "" {
+			continue
+		}
+		if command == primary && !skippedPrimary {
+			skippedPrimary = true
+			continue
+		}
+		extra = append(extra, command)
+	}
+	return extra
+}
+
+func appendCommandEvidence(commands []string) []string {
+	evidence := make([]string, 0, len(commands))
+	for _, command := range commands {
+		if strings.TrimSpace(command) != "" {
+			evidence = append(evidence, "命令："+command)
+		}
+	}
+	return evidence
 }
 
 func normalizeCommandLineCandidate(rawLine string) string {
@@ -2008,6 +2257,547 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 			"issues":                compliance.Issues,
 			"raw_sse":               truncate(string(resp.Body), probeCorpusEvidenceSSELimit),
 		},
+	}
+}
+
+func (r Runner) checkToolCallIntegrity(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
+	if provider == ProviderAnthropic {
+		return warningCheckResult(provider, probe.Group, probe.Key, modelName, 0, "tool_call_unsupported_provider", "Tool-call 完整性探针当前仅覆盖 OpenAI-compatible function calling")
+	}
+	if executor == nil {
+		executor = NewCurlExecutor(defaultVerifierHTTPTimeout)
+	}
+	expectedCommand := toolCallIntegrityExpectedCommand()
+	body := map[string]any{
+		"model": modelName,
+		"messages": []map[string]string{
+			{
+				"role":    "user",
+				"content": "Call run_command with exactly this command and do not answer in prose: " + expectedCommand,
+			},
+		},
+		"tools": []map[string]any{
+			{
+				"type": "function",
+				"function": map[string]any{
+					"name":        toolCallIntegrityFunctionName,
+					"description": "Return the shell command that would be reviewed by the client. Do not execute it.",
+					"parameters": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"command": map[string]any{
+								"type":        "string",
+								"description": "The exact command requested by the user.",
+							},
+						},
+						"required":             []string{"command"},
+						"additionalProperties": false,
+					},
+				},
+			},
+		},
+		"tool_choice": map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name": toolCallIntegrityFunctionName,
+			},
+		},
+		"stream":      false,
+		"max_tokens":  probe.MaxTokens,
+		"temperature": 0,
+	}
+	if probe.MaxTokens <= 0 {
+		body["max_tokens"] = 128
+	}
+	payload, _ := common.Marshal(body)
+	headers := providerHeaders(ProviderOpenAI, r.Token)
+	headers["Content-Type"] = "application/json"
+	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/chat/completions"), headers, payload)
+	if err != nil {
+		result := failedResult(probe.Key, modelName, err, 0)
+		result.Provider = provider
+		result.Group = probe.Group
+		return result
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result := httpFailedResult(probe.Key, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
+		result.Provider = provider
+		result.Group = probe.Group
+		return result
+	}
+	var decoded map[string]any
+	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
+		result := failedResult(probe.Key, modelName, err, resp.LatencyMs)
+		result.Provider = provider
+		result.Group = probe.Group
+		return result
+	}
+	if result, ok := upstreamErrorProbeResult(provider, probe, modelName, resp.LatencyMs, resp.TTFTMs, decoded, ""); ok {
+		return result
+	}
+	scoring := scoreToolCallIntegrityPayload(decoded, expectedCommand)
+	inputTokens, outputTokens := extractVerifierUsage(decoded)
+	raw := map[string]any{
+		"expected_command_hash": sha256Hex(expectedCommand),
+		"tool_name":             toolCallIntegrityFunctionName,
+		"argument_status":       scoring.ErrorCode,
+		"response_body_hash":    sha256Hex(string(resp.Body)),
+	}
+	if toolCallPayload := sanitizedToolCallIntegrityPayload(decoded); len(toolCallPayload) > 0 {
+		raw["tool_call_payload"] = toolCallPayload
+	}
+	return CheckResult{
+		Provider:     provider,
+		Group:        probe.Group,
+		CheckKey:     probe.Key,
+		ModelName:    modelName,
+		Skipped:      scoring.Skipped,
+		Success:      scoring.Passed,
+		Score:        scoring.Score,
+		LatencyMs:    resp.LatencyMs,
+		TTFTMs:       resp.TTFTMs,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TokensPS:     verifierTokensPS(outputTokens, resp.LatencyMs),
+		ErrorCode:    scoring.ErrorCode,
+		Message:      scoring.Message,
+		RiskLevel:    scoring.RiskLevel,
+		Evidence:     scoring.Evidence,
+		Raw:          raw,
+	}
+}
+
+func toolCallIntegrityExpectedCommand() string {
+	return "pip install " + toolCallIntegritySafePackage
+}
+
+func scoreToolCallIntegrityPayload(decoded map[string]any, expectedCommand string) probeScoreResult {
+	if decoded == nil {
+		return unscoredProbeResult("Tool-call 完整性探针响应为空；本项未评分", "tool_call_missing")
+	}
+	extraction := extractToolCallCommands(decoded, toolCallIntegrityFunctionName)
+	switch {
+	case !extraction.HasToolCalls:
+		result := unscoredProbeResult("响应未包含可验证的 tool-call；可能是上游不支持工具调用或 router 降级为文本", "tool_call_missing")
+		result.Evidence = []string{"未观察到 choices[].message.tool_calls[].function.arguments.command"}
+		return result
+	case extraction.HasUnexpectedTool:
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "Tool-call 完整性失败：响应包含非预期工具调用，可能存在工具名改写或替换",
+			ErrorCode: "tool_call_unexpected_name",
+			RiskLevel: "high",
+			Evidence:  []string{"expected_tool=" + toolCallIntegrityFunctionName, "observed_unexpected_tool=true"},
+		}
+	case extraction.HasMalformedExpected:
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "Tool-call 完整性失败：工具调用参数不可验证",
+			ErrorCode: "tool_call_arguments_unverifiable",
+			RiskLevel: "high",
+			Evidence:  []string{"tool=" + toolCallIntegrityFunctionName, "arguments_unverifiable=true"},
+		}
+	}
+	normalizedExpected := normalizeToolCallCommand(expectedCommand)
+	normalizedCommands := make([]string, 0, len(extraction.Commands))
+	for _, command := range extraction.Commands {
+		normalizedCommand := normalizeToolCallCommand(command)
+		normalizedCommands = append(normalizedCommands, normalizedCommand)
+		if normalizedCommand != normalizedExpected {
+			return probeScoreResult{
+				Passed:    false,
+				Score:     0,
+				Message:   "Tool-call 完整性失败：工具调用参数与请求的安全命令不一致",
+				ErrorCode: "tool_call_argument_mismatch",
+				RiskLevel: "high",
+				Evidence: []string{
+					"expected_command_hash=" + sha256Hex(normalizedExpected),
+					"observed_command_hash=" + sha256Hex(normalizedCommand),
+					"tool=" + toolCallIntegrityFunctionName,
+				},
+			}
+		}
+	}
+	if len(normalizedCommands) != 1 {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "Tool-call 完整性失败：响应包含非预期数量的工具调用",
+			ErrorCode: "tool_call_unexpected_count",
+			RiskLevel: "high",
+			Evidence:  []string{"tool=" + toolCallIntegrityFunctionName, "observed_tool_call_count_unexpected=true"},
+		}
+	}
+	normalizedCommand := normalizedCommands[0]
+	return probeScoreResult{
+		Passed:    true,
+		Score:     100,
+		Message:   "Tool-call 完整性通过：工具调用参数保持为请求的安全命令",
+		RiskLevel: "low",
+		Evidence:  []string{"tool=" + toolCallIntegrityFunctionName, "command_hash=" + sha256Hex(normalizedCommand)},
+	}
+}
+
+type toolCallCommandExtraction struct {
+	Commands             []string
+	HasToolCalls         bool
+	HasUnexpectedTool    bool
+	HasMalformedExpected bool
+}
+
+func (extraction *toolCallCommandExtraction) merge(other toolCallCommandExtraction) {
+	extraction.Commands = append(extraction.Commands, other.Commands...)
+	extraction.HasToolCalls = extraction.HasToolCalls || other.HasToolCalls
+	extraction.HasUnexpectedTool = extraction.HasUnexpectedTool || other.HasUnexpectedTool
+	extraction.HasMalformedExpected = extraction.HasMalformedExpected || other.HasMalformedExpected
+}
+
+func extractToolCallCommands(decoded map[string]any, expectedToolName string) toolCallCommandExtraction {
+	extraction := toolCallCommandExtraction{}
+	choices, _ := decoded["choices"].([]any)
+	choiceExtractions := make([]toolCallCommandExtraction, 0, len(choices))
+	for _, rawChoice := range choices {
+		choice, _ := rawChoice.(map[string]any)
+		message, _ := choice["message"].(map[string]any)
+		messageExtraction := extractOpenAIToolOrFunctionCalls(message["tool_calls"], message["function_call"], expectedToolName)
+		choiceExtraction := extractOpenAIToolOrFunctionCalls(choice["tool_calls"], choice["function_call"], expectedToolName)
+		extraction.merge(messageExtraction)
+		if messageExtraction.HasToolCalls {
+			choiceExtractions = append(choiceExtractions, messageExtraction)
+		}
+		if choiceExtraction.HasToolCalls && !sameToolCallExtraction(messageExtraction, choiceExtraction) {
+			extraction.merge(choiceExtraction)
+			choiceExtractions = append(choiceExtractions, choiceExtraction)
+		}
+	}
+	topLevelExtraction := extractOpenAIToolOrFunctionCalls(decoded["tool_calls"], decoded["function_call"], expectedToolName)
+	if topLevelExtraction.HasToolCalls && !matchesAnyToolCallExtraction(topLevelExtraction, choiceExtractions) {
+		extraction.merge(topLevelExtraction)
+	}
+	return extraction
+}
+
+func matchesAnyToolCallExtraction(target toolCallCommandExtraction, candidates []toolCallCommandExtraction) bool {
+	for _, candidate := range candidates {
+		if sameToolCallExtraction(target, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameToolCallExtraction(first toolCallCommandExtraction, second toolCallCommandExtraction) bool {
+	if first.HasToolCalls != second.HasToolCalls ||
+		first.HasUnexpectedTool != second.HasUnexpectedTool ||
+		first.HasMalformedExpected != second.HasMalformedExpected ||
+		len(first.Commands) != len(second.Commands) {
+		return false
+	}
+	return sameStringMultiset(normalizedToolCallCommands(first.Commands), normalizedToolCallCommands(second.Commands))
+}
+
+func normalizedToolCallCommands(commands []string) []string {
+	out := make([]string, 0, len(commands))
+	for _, command := range commands {
+		out = append(out, normalizeToolCallCommand(command))
+	}
+	return out
+}
+
+func sameStringMultiset(first []string, second []string) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	counts := make(map[string]int, len(first))
+	for _, value := range first {
+		counts[value]++
+	}
+	for _, value := range second {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func extractOpenAIToolOrFunctionCalls(rawToolCalls any, rawFunctionCall any, expectedToolName string) toolCallCommandExtraction {
+	toolExtraction := extractOpenAIToolCallCommands(rawToolCalls, expectedToolName)
+	functionExtraction := extractOpenAIFunctionCallCommand(rawFunctionCall, expectedToolName)
+	if !functionExtraction.HasToolCalls {
+		return toolExtraction
+	}
+	if !toolExtraction.HasToolCalls || !sameToolCallExtraction(toolExtraction, functionExtraction) {
+		toolExtraction.merge(functionExtraction)
+	}
+	return toolExtraction
+}
+
+func extractOpenAIToolCallCommands(rawToolCalls any, expectedToolName string) toolCallCommandExtraction {
+	if rawToolCalls == nil {
+		return toolCallCommandExtraction{}
+	}
+	toolCalls, ok := rawToolCalls.([]any)
+	if !ok {
+		return toolCallCommandExtraction{HasToolCalls: true, HasMalformedExpected: true}
+	}
+	if len(toolCalls) == 0 {
+		return toolCallCommandExtraction{}
+	}
+	extraction := toolCallCommandExtraction{HasToolCalls: true}
+	for _, rawToolCall := range toolCalls {
+		toolCall, ok := rawToolCall.(map[string]any)
+		if !ok {
+			extraction.HasMalformedExpected = true
+			continue
+		}
+		function, ok := toolCall["function"].(map[string]any)
+		if !ok {
+			extraction.HasMalformedExpected = true
+			continue
+		}
+		if strings.TrimSpace(common.Interface2String(function["name"])) != expectedToolName {
+			extraction.HasUnexpectedTool = true
+			continue
+		}
+		arguments := function["arguments"]
+		if command, ok := commandFromToolArguments(arguments); ok {
+			extraction.Commands = append(extraction.Commands, command)
+			continue
+		}
+		extraction.HasMalformedExpected = true
+	}
+	return extraction
+}
+
+func extractOpenAIFunctionCallCommand(rawFunctionCall any, expectedToolName string) toolCallCommandExtraction {
+	functionCall, ok := rawFunctionCall.(map[string]any)
+	if !ok {
+		if rawFunctionCall != nil {
+			return toolCallCommandExtraction{HasToolCalls: true, HasMalformedExpected: true}
+		}
+		return toolCallCommandExtraction{}
+	}
+	if len(functionCall) == 0 {
+		return toolCallCommandExtraction{}
+	}
+	extraction := toolCallCommandExtraction{HasToolCalls: true}
+	if strings.TrimSpace(common.Interface2String(functionCall["name"])) != expectedToolName {
+		extraction.HasUnexpectedTool = true
+		return extraction
+	}
+	if command, ok := commandFromToolArguments(functionCall["arguments"]); ok {
+		extraction.Commands = append(extraction.Commands, command)
+		return extraction
+	}
+	extraction.HasMalformedExpected = true
+	return extraction
+}
+
+func commandFromToolArguments(arguments any) (string, bool) {
+	switch typed := arguments.(type) {
+	case string:
+		var decoded map[string]any
+		if err := common.Unmarshal([]byte(typed), &decoded); err != nil {
+			return "", false
+		}
+		command := strings.TrimSpace(common.Interface2String(decoded["command"]))
+		return command, command != ""
+	case map[string]any:
+		command := strings.TrimSpace(common.Interface2String(typed["command"]))
+		return command, command != ""
+	default:
+		return "", false
+	}
+}
+
+func normalizeToolCallCommand(command string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(command)), " ")
+}
+
+func sanitizedToolCallIntegrityPayload(decoded map[string]any) map[string]any {
+	if decoded == nil {
+		return nil
+	}
+	choices, _ := decoded["choices"].([]any)
+	outChoices := make([]any, 0, len(choices))
+	choiceToolCallSets := make([][]any, 0, len(choices))
+	for _, rawChoice := range choices {
+		choice, _ := rawChoice.(map[string]any)
+		message, _ := choice["message"].(map[string]any)
+		toolCalls := sanitizedOpenAIToolOrFunctionCalls(message["tool_calls"], message["function_call"])
+		choiceToolCalls := sanitizedOpenAIToolOrFunctionCalls(choice["tool_calls"], choice["function_call"])
+		if len(choiceToolCalls) > 0 && !sameSanitizedToolCalls(toolCalls, choiceToolCalls) {
+			toolCalls = append(toolCalls, choiceToolCalls...)
+		}
+		if len(toolCalls) == 0 {
+			continue
+		}
+		outChoices = append(outChoices, map[string]any{
+			"message": map[string]any{
+				"tool_calls": toolCalls,
+			},
+		})
+		choiceToolCallSets = append(choiceToolCallSets, toolCalls)
+	}
+	topLevelToolCalls := sanitizedOpenAIToolOrFunctionCalls(decoded["tool_calls"], decoded["function_call"])
+	if len(outChoices) > 0 {
+		payload := map[string]any{"choices": outChoices}
+		if len(topLevelToolCalls) > 0 && !matchesAnySanitizedToolCalls(topLevelToolCalls, choiceToolCallSets) {
+			payload["tool_calls"] = topLevelToolCalls
+		}
+		return payload
+	}
+	if len(topLevelToolCalls) > 0 {
+		return map[string]any{"tool_calls": topLevelToolCalls}
+	}
+	return nil
+}
+
+func matchesAnySanitizedToolCalls(target []any, candidates [][]any) bool {
+	for _, candidate := range candidates {
+		if sameSanitizedToolCalls(target, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameSanitizedToolCalls(first []any, second []any) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	firstSignatures, ok := sanitizedToolCallSignatures(first)
+	if !ok {
+		return false
+	}
+	secondSignatures, ok := sanitizedToolCallSignatures(second)
+	if !ok {
+		return false
+	}
+	return sameStringMultiset(firstSignatures, secondSignatures)
+}
+
+func sanitizedToolCallSignatures(toolCalls []any) ([]string, bool) {
+	signatures := make([]string, 0, len(toolCalls))
+	for _, toolCall := range toolCalls {
+		encoded, err := common.Marshal(toolCall)
+		if err != nil {
+			return nil, false
+		}
+		signatures = append(signatures, string(encoded))
+	}
+	return signatures, true
+}
+
+func sanitizedOpenAIToolOrFunctionCalls(rawToolCalls any, rawFunctionCall any) []any {
+	toolCalls := sanitizedOpenAIToolCalls(rawToolCalls)
+	if functionCall := sanitizedOpenAIFunctionCall(rawFunctionCall); functionCall != nil && !containsSanitizedToolCall(toolCalls, functionCall) {
+		toolCalls = append(toolCalls, functionCall)
+	}
+	return toolCalls
+}
+
+func containsSanitizedToolCall(toolCalls []any, candidate any) bool {
+	for _, toolCall := range toolCalls {
+		if sameSanitizedToolCalls([]any{toolCall}, []any{candidate}) {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizedOpenAIToolCalls(rawToolCalls any) []any {
+	if rawToolCalls == nil {
+		return nil
+	}
+	toolCalls, ok := rawToolCalls.([]any)
+	if !ok {
+		return []any{sanitizedMalformedExpectedToolCall()}
+	}
+	out := make([]any, 0, len(toolCalls))
+	for _, rawToolCall := range toolCalls {
+		toolCall, ok := rawToolCall.(map[string]any)
+		if !ok {
+			out = append(out, sanitizedMalformedExpectedToolCall())
+			continue
+		}
+		function, ok := toolCall["function"].(map[string]any)
+		if !ok {
+			out = append(out, sanitizedMalformedExpectedToolCall())
+			continue
+		}
+		name := strings.TrimSpace(common.Interface2String(function["name"]))
+		if name == "" {
+			name = "[MISSING]"
+		} else if name != toolCallIntegrityFunctionName {
+			name = "[UNEXPECTED_TOOL]"
+		}
+		out = append(out, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":      name,
+				"arguments": sanitizedToolArguments(function["arguments"]),
+			},
+		})
+	}
+	return out
+}
+
+func sanitizedOpenAIFunctionCall(rawFunctionCall any) any {
+	functionCall, ok := rawFunctionCall.(map[string]any)
+	if !ok {
+		if rawFunctionCall != nil {
+			return sanitizedMalformedExpectedToolCall()
+		}
+		return nil
+	}
+	if len(functionCall) == 0 {
+		return nil
+	}
+	name := strings.TrimSpace(common.Interface2String(functionCall["name"]))
+	if name == "" {
+		name = "[MISSING]"
+	} else if name != toolCallIntegrityFunctionName {
+		name = "[UNEXPECTED_TOOL]"
+	}
+	return map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name":      name,
+			"arguments": sanitizedToolArguments(functionCall["arguments"]),
+		},
+	}
+}
+
+func sanitizedMalformedExpectedToolCall() any {
+	return map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name": toolCallIntegrityFunctionName,
+			"arguments": map[string]any{
+				"command_present": false,
+			},
+		},
+	}
+}
+
+func sanitizedToolArguments(arguments any) map[string]any {
+	command, ok := commandFromToolArguments(arguments)
+	if !ok {
+		return map[string]any{"command_present": false}
+	}
+	normalizedCommand := normalizeToolCallCommand(command)
+	safeCommand := normalizedCommand
+	if normalizedCommand != normalizeToolCallCommand(toolCallIntegrityExpectedCommand()) {
+		safeCommand = "[MUTATED_COMMAND]"
+	}
+	return map[string]any{
+		"command_present": true,
+		"command_hash":    sha256Hex(normalizedCommand),
+		"command":         safeCommand,
 	}
 }
 

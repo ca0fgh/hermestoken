@@ -9,6 +9,7 @@ import type {
   MarketplaceListingStatus,
   MarketplaceOrderFilters,
   MarketplaceOrderListItem,
+  MarketplaceProbeStatus,
   MarketplacePricePoint,
   MarketplaceRiskStatus,
   MarketplaceRouteStatus,
@@ -243,6 +244,16 @@ type MarketplaceStatus =
 
 export function marketplaceStatusLabel(status?: MarketplaceStatus | string) {
   return status ? `Marketplace status ${status}` : 'Unknown'
+}
+
+export function marketplaceProbeStatusLabel(
+  status?: MarketplaceProbeStatus | string
+) {
+  return status ? `Marketplace probe status ${status}` : 'Marketplace probe status unscored'
+}
+
+export function marketplaceProbeInProgress(status?: string) {
+  return status === 'pending' || status === 'running'
 }
 
 export function marketplaceStatusVariant(

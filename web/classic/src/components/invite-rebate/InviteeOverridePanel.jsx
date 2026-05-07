@@ -388,7 +388,7 @@ const InviteeOverridePanel = ({
                         className='rounded-2xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4'
                       >
                         <div className='flex flex-wrap items-start justify-between gap-3'>
-                          <div className='space-y-1'>
+                          <div className='min-w-0 space-y-1'>
                             <div>
                               <Typography.Text
                                 type='tertiary'
@@ -396,7 +396,10 @@ const InviteeOverridePanel = ({
                               >
                                 {t('订单号')}
                               </Typography.Text>
-                              <Typography.Text strong>
+                              <Typography.Text
+                                strong
+                                className='block max-w-full break-all leading-snug'
+                              >
                                 {card.tradeNo || '-'}
                               </Typography.Text>
                             </div>
@@ -577,30 +580,36 @@ const InviteeOverridePanel = ({
                           </Typography.Text>
                         </div>
 
-                        <div className='mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-4'>
-                          <div>
+                        <div className='mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4'>
+                          <div className='min-w-0'>
                             <Typography.Text type='tertiary' className='block text-xs'>
                               {t('订单号')}
                             </Typography.Text>
-                            <Typography.Text>{item.tradeNo || '-'}</Typography.Text>
+                            <Typography.Text className='block max-w-full break-all leading-snug'>
+                              {item.tradeNo || '-'}
+                            </Typography.Text>
                           </div>
-                          <div>
+                          <div className='min-w-0'>
                             <Typography.Text type='tertiary' className='block text-xs'>
                               {t('本笔身份')}
                             </Typography.Text>
-                            <Typography.Text>{t(item.roleLabel)}</Typography.Text>
+                            <Typography.Text className='block max-w-full break-words leading-snug'>
+                              {t(item.roleLabel)}
+                            </Typography.Text>
                           </div>
-                          <div>
+                          <div className='min-w-0'>
                             <Typography.Text type='tertiary' className='block text-xs'>
                               {t('返佣类型')}
                             </Typography.Text>
-                            <Typography.Text>{t(item.componentLabel)}</Typography.Text>
+                            <Typography.Text className='block max-w-full break-words leading-snug'>
+                              {t(item.componentLabel)}
+                            </Typography.Text>
                           </div>
-                          <div>
+                          <div className='min-w-0'>
                             <Typography.Text type='tertiary' className='block text-xs'>
                               {t('结算时间')}
                             </Typography.Text>
-                            <Typography.Text>
+                            <Typography.Text className='block max-w-full break-words leading-snug'>
                               {item.settledAt ? timestamp2string(item.settledAt) : '-'}
                             </Typography.Text>
                           </div>

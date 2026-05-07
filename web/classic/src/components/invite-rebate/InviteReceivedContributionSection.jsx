@@ -114,44 +114,48 @@ const InviteReceivedContributionSection = ({
                   </div>
                 </div>
 
-                <div className='mt-3 grid grid-cols-1 gap-3 text-sm md:grid-cols-5'>
-                  <div>
+                <div className='mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 xl:grid-cols-5'>
+                  <div className='min-w-0'>
                     <Typography.Text type='tertiary' className='block text-xs'>
                       {t('订单号')}
                     </Typography.Text>
-                    <Typography.Text>{item.tradeNo || '-'}</Typography.Text>
+                    <Typography.Text className='block max-w-full break-all leading-snug'>
+                      {item.tradeNo || '-'}
+                    </Typography.Text>
                   </div>
-                  <div>
+                  <div className='min-w-0'>
                     <Typography.Text type='tertiary' className='block text-xs'>
                       {t('来源身份')}
                     </Typography.Text>
-                    <Typography.Text>{t(item.roleLabel)}</Typography.Text>
+                    <Typography.Text className='block max-w-full break-words leading-snug'>
+                      {t(item.roleLabel)}
+                    </Typography.Text>
                   </div>
-                  <div>
+                  <div className='min-w-0'>
                     <Typography.Text type='tertiary' className='block text-xs'>
                       {t('来源返佣')}
                     </Typography.Text>
-                    <Typography.Text>
+                    <Typography.Text className='block max-w-full break-words leading-snug'>
                       {item.sourceComponentLabel
                         ? t(item.sourceComponentLabel)
                         : '-'}
                     </Typography.Text>
                   </div>
-                  <div>
+                  <div className='min-w-0'>
                     <Typography.Text type='tertiary' className='block text-xs'>
                       {t('到账返佣')}
                     </Typography.Text>
-                    <Typography.Text>
+                    <Typography.Text className='block max-w-full break-words leading-snug'>
                       {renderQuotaWithLessThanFloor(
                         item.effectiveRewardQuota || 0,
                       )}
                     </Typography.Text>
                   </div>
-                  <div>
+                  <div className='min-w-0'>
                     <Typography.Text type='tertiary' className='block text-xs'>
                       {t('结算时间')}
                     </Typography.Text>
-                    <Typography.Text>
+                    <Typography.Text className='block max-w-full break-words leading-snug'>
                       {item.settledAt ? timestamp2string(item.settledAt) : '-'}
                     </Typography.Text>
                   </div>
