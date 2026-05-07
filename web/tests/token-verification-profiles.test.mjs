@@ -80,6 +80,11 @@ test("token verification renders structured probe risk status and evidence", asy
 
   assert.match(source, /function probeStatusMeta\(record,\s*t\)/);
   assert.match(source, /function renderProbeCheckName\(name,\s*record,\s*t\)/);
+  assert.match(source, /function renderProbeMetadataTooltip\(items,\s*t\)/);
+  assert.match(
+    source,
+    /<Tooltip[\s\S]*className='token-verification-check-tooltip'/,
+  );
   assert.match(
     source,
     /<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>/,
@@ -95,6 +100,7 @@ test("token verification renders structured probe risk status and evidence", asy
   assert.match(source, /检测覆盖/);
   assert.match(source, /检测局限/);
   assert.match(source, /建议动作/);
+  assert.doesNotMatch(source, /metadataItems\.map\(\(item\)\s*=>\s*\(\s*<Text/);
   assert.match(source, /record\.error_code\s*===\s*'judge_unconfigured'/);
   assert.match(source, /label:\s*t\('未评分'\)/);
   assert.match(source, /riskLevel\s*===\s*'high'/);
