@@ -49,6 +49,7 @@ import {
   IconCart,
   IconChevronDown,
   IconCopy,
+  IconDelete,
   IconEyeClosed,
   IconEyeOpened,
   IconKey,
@@ -3509,6 +3510,43 @@ function SellerTab() {
     }
   };
 
+  const deleteMarketplaceCredential = (record) => {
+    Modal.confirm({
+      title: t('确认删除托管 Key'),
+      content: t('删除后无法恢复；如果仍有有效买断订单，系统会阻止删除。'),
+      okText: t('删除'),
+      cancelText: t('取消'),
+      type: 'warning',
+      okType: 'danger',
+      onOk: () => {
+        (async () => {
+          try {
+            const response = await API.delete(
+              `/api/marketplace/seller/credentials/${record.id}`,
+            );
+            ensureSuccess(response);
+            showSuccess(t('删除成功'));
+            setItems((current) =>
+              current.filter((item) => item.id !== record.id),
+            );
+            if (editing?.id === record.id) {
+              setEditing(null);
+              setForm(defaultCredentialForm);
+              setCustomModel('');
+            }
+            if (currentTestChannel?.id === record.id) {
+              setShowModelTestModal(false);
+              setCurrentTestChannel(null);
+            }
+            await load();
+          } catch (error) {
+            showError(error.message || t('删除失败'));
+          }
+        })();
+      },
+    });
+  };
+
   const updateTestedCredential = (credential) => {
     if (!credential?.id) return;
     setItems((current) =>
@@ -4169,6 +4207,15 @@ function SellerTab() {
                   }
                 >
                   {record.service_status === 'enabled' ? t('禁用') : t('启用')}
+                </Button>
+                <Button
+                  size='small'
+                  type='danger'
+                  theme='borderless'
+                  icon={<IconDelete />}
+                  onClick={() => deleteMarketplaceCredential(record)}
+                >
+                  {t('删除')}
                 </Button>
                 <SplitButtonGroup
                   className='overflow-hidden'

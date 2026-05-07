@@ -179,6 +179,7 @@ func SetApiRouter(router *gin.Engine) {
 			marketplaceSellerRoute.POST("/fetch-models", controller.SellerFetchMarketplaceCredentialModels)
 			marketplaceSellerRoute.GET("/:id", controller.SellerGetMarketplaceCredential)
 			marketplaceSellerRoute.PUT("/:id", controller.SellerUpdateMarketplaceCredential)
+			marketplaceSellerRoute.DELETE("/:id", controller.SellerDeleteMarketplaceCredential)
 			marketplaceSellerRoute.POST("/:id/test", controller.SellerTestMarketplaceCredential)
 			marketplaceSellerRoute.POST("/:id/list", controller.SellerListMarketplaceCredential)
 			marketplaceSellerRoute.POST("/:id/unlist", controller.SellerUnlistMarketplaceCredential)

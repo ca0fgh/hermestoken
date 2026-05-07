@@ -9,6 +9,7 @@ import (
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type MarketplaceCredentialCreateInput struct {
@@ -370,6 +371,50 @@ func UpdateSellerMarketplaceCredential(input MarketplaceCredentialUpdateInput) (
 		return nil, err
 	}
 	return credential, nil
+}
+
+func DeleteSellerMarketplaceCredential(sellerUserID int, credentialID int) error {
+	if err := validateMarketplaceEnabled(); err != nil {
+		return err
+	}
+	if sellerUserID <= 0 {
+		return errors.New("seller user id is required")
+	}
+	if credentialID <= 0 {
+		return errors.New("marketplace credential id is required")
+	}
+
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		var credential model.MarketplaceCredential
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND seller_user_id = ?", credentialID, sellerUserID).
+			First(&credential).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return errors.New("marketplace credential not found")
+		}
+		if err != nil {
+			return err
+		}
+
+		var activeFixedOrderCount int64
+		if err := tx.Model(&model.MarketplaceFixedOrder{}).
+			Where("credential_id = ? AND status = ?", credential.ID, model.MarketplaceFixedOrderStatusActive).
+			Count(&activeFixedOrderCount).Error; err != nil {
+			return err
+		}
+		if activeFixedOrderCount > 0 {
+			return errors.New("marketplace credential has active fixed orders")
+		}
+
+		if err := tx.Where("credential_id = ?", credential.ID).
+			Delete(&model.MarketplaceCredentialStats{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&credential).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func SetSellerMarketplaceCredentialListed(sellerUserID int, credentialID int, listed bool) (*model.MarketplaceCredential, error) {

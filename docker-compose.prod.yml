@@ -22,6 +22,7 @@ services:
       REDIS_CONN_STRING: "redis://redis"
       TZ: "${TZ:-Asia/Shanghai}"
       SESSION_SECRET: "${SESSION_SECRET:?set in .env.production}"
+      MARKETPLACE_CREDENTIAL_SECRET: "${MARKETPLACE_CREDENTIAL_SECRET:?set in .env.production}"
       ERROR_LOG_ENABLED: "true"
       BATCH_UPDATE_ENABLED: "true"
       TRUSTED_REDIRECT_DOMAINS: "${TRUSTED_REDIRECT_DOMAINS:-}"

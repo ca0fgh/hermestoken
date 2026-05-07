@@ -549,6 +549,77 @@ func TestSellerMarketplaceCredentialOwnershipIsolation(t *testing.T) {
 	assert.NotContains(t, recorder.Body.String(), "seller-secret-placeholder")
 }
 
+func TestSellerDeleteMarketplaceCredentialRemovesOwnedCredentialAndStats(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/seller/credentials/1", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerDeleteMarketplaceCredential(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	assert.NotContains(t, recorder.Body.String(), "seller-secret-placeholder")
+
+	var credentialCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Count(&credentialCount).Error)
+	assert.Equal(t, int64(0), credentialCount)
+
+	var statsCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
+		Where("credential_id = ?", credential.ID).
+		Count(&statsCount).Error)
+	assert.Equal(t, int64(0), statsCount)
+}
+
+func TestSellerDeleteMarketplaceCredentialRejectsOtherSeller(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/seller/credentials/1", nil, 11)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerDeleteMarketplaceCredential(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.NotContains(t, recorder.Body.String(), "seller-secret-placeholder")
+
+	var credentialCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Count(&credentialCount).Error)
+	assert.Equal(t, int64(1), credentialCount)
+}
+
+func TestSellerDeleteMarketplaceCredentialRejectsActiveFixedOrders(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+	require.NoError(t, db.Create(&model.MarketplaceFixedOrder{
+		BuyerUserID:    20,
+		SellerUserID:   10,
+		CredentialID:   credential.ID,
+		PurchasedQuota: 1000,
+		RemainingQuota: 1000,
+		Status:         model.MarketplaceFixedOrderStatusActive,
+	}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodDelete, "/api/marketplace/seller/credentials/1", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerDeleteMarketplaceCredential(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "active fixed orders")
+
+	var credentialCount int64
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Count(&credentialCount).Error)
+	assert.Equal(t, int64(1), credentialCount)
+}
+
 func TestSellerUpdateMarketplaceCredentialEditsConfigAndReplacesKey(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
