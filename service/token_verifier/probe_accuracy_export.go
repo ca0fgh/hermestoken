@@ -456,6 +456,8 @@ func populateCorpusDraftCaseFields(item *LabeledProbeCorpusCase, result CheckRes
 			stringFromMap(result.Raw, "trigger_response"),
 			stringFromMap(result.Raw, "trigger"),
 		)
+	case CheckProbeToolCallIntegrity:
+		item.Decoded = corpusDraftToolCallPayload(result)
 	case CheckProbeContextLength:
 		item.ContextLevels = corpusDraftContextLevels(result.Raw)
 	default:
@@ -508,6 +510,35 @@ func corpusDraftResponseText(result CheckResult) string {
 		}
 	}
 	return ""
+}
+
+func corpusDraftToolCallPayload(result CheckResult) map[string]any {
+	if payload := anyMapFromRaw(result.Raw, "tool_call_payload"); len(payload) > 0 {
+		if sanitized := sanitizedToolCallIntegrityPayload(payload); len(sanitized) > 0 {
+			return sanitized
+		}
+	}
+	command := toolCallIntegrityExpectedCommand()
+	if !result.Success {
+		command = "[MUTATED_COMMAND]"
+	}
+	return map[string]any{
+		"choices": []any{
+			map[string]any{
+				"message": map[string]any{
+					"tool_calls": []any{
+						map[string]any{
+							"type": "function",
+							"function": map[string]any{
+								"name":      toolCallIntegrityFunctionName,
+								"arguments": map[string]any{"command": command},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func corpusDraftDecodedUsage(result CheckResult) map[string]any {

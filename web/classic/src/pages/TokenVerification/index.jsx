@@ -254,15 +254,38 @@ function renderProbeMessage(value, record) {
 }
 
 function renderProbeCheckName(name, record, t) {
-  const description = record.check_description;
+  const metadataItems = [
+    {
+      label: t('检测说明'),
+      value: record.check_description,
+    },
+    {
+      label: t('检测覆盖'),
+      value: record.coverage,
+    },
+    {
+      label: t('检测局限'),
+      value: record.limitation,
+    },
+    {
+      label: t('建议动作'),
+      value: record.recommended_action,
+    },
+  ].filter((item) => item.value);
   return (
     <div className='token-verification-check-name'>
       <Text>{name || record.check_key || '-'}</Text>
-      {description && (
-        <Text type='secondary' size='small'>
-          {t(description)}
+      {metadataItems.map((item) => (
+        <Text
+          className='token-verification-check-meta'
+          key={item.label}
+          type='secondary'
+          size='small'
+        >
+          <span>{item.label}</span>
+          {t(item.value)}
         </Text>
-      )}
+      ))}
     </div>
   );
 }

@@ -89,6 +89,12 @@ test("token verification renders structured probe risk status and evidence", asy
     /<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>[\s\S]*<Text>\{name\s*\|\|\s*record\.check_key\s*\|\|\s*'-'\}<\/Text>/,
   );
   assert.match(source, /record\.check_description/);
+  assert.match(source, /record\.coverage/);
+  assert.match(source, /record\.limitation/);
+  assert.match(source, /record\.recommended_action/);
+  assert.match(source, /检测覆盖/);
+  assert.match(source, /检测局限/);
+  assert.match(source, /建议动作/);
   assert.match(source, /record\.error_code\s*===\s*'judge_unconfigured'/);
   assert.match(source, /label:\s*t\('未评分'\)/);
   assert.match(source, /riskLevel\s*===\s*'high'/);

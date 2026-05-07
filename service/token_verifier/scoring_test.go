@@ -209,6 +209,63 @@ func TestBuildReportCountsWarningsAsHalfPointWithoutRisk(t *testing.T) {
 	}
 }
 
+func TestBuildReportAddsActionableMetadataToEveryChecklistItem(t *testing.T) {
+	report := BuildReport([]CheckResult{
+		{
+			Provider:  ProviderOpenAI,
+			Group:     probeGroupIntegrity,
+			CheckKey:  CheckProbeToolCallIntegrity,
+			ModelName: "gpt-test",
+			Success:   false,
+			Score:     0,
+			ErrorCode: "tool_call_argument_mismatch",
+			Message:   "工具调用参数被改写",
+			RiskLevel: "high",
+		},
+		{
+			Provider:  ProviderOpenAI,
+			Group:     probeGroupSecurity,
+			CheckKey:  CheckProbeURLExfiltration,
+			ModelName: "gpt-test",
+			Success:   true,
+			Score:     100,
+			RiskLevel: "low",
+		},
+	})
+
+	if len(report.Checklist) != 2 {
+		t.Fatalf("checklist length = %d, want 2", len(report.Checklist))
+	}
+	for _, item := range report.Checklist {
+		if strings.TrimSpace(item.CheckDescription) == "" {
+			t.Fatalf("%s missing description: %+v", item.CheckKey, item)
+		}
+		if strings.TrimSpace(item.Coverage) == "" {
+			t.Fatalf("%s missing coverage metadata: %+v", item.CheckKey, item)
+		}
+		if strings.TrimSpace(item.Limitation) == "" {
+			t.Fatalf("%s missing limitation metadata: %+v", item.CheckKey, item)
+		}
+		if strings.TrimSpace(item.RecommendedAction) == "" {
+			t.Fatalf("%s missing recommended action metadata: %+v", item.CheckKey, item)
+		}
+	}
+
+	toolCallItem := findChecklistItemForTest(report.Checklist, CheckProbeToolCallIntegrity)
+	if toolCallItem == nil {
+		t.Fatal("tool-call integrity checklist item missing")
+	}
+	if !strings.Contains(toolCallItem.Coverage, "tool-call") {
+		t.Fatalf("tool-call coverage = %q, want tool-call scope", toolCallItem.Coverage)
+	}
+	if !strings.Contains(toolCallItem.Limitation, "provider-signed") {
+		t.Fatalf("tool-call limitation = %q, want provider-signed limitation", toolCallItem.Limitation)
+	}
+	if !strings.Contains(toolCallItem.RecommendedAction, "fail-closed") {
+		t.Fatalf("tool-call action = %q, want fail-closed guidance", toolCallItem.RecommendedAction)
+	}
+}
+
 type reportGoldenReplay struct {
 	Name    string `json:"name"`
 	Results []struct {
@@ -300,17 +357,20 @@ func TestBuildReportUsesLLMProbeReportShape(t *testing.T) {
 		t.Fatalf("checklist item = %#v, want object", checklist[0])
 	}
 	assertOnlyJSONKeys(t, item, map[string]bool{
-		"provider":          true,
-		"group":             true,
-		"check_key":         true,
-		"check_name":        true,
-		"check_description": true,
-		"model_name":        true,
-		"passed":            true,
-		"status":            true,
-		"score":             true,
-		"risk_level":        true,
-		"evidence":          true,
+		"provider":           true,
+		"group":              true,
+		"check_key":          true,
+		"check_name":         true,
+		"check_description":  true,
+		"coverage":           true,
+		"limitation":         true,
+		"recommended_action": true,
+		"model_name":         true,
+		"passed":             true,
+		"status":             true,
+		"score":              true,
+		"risk_level":         true,
+		"evidence":           true,
 	})
 	finalRating, ok := rendered["final_rating"].(map[string]any)
 	if !ok {

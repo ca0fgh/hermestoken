@@ -177,26 +177,29 @@ func buildChecklistItem(result CheckResult) ChecklistItem {
 		status = "warning"
 	}
 	return ChecklistItem{
-		Provider:         result.Provider,
-		Group:            resultGroup(result),
-		CheckKey:         string(result.CheckKey),
-		CheckName:        checkDisplayName(result.CheckKey),
-		CheckDescription: checkDescription(result.CheckKey),
-		ModelName:        result.ModelName,
-		Neutral:          result.Neutral,
-		Skipped:          result.Skipped,
-		Passed:           result.Success && !result.Skipped,
-		Status:           status,
-		Score:            result.Score,
-		LatencyMs:        result.LatencyMs,
-		TTFTMs:           result.TTFTMs,
-		InputTokens:      result.InputTokens,
-		OutputTokens:     result.OutputTokens,
-		TokensPS:         result.TokensPS,
-		ErrorCode:        result.ErrorCode,
-		Message:          result.Message,
-		RiskLevel:        result.RiskLevel,
-		Evidence:         append([]string(nil), result.Evidence...),
+		Provider:          result.Provider,
+		Group:             resultGroup(result),
+		CheckKey:          string(result.CheckKey),
+		CheckName:         checkDisplayName(result.CheckKey),
+		CheckDescription:  checkDescription(result.CheckKey),
+		Coverage:          checkCoverage(result.CheckKey),
+		Limitation:        checkLimitation(result.CheckKey),
+		RecommendedAction: checkRecommendedAction(result.CheckKey),
+		ModelName:         result.ModelName,
+		Neutral:           result.Neutral,
+		Skipped:           result.Skipped,
+		Passed:            result.Success && !result.Skipped,
+		Status:            status,
+		Score:             result.Score,
+		LatencyMs:         result.LatencyMs,
+		TTFTMs:            result.TTFTMs,
+		InputTokens:       result.InputTokens,
+		OutputTokens:      result.OutputTokens,
+		TokensPS:          result.TokensPS,
+		ErrorCode:         result.ErrorCode,
+		Message:           result.Message,
+		RiskLevel:         result.RiskLevel,
+		Evidence:          append([]string(nil), result.Evidence...),
 	}
 }
 
@@ -235,6 +238,8 @@ func checkDisplayName(checkKey CheckKey) string {
 		return "Thinking 签名回环探针"
 	case CheckProbeSSECompliance:
 		return "SSE 合规探针"
+	case CheckProbeToolCallIntegrity:
+		return "Tool-call 完整性探针"
 	case CheckProbeURLExfiltration:
 		return "URL 外泄诱饵"
 	case CheckProbeMarkdownExfil:
@@ -444,6 +449,8 @@ func checkDescription(checkKey CheckKey) string {
 		return "识别响应 ID、响应头和代理签名，判断请求是否经过中转或改写。"
 	case CheckProbeSSECompliance:
 		return "校验流式事件、DONE 和 usage 数据，判断 OpenAI SDK/前端流式解析是否兼容。"
+	case CheckProbeToolCallIntegrity:
+		return "强制模型返回结构化工具调用，检测 router 是否改写 tool-call 参数或降级为纯文本。"
 	case CheckProbeSignatureRoundtrip:
 		return "验证 Anthropic thinking 签名能否原样回环，避免中转破坏签名校验。"
 	case CheckProbeInstructionFollow:
@@ -642,6 +649,138 @@ func checkDescription(checkKey CheckKey) string {
 		return "用登月年份题检查基础历史常识和四位年份输出。"
 	default:
 		return "采集该检测项的响应、状态和证据，用于综合评估上游模型或网关行为。"
+	}
+}
+
+func checkCoverage(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeToolCallIntegrity:
+		return "覆盖响应侧 tool-call JSON 参数完整性，重点观察 shell/tool arguments 是否从安全命令被改成 URL、包名或串接命令。"
+	case CheckProbeURLExfiltration, CheckProbeMarkdownExfil:
+		return "覆盖响应文本、链接、图片/Markdown 中的显式诱饵外泄信号。"
+	case CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall:
+		return "覆盖模型生成的安装/执行命令文本，检查包名替换、外部源、registry/index、URL、shell 串接和危险命令。"
+	case CheckProbeAdaptiveInjection:
+		return "覆盖中性请求与含敏感关键词请求之间的条件式响应差异，模拟 AC-1.b 触发场景。"
+	case CheckProbeChannelSignature:
+		return "覆盖响应头、ID 前缀和 body 特征，用于识别可见 router/gateway 指纹。"
+	case CheckProbeSignatureRoundtrip:
+		return "覆盖 Anthropic thinking signature 的回环验证，检查签名是否能被上游重新接受。"
+	case CheckProbeSSECompliance:
+		return "覆盖 OpenAI/Anthropic 流式事件结构、结束帧和 usage 字段兼容性。"
+	case CheckProbeTokenInflation:
+		return "覆盖短提示下的 prompt token 用量异常，识别隐藏提示或代理注入导致的用量膨胀。"
+	case CheckProbeInfraLeak, CheckProbeIdentityLeak, CheckProbeBedrockProbe:
+		return "覆盖模型响应中可见的基础设施、代理、系统提示或后端标识泄露。"
+	case CheckProbeCacheDetection, CheckProbeConsistencyCache:
+		return "覆盖缓存头、usage cache 信号和重复随机响应，用于发现可见缓存或固定响应。"
+	case CheckProbeThinkingBlock:
+		return "覆盖 thinking block/beta header 是否被上游返回或网关转发。"
+	case CheckProbeContextLength:
+		return "覆盖分级长上下文 needle 保真度。"
+	case CheckProbeMultimodalImage, CheckProbeMultimodalPDF:
+		return "覆盖图片或文档输入是否被网关和模型真实处理。"
+	default:
+		if isCanaryCheck(checkKey) {
+			return "覆盖基础能力与格式遵循的固定金丝雀样本。"
+		}
+		return "覆盖该检测项的可观察模型输出、协议字段或行为指纹。"
+	}
+}
+
+func checkLimitation(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeToolCallIntegrity:
+		return "不能证明 router 一定可信；没有 provider-signed response envelope 时，只能发现本次可见的 tool-call 改写或降级。"
+	case CheckProbeURLExfiltration, CheckProbeMarkdownExfil:
+		return "只能发现写入响应的外泄；router 在请求侧被动复制密钥属于 AC-2，客户端探针无法直接证明未发生。"
+	case CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall:
+		return "只评估返回文本中的命令；若攻击发生在客户端批准后的真实 tool-call 层，需结合 tool-call 完整性探针和执行前策略。"
+	case CheckProbeAdaptiveInjection:
+		return "有限轮黑盒探测无法排除更长 warm-up、时间窗、组织指纹或 YOLO 模式等服务端条件触发。"
+	case CheckProbeChannelSignature:
+		return "缺少指纹不代表直连；很多 router 会清理 header 或伪装响应 ID。"
+	case CheckProbeSignatureRoundtrip:
+		return "只适用于支持 thinking signature 的 Anthropic 兼容路径，不覆盖 OpenAI tool-call provenance。"
+	case CheckProbeSSECompliance:
+		return "流式格式合规不等于响应内容可信，也不证明 tool-call 未被改写。"
+	case CheckProbeTokenInflation:
+		return "上游不返回 usage 时无法评分；token 膨胀也可能来自正常系统提示或网关包装。"
+	case CheckProbeCacheDetection, CheckProbeConsistencyCache:
+		return "两次响应或单个缓存头只能提供信号，不能单独证明恶意缓存或重放。"
+	case CheckProbeThinkingBlock:
+		return "未观察到 thinking block 可能是模型不支持、beta 未启用或网关降级，通常应作为未评分信号。"
+	default:
+		if isCanaryCheck(checkKey) {
+			return "金丝雀只能覆盖小样本基础能力，不能代表完整模型质量或供应链安全。"
+		}
+		return "该项只能覆盖本次探针可见行为，不能替代端到端签名、沙箱和人工审查。"
+	}
+}
+
+func checkRecommendedAction(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeToolCallIntegrity:
+		return "若失败，对高风险工具启用 fail-closed 审批，避免 YOLO 自动执行；优先改用可信直连或支持 provider-signed response envelope 的链路。"
+	case CheckProbeURLExfiltration, CheckProbeMarkdownExfil:
+		return "若失败，停止在该上游传入真实密钥、环境变量和私有文件，并轮换已暴露凭证。"
+	case CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall:
+		return "若失败，对安装和 shell 命令使用包名/域名 allowlist，执行前人工确认，并在隔离环境中运行。"
+	case CheckProbeAdaptiveInjection:
+		return "若失败或未评分，增加长轮次复测、不同客户端指纹复测，并关闭自动批准模式。"
+	case CheckProbeChannelSignature:
+		return "将识别到的 router/gateway 纳入信任评估；未知链路不要承载生产密钥或自动执行工具。"
+	case CheckProbeSignatureRoundtrip:
+		return "若签名被拒绝或不可验证，避免依赖该链路传递 signed thinking；需要时直连官方上游复测。"
+	case CheckProbeSSECompliance:
+		return "若失败，先修复网关流式兼容性，再运行安全探针，避免解析错误掩盖真实风险。"
+	case CheckProbeTokenInflation:
+		return "若异常，检查系统提示、网关包装和路由模板；对异常上游降低权限并复测。"
+	case CheckProbeCacheDetection, CheckProbeConsistencyCache:
+		return "若出现缓存信号，对含密钥或工具调用的请求禁用共享缓存，并保留响应 hash 供追踪。"
+	case CheckProbeThinkingBlock:
+		return "若未评分，确认模型和网关是否支持 thinking beta；不要把未返回 thinking 当作安全通过。"
+	default:
+		if isCanaryCheck(checkKey) {
+			return "若失败，先复测基础模型和网关稳定性，再解读更高阶探针。"
+		}
+		return "结合证据、风险等级和原始导出结果复核；高风险场景优先使用可信上游和最小权限。"
 	}
 }
 

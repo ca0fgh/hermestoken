@@ -4294,6 +4294,10 @@
     "检测完成，该订单不满足解除条件": "Detection complete. This order does not meet release conditions.",
     "解除买断订单": "Release fixed order",
     "该订单最近一次检测已不合格。解除后将退还剩余金额并移除令牌绑定。": "This order has failed the latest detection. Releasing it will refund the remaining amount and remove token bindings.",
-    "解除订单": "Release order"
+    "解除订单": "Release order",
+    "检测说明": "Check note",
+    "检测覆盖": "Coverage",
+    "检测局限": "Limitation",
+    "建议动作": "Recommended action"
   }
 }

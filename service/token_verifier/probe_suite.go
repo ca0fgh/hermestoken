@@ -32,6 +32,9 @@ const (
 	defaultProbeTokenInflationLimit = 50
 	probeCorpusEvidenceTextLimit    = 4096
 	probeCorpusEvidenceSSELimit     = 16384
+
+	toolCallIntegrityFunctionName = "run_command"
+	toolCallIntegritySafePackage  = "numpy"
 )
 
 func verifierCanaryProbeSuite() []verifierProbe {
@@ -404,6 +407,7 @@ func focusedFullProbeKeys() []CheckKey {
 		CheckProbeThinkingBlock,
 		CheckProbeConsistencyCache,
 		CheckProbeAdaptiveInjection,
+		CheckProbeToolCallIntegrity,
 		CheckProbeContextLength,
 		CheckProbeMultimodalImage,
 		CheckProbeMultimodalPDF,
@@ -478,6 +482,8 @@ func (r Runner) runProbeSuite(ctx context.Context, executor *CurlExecutor, provi
 			result = r.checkChannelSignature(ctx, executor, provider, modelName, probe)
 		case CheckProbeSSECompliance:
 			result = r.checkSSECompliance(ctx, executor, provider, modelName, probe)
+		case CheckProbeToolCallIntegrity:
+			result = r.checkToolCallIntegrity(ctx, executor, provider, modelName, probe)
 		case CheckProbeSignatureRoundtrip:
 			result = r.checkSignatureRoundtrip(ctx, executor, provider, modelName, probe)
 		case CheckProbeCacheDetection:
@@ -2251,6 +2257,503 @@ func (r Runner) checkSSECompliance(ctx context.Context, executor *CurlExecutor, 
 			"issues":                compliance.Issues,
 			"raw_sse":               truncate(string(resp.Body), probeCorpusEvidenceSSELimit),
 		},
+	}
+}
+
+func (r Runner) checkToolCallIntegrity(ctx context.Context, executor *CurlExecutor, provider string, modelName string, probe verifierProbe) CheckResult {
+	if provider == ProviderAnthropic {
+		return warningCheckResult(provider, probe.Group, probe.Key, modelName, 0, "tool_call_unsupported_provider", "Tool-call 完整性探针当前仅覆盖 OpenAI-compatible function calling")
+	}
+	if executor == nil {
+		executor = NewCurlExecutor(defaultVerifierHTTPTimeout)
+	}
+	expectedCommand := toolCallIntegrityExpectedCommand()
+	body := map[string]any{
+		"model": modelName,
+		"messages": []map[string]string{
+			{
+				"role":    "user",
+				"content": "Call run_command with exactly this command and do not answer in prose: " + expectedCommand,
+			},
+		},
+		"tools": []map[string]any{
+			{
+				"type": "function",
+				"function": map[string]any{
+					"name":        toolCallIntegrityFunctionName,
+					"description": "Return the shell command that would be reviewed by the client. Do not execute it.",
+					"parameters": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"command": map[string]any{
+								"type":        "string",
+								"description": "The exact command requested by the user.",
+							},
+						},
+						"required":             []string{"command"},
+						"additionalProperties": false,
+					},
+				},
+			},
+		},
+		"tool_choice": map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name": toolCallIntegrityFunctionName,
+			},
+		},
+		"stream":      false,
+		"max_tokens":  probe.MaxTokens,
+		"temperature": 0,
+	}
+	if probe.MaxTokens <= 0 {
+		body["max_tokens"] = 128
+	}
+	payload, _ := common.Marshal(body)
+	headers := providerHeaders(ProviderOpenAI, r.Token)
+	headers["Content-Type"] = "application/json"
+	resp, err := executor.Do(ctx, "POST", r.endpoint("/v1/chat/completions"), headers, payload)
+	if err != nil {
+		result := failedResult(probe.Key, modelName, err, 0)
+		result.Provider = provider
+		result.Group = probe.Group
+		return result
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result := httpFailedResult(probe.Key, modelName, resp.StatusCode, resp.Body, resp.LatencyMs)
+		result.Provider = provider
+		result.Group = probe.Group
+		return result
+	}
+	var decoded map[string]any
+	if err := common.Unmarshal(resp.Body, &decoded); err != nil {
+		result := failedResult(probe.Key, modelName, err, resp.LatencyMs)
+		result.Provider = provider
+		result.Group = probe.Group
+		return result
+	}
+	if result, ok := upstreamErrorProbeResult(provider, probe, modelName, resp.LatencyMs, resp.TTFTMs, decoded, ""); ok {
+		return result
+	}
+	scoring := scoreToolCallIntegrityPayload(decoded, expectedCommand)
+	inputTokens, outputTokens := extractVerifierUsage(decoded)
+	raw := map[string]any{
+		"expected_command_hash": sha256Hex(expectedCommand),
+		"tool_name":             toolCallIntegrityFunctionName,
+		"argument_status":       scoring.ErrorCode,
+		"response_body_hash":    sha256Hex(string(resp.Body)),
+	}
+	if toolCallPayload := sanitizedToolCallIntegrityPayload(decoded); len(toolCallPayload) > 0 {
+		raw["tool_call_payload"] = toolCallPayload
+	}
+	return CheckResult{
+		Provider:     provider,
+		Group:        probe.Group,
+		CheckKey:     probe.Key,
+		ModelName:    modelName,
+		Skipped:      scoring.Skipped,
+		Success:      scoring.Passed,
+		Score:        scoring.Score,
+		LatencyMs:    resp.LatencyMs,
+		TTFTMs:       resp.TTFTMs,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TokensPS:     verifierTokensPS(outputTokens, resp.LatencyMs),
+		ErrorCode:    scoring.ErrorCode,
+		Message:      scoring.Message,
+		RiskLevel:    scoring.RiskLevel,
+		Evidence:     scoring.Evidence,
+		Raw:          raw,
+	}
+}
+
+func toolCallIntegrityExpectedCommand() string {
+	return "pip install " + toolCallIntegritySafePackage
+}
+
+func scoreToolCallIntegrityPayload(decoded map[string]any, expectedCommand string) probeScoreResult {
+	if decoded == nil {
+		return unscoredProbeResult("Tool-call 完整性探针响应为空；本项未评分", "tool_call_missing")
+	}
+	extraction := extractToolCallCommands(decoded, toolCallIntegrityFunctionName)
+	switch {
+	case !extraction.HasToolCalls:
+		result := unscoredProbeResult("响应未包含可验证的 tool-call；可能是上游不支持工具调用或 router 降级为文本", "tool_call_missing")
+		result.Evidence = []string{"未观察到 choices[].message.tool_calls[].function.arguments.command"}
+		return result
+	case extraction.HasUnexpectedTool:
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "Tool-call 完整性失败：响应包含非预期工具调用，可能存在工具名改写或替换",
+			ErrorCode: "tool_call_unexpected_name",
+			RiskLevel: "high",
+			Evidence:  []string{"expected_tool=" + toolCallIntegrityFunctionName, "observed_unexpected_tool=true"},
+		}
+	case extraction.HasMalformedExpected:
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "Tool-call 完整性失败：工具调用参数不可验证",
+			ErrorCode: "tool_call_arguments_unverifiable",
+			RiskLevel: "high",
+			Evidence:  []string{"tool=" + toolCallIntegrityFunctionName, "arguments_unverifiable=true"},
+		}
+	}
+	normalizedExpected := normalizeToolCallCommand(expectedCommand)
+	normalizedCommands := make([]string, 0, len(extraction.Commands))
+	for _, command := range extraction.Commands {
+		normalizedCommand := normalizeToolCallCommand(command)
+		normalizedCommands = append(normalizedCommands, normalizedCommand)
+		if normalizedCommand != normalizedExpected {
+			return probeScoreResult{
+				Passed:    false,
+				Score:     0,
+				Message:   "Tool-call 完整性失败：工具调用参数与请求的安全命令不一致",
+				ErrorCode: "tool_call_argument_mismatch",
+				RiskLevel: "high",
+				Evidence: []string{
+					"expected_command_hash=" + sha256Hex(normalizedExpected),
+					"observed_command_hash=" + sha256Hex(normalizedCommand),
+					"tool=" + toolCallIntegrityFunctionName,
+				},
+			}
+		}
+	}
+	if len(normalizedCommands) != 1 {
+		return probeScoreResult{
+			Passed:    false,
+			Score:     0,
+			Message:   "Tool-call 完整性失败：响应包含非预期数量的工具调用",
+			ErrorCode: "tool_call_unexpected_count",
+			RiskLevel: "high",
+			Evidence:  []string{"tool=" + toolCallIntegrityFunctionName, "observed_tool_call_count_unexpected=true"},
+		}
+	}
+	normalizedCommand := normalizedCommands[0]
+	return probeScoreResult{
+		Passed:    true,
+		Score:     100,
+		Message:   "Tool-call 完整性通过：工具调用参数保持为请求的安全命令",
+		RiskLevel: "low",
+		Evidence:  []string{"tool=" + toolCallIntegrityFunctionName, "command_hash=" + sha256Hex(normalizedCommand)},
+	}
+}
+
+type toolCallCommandExtraction struct {
+	Commands             []string
+	HasToolCalls         bool
+	HasUnexpectedTool    bool
+	HasMalformedExpected bool
+}
+
+func (extraction *toolCallCommandExtraction) merge(other toolCallCommandExtraction) {
+	extraction.Commands = append(extraction.Commands, other.Commands...)
+	extraction.HasToolCalls = extraction.HasToolCalls || other.HasToolCalls
+	extraction.HasUnexpectedTool = extraction.HasUnexpectedTool || other.HasUnexpectedTool
+	extraction.HasMalformedExpected = extraction.HasMalformedExpected || other.HasMalformedExpected
+}
+
+func extractToolCallCommands(decoded map[string]any, expectedToolName string) toolCallCommandExtraction {
+	extraction := toolCallCommandExtraction{}
+	choices, _ := decoded["choices"].([]any)
+	choiceExtractions := make([]toolCallCommandExtraction, 0, len(choices))
+	for _, rawChoice := range choices {
+		choice, _ := rawChoice.(map[string]any)
+		message, _ := choice["message"].(map[string]any)
+		messageExtraction := extractOpenAIToolOrFunctionCalls(message["tool_calls"], message["function_call"], expectedToolName)
+		choiceExtraction := extractOpenAIToolOrFunctionCalls(choice["tool_calls"], choice["function_call"], expectedToolName)
+		extraction.merge(messageExtraction)
+		if messageExtraction.HasToolCalls {
+			choiceExtractions = append(choiceExtractions, messageExtraction)
+		}
+		if choiceExtraction.HasToolCalls && !sameToolCallExtraction(messageExtraction, choiceExtraction) {
+			extraction.merge(choiceExtraction)
+			choiceExtractions = append(choiceExtractions, choiceExtraction)
+		}
+	}
+	topLevelExtraction := extractOpenAIToolOrFunctionCalls(decoded["tool_calls"], decoded["function_call"], expectedToolName)
+	if topLevelExtraction.HasToolCalls && !matchesAnyToolCallExtraction(topLevelExtraction, choiceExtractions) {
+		extraction.merge(topLevelExtraction)
+	}
+	return extraction
+}
+
+func matchesAnyToolCallExtraction(target toolCallCommandExtraction, candidates []toolCallCommandExtraction) bool {
+	for _, candidate := range candidates {
+		if sameToolCallExtraction(target, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameToolCallExtraction(first toolCallCommandExtraction, second toolCallCommandExtraction) bool {
+	if first.HasToolCalls != second.HasToolCalls ||
+		first.HasUnexpectedTool != second.HasUnexpectedTool ||
+		first.HasMalformedExpected != second.HasMalformedExpected ||
+		len(first.Commands) != len(second.Commands) {
+		return false
+	}
+	return sameStringMultiset(normalizedToolCallCommands(first.Commands), normalizedToolCallCommands(second.Commands))
+}
+
+func normalizedToolCallCommands(commands []string) []string {
+	out := make([]string, 0, len(commands))
+	for _, command := range commands {
+		out = append(out, normalizeToolCallCommand(command))
+	}
+	return out
+}
+
+func sameStringMultiset(first []string, second []string) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	counts := make(map[string]int, len(first))
+	for _, value := range first {
+		counts[value]++
+	}
+	for _, value := range second {
+		counts[value]--
+		if counts[value] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func extractOpenAIToolOrFunctionCalls(rawToolCalls any, rawFunctionCall any, expectedToolName string) toolCallCommandExtraction {
+	toolExtraction := extractOpenAIToolCallCommands(rawToolCalls, expectedToolName)
+	functionExtraction := extractOpenAIFunctionCallCommand(rawFunctionCall, expectedToolName)
+	if !functionExtraction.HasToolCalls {
+		return toolExtraction
+	}
+	if !toolExtraction.HasToolCalls || !sameToolCallExtraction(toolExtraction, functionExtraction) {
+		toolExtraction.merge(functionExtraction)
+	}
+	return toolExtraction
+}
+
+func extractOpenAIToolCallCommands(rawToolCalls any, expectedToolName string) toolCallCommandExtraction {
+	toolCalls, _ := rawToolCalls.([]any)
+	if len(toolCalls) == 0 {
+		return toolCallCommandExtraction{}
+	}
+	extraction := toolCallCommandExtraction{HasToolCalls: true}
+	for _, rawToolCall := range toolCalls {
+		toolCall, ok := rawToolCall.(map[string]any)
+		if !ok {
+			extraction.HasMalformedExpected = true
+			continue
+		}
+		function, ok := toolCall["function"].(map[string]any)
+		if !ok {
+			extraction.HasMalformedExpected = true
+			continue
+		}
+		if strings.TrimSpace(common.Interface2String(function["name"])) != expectedToolName {
+			extraction.HasUnexpectedTool = true
+			continue
+		}
+		arguments := function["arguments"]
+		if command, ok := commandFromToolArguments(arguments); ok {
+			extraction.Commands = append(extraction.Commands, command)
+			continue
+		}
+		extraction.HasMalformedExpected = true
+	}
+	return extraction
+}
+
+func extractOpenAIFunctionCallCommand(rawFunctionCall any, expectedToolName string) toolCallCommandExtraction {
+	functionCall, ok := rawFunctionCall.(map[string]any)
+	if !ok || len(functionCall) == 0 {
+		return toolCallCommandExtraction{}
+	}
+	extraction := toolCallCommandExtraction{HasToolCalls: true}
+	if strings.TrimSpace(common.Interface2String(functionCall["name"])) != expectedToolName {
+		extraction.HasUnexpectedTool = true
+		return extraction
+	}
+	if command, ok := commandFromToolArguments(functionCall["arguments"]); ok {
+		extraction.Commands = append(extraction.Commands, command)
+		return extraction
+	}
+	extraction.HasMalformedExpected = true
+	return extraction
+}
+
+func commandFromToolArguments(arguments any) (string, bool) {
+	switch typed := arguments.(type) {
+	case string:
+		var decoded map[string]any
+		if err := common.Unmarshal([]byte(typed), &decoded); err != nil {
+			return "", false
+		}
+		command := strings.TrimSpace(common.Interface2String(decoded["command"]))
+		return command, command != ""
+	case map[string]any:
+		command := strings.TrimSpace(common.Interface2String(typed["command"]))
+		return command, command != ""
+	default:
+		return "", false
+	}
+}
+
+func normalizeToolCallCommand(command string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(command)), " ")
+}
+
+func sanitizedToolCallIntegrityPayload(decoded map[string]any) map[string]any {
+	if decoded == nil {
+		return nil
+	}
+	choices, _ := decoded["choices"].([]any)
+	outChoices := make([]any, 0, len(choices))
+	choiceToolCallSets := make([][]any, 0, len(choices))
+	for _, rawChoice := range choices {
+		choice, _ := rawChoice.(map[string]any)
+		message, _ := choice["message"].(map[string]any)
+		toolCalls := sanitizedOpenAIToolOrFunctionCalls(message["tool_calls"], message["function_call"])
+		choiceToolCalls := sanitizedOpenAIToolOrFunctionCalls(choice["tool_calls"], choice["function_call"])
+		if len(choiceToolCalls) > 0 && !sameSanitizedToolCalls(toolCalls, choiceToolCalls) {
+			toolCalls = append(toolCalls, choiceToolCalls...)
+		}
+		if len(toolCalls) == 0 {
+			continue
+		}
+		outChoices = append(outChoices, map[string]any{
+			"message": map[string]any{
+				"tool_calls": toolCalls,
+			},
+		})
+		choiceToolCallSets = append(choiceToolCallSets, toolCalls)
+	}
+	topLevelToolCalls := sanitizedOpenAIToolOrFunctionCalls(decoded["tool_calls"], decoded["function_call"])
+	if len(outChoices) > 0 {
+		payload := map[string]any{"choices": outChoices}
+		if len(topLevelToolCalls) > 0 && !matchesAnySanitizedToolCalls(topLevelToolCalls, choiceToolCallSets) {
+			payload["tool_calls"] = topLevelToolCalls
+		}
+		return payload
+	}
+	if len(topLevelToolCalls) > 0 {
+		return map[string]any{"tool_calls": topLevelToolCalls}
+	}
+	return nil
+}
+
+func matchesAnySanitizedToolCalls(target []any, candidates [][]any) bool {
+	for _, candidate := range candidates {
+		if sameSanitizedToolCalls(target, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameSanitizedToolCalls(first []any, second []any) bool {
+	if len(first) != len(second) {
+		return false
+	}
+	firstSignatures, ok := sanitizedToolCallSignatures(first)
+	if !ok {
+		return false
+	}
+	secondSignatures, ok := sanitizedToolCallSignatures(second)
+	if !ok {
+		return false
+	}
+	return sameStringMultiset(firstSignatures, secondSignatures)
+}
+
+func sanitizedToolCallSignatures(toolCalls []any) ([]string, bool) {
+	signatures := make([]string, 0, len(toolCalls))
+	for _, toolCall := range toolCalls {
+		encoded, err := common.Marshal(toolCall)
+		if err != nil {
+			return nil, false
+		}
+		signatures = append(signatures, string(encoded))
+	}
+	return signatures, true
+}
+
+func sanitizedOpenAIToolOrFunctionCalls(rawToolCalls any, rawFunctionCall any) []any {
+	toolCalls := sanitizedOpenAIToolCalls(rawToolCalls)
+	if functionCall := sanitizedOpenAIFunctionCall(rawFunctionCall); functionCall != nil && !containsSanitizedToolCall(toolCalls, functionCall) {
+		toolCalls = append(toolCalls, functionCall)
+	}
+	return toolCalls
+}
+
+func containsSanitizedToolCall(toolCalls []any, candidate any) bool {
+	for _, toolCall := range toolCalls {
+		if sameSanitizedToolCalls([]any{toolCall}, []any{candidate}) {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizedOpenAIToolCalls(rawToolCalls any) []any {
+	toolCalls, _ := rawToolCalls.([]any)
+	out := make([]any, 0, len(toolCalls))
+	for _, rawToolCall := range toolCalls {
+		toolCall, _ := rawToolCall.(map[string]any)
+		function, _ := toolCall["function"].(map[string]any)
+		name := strings.TrimSpace(common.Interface2String(function["name"]))
+		if name == "" {
+			name = "[MISSING]"
+		} else if name != toolCallIntegrityFunctionName {
+			name = "[UNEXPECTED_TOOL]"
+		}
+		out = append(out, map[string]any{
+			"type": "function",
+			"function": map[string]any{
+				"name":      name,
+				"arguments": sanitizedToolArguments(function["arguments"]),
+			},
+		})
+	}
+	return out
+}
+
+func sanitizedOpenAIFunctionCall(rawFunctionCall any) any {
+	functionCall, ok := rawFunctionCall.(map[string]any)
+	if !ok || len(functionCall) == 0 {
+		return nil
+	}
+	name := strings.TrimSpace(common.Interface2String(functionCall["name"]))
+	if name == "" {
+		name = "[MISSING]"
+	} else if name != toolCallIntegrityFunctionName {
+		name = "[UNEXPECTED_TOOL]"
+	}
+	return map[string]any{
+		"type": "function",
+		"function": map[string]any{
+			"name":      name,
+			"arguments": sanitizedToolArguments(functionCall["arguments"]),
+		},
+	}
+}
+
+func sanitizedToolArguments(arguments any) map[string]any {
+	command, ok := commandFromToolArguments(arguments)
+	if !ok {
+		return map[string]any{"command_present": false}
+	}
+	normalizedCommand := normalizeToolCallCommand(command)
+	safeCommand := normalizedCommand
+	if normalizedCommand != normalizeToolCallCommand(toolCallIntegrityExpectedCommand()) {
+		safeCommand = "[MUTATED_COMMAND]"
+	}
+	return map[string]any{
+		"command_present": true,
+		"command_hash":    sha256Hex(normalizedCommand),
+		"command":         safeCommand,
 	}
 }
 

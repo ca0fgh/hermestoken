@@ -17,6 +17,7 @@ const (
 	CheckProbeChannelSignature        CheckKey = "probe_channel_signature"
 	CheckProbeSignatureRoundtrip      CheckKey = "probe_signature_roundtrip"
 	CheckProbeSSECompliance           CheckKey = "probe_sse_compliance"
+	CheckProbeToolCallIntegrity       CheckKey = "probe_tool_call_integrity"
 	CheckProbeURLExfiltration         CheckKey = "probe_url_exfiltration"
 	CheckProbeMarkdownExfil           CheckKey = "probe_markdown_exfiltration"
 	CheckProbeCodeInjection           CheckKey = "probe_code_injection"
@@ -142,26 +143,29 @@ type ProbeJudgeConfig struct {
 }
 
 type ChecklistItem struct {
-	Provider         string   `json:"provider"`
-	Group            string   `json:"group,omitempty"`
-	CheckKey         string   `json:"check_key"`
-	CheckName        string   `json:"check_name"`
-	CheckDescription string   `json:"check_description,omitempty"`
-	ModelName        string   `json:"model_name,omitempty"`
-	Neutral          bool     `json:"neutral,omitempty"`
-	Skipped          bool     `json:"skipped,omitempty"`
-	Passed           bool     `json:"passed"`
-	Status           string   `json:"status"`
-	Score            int      `json:"score"`
-	LatencyMs        int64    `json:"latency_ms,omitempty"`
-	TTFTMs           int64    `json:"ttft_ms,omitempty"`
-	InputTokens      *int     `json:"input_tokens,omitempty"`
-	OutputTokens     *int     `json:"output_tokens,omitempty"`
-	TokensPS         float64  `json:"tokens_ps,omitempty"`
-	ErrorCode        string   `json:"error_code,omitempty"`
-	Message          string   `json:"message,omitempty"`
-	RiskLevel        string   `json:"risk_level,omitempty"`
-	Evidence         []string `json:"evidence,omitempty"`
+	Provider          string   `json:"provider"`
+	Group             string   `json:"group,omitempty"`
+	CheckKey          string   `json:"check_key"`
+	CheckName         string   `json:"check_name"`
+	CheckDescription  string   `json:"check_description,omitempty"`
+	Coverage          string   `json:"coverage,omitempty"`
+	Limitation        string   `json:"limitation,omitempty"`
+	RecommendedAction string   `json:"recommended_action,omitempty"`
+	ModelName         string   `json:"model_name,omitempty"`
+	Neutral           bool     `json:"neutral,omitempty"`
+	Skipped           bool     `json:"skipped,omitempty"`
+	Passed            bool     `json:"passed"`
+	Status            string   `json:"status"`
+	Score             int      `json:"score"`
+	LatencyMs         int64    `json:"latency_ms,omitempty"`
+	TTFTMs            int64    `json:"ttft_ms,omitempty"`
+	InputTokens       *int     `json:"input_tokens,omitempty"`
+	OutputTokens      *int     `json:"output_tokens,omitempty"`
+	TokensPS          float64  `json:"tokens_ps,omitempty"`
+	ErrorCode         string   `json:"error_code,omitempty"`
+	Message           string   `json:"message,omitempty"`
+	RiskLevel         string   `json:"risk_level,omitempty"`
+	Evidence          []string `json:"evidence,omitempty"`
 }
 
 type IdentityCandidateSummary struct {

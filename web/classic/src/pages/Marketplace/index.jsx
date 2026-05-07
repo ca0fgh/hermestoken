@@ -36,7 +36,6 @@ import {
   Select,
   Slider,
   Space,
-  SplitButtonGroup,
   Table,
   Tabs,
   Tag,
@@ -49,13 +48,12 @@ import {
   IconCart,
   IconChevronDown,
   IconCopy,
-  IconDelete,
   IconEyeClosed,
   IconEyeOpened,
   IconKey,
+  IconMore,
   IconRoute,
   IconRefresh,
-  IconTreeTriangleDown,
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
@@ -853,38 +851,26 @@ function renderMarketplaceProbeScore(record, t) {
   const grade = String(record?.probe_grade || '').trim();
   const checkedAt = Number(record?.probe_checked_at) || 0;
   const hasScore = score > 0 || scoreMax > 0;
-  const scoreText = hasScore
-    ? scoreMax > score
-      ? `${score}/${scoreMax}`
-      : String(score)
-    : t(marketplaceProbeStatusLabels[status] || '未检测');
-  const colorMap = {
-    passed: 'green',
-    warning: 'orange',
-    failed: 'red',
-    running: 'blue',
-    pending: 'amber',
-    unscored: 'grey',
-  };
+  const normalizedMax = scoreMax > 0 ? scoreMax : 100;
+  const scoreText = hasScore ? `${score}/${normalizedMax}` : '--';
+  const statusLabel = t(marketplaceProbeStatusLabels[status] || status);
 
   return (
-    <Space vertical spacing={2}>
-      <Tooltip content={t(marketplaceProbeStatusLabels[status] || status)}>
-        <Tag color={colorMap[status] || 'grey'} shape='circle'>
-          {scoreText}
-        </Tag>
-      </Tooltip>
-      {grade ? (
-        <Text type='tertiary' size='small'>
-          {grade}
-        </Text>
-      ) : null}
+    <div className='marketplace-probe-score'>
+      <span className='marketplace-probe-score-main'>{scoreText}</span>
+      <span className='marketplace-probe-score-meta'>
+        {grade || statusLabel}
+      </span>
       {checkedAt > 0 ? (
-        <Text type='tertiary' size='small'>
+        <Text
+          type='tertiary'
+          size='small'
+          className='marketplace-probe-score-time'
+        >
           {formatFixedOrderExpiresAt(checkedAt)}
         </Text>
       ) : null}
-    </Space>
+    </div>
   );
 }
 
@@ -919,6 +905,40 @@ function renderMarketplaceResponseTime(responseTime, t, healthStatus = '') {
     >
       {time}
     </Tag>
+  );
+}
+
+function renderMarketplaceSellerModels(models) {
+  const modelList = splitModels(models);
+  if (modelList.length === 0) {
+    return <span className='marketplace-seller-muted'>-</span>;
+  }
+  const modelText = modelList.join(', ');
+
+  return (
+    <Tooltip content={modelText} position='topLeft'>
+      <div className='marketplace-seller-model-cell'>{modelText}</div>
+    </Tooltip>
+  );
+}
+
+function renderMarketplaceSellerStatus(record, t) {
+  return (
+    <div className='marketplace-status-tags'>
+      {statusTag(record.listing_status, t)}
+      {statusTag(record.service_status, t)}
+      {statusTag(record.health_status, t)}
+      {statusTag(record.route_status, t)}
+    </div>
+  );
+}
+
+function renderMarketplaceRouteStatus(record, t) {
+  return (
+    <div className='marketplace-status-tags'>
+      {statusTag(record?.health_status, t)}
+      {statusTag(record?.route_status, t)}
+    </div>
   );
 }
 
@@ -1670,10 +1690,13 @@ function TimeCompoundControl({ mode, limit, onModeChange, onLimitChange }) {
 
 function formatPricePreview(item) {
   const preview = item?.price_preview?.[0];
-  if (!preview) return '-';
-  return `${formatPricePoint(preview.buyer)} / 官方 ${formatPricePoint(
-    preview.official,
-  )} x ${item.multiplier}`;
+  if (!preview) return null;
+
+  return {
+    buyer: formatPricePoint(preview.buyer),
+    official: formatPricePoint(preview.official),
+    multiplier: item.multiplier,
+  };
 }
 
 function formatQuota(item) {
@@ -1782,6 +1805,52 @@ function renderFixedOrderCombinedStatus(record, t) {
       {statusTag(record?.status, t)}
       {timeStatus}
     </Space>
+  );
+}
+
+function renderFixedOrderIdentity(record, t) {
+  return (
+    <div className='marketplace-fixed-order-identity'>
+      <span className='marketplace-fixed-order-id'>#{record.id}</span>
+      <span className='marketplace-fixed-order-meta'>
+        {t('托管Key')} #{record.credential_id}
+      </span>
+    </div>
+  );
+}
+
+function renderFixedOrderAmounts(record, t) {
+  const amountRows = [
+    {
+      label: t('买断'),
+      value: formatMarketplaceQuotaUSD(record.purchased_quota),
+      tone: 'primary',
+    },
+    {
+      label: t('消耗'),
+      value: formatMarketplaceQuotaUSD(record.spent_quota),
+    },
+    {
+      label: t('剩余'),
+      value: formatMarketplaceQuotaUSD(record.remaining_quota),
+      tone: Number(record.remaining_quota) > 0 ? 'success' : '',
+    },
+  ];
+
+  return (
+    <div className='marketplace-fixed-order-amounts'>
+      {amountRows.map((row) => (
+        <div
+          className={`marketplace-fixed-order-amount-row${
+            row.tone ? ` is-${row.tone}` : ''
+          }`}
+          key={row.label}
+        >
+          <span>{row.label}</span>
+          <strong>{row.value}</strong>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -2120,9 +2189,9 @@ function CallSnippet({
   const fixedOrderBound = !!orderId && boundOrderIds.includes(orderId);
 
   return (
-    <Space vertical style={{ width: '100%' }}>
-      <Space wrap>
-        <Text type='secondary'>
+    <div className='marketplace-call-snippet'>
+      <div className='marketplace-call-snippet-main'>
+        <Text type='secondary' className='marketplace-call-snippet-copy'>
           {orderId
             ? token
               ? fixedOrderBound
@@ -2134,13 +2203,22 @@ function CallSnippet({
               : t('请先选择控制台令牌')}
         </Text>
         {orderId ? (
-          <Button size='small' onClick={onEditBindings}>
+          <Button
+            size='small'
+            theme='light'
+            type='primary'
+            className='marketplace-call-snippet-action'
+            onClick={onEditBindings}
+          >
             {t('编辑绑定令牌')}
           </Button>
         ) : null}
         {!orderId ? (
           <Button
             size='small'
+            theme='light'
+            type='primary'
+            className='marketplace-call-snippet-action'
             onClick={() =>
               copyMarketplaceCurl({ orderId, filters, token, model })
             }
@@ -2149,7 +2227,7 @@ function CallSnippet({
             {t('复制调用配置')}
           </Button>
         ) : null}
-      </Space>
+      </div>
       {!orderId ? (
         <TextArea
           autosize
@@ -2159,7 +2237,7 @@ function CallSnippet({
           })}
         />
       ) : null}
-    </Space>
+    </div>
   );
 }
 
@@ -2614,15 +2692,27 @@ function OrdersTab() {
     },
     { title: t('额度'), render: (_, record) => formatQuota(record) },
     { title: t('时间'), render: (_, record) => formatTimeCondition(record) },
-    { title: t('价格'), render: (_, record) => formatPricePreview(record) },
+    {
+      title: t('价格'),
+      render: (_, record) => {
+        const price = formatPricePreview(record);
+        if (!price) return <span className='marketplace-price-empty'>-</span>;
+        return (
+          <div className='marketplace-price-cell'>
+            <span className='marketplace-price-line marketplace-price-line-primary'>
+              买方 {price.buyer}
+            </span>
+            <span className='marketplace-price-line marketplace-price-line-secondary'>
+              官方 {price.official}
+              {price.multiplier ? ` x ${price.multiplier}` : ''}
+            </span>
+          </div>
+        );
+      },
+    },
     {
       title: t('状态'),
-      render: (_, record) => (
-        <Space>
-          {statusTag(record.health_status, t)}
-          {statusTag(record.route_status, t)}
-        </Space>
-      ),
+      render: (_, record) => renderMarketplaceRouteStatus(record, t),
     },
     {
       title: t('探针评分'),
@@ -3018,6 +3108,11 @@ function PoolTab({
               `${Math.round((record.success_rate || 0) * 100)}%`,
           },
           {
+            title: t('状态'),
+            render: (_, record) =>
+              renderMarketplaceRouteStatus(record.credential, t),
+          },
+          {
             title: t('探针评分'),
             render: (_, record) =>
               renderMarketplaceProbeScore(record.credential, t),
@@ -3327,70 +3422,81 @@ function FixedOrdersTab({ buyerTokens, onBuyerTokensChange }) {
     <>
       <Table
         rowKey='id'
+        className='marketplace-fixed-orders-table'
+        size='middle'
+        tableLayout='fixed'
         columns={[
-          { title: 'ID', dataIndex: 'id' },
-          { title: t('托管Key'), dataIndex: 'credential_id' },
           {
-            title: t('探针评分'),
-            render: (_, record) => renderMarketplaceProbeScore(record, t),
-          },
-          {
-            title: t('已买断金额'),
-            render: (_, record) =>
-              formatMarketplaceQuotaUSD(record.purchased_quota),
-          },
-          {
-            title: t('已消耗金额'),
-            render: (_, record) =>
-              formatMarketplaceQuotaUSD(record.spent_quota),
-          },
-          {
-            title: t('可退金额'),
-            render: (_, record) =>
-              formatMarketplaceQuotaUSD(record.remaining_quota),
+            title: t('订单'),
+            width: 116,
+            render: (_, record) => renderFixedOrderIdentity(record, t),
           },
           {
             title: t('状态'),
+            width: 120,
             render: (_, record) => renderFixedOrderCombinedStatus(record, t),
           },
           {
+            title: t('探针评分'),
+            width: 128,
+            render: (_, record) => renderMarketplaceProbeScore(record, t),
+          },
+          {
+            title: t('金额'),
+            width: 210,
+            render: (_, record) => renderFixedOrderAmounts(record, t),
+          },
+          {
+            title: t('调用令牌'),
+            render: (_, record) => (
+              <div className='marketplace-fixed-order-call'>
+                <CallSnippet
+                  orderId={record.id}
+                  onEditBindings={() => openBindingEditor(record.id)}
+                />
+                <div className='marketplace-fixed-order-bound'>
+                  {renderBoundTokens(record.id)}
+                </div>
+              </div>
+            ),
+          },
+          {
             title: t('操作'),
-            render: (_, record) => (
-              <Space>
-                <Button
-                  size='small'
-                  disabled={!canProbeAndRefundFixedOrder(record)}
-                  loading={probingOrderId === record.id}
-                  onClick={() => probeFixedOrder(record)}
-                >
-                  {t('检测')}
-                </Button>
-                <Button
-                  size='small'
-                  type='danger'
-                  theme='light'
-                  disabled={!canReleaseFixedOrder(record)}
-                  loading={probingOrderId === record.id}
-                  onClick={() => releaseFixedOrder(record)}
-                >
-                  {t('解除订单')}
-                </Button>
-              </Space>
-            ),
-          },
-          {
-            title: t('调用'),
-            render: (_, record) => (
-              <CallSnippet
-                orderId={record.id}
-                onEditBindings={() => openBindingEditor(record.id)}
-              />
-            ),
-          },
-          {
-            title: t('已绑定令牌'),
-            align: 'center',
-            render: (_, record) => renderBoundTokens(record.id),
+            width: 72,
+            render: (_, record) => {
+              const moreMenu = [
+                {
+                  node: 'item',
+                  name: t('检测'),
+                  disabled: !canProbeAndRefundFixedOrder(record),
+                  onClick: () => probeFixedOrder(record),
+                },
+                {
+                  node: 'item',
+                  name: t('解除订单'),
+                  type: 'danger',
+                  disabled: !canReleaseFixedOrder(record),
+                  onClick: () => releaseFixedOrder(record),
+                },
+              ];
+
+              return (
+                <div className='marketplace-fixed-order-actions'>
+                  <Dropdown
+                    trigger='click'
+                    position='bottomRight'
+                    menu={moreMenu}
+                  >
+                    <Button
+                      size='small'
+                      type='tertiary'
+                      icon={<IconMore />}
+                      loading={probingOrderId === record.id}
+                    />
+                  </Dropdown>
+                </div>
+              );
+            },
           },
         ]}
         dataSource={items}
@@ -4419,40 +4525,49 @@ function SellerTab() {
       />
       <Table
         rowKey='id'
+        className='marketplace-seller-credentials-table'
+        size='middle'
+        tableLayout='fixed'
         columns={[
-          { title: 'ID', dataIndex: 'id' },
+          { title: 'ID', dataIndex: 'id', width: 56 },
           {
             title: t('厂商'),
+            width: 96,
             render: (_, record) =>
               getVendorName(record.vendor_type, record.vendor_name_snapshot),
           },
           {
             title: t('模型'),
-            render: (_, record) => splitModels(record.models).join(', '),
+            width: 128,
+            render: (_, record) =>
+              renderMarketplaceSellerModels(record.models),
           },
           {
             title: t('额度'),
+            width: 180,
             render: (_, record) => renderSellerQuotaUsage(record, t),
           },
           {
             title: t('时间'),
+            width: 104,
             render: (_, record) => formatTimeCondition(record),
           },
-          { title: t('倍率'), dataIndex: 'multiplier' },
+          { title: t('倍率'), dataIndex: 'multiplier', width: 72 },
           {
             title: t('状态'),
-            render: (_, record) => (
-              <Space>
-                {statusTag(record.listing_status, t)}
-                {statusTag(record.service_status, t)}
-                {statusTag(record.health_status, t)}
-                {statusTag(record.route_status, t)}
-              </Space>
-            ),
+            width: 136,
+            render: (_, record) =>
+              renderMarketplaceSellerStatus(record, t),
+          },
+          {
+            title: t('探针评分'),
+            width: 128,
+            render: (_, record) => renderMarketplaceProbeScore(record, t),
           },
           {
             title: t('响应时间'),
             dataIndex: 'response_time',
+            width: 110,
             render: (text, record) => (
               <div>
                 {renderMarketplaceResponseTime(text, t, record.health_status)}
@@ -4460,81 +4575,80 @@ function SellerTab() {
             ),
           },
           {
-            title: t('探针评分'),
-            render: (_, record) => renderMarketplaceProbeScore(record, t),
-          },
-          {
             title: t('操作'),
-            render: (_, record) => (
-              <Space wrap>
-                <Button size='small' onClick={() => edit(record)}>
-                  {t('编辑')}
-                </Button>
-                <Button
-                  size='small'
-                  onClick={() =>
+            width: 64,
+            render: (_, record) => {
+              const marketplaceCredentialMoreMenu = [
+                {
+                  node: 'item',
+                  name: t('编辑'),
+                  onClick: () => edit(record),
+                },
+                {
+                  node: 'item',
+                  name:
+                    record.listing_status === 'listed' ? t('下架') : t('上架'),
+                  onClick: () =>
                     callAction(
                       record,
                       record.listing_status === 'listed' ? 'unlist' : 'list',
-                    )
-                  }
-                >
-                  {record.listing_status === 'listed' ? t('下架') : t('上架')}
-                </Button>
-                <Button
-                  size='small'
-                  onClick={() =>
+                    ),
+                },
+                {
+                  node: 'item',
+                  name:
+                    record.service_status === 'enabled'
+                      ? t('禁用')
+                      : t('启用'),
+                  onClick: () =>
                     callAction(
                       record,
                       record.service_status === 'enabled'
                         ? 'disable'
                         : 'enable',
-                    )
-                  }
-                >
-                  {record.service_status === 'enabled' ? t('禁用') : t('启用')}
-                </Button>
-                <Button
-                  size='small'
-                  disabled={marketplaceProbeInProgress(record)}
-                  onClick={() => callAction(record, 'probe')}
-                >
-                  {marketplaceProbeInProgress(record)
+                    ),
+                },
+                {
+                  node: 'item',
+                  name: marketplaceProbeInProgress(record)
                     ? t('检测中')
-                    : t('检测')}
-                </Button>
-                <Button
-                  size='small'
-                  type='danger'
-                  theme='borderless'
-                  icon={<IconDelete />}
-                  onClick={() => deleteMarketplaceCredential(record)}
-                >
-                  {t('删除')}
-                </Button>
-                <SplitButtonGroup
-                  className='overflow-hidden'
-                  aria-label={t('测试托管 Key 操作项目组')}
-                >
-                  <Button
-                    size='small'
-                    type='tertiary'
-                    onClick={() => {
-                      shouldStopBatchTestingRef.current = false;
-                      testMarketplaceCredential(record, '');
-                    }}
+                    : t('检测'),
+                  disabled: marketplaceProbeInProgress(record),
+                  onClick: () => callAction(record, 'probe'),
+                },
+                {
+                  node: 'item',
+                  name: t('测试'),
+                  onClick: () => {
+                    shouldStopBatchTestingRef.current = false;
+                    testMarketplaceCredential(record, '');
+                  },
+                },
+                {
+                  node: 'item',
+                  name: t('测试指定模型'),
+                  onClick: () => openMarketplaceModelTestModal(record),
+                },
+                {
+                  node: 'item',
+                  name: t('删除'),
+                  type: 'danger',
+                  onClick: () => deleteMarketplaceCredential(record),
+                },
+              ];
+
+              return (
+                <div className='marketplace-seller-actions'>
+                  <Dropdown
+                    trigger='click'
+                    position='bottomRight'
+                    menu={marketplaceCredentialMoreMenu}
                   >
-                    {t('测试')}
-                  </Button>
-                  <Button
-                    size='small'
-                    type='tertiary'
-                    icon={<IconTreeTriangleDown />}
-                    onClick={() => openMarketplaceModelTestModal(record)}
-                  />
-                </SplitButtonGroup>
-              </Space>
-            ),
+                    <Button size='small' type='tertiary' icon={<IconMore />} />
+                  </Dropdown>
+                </div>
+              );
+            },
           },
         ]}
         dataSource={items}

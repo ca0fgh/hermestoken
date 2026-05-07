@@ -15,7 +15,7 @@ test("classic seller escrow table labels quota limit and consumed quota", async 
   assert.match(pageSource, /t\('已消耗额度'\)/);
   assert.match(
     pageSource,
-    /title:\s*t\('额度'\),\s*render:\s*\(_,\s*record\)\s*=>\s*renderSellerQuotaUsage\(record,\s*t\)/,
+    /title:\s*t\('额度'\),[\s\S]*?render:\s*\(_,\s*record\)\s*=>\s*renderSellerQuotaUsage\(record,\s*t\)/,
   );
 });
 
