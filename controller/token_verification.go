@@ -297,10 +297,13 @@ func normalizeTokenVerificationProbeProfile(rawProfile string, _ int) (string, e
 func normalizeTokenVerificationProbeClientProfile(rawProfile string, provider string) (string, error) {
 	value := strings.ToLower(strings.TrimSpace(rawProfile))
 	if value == "" || value == "default" {
+		if provider == tokenverifier.ProviderAnthropic {
+			return tokenverifier.ClientProfileClaudeCode, nil
+		}
 		return "", nil
 	}
 	if value != tokenverifier.ClientProfileClaudeCode {
-		return "", errors.New("客户端模式仅支持 default 或 claude_code")
+		return "", errors.New("客户端模式仅支持 claude_code")
 	}
 	if provider != tokenverifier.ProviderAnthropic {
 		return "", errors.New("Claude Code 客户端模式仅支持 Anthropic 协议")

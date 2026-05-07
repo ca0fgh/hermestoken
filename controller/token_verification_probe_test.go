@@ -99,10 +99,26 @@ func TestNormalizeTokenVerificationProbeProfile(t *testing.T) {
 func TestNormalizeTokenVerificationProbeClientProfile(t *testing.T) {
 	profile, err := normalizeTokenVerificationProbeClientProfile("", tokenverifier.ProviderAnthropic)
 	if err != nil {
-		t.Fatalf("expected empty client profile to pass, got %v", err)
+		t.Fatalf("expected empty Anthropic client profile to use Claude Code, got %v", err)
+	}
+	if profile != tokenverifier.ClientProfileClaudeCode {
+		t.Fatalf("empty Anthropic client profile normalized to %q, want %q", profile, tokenverifier.ClientProfileClaudeCode)
+	}
+
+	profile, err = normalizeTokenVerificationProbeClientProfile(" default ", tokenverifier.ProviderAnthropic)
+	if err != nil {
+		t.Fatalf("expected Anthropic default client profile to use Claude Code, got %v", err)
+	}
+	if profile != tokenverifier.ClientProfileClaudeCode {
+		t.Fatalf("Anthropic default client profile normalized to %q, want %q", profile, tokenverifier.ClientProfileClaudeCode)
+	}
+
+	profile, err = normalizeTokenVerificationProbeClientProfile("", tokenverifier.ProviderOpenAI)
+	if err != nil {
+		t.Fatalf("expected empty OpenAI client profile to pass, got %v", err)
 	}
 	if profile != "" {
-		t.Fatalf("empty client profile normalized to %q, want empty", profile)
+		t.Fatalf("empty OpenAI client profile normalized to %q, want empty", profile)
 	}
 
 	profile, err = normalizeTokenVerificationProbeClientProfile(" Claude_Code ", tokenverifier.ProviderAnthropic)

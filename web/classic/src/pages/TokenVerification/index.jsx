@@ -681,7 +681,7 @@ function TokenVerification() {
                 <label>
                   <Text strong>{t('客户端模式')}</Text>
                   <Input
-                    readonly
+                    readOnly
                     value={clientProfileLabelMap.claude_code}
                     onChange={() => {}}
                   />
