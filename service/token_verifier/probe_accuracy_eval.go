@@ -233,6 +233,8 @@ func scoreLabeledProbeCorpusCase(probe verifierProbe, item LabeledProbeCorpusCas
 		return scoreConsistencyCacheSample(item.First, item.Second)
 	case CheckProbeAdaptiveInjection:
 		return scoreAdaptiveInjectionSample(item.Neutral, item.Trigger)
+	case CheckProbeToolCallIntegrity:
+		return scoreToolCallIntegrityPayload(item.Decoded, toolCallIntegrityExpectedCommand())
 	case CheckProbeContextLength:
 		levels := make([]contextLengthSampleLevel, 0, len(item.ContextLevels))
 		for _, level := range item.ContextLevels {

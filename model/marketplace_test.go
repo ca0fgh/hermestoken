@@ -53,6 +53,14 @@ func TestMarketplaceMigrationModelsAutoMigrate(t *testing.T) {
 	require.True(t, db.Migrator().HasTable(&MarketplacePoolFill{}))
 	require.True(t, db.Migrator().HasTable(&MarketplaceSettlement{}))
 	require.True(t, db.Migrator().HasColumn(&MarketplaceCredential{}, "encrypted_api_key"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceCredential{}, "probe_status"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceCredential{}, "probe_score"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceCredential{}, "probe_score_max"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceCredential{}, "probe_checked_at"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceFixedOrder{}, "purchase_probe_score"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceFixedOrder{}, "refund_probe_score"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceFixedOrder{}, "refunded_quota"))
+	require.True(t, db.Migrator().HasColumn(&MarketplaceFixedOrder{}, "refunded_at"))
 }
 
 func TestMarketplaceCredentialDoesNotMarshalEncryptedAPIKey(t *testing.T) {

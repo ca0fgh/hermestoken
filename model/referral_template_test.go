@@ -192,6 +192,235 @@ func TestReferralTemplateBindingDerivesScopeFromTemplate(t *testing.T) {
 	}
 }
 
+func TestAssignLowestSubscriptionReferralTemplateForInvitedUserRequiresInviterActiveBinding(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	lowestRows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter", "pro"},
+		Name:                   "lowest-cap-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           800,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle(lowest) error = %v", err)
+	}
+	higherRows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter", "pro"},
+		Name:                   "higher-cap-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1500,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle(higher) error = %v", err)
+	}
+
+	inviter := &User{
+		Username: "sub-ref-inviter",
+		Password: "password",
+		AffCode:  "sub_ref_inviter",
+		Group:    "default",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+	if _, err := UpsertReferralTemplateBindingBundleForUser(inviter.Id, ReferralTypeSubscription, higherRows[0].Id, nil, 1); err != nil {
+		t.Fatalf("failed to bind inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username: "sub-ref-invitee",
+		Password: "password123",
+		Group:    "default",
+	}
+	if err := invitee.Insert(inviter.Id); err != nil {
+		t.Fatalf("Insert(invited user) error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBindingBundlesByUser(invitee.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingBundlesByUser(invitee) error = %v", err)
+	}
+	if len(bundles) != 1 {
+		t.Fatalf("expected invitee to receive one subscription referral bundle, got %d", len(bundles))
+	}
+	if bundles[0].BundleKey != lowestRows[0].BundleKey {
+		t.Fatalf("expected invitee bundle %q, got %q", lowestRows[0].BundleKey, bundles[0].BundleKey)
+	}
+	if len(bundles[0].TemplateIDs) != len(lowestRows) {
+		t.Fatalf("expected invitee to bind all lowest bundle rows, got template ids %v", bundles[0].TemplateIDs)
+	}
+}
+
+func TestAssignLowestSubscriptionReferralTemplateForInvitedUserSkipsInviterWithoutActiveBinding(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	_, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter"},
+		Name:                   "available-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           800,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	inviter := &User{
+		Username: "no-sub-ref-inviter",
+		Password: "password",
+		AffCode:  "no_sub_ref_inviter",
+		Group:    "default",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username: "no-sub-ref-invitee",
+		Password: "password123",
+		Group:    "default",
+	}
+	if err := invitee.Insert(inviter.Id); err != nil {
+		t.Fatalf("Insert(invited user) error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBindingBundlesByUser(invitee.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingBundlesByUser(invitee) error = %v", err)
+	}
+	if len(bundles) != 0 {
+		t.Fatalf("expected invitee to receive no subscription referral bundle, got %d", len(bundles))
+	}
+}
+
+func TestAssignLowestSubscriptionReferralTemplateForInvitedUserSortsByCapBeforeType(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	directRows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter"},
+		Name:                   "direct-higher-cap-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           1200,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle(direct) error = %v", err)
+	}
+	teamRows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter"},
+		Name:                   "team-lower-cap-template",
+		LevelType:              ReferralLevelTypeTeam,
+		Enabled:                true,
+		TeamCapBps:             500,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle(team) error = %v", err)
+	}
+
+	inviter := &User{
+		Username: "sort-cap-inviter",
+		Password: "password",
+		AffCode:  "sort_cap_inviter",
+		Group:    "default",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+	if _, err := UpsertReferralTemplateBindingBundleForUser(inviter.Id, ReferralTypeSubscription, directRows[0].Id, nil, 1); err != nil {
+		t.Fatalf("failed to bind inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username: "sort-cap-invitee",
+		Password: "password123",
+		Group:    "default",
+	}
+	if err := invitee.Insert(inviter.Id); err != nil {
+		t.Fatalf("Insert(invited user) error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBindingBundlesByUser(invitee.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingBundlesByUser(invitee) error = %v", err)
+	}
+	if len(bundles) != 1 {
+		t.Fatalf("expected invitee to receive one subscription referral bundle, got %d", len(bundles))
+	}
+	if bundles[0].BundleKey != teamRows[0].BundleKey {
+		t.Fatalf("expected cap-sorted bundle %q, got %q", teamRows[0].BundleKey, bundles[0].BundleKey)
+	}
+}
+
+func TestAssignLowestSubscriptionReferralTemplateForInvitedUserRunsInsideInsertWithTx(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	rows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter"},
+		Name:                   "tx-lowest-cap-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           700,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	inviter := &User{
+		Username: "tx-sub-ref-inviter",
+		Password: "password",
+		AffCode:  "tx_sub_ref_inviter",
+		Group:    "default",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+	if _, err := UpsertReferralTemplateBindingBundleForUser(inviter.Id, ReferralTypeSubscription, rows[0].Id, nil, 1); err != nil {
+		t.Fatalf("failed to bind inviter: %v", err)
+	}
+
+	invitee := &User{
+		Username: "tx-sub-ref-invitee",
+		Password: "password123",
+		Group:    "default",
+	}
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatalf("failed to begin transaction: %v", tx.Error)
+	}
+	if err := invitee.InsertWithTx(tx, inviter.Id); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("InsertWithTx(invited user) error = %v", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatalf("failed to commit transaction: %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBindingBundlesByUser(invitee.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingBundlesByUser(invitee) error = %v", err)
+	}
+	if len(bundles) != 1 {
+		t.Fatalf("expected tx invitee to receive one subscription referral bundle, got %d", len(bundles))
+	}
+	if bundles[0].BundleKey != rows[0].BundleKey {
+		t.Fatalf("expected tx invitee bundle %q, got %q", rows[0].BundleKey, bundles[0].BundleKey)
+	}
+}
+
 func TestResolveBindingInviteeShareDefaultUsesTemplateDefaultOnly(t *testing.T) {
 	view := ReferralTemplateBindingView{
 		Template: ReferralTemplate{

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/constant"
 	"github.com/ca0fgh/hermestoken/model"
+	tokenverifier "github.com/ca0fgh/hermestoken/service/token_verifier"
 	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -729,6 +731,163 @@ func TestListBuyerMarketplaceFixedOrdersExpiresDueOrders(t *testing.T) {
 	assert.Equal(t, int64(2), settlementCount)
 	require.NoError(t, fixture.DB.First(&seller, fixture.SellerUserID).Error)
 	assert.Equal(t, 2500, seller.Quota)
+}
+
+func TestProbeBuyerMarketplaceFixedOrderRecordsLowScoreThenReleaseRefundsRemainingQuota(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixture(t, 1000)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"base_url":        "https://openai.example/v1",
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 95,
+		}).Error)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceFixedOrder{}).
+		Where("id = ?", fixture.Order.ID).
+		Updates(map[string]any{
+			"purchase_probe_status":    model.MarketplaceProbeStatusPassed,
+			"purchase_probe_score":     90,
+			"purchase_probe_score_max": 95,
+		}).Error)
+	preparation, err := PrepareMarketplaceFixedOrderRelay(MarketplaceFixedOrderRelayInput{
+		BuyerUserID:    fixture.BuyerUserID,
+		FixedOrderID:   fixture.Order.ID,
+		Model:          "gpt-4o-mini",
+		EstimatedQuota: 300,
+		RequestID:      "req-score-refund-spent",
+	})
+	require.NoError(t, err)
+	require.NoError(t, preparation.Session.Settle(300))
+	token := &model.Token{
+		UserId:         fixture.BuyerUserID,
+		Name:           "buyer-token-refund",
+		Key:            "refund1234token",
+		Status:         common.TokenStatusEnabled,
+		CreatedTime:    1,
+		AccessedTime:   1,
+		ExpiredTime:    -1,
+		RemainQuota:    100,
+		UnlimitedQuota: true,
+		Group:          "default",
+	}
+	token.SetMarketplaceFixedOrderIDList([]int{fixture.Order.ID})
+	require.NoError(t, fixture.DB.Create(token).Error)
+
+	restore := stubMarketplaceCredentialDirectProbe(t, func(ctx context.Context, input tokenverifier.DirectProbeRequest) (*tokenverifier.DirectProbeResponse, error) {
+		return &tokenverifier.DirectProbeResponse{
+			Report: tokenverifier.ReportSummary{
+				ProbeScore:     84,
+				ProbeScoreMax:  92,
+				Grade:          "B",
+				ScoringVersion: tokenverifier.ScoringVersionV4,
+			},
+		}, nil
+	})
+	defer restore()
+
+	probed, err := ProbeBuyerMarketplaceFixedOrder(context.Background(), fixture.BuyerUserID, fixture.Order.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.MarketplaceFixedOrderStatusActive, probed.Status)
+	assert.Equal(t, int64(700), probed.RemainingQuota)
+	assert.Equal(t, 84, probed.RefundProbeScore)
+
+	updated, err := ReleaseBuyerMarketplaceFixedOrderAfterProbe(fixture.BuyerUserID, fixture.Order.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.MarketplaceFixedOrderStatusRefunded, updated.Status)
+	assert.Equal(t, int64(700), updated.RefundedQuota)
+	assert.Equal(t, int64(0), updated.RemainingQuota)
+	assert.Equal(t, int64(300), updated.SpentQuota)
+	assert.Equal(t, 90, updated.PurchaseProbeScore)
+	assert.Equal(t, 84, updated.RefundProbeScore)
+	assert.Greater(t, updated.RefundedAt, int64(0))
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, updated.ProbeStatus)
+	assert.Equal(t, 84, updated.ProbeScore)
+
+	var buyer model.User
+	require.NoError(t, fixture.DB.First(&buyer, fixture.BuyerUserID).Error)
+	assert.Equal(t, 9700, buyer.Quota)
+
+	var stats model.MarketplaceCredentialStats
+	require.NoError(t, fixture.DB.First(&stats, "credential_id = ?", fixture.Credential.ID).Error)
+	assert.Equal(t, int64(1000), stats.FixedOrderSoldQuota)
+	assert.Equal(t, int64(0), stats.ActiveFixedOrderCount)
+
+	var storedToken model.Token
+	require.NoError(t, fixture.DB.First(&storedToken, token.Id).Error)
+	assert.Empty(t, storedToken.MarketplaceFixedOrderIDList())
+
+	var settlementCount int64
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceSettlement{}).Count(&settlementCount).Error)
+	assert.Equal(t, int64(1), settlementCount)
+	var finalSettlementCount int64
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceSettlement{}).
+		Where("source_type = ?", marketplaceSettlementSourceFixedOrderFinal).
+		Count(&finalSettlementCount).Error)
+	assert.Equal(t, int64(0), finalSettlementCount)
+}
+
+func TestReleaseBuyerMarketplaceFixedOrderRejectsWhenScoreDropBelowThreshold(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixture(t, 1000)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"base_url":        "https://openai.example/v1",
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 95,
+		}).Error)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceFixedOrder{}).
+		Where("id = ?", fixture.Order.ID).
+		Updates(map[string]any{
+			"purchase_probe_status":    model.MarketplaceProbeStatusPassed,
+			"purchase_probe_score":     90,
+			"purchase_probe_score_max": 95,
+		}).Error)
+
+	restore := stubMarketplaceCredentialDirectProbe(t, func(ctx context.Context, input tokenverifier.DirectProbeRequest) (*tokenverifier.DirectProbeResponse, error) {
+		return &tokenverifier.DirectProbeResponse{
+			Report: tokenverifier.ReportSummary{
+				ProbeScore:    86,
+				ProbeScoreMax: 92,
+				Grade:         "B",
+			},
+		}, nil
+	})
+	defer restore()
+
+	probed, err := ProbeBuyerMarketplaceFixedOrder(context.Background(), fixture.BuyerUserID, fixture.Order.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.MarketplaceFixedOrderStatusActive, probed.Status)
+
+	_, err = ReleaseBuyerMarketplaceFixedOrderAfterProbe(fixture.BuyerUserID, fixture.Order.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "score drop")
+
+	var stored model.MarketplaceFixedOrder
+	require.NoError(t, fixture.DB.First(&stored, fixture.Order.ID).Error)
+	assert.Equal(t, model.MarketplaceFixedOrderStatusActive, stored.Status)
+	assert.Equal(t, int64(1000), stored.RemainingQuota)
+	assert.Equal(t, 86, stored.RefundProbeScore)
+
+	var buyer model.User
+	require.NoError(t, fixture.DB.First(&buyer, fixture.BuyerUserID).Error)
+	assert.Equal(t, 9000, buyer.Quota)
+}
+
+func TestReleaseBuyerMarketplaceFixedOrderRequiresPriorProbe(t *testing.T) {
+	fixture := newMarketplaceFixedOrderRelayFixture(t, 1000)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceFixedOrder{}).
+		Where("id = ?", fixture.Order.ID).
+		Updates(map[string]any{
+			"purchase_probe_status":    model.MarketplaceProbeStatusPassed,
+			"purchase_probe_score":     90,
+			"purchase_probe_score_max": 95,
+		}).Error)
+
+	_, err := ReleaseBuyerMarketplaceFixedOrderAfterProbe(fixture.BuyerUserID, fixture.Order.ID)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "detect")
 }
 
 func TestSelectBuyerMarketplaceFixedOrderForTokenBindingsChoosesSupportedModel(t *testing.T) {

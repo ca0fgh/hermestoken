@@ -609,9 +609,14 @@ func (user *User) Insert(inviterId int) error {
 		user.SetSetting(defaultSetting)
 	}
 
-	result := DB.Create(user)
-	if result.Error != nil {
-		return result.Error
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		return AssignLowestSubscriptionReferralTemplateForInvitedUser(tx, user.Id, inviterId)
+	})
+	if err != nil {
+		return err
 	}
 
 	// 用户创建成功后，根据角色初始化边栏配置
@@ -672,7 +677,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		return result.Error
 	}
 
-	return nil
+	return AssignLowestSubscriptionReferralTemplateForInvitedUser(tx, user.Id, inviterId)
 }
 
 func (user *User) normalizeGroupForCreate() {

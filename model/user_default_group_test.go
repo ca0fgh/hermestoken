@@ -64,8 +64,12 @@ func setupUserDefaultGroupModelTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to open sqlite db: %v", err)
 	}
 
-	if err := db.AutoMigrate(&userSchemaWithoutGroupDefault{}); err != nil {
-		t.Fatalf("failed to migrate users schema without group default: %v", err)
+	if err := db.AutoMigrate(
+		&userSchemaWithoutGroupDefault{},
+		&ReferralTemplate{},
+		&ReferralTemplateBinding{},
+	); err != nil {
+		t.Fatalf("failed to migrate model test schema: %v", err)
 	}
 
 	DB = db

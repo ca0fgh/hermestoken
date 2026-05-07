@@ -84,13 +84,18 @@ func BuyerCreateMarketplaceFixedOrder(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, order)
+	item, err := service.GetBuyerMarketplaceFixedOrderItem(userID, order.ID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, item)
 }
 
 func BuyerListMarketplaceFixedOrders(c *gin.Context) {
 	userID := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	orders, total, err := service.ListBuyerMarketplaceFixedOrders(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	orders, total, err := service.ListBuyerMarketplaceFixedOrderItems(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -107,7 +112,37 @@ func BuyerGetMarketplaceFixedOrder(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	order, err := service.GetBuyerMarketplaceFixedOrder(userID, orderID)
+	order, err := service.GetBuyerMarketplaceFixedOrderItem(userID, orderID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, order)
+}
+
+func BuyerProbeMarketplaceFixedOrder(c *gin.Context) {
+	userID := c.GetInt("id")
+	orderID, err := marketplaceIDParam(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	order, err := service.ProbeBuyerMarketplaceFixedOrder(c.Request.Context(), userID, orderID)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, order)
+}
+
+func BuyerReleaseMarketplaceFixedOrder(c *gin.Context) {
+	userID := c.GetInt("id")
+	orderID, err := marketplaceIDParam(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	order, err := service.ReleaseBuyerMarketplaceFixedOrderAfterProbe(userID, orderID)
 	if err != nil {
 		common.ApiError(c, err)
 		return

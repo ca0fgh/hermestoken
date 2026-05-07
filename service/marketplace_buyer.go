@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -9,10 +10,13 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/model"
+	tokenverifier "github.com/ca0fgh/hermestoken/service/token_verifier"
 	"github.com/ca0fgh/hermestoken/setting"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+const marketplaceFixedOrderProbeRefundScoreDrop = 5
 
 type MarketplaceOrderListInput struct {
 	BuyerUserID         int
@@ -48,6 +52,11 @@ type MarketplaceOrderListItem struct {
 	CapacityStatus         string                    `json:"capacity_status"`
 	RouteStatus            string                    `json:"route_status"`
 	RiskStatus             string                    `json:"risk_status"`
+	ProbeStatus            string                    `json:"probe_status"`
+	ProbeScore             int                       `json:"probe_score"`
+	ProbeScoreMax          int                       `json:"probe_score_max"`
+	ProbeGrade             string                    `json:"probe_grade"`
+	ProbeCheckedAt         int64                     `json:"probe_checked_at"`
 	CurrentConcurrency     int                       `json:"current_concurrency"`
 	TotalRequestCount      int64                     `json:"total_request_count"`
 	PoolRequestCount       int64                     `json:"pool_request_count"`
@@ -93,6 +102,15 @@ type MarketplaceFixedOrderTokenBindingResult struct {
 	FixedOrderID int            `json:"fixed_order_id"`
 	TokenIDs     []int          `json:"token_ids"`
 	Tokens       []*model.Token `json:"tokens"`
+}
+
+type MarketplaceFixedOrderItem struct {
+	model.MarketplaceFixedOrder
+	ProbeStatus    string `json:"probe_status"`
+	ProbeScore     int    `json:"probe_score"`
+	ProbeScoreMax  int    `json:"probe_score_max"`
+	ProbeGrade     string `json:"probe_grade"`
+	ProbeCheckedAt int64  `json:"probe_checked_at"`
 }
 
 func ListMarketplaceOrders(input MarketplaceOrderListInput, startIdx int, pageSize int) ([]MarketplaceOrderListItem, int64, error) {
@@ -248,6 +266,11 @@ func CreateMarketplaceFixedOrder(input MarketplaceFixedOrderCreateInput) (*model
 			CredentialID:            credential.ID,
 			PurchasedQuota:          input.PurchasedQuota,
 			RemainingQuota:          input.PurchasedQuota,
+			PurchaseProbeStatus:     marketplaceProbeStatusForCredential(credential),
+			PurchaseProbeScore:      credential.ProbeScore,
+			PurchaseProbeScoreMax:   credential.ProbeScoreMax,
+			PurchaseProbeGrade:      credential.ProbeGrade,
+			PurchaseProbeCheckedAt:  credential.ProbeCheckedAt,
 			MultiplierSnapshot:      credential.Multiplier,
 			OfficialPriceSnapshot:   marshalMarketplaceOfficialPriceSnapshot(pricePreview),
 			BuyerPriceSnapshot:      marshalMarketplaceBuyerPriceSnapshot(pricePreview),
@@ -296,6 +319,22 @@ func ListBuyerMarketplaceFixedOrders(buyerUserID int, startIdx int, pageSize int
 	return orders, total, nil
 }
 
+func ListBuyerMarketplaceFixedOrderItems(buyerUserID int, startIdx int, pageSize int) ([]MarketplaceFixedOrderItem, int64, error) {
+	orders, total, err := ListBuyerMarketplaceFixedOrders(buyerUserID, startIdx, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	credentialsByID, err := marketplaceCredentialsByIDForFixedOrders(orders)
+	if err != nil {
+		return nil, 0, err
+	}
+	items := make([]MarketplaceFixedOrderItem, 0, len(orders))
+	for _, order := range orders {
+		items = append(items, newMarketplaceFixedOrderItem(order, credentialsByID[order.CredentialID]))
+	}
+	return items, total, nil
+}
+
 func GetBuyerMarketplaceFixedOrder(buyerUserID int, fixedOrderID int) (*model.MarketplaceFixedOrder, error) {
 	if err := validateMarketplaceEnabled(); err != nil {
 		return nil, err
@@ -321,6 +360,111 @@ func GetBuyerMarketplaceFixedOrder(buyerUserID int, fixedOrderID int) (*model.Ma
 		err = model.DB.Where("id = ? AND buyer_user_id = ?", fixedOrderID, buyerUserID).First(&order).Error
 	}
 	return &order, err
+}
+
+func GetBuyerMarketplaceFixedOrderItem(buyerUserID int, fixedOrderID int) (*MarketplaceFixedOrderItem, error) {
+	order, err := GetBuyerMarketplaceFixedOrder(buyerUserID, fixedOrderID)
+	if err != nil {
+		return nil, err
+	}
+	return marketplaceFixedOrderItemFromOrder(*order)
+}
+
+func marketplaceFixedOrderItemFromOrder(order model.MarketplaceFixedOrder) (*MarketplaceFixedOrderItem, error) {
+	credentialsByID, err := marketplaceCredentialsByIDForFixedOrders([]model.MarketplaceFixedOrder{order})
+	if err != nil {
+		return nil, err
+	}
+	item := newMarketplaceFixedOrderItem(order, credentialsByID[order.CredentialID])
+	return &item, nil
+}
+
+func ProbeBuyerMarketplaceFixedOrder(ctx context.Context, buyerUserID int, fixedOrderID int) (*MarketplaceFixedOrderItem, error) {
+	if err := validateMarketplaceEnabled(); err != nil {
+		return nil, err
+	}
+	if buyerUserID <= 0 {
+		return nil, errors.New("buyer user id is required")
+	}
+	if fixedOrderID <= 0 {
+		return nil, errors.New("marketplace fixed order id is required")
+	}
+
+	var order model.MarketplaceFixedOrder
+	var credential model.MarketplaceCredential
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := marketplaceForUpdate(tx).
+			Where("id = ? AND buyer_user_id = ?", fixedOrderID, buyerUserID).
+			First(&order).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("marketplace fixed order not found")
+			}
+			return err
+		}
+		if order.Status != model.MarketplaceFixedOrderStatusActive {
+			return fmt.Errorf("marketplace fixed order is %s", order.Status)
+		}
+		if order.RemainingQuota <= 0 {
+			return errors.New("marketplace fixed order has no remaining quota to refund")
+		}
+		if order.PurchaseProbeScore <= 0 {
+			return errors.New("marketplace fixed order has no purchase probe score")
+		}
+		if isMarketplaceFixedOrderExpired(order, common.GetTimestamp()) {
+			return errors.New("marketplace fixed order expired")
+		}
+		if err := marketplaceForUpdate(tx).Where("id = ?", order.CredentialID).First(&credential).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("marketplace credential not found")
+			}
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	completion, probeErr := runMarketplaceFixedOrderRefundProbe(ctx, credential)
+	if probeErr != nil {
+		_ = recordMarketplaceFixedOrderRefundProbeFailure(fixedOrderID, credential, probeErr)
+		return nil, probeErr
+	}
+	if err := recordMarketplaceFixedOrderRefundProbeCompletion(fixedOrderID, completion); err != nil {
+		return nil, err
+	}
+	return GetBuyerMarketplaceFixedOrderItem(buyerUserID, fixedOrderID)
+}
+
+func ReleaseBuyerMarketplaceFixedOrderAfterProbe(buyerUserID int, fixedOrderID int) (*MarketplaceFixedOrderItem, error) {
+	if err := validateMarketplaceEnabled(); err != nil {
+		return nil, err
+	}
+	if buyerUserID <= 0 {
+		return nil, errors.New("buyer user id is required")
+	}
+	if fixedOrderID <= 0 {
+		return nil, errors.New("marketplace fixed order id is required")
+	}
+
+	var order model.MarketplaceFixedOrder
+	if err := model.DB.Where("id = ? AND buyer_user_id = ?", fixedOrderID, buyerUserID).First(&order).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("marketplace fixed order not found")
+		}
+		return nil, err
+	}
+	completion, err := marketplaceFixedOrderRefundProbeCompletionFromOrder(order)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateMarketplaceFixedOrderReleaseProbe(order, completion); err != nil {
+		return nil, err
+	}
+	refundedOrder, err := refundBuyerMarketplaceFixedOrderRemainingQuota(buyerUserID, fixedOrderID, completion)
+	if err != nil {
+		return nil, err
+	}
+	return marketplaceFixedOrderItemFromOrder(*refundedOrder)
 }
 
 func ValidateBuyerMarketplaceFixedOrderBindings(buyerUserID int, fixedOrderIDs []int) ([]int, error) {
@@ -458,6 +602,29 @@ func removeMarketplaceFixedOrderID(ids []int, target int) []int {
 		}
 	}
 	return normalizeMarketplaceFixedOrderIDs(filtered)
+}
+
+func removeBuyerMarketplaceFixedOrderBindingsTx(tx *gorm.DB, buyerUserID int, fixedOrderID int) error {
+	if buyerUserID <= 0 || fixedOrderID <= 0 {
+		return nil
+	}
+	var tokens []model.Token
+	if err := tx.Where("user_id = ?", buyerUserID).Find(&tokens).Error; err != nil {
+		return err
+	}
+	for i := range tokens {
+		token := &tokens[i]
+		currentOrderIDs := token.MarketplaceFixedOrderIDList()
+		if !marketplaceIDInList(currentOrderIDs, fixedOrderID) {
+			continue
+		}
+		nextOrderIDs := removeMarketplaceFixedOrderID(currentOrderIDs, fixedOrderID)
+		token.SetMarketplaceFixedOrderIDList(nextOrderIDs)
+		if err := tx.Model(token).Select("marketplace_fixed_order_id", "marketplace_fixed_order_ids").Updates(token).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func applyMarketplaceOrderListFilters(query *gorm.DB, input MarketplaceOrderListInput) (*gorm.DB, error) {
@@ -693,6 +860,11 @@ func newMarketplaceOrderListItem(credential model.MarketplaceCredential, stats m
 		CapacityStatus:         capacityStatus,
 		RouteStatus:            routeStatus,
 		RiskStatus:             credential.RiskStatus,
+		ProbeStatus:            marketplaceProbeStatusForCredential(credential),
+		ProbeScore:             credential.ProbeScore,
+		ProbeScoreMax:          credential.ProbeScoreMax,
+		ProbeGrade:             credential.ProbeGrade,
+		ProbeCheckedAt:         credential.ProbeCheckedAt,
 		CurrentConcurrency:     stats.CurrentConcurrency,
 		TotalRequestCount:      stats.TotalRequestCount,
 		PoolRequestCount:       stats.PoolRequestCount,
@@ -711,6 +883,274 @@ func newMarketplaceOrderListItem(credential model.MarketplaceCredential, stats m
 		LastFailedReason:       stats.LastFailedReason,
 		PricePreview:           marketplacePricePreviewForCredential(credential),
 	}
+}
+
+func marketplaceCredentialsByIDForFixedOrders(orders []model.MarketplaceFixedOrder) (map[int]model.MarketplaceCredential, error) {
+	credentialsByID := make(map[int]model.MarketplaceCredential)
+	if len(orders) == 0 {
+		return credentialsByID, nil
+	}
+	credentialIDs := make([]int, 0, len(orders))
+	seen := make(map[int]struct{}, len(orders))
+	for _, order := range orders {
+		if order.CredentialID <= 0 {
+			continue
+		}
+		if _, ok := seen[order.CredentialID]; ok {
+			continue
+		}
+		seen[order.CredentialID] = struct{}{}
+		credentialIDs = append(credentialIDs, order.CredentialID)
+	}
+	if len(credentialIDs) == 0 {
+		return credentialsByID, nil
+	}
+	var credentials []model.MarketplaceCredential
+	if err := model.DB.Where("id IN ?", credentialIDs).Find(&credentials).Error; err != nil {
+		return nil, err
+	}
+	for _, credential := range credentials {
+		credentialsByID[credential.ID] = credential
+	}
+	return credentialsByID, nil
+}
+
+func newMarketplaceFixedOrderItem(order model.MarketplaceFixedOrder, credential model.MarketplaceCredential) MarketplaceFixedOrderItem {
+	probeStatus := strings.TrimSpace(order.RefundProbeStatus)
+	probeScore := order.RefundProbeScore
+	probeScoreMax := order.RefundProbeScoreMax
+	probeGrade := order.RefundProbeGrade
+	probeCheckedAt := order.RefundProbeCheckedAt
+	if probeStatus == "" {
+		probeStatus = strings.TrimSpace(order.PurchaseProbeStatus)
+		probeScore = order.PurchaseProbeScore
+		probeScoreMax = order.PurchaseProbeScoreMax
+		probeGrade = order.PurchaseProbeGrade
+		probeCheckedAt = order.PurchaseProbeCheckedAt
+	}
+	if probeStatus == "" {
+		probeStatus = marketplaceProbeStatusForCredential(credential)
+		probeScore = credential.ProbeScore
+		probeScoreMax = credential.ProbeScoreMax
+		probeGrade = credential.ProbeGrade
+		probeCheckedAt = credential.ProbeCheckedAt
+	}
+	return MarketplaceFixedOrderItem{
+		MarketplaceFixedOrder: order,
+		ProbeStatus:           probeStatus,
+		ProbeScore:            probeScore,
+		ProbeScoreMax:         probeScoreMax,
+		ProbeGrade:            probeGrade,
+		ProbeCheckedAt:        probeCheckedAt,
+	}
+}
+
+func marketplaceProbeStatusForCredential(credential model.MarketplaceCredential) string {
+	if strings.TrimSpace(credential.ProbeStatus) == "" {
+		return model.MarketplaceProbeStatusUnscored
+	}
+	return credential.ProbeStatus
+}
+
+func runMarketplaceFixedOrderRefundProbe(ctx context.Context, credential model.MarketplaceCredential) (marketplaceProbeCompletion, error) {
+	secret, err := GetMarketplaceCredentialSecret()
+	if err != nil {
+		return marketplaceProbeCompletion{}, err
+	}
+	apiKey, err := DecryptMarketplaceAPIKey(credential.EncryptedAPIKey, secret)
+	if err != nil {
+		return marketplaceProbeCompletion{}, err
+	}
+	provider := marketplaceProbeProviderForCredential(credential)
+	profile := marketplaceProbeProfileForProvider(provider)
+	clientProfile := marketplaceProbeClientProfileForProvider(provider)
+	modelName, err := marketplaceProbeModelForCredential(credential, provider)
+	if err != nil {
+		return marketplaceProbeCompletion{}, marketplaceCredentialProbeSanitizedError(err, apiKey, credential.BaseURL)
+	}
+	baseURL, err := marketplaceProbeBaseURLForCredential(credential, apiKey)
+	if err != nil {
+		return marketplaceProbeCompletion{}, marketplaceCredentialProbeSanitizedError(err, apiKey, credential.BaseURL)
+	}
+	probeCtx, cancel := marketplaceCredentialProbeContext(ctx, profile)
+	defer cancel()
+	result, err := runMarketplaceCredentialDirectProbe(probeCtx, tokenverifier.DirectProbeRequest{
+		BaseURL:       baseURL,
+		APIKey:        apiKey,
+		Provider:      provider,
+		Model:         modelName,
+		ProbeProfile:  profile,
+		ClientProfile: clientProfile,
+	})
+	if err != nil {
+		return marketplaceProbeCompletion{}, marketplaceCredentialProbeSanitizedError(err, apiKey, baseURL)
+	}
+	if result == nil {
+		return marketplaceProbeCompletion{}, errors.New("marketplace probe returned empty result")
+	}
+	return marketplaceProbeCompletion{
+		Status:         marketplaceProbeStatusForReport(result.Report),
+		Score:          marketplaceProbeReportScore(result.Report),
+		ScoreMax:       marketplaceProbeReportScoreMax(result.Report),
+		Grade:          marketplaceProbeReportGrade(result.Report),
+		Provider:       provider,
+		Profile:        profile,
+		Model:          modelName,
+		ClientProfile:  clientProfile,
+		ScoringVersion: result.Report.ScoringVersion,
+	}, nil
+}
+
+func recordMarketplaceFixedOrderRefundProbeCompletion(fixedOrderID int, completion marketplaceProbeCompletion) error {
+	return model.DB.Model(&model.MarketplaceFixedOrder{}).
+		Where("id = ? AND status = ?", fixedOrderID, model.MarketplaceFixedOrderStatusActive).
+		Updates(marketplaceFixedOrderRefundProbeCompletionFields(completion, common.GetTimestamp())).Error
+}
+
+func recordMarketplaceFixedOrderRefundProbeFailure(fixedOrderID int, credential model.MarketplaceCredential, probeErr error) error {
+	message := ""
+	if probeErr != nil {
+		message = probeErr.Error()
+	}
+	return model.DB.Model(&model.MarketplaceFixedOrder{}).
+		Where("id = ? AND status = ?", fixedOrderID, model.MarketplaceFixedOrderStatusActive).
+		Updates(map[string]any{
+			"refund_probe_status":     model.MarketplaceProbeStatusFailed,
+			"refund_probe_checked_at": common.GetTimestamp(),
+			"refund_probe_error":      sanitizeMarketplaceProbeMessage(message, "", credential.BaseURL),
+		}).Error
+}
+
+func marketplaceFixedOrderRefundProbeCompletionFields(completion marketplaceProbeCompletion, now int64) map[string]any {
+	return map[string]any{
+		"refund_probe_status":     completion.Status,
+		"refund_probe_score":      completion.Score,
+		"refund_probe_score_max":  completion.ScoreMax,
+		"refund_probe_grade":      completion.Grade,
+		"refund_probe_checked_at": now,
+		"refund_probe_error":      "",
+	}
+}
+
+func marketplaceFixedOrderRefundProbeCompletionFromOrder(order model.MarketplaceFixedOrder) (marketplaceProbeCompletion, error) {
+	if strings.TrimSpace(order.RefundProbeStatus) == "" || order.RefundProbeCheckedAt <= 0 {
+		return marketplaceProbeCompletion{}, errors.New("please detect the marketplace fixed order first")
+	}
+	return marketplaceProbeCompletion{
+		Status:   order.RefundProbeStatus,
+		Score:    order.RefundProbeScore,
+		ScoreMax: order.RefundProbeScoreMax,
+		Grade:    order.RefundProbeGrade,
+	}, nil
+}
+
+func validateMarketplaceFixedOrderReleaseProbe(order model.MarketplaceFixedOrder, completion marketplaceProbeCompletion) error {
+	if order.Status != model.MarketplaceFixedOrderStatusActive {
+		return fmt.Errorf("marketplace fixed order is %s", order.Status)
+	}
+	if order.RemainingQuota <= 0 {
+		return errors.New("marketplace fixed order has no remaining quota to refund")
+	}
+	if order.PurchaseProbeScore <= 0 {
+		return errors.New("marketplace fixed order has no purchase probe score")
+	}
+	if isMarketplaceFixedOrderExpired(order, common.GetTimestamp()) {
+		return errors.New("marketplace fixed order expired")
+	}
+	if completion.Score > order.PurchaseProbeScore-marketplaceFixedOrderProbeRefundScoreDrop {
+		return fmt.Errorf("marketplace fixed order probe score drop is less than %d", marketplaceFixedOrderProbeRefundScoreDrop)
+	}
+	return nil
+}
+
+func refundBuyerMarketplaceFixedOrderRemainingQuota(buyerUserID int, fixedOrderID int, completion marketplaceProbeCompletion) (*model.MarketplaceFixedOrder, error) {
+	var refundedOrder model.MarketplaceFixedOrder
+	var refundedQuota int64
+	now := common.GetTimestamp()
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		var order model.MarketplaceFixedOrder
+		if err := marketplaceForUpdate(tx).
+			Where("id = ? AND buyer_user_id = ?", fixedOrderID, buyerUserID).
+			First(&order).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("marketplace fixed order not found")
+			}
+			return err
+		}
+		if order.Status != model.MarketplaceFixedOrderStatusActive {
+			return fmt.Errorf("marketplace fixed order is %s", order.Status)
+		}
+		if order.RemainingQuota <= 0 {
+			return errors.New("marketplace fixed order has no remaining quota to refund")
+		}
+		if order.PurchaseProbeScore <= 0 {
+			return errors.New("marketplace fixed order has no purchase probe score")
+		}
+		if isMarketplaceFixedOrderExpired(order, now) {
+			return errors.New("marketplace fixed order expired")
+		}
+		storedCompletion, err := marketplaceFixedOrderRefundProbeCompletionFromOrder(order)
+		if err != nil {
+			return err
+		}
+		if storedCompletion.Score != completion.Score ||
+			storedCompletion.ScoreMax != completion.ScoreMax ||
+			storedCompletion.Status != completion.Status ||
+			storedCompletion.Grade != completion.Grade {
+			return errors.New("marketplace fixed order probe result changed, please detect again")
+		}
+		if err := validateMarketplaceFixedOrderReleaseProbe(order, completion); err != nil {
+			return err
+		}
+		refundedQuota = order.RemainingQuota
+		order.RefundProbeStatus = completion.Status
+		order.RefundProbeScore = completion.Score
+		order.RefundProbeScoreMax = completion.ScoreMax
+		order.RefundProbeGrade = completion.Grade
+		order.RefundProbeCheckedAt = now
+		order.RefundProbeError = ""
+		order.RefundedQuota += refundedQuota
+		order.RemainingQuota = 0
+		order.Status = model.MarketplaceFixedOrderStatusRefunded
+		order.RefundedAt = now
+		fields := marketplaceFixedOrderRefundProbeCompletionFields(completion, now)
+		if err := tx.Model(&model.MarketplaceFixedOrder{}).
+			Where("id = ?", order.ID).
+			Updates(fields).Error; err != nil {
+			return err
+		}
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		stats, err := getOrCreateMarketplaceCredentialStatsForUpdate(tx, order.CredentialID)
+		if err != nil {
+			return err
+		}
+		if stats.ActiveFixedOrderCount > 0 {
+			stats.ActiveFixedOrderCount--
+		}
+		if err := tx.Save(stats).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.User{}).
+			Where("id = ?", buyerUserID).
+			Update("quota", gorm.Expr("quota + ?", int(refundedQuota))).Error; err != nil {
+			return err
+		}
+		if err := removeBuyerMarketplaceFixedOrderBindingsTx(tx, buyerUserID, order.ID); err != nil {
+			return err
+		}
+		if err := tx.First(&refundedOrder, order.ID).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	_, _ = model.GetUserQuota(buyerUserID, true)
+	model.RecordLog(buyerUserID, model.LogTypeRefund, fmt.Sprintf("市场买断订单解除退款，订单ID %d，托管Key %d，退款额度 %d，托管检测分 %d，当前检测分 %d", refundedOrder.ID, refundedOrder.CredentialID, refundedQuota, refundedOrder.PurchaseProbeScore, completion.Score))
+	return &refundedOrder, nil
 }
 
 func validateMarketplaceFixedOrderInput(input MarketplaceFixedOrderCreateInput) error {

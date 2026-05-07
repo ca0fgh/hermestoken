@@ -41,6 +41,7 @@ import {
   listSellerMarketplaceCredentials,
   listSellerMarketplacePricedModels,
   listSellerMarketplaceSettlements,
+  probeSellerMarketplaceCredential,
   releaseSellerMarketplaceSettlements,
   setSellerMarketplaceCredentialEnabled,
   setSellerMarketplaceCredentialListed,
@@ -51,6 +52,8 @@ import {
   formatMarketplacePricePoint,
   marketplaceCredentialProxy,
   marketplaceCredentialSettingWithoutProxy,
+  marketplaceProbeInProgress,
+  marketplaceProbeStatusLabel,
   marketplaceQuotaDisplayLabel,
   marketplaceQuotaInputStep,
   marketplaceQuotaToDisplayAmount,
@@ -215,6 +218,21 @@ export function SellerTab() {
     },
   })
 
+  const probeMutation = useMutation({
+    mutationFn: probeSellerMarketplaceCredential,
+    onSuccess: (response) => {
+      if (!response.success) {
+        toast.error(response.message || t('Detection failed'))
+        return
+      }
+      toast.success(t('Detection queued'))
+      void queryClient.invalidateQueries({ queryKey: ['marketplace'] })
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : t('Detection failed'))
+    },
+  })
+
   const releaseMutation = useMutation({
     mutationFn: releaseSellerMarketplaceSettlements,
     onSuccess: (response) => {
@@ -310,6 +328,10 @@ export function SellerTab() {
             onAction={(action) =>
               actionMutation.mutate({ credentialId: credential.id, action })
             }
+            onProbe={() => probeMutation.mutate(credential.id)}
+            probePending={
+              probeMutation.isPending && probeMutation.variables === credential.id
+            }
           />
         ))}
       </div>
@@ -337,12 +359,21 @@ function CredentialPanel({
   credential,
   onEdit,
   onAction,
+  onProbe,
+  probePending,
 }: {
   credential: MarketplaceCredential
   onEdit: (credential: MarketplaceCredential) => void
   onAction: (action: 'list' | 'unlist' | 'enable' | 'disable' | 'test') => void
+  onProbe: () => void
+  probePending: boolean
 }) {
   const { t } = useTranslation()
+  const probeInProgress = marketplaceProbeInProgress(credential.probe_status)
+  const probeScore =
+    Number(credential.probe_score_max) > 0
+      ? `${credential.probe_score}/${credential.probe_score_max}`
+      : t(marketplaceProbeStatusLabel(credential.probe_status || 'unscored'))
   return (
     <div className='rounded-md border p-4'>
       <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
@@ -395,6 +426,7 @@ function CredentialPanel({
             label={t('Concurrency')}
             value={credential.concurrency_limit}
           />
+          <StatPill label={t('Probe score')} value={probeScore} />
         </div>
         <div className='flex flex-wrap gap-2'>
           <Button
@@ -437,6 +469,17 @@ function CredentialPanel({
           <Button variant='outline' size='sm' onClick={() => onAction('test')}>
             <RefreshCw className='size-4' />
             {t('Test')}
+          </Button>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={probeInProgress || probePending}
+            onClick={onProbe}
+          >
+            <RefreshCw
+              className={`size-4 ${probeInProgress || probePending ? 'animate-spin' : ''}`}
+            />
+            {probeInProgress || probePending ? t('Detecting...') : t('Detect')}
           </Button>
         </div>
       </div>

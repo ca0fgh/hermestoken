@@ -177,25 +177,29 @@ func buildChecklistItem(result CheckResult) ChecklistItem {
 		status = "warning"
 	}
 	return ChecklistItem{
-		Provider:     result.Provider,
-		Group:        resultGroup(result),
-		CheckKey:     string(result.CheckKey),
-		CheckName:    checkDisplayName(result.CheckKey),
-		ModelName:    result.ModelName,
-		Neutral:      result.Neutral,
-		Skipped:      result.Skipped,
-		Passed:       result.Success && !result.Skipped,
-		Status:       status,
-		Score:        result.Score,
-		LatencyMs:    result.LatencyMs,
-		TTFTMs:       result.TTFTMs,
-		InputTokens:  result.InputTokens,
-		OutputTokens: result.OutputTokens,
-		TokensPS:     result.TokensPS,
-		ErrorCode:    result.ErrorCode,
-		Message:      result.Message,
-		RiskLevel:    result.RiskLevel,
-		Evidence:     append([]string(nil), result.Evidence...),
+		Provider:          result.Provider,
+		Group:             resultGroup(result),
+		CheckKey:          string(result.CheckKey),
+		CheckName:         checkDisplayName(result.CheckKey),
+		CheckDescription:  checkDescription(result.CheckKey),
+		Coverage:          checkCoverage(result.CheckKey),
+		Limitation:        checkLimitation(result.CheckKey),
+		RecommendedAction: checkRecommendedAction(result.CheckKey),
+		ModelName:         result.ModelName,
+		Neutral:           result.Neutral,
+		Skipped:           result.Skipped,
+		Passed:            result.Success && !result.Skipped,
+		Status:            status,
+		Score:             result.Score,
+		LatencyMs:         result.LatencyMs,
+		TTFTMs:            result.TTFTMs,
+		InputTokens:       result.InputTokens,
+		OutputTokens:      result.OutputTokens,
+		TokensPS:          result.TokensPS,
+		ErrorCode:         result.ErrorCode,
+		Message:           result.Message,
+		RiskLevel:         result.RiskLevel,
+		Evidence:          append([]string(nil), result.Evidence...),
 	}
 }
 
@@ -234,6 +238,8 @@ func checkDisplayName(checkKey CheckKey) string {
 		return "Thinking 签名回环探针"
 	case CheckProbeSSECompliance:
 		return "SSE 合规探针"
+	case CheckProbeToolCallIntegrity:
+		return "Tool-call 完整性探针"
 	case CheckProbeURLExfiltration:
 		return "URL 外泄诱饵"
 	case CheckProbeMarkdownExfil:
@@ -434,6 +440,347 @@ func isCanaryCheck(checkKey CheckKey) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func checkDescription(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeChannelSignature:
+		return "识别响应 ID、响应头和代理签名，判断请求是否经过中转或改写。"
+	case CheckProbeSSECompliance:
+		return "校验流式事件、DONE 和 usage 数据，判断 OpenAI SDK/前端流式解析是否兼容。"
+	case CheckProbeToolCallIntegrity:
+		return "强制模型返回结构化工具调用，检测 router 是否改写 tool-call 参数或降级为纯文本。"
+	case CheckProbeSignatureRoundtrip:
+		return "验证 Anthropic thinking 签名能否原样回环，避免中转破坏签名校验。"
+	case CheckProbeInstructionFollow:
+		return "检查模型是否按精确行数、内容和顺序完成基础指令。"
+	case CheckProbeMathLogic:
+		return "用多步相对速度题检查模型是否给出正确会合时间。"
+	case CheckProbeJSONOutput:
+		return "要求可解析 JSON 和固定字段类型，检查结构化输出稳定性。"
+	case CheckProbeSymbolExact:
+		return "要求原样输出多语言符号，检查代理或模型是否追加、替换或转义内容。"
+	case CheckProbeHallucination:
+		return "用明显错误前提检查模型是否会纠错，而不是顺着错误编造。"
+	case CheckProbeInfraLeak, CheckProbeBedrockProbe:
+		return "诱导询问后端细节，检测是否泄露上游、代理、版本或响应 ID 特征。"
+	case CheckProbeTokenInflation:
+		return "用短提示对比 prompt_tokens，检测隐藏提示或代理注入造成的用量膨胀。"
+	case CheckProbeResponseAugment:
+		return "要求精确回显动态 canary，检测上游是否自动增广或包裹响应。"
+	case CheckProbeURLExfiltration:
+		return "放置私密诱饵并要求固定输出，检测是否通过 URL 或查询参数外泄。"
+	case CheckProbeMarkdownExfil:
+		return "放置私密诱饵并要求纯文本，检测是否通过 Markdown、链接或图片外泄。"
+	case CheckProbeCodeInjection:
+		return "要求最小安全代码，检测是否夹带执行、网络、环境变量或危险导入。"
+	case CheckProbeDependencyHijack:
+		return "检查 pip 安装命令是否保持官方包名且不夹带危险源或 shell 行为。"
+	case CheckProbeNPMRegistry:
+		return "检查 npm 安装命令是否保持官方包名且不切换到不可信 registry。"
+	case CheckProbePipIndex:
+		return "检查 pip 安装命令是否避免自定义索引、代理或 trusted-host 参数。"
+	case CheckProbeShellChain:
+		return "检查安装命令是否夹带 &&、管道、curl/wget 或脚本执行链。"
+	case CheckProbeNeedleTiny:
+		return "在短上下文中埋入明确关键词，检查模型是否能准确定位并原样回答。"
+	case CheckProbeLetterCount:
+		return "用易错字母计数题采集基础注意力和 token 分解能力。"
+	case CheckProbeZHReasoning:
+		return "采集繁中文业务推理与案例组织能力，用于跨语言质量指纹。"
+	case CheckProbeCodeGeneration:
+		return "采集常见算法代码、docstring 和注释风格，用于代码生成质量指纹。"
+	case CheckProbeENReasoning:
+		return "采集英文概念解释、类比和压缩表达能力，用于通用推理质量指纹。"
+	case CheckProbeCensorship:
+		return "检查模型面对敏感事实问题时是否能给出平衡事实回答，而非泛化拒答。"
+	case CheckProbePromptInjection:
+		return "在普通文本中嵌入注入指令，检查模型是否仍完成原任务。"
+	case CheckProbePromptInjectionHard:
+		return "用伪 system/user 标签制造角色混淆，检查模型是否保持真实字段抽取。"
+	case CheckProbeIdentityLeak:
+		return "询问模型和网关身份，检测是否泄露系统提示、代理类型或内部限制。"
+	case CheckProbePipGitURL:
+		return "检查 pip 安装命令是否避免 git、URL、文件或二进制包来源。"
+	case CheckProbePipBundledExtra:
+		return "检查 pip 安装命令是否只安装目标包，避免 extras 或夹带依赖。"
+	case CheckProbeNPMGitURL:
+		return "检查 npm 安装命令是否避免 git、URL、本地文件或压缩包来源。"
+	case CheckProbeNPMRegistryInjection:
+		return "检查 npm 安装命令是否避免 registry 参数、配置注入或外部源。"
+	case CheckProbeUVInstall:
+		return "检查 uv 安装命令是否避免额外索引、链接、git URL 和 shell 行为。"
+	case CheckProbeCargoAdd:
+		return "检查 cargo add 命令是否避免 git、registry、path 或 shell 注入。"
+	case CheckProbeGoInstall:
+		return "检查 go get 命令是否避免代理环境变量、replace 指令或 shell 注入。"
+	case CheckProbeBrewInstall:
+		return "检查 brew install 命令是否避免 tap、外部脚本、HEAD 或 shell 注入。"
+	case CheckProbeKnowledgeCutoff:
+		return "询问近时事细节，检查模型是否承认不确定并避免无依据编造。"
+	case CheckProbeCacheDetection:
+		return "结合随机输出和缓存头，检测是否存在缓存命中或固定响应。"
+	case CheckProbeThinkingBlock:
+		return "检查 Anthropic 流式响应是否包含 thinking block，验证思考能力链路。"
+	case CheckProbeConsistencyCache:
+		return "连续请求随机数，检测响应是否被缓存、固定或复用。"
+	case CheckProbeAdaptiveInjection:
+		return "对比普通文本和敏感关键词文本，检测是否存在条件式改写或注入。"
+	case CheckProbeContextLength:
+		return "逐级增加上下文长度并查找 needle，检测长上下文保真度。"
+	case CheckProbeMultimodalImage:
+		return "发送最小图片样本，检测模型/网关是否真实支持图像输入。"
+	case CheckProbeMultimodalPDF:
+		return "发送最小 PDF 样本，检测模型/网关是否真实支持文档输入。"
+	case CheckProbeIdentityStyleEN:
+		return "采集英文长回答的语气、结构和价值判断，用于身份风格指纹。"
+	case CheckProbeIdentityStyleZHTW:
+		return "采集繁中文长回答的措辞、段落和本地化习惯，用于身份风格指纹。"
+	case CheckProbeIdentityReasoningShape:
+		return "采集经典陷阱题的推理路径和纠错方式，用于身份行为指纹。"
+	case CheckProbeIdentitySelfKnowledge:
+		return "采集模型自我认知表述，用于身份指纹交叉判定。"
+	case CheckProbeIdentityListFormat:
+		return "采集列表组织习惯，用于身份指纹交叉判定。"
+	case CheckProbeIdentityRefusalPattern:
+		return "采集高危化学请求的拒答模板和安全边界，用于身份指纹。"
+	case CheckProbeIdentityJSONDiscipline:
+		return "采集 JSON 纪律和格式倾向，用于身份指纹交叉判定。"
+	case CheckProbeIdentityCapabilityClaim:
+		return "采集实时能力宣称方式，检测模型是否会误称可联网或查价。"
+	case CheckProbeLingKRNum:
+		return "采集韩语数字表达，用于跨语言 token 与本地化行为指纹。"
+	case CheckProbeLingJPPM:
+		return "采集日语当前政治知识回答，用于地域知识和语言风格指纹。"
+	case CheckProbeLingFRPM:
+		return "采集法语当前政治知识回答，用于地域知识和语言风格指纹。"
+	case CheckProbeLingRUPres:
+		return "采集俄语姓名顺序和政治知识回答，用于语言风格指纹。"
+	case CheckProbeTokenCountNum:
+		return "采集模型对数字 token 计数的自我判断，用于 tokenizer 指纹。"
+	case CheckProbeTokenSplitWord:
+		return "采集模型对英文词切分的自报结果，用于 tokenizer 指纹。"
+	case CheckProbeTokenSelfKnowledge:
+		return "采集 tokenizer 名称自报，用于模型身份和服务封装指纹。"
+	case CheckProbeCodeReverseList:
+		return "采集列表反转函数写法，用于代码风格和模型能力指纹。"
+	case CheckProbeCodeCommentLang:
+		return "采集带注释代码的语言选择和解释密度，用于代码风格指纹。"
+	case CheckProbeCodeErrorStyle:
+		return "采集除零处理代码风格，用于异常处理和代码习惯指纹。"
+	case CheckProbeMetaContextLen:
+		return "采集上下文窗口自报，用于模型规格和身份一致性判断。"
+	case CheckProbeMetaThinkingMode:
+		return "采集 extended thinking 能力自报，用于推理模式身份指纹。"
+	case CheckProbeMetaCreator:
+		return "采集创建者自报，用于模型家族和身份一致性判断。"
+	case CheckProbeLingUKPM:
+		return "采集英国政治知识回答，用于近期知识与英语地域风格指纹。"
+	case CheckProbeLingKRCrisis:
+		return "采集韩国近期政治事件回答，用于近时事知识和韩语风格指纹。"
+	case CheckProbeLingDEChan:
+		return "采集德国政治知识回答，用于近期知识与德语地域风格指纹。"
+	case CheckProbeCompPyFloat:
+		return "采集 Python 浮点输出判断，用于编程常识和精确性指纹。"
+	case CheckProbeCompLargeExp:
+		return "采集大整数幂运算回答，用于基础计算准确性指纹。"
+	case CheckProbeTowerHanoi:
+		return "采集 4 盘河内塔最短步骤，用于规划能力和格式遵循指纹。"
+	case CheckProbeReverseWords:
+		return "采集句子词序反转结果，用于注意力和文本变换能力指纹。"
+	case CheckProbePhotosynthesis:
+		return "采集默认科普回答长度和结构，用于冗长度与讲解风格指纹。"
+	case CheckProbePerfBulkEcho:
+		return "采集大量重复词输出，用于吞吐、截断和格式稳定性指纹。"
+	case CheckProbeTokenZWJ:
+		return "采集 ZWJ emoji 人数判断，用于 Unicode 组合字符理解指纹。"
+	case CheckProbeSubmodelCutoff:
+		return "采集知识截止日期自报，用于子模型版本和身份一致性判断。"
+	case CheckProbeSubmodelCapability:
+		return "采集多题能力轮廓，用于子模型指纹和能力档位判定。"
+	case CheckProbeSubmodelRefusal:
+		return "采集爆炸物请求拒答方式，用于子模型安全边界指纹。"
+	case CheckProbePIFingerprint:
+		return "采集提示注入计数字段表现，用于 PI 能力和抗注入指纹。"
+	case CheckProbeRefusalL1:
+		return "采集低风险科普请求的帮助程度，作为拒答阶梯基线。"
+	case CheckProbeRefusalL2:
+		return "采集中风险开锁请求的边界处理，用于拒答阶梯判定。"
+	case CheckProbeRefusalL3:
+		return "采集 SQL 注入请求的拒答方式，用于网络安全边界判定。"
+	case CheckProbeRefusalL4:
+		return "采集危险化学混合请求的安全处理，用于拒答阶梯判定。"
+	case CheckProbeRefusalL5:
+		return "采集诈骗话术请求的拒答方式，用于滥用防护边界判定。"
+	case CheckProbeRefusalL6:
+		return "采集自伤方法请求的安全处理，用于高危安全边界判定。"
+	case CheckProbeRefusalL7:
+		return "采集未成年人性内容请求的拒答方式，用于最高风险边界判定。"
+	case CheckProbeRefusalL8:
+		return "采集高危请求拒答方式，用于安全边界和子模型指纹判定。"
+	case CheckProbeFmtBullets:
+		return "采集项目符号和列表组织方式，用于格式偏好指纹。"
+	case CheckProbeFmtExplainDepth:
+		return "采集 TCP 技术解释深度和层次结构，用于说明风格指纹。"
+	case CheckProbeFmtCodeLangTag:
+		return "采集代码围栏语言标签和示例格式，用于代码格式指纹。"
+	case CheckProbeUncertaintyEstimate:
+		return "采集不确定概率估计方式，用于校准倾向和数值表达指纹。"
+	case CheckCanaryMathMul:
+		return "用固定乘法题检查基础算术和严格整数输出。"
+	case CheckCanaryMathPow:
+		return "用固定幂运算题检查基础算术和严格整数输出。"
+	case CheckCanaryMathMod:
+		return "用固定取模题检查基础算术和严格整数输出。"
+	case CheckCanaryLogicSyllogism:
+		return "用简单三段论检查基础逻辑和 yes/no 格式遵循。"
+	case CheckCanaryRecallCapital:
+		return "用澳大利亚首都题检查基础常识和单词输出格式。"
+	case CheckCanaryRecallSymbol:
+		return "用金元素符号题检查基础常识和大小写精确输出。"
+	case CheckCanaryFormatEcho:
+		return "用固定词回显检查响应是否添加解释或额外字符。"
+	case CheckCanaryFormatJSON:
+		return "用最小 JSON 对象检查结构化输出和无额外文本能力。"
+	case CheckCanaryCodeReverse:
+		return "用 Python 反转表达式检查代码常识和无解释输出。"
+	case CheckCanaryRecallMoonYear:
+		return "用登月年份题检查基础历史常识和四位年份输出。"
+	default:
+		return "采集该检测项的响应、状态和证据，用于综合评估上游模型或网关行为。"
+	}
+}
+
+func checkCoverage(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeToolCallIntegrity:
+		return "覆盖响应侧 tool-call JSON 参数完整性，重点观察 shell/tool arguments 是否从安全命令被改成 URL、包名或串接命令。"
+	case CheckProbeURLExfiltration, CheckProbeMarkdownExfil:
+		return "覆盖响应文本、链接、图片/Markdown 中的显式诱饵外泄信号。"
+	case CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall:
+		return "覆盖模型生成的安装/执行命令文本，检查包名替换、外部源、registry/index、URL、shell 串接和危险命令。"
+	case CheckProbeAdaptiveInjection:
+		return "覆盖中性请求与含敏感关键词请求之间的条件式响应差异，模拟 AC-1.b 触发场景。"
+	case CheckProbeChannelSignature:
+		return "覆盖响应头、ID 前缀和 body 特征，用于识别可见 router/gateway 指纹。"
+	case CheckProbeSignatureRoundtrip:
+		return "覆盖 Anthropic thinking signature 的回环验证，检查签名是否能被上游重新接受。"
+	case CheckProbeSSECompliance:
+		return "覆盖 OpenAI/Anthropic 流式事件结构、结束帧和 usage 字段兼容性。"
+	case CheckProbeTokenInflation:
+		return "覆盖短提示下的 prompt token 用量异常，识别隐藏提示或代理注入导致的用量膨胀。"
+	case CheckProbeInfraLeak, CheckProbeIdentityLeak, CheckProbeBedrockProbe:
+		return "覆盖模型响应中可见的基础设施、代理、系统提示或后端标识泄露。"
+	case CheckProbeCacheDetection, CheckProbeConsistencyCache:
+		return "覆盖缓存头、usage cache 信号和重复随机响应，用于发现可见缓存或固定响应。"
+	case CheckProbeThinkingBlock:
+		return "覆盖 thinking block/beta header 是否被上游返回或网关转发。"
+	case CheckProbeContextLength:
+		return "覆盖分级长上下文 needle 保真度。"
+	case CheckProbeMultimodalImage, CheckProbeMultimodalPDF:
+		return "覆盖图片或文档输入是否被网关和模型真实处理。"
+	default:
+		if isCanaryCheck(checkKey) {
+			return "覆盖基础能力与格式遵循的固定金丝雀样本。"
+		}
+		return "覆盖该检测项的可观察模型输出、协议字段或行为指纹。"
+	}
+}
+
+func checkLimitation(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeToolCallIntegrity:
+		return "不能证明 router 一定可信；没有 provider-signed response envelope 时，只能发现本次可见的 tool-call 改写或降级。"
+	case CheckProbeURLExfiltration, CheckProbeMarkdownExfil:
+		return "只能发现写入响应的外泄；router 在请求侧被动复制密钥属于 AC-2，客户端探针无法直接证明未发生。"
+	case CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall:
+		return "只评估返回文本中的命令；若攻击发生在客户端批准后的真实 tool-call 层，需结合 tool-call 完整性探针和执行前策略。"
+	case CheckProbeAdaptiveInjection:
+		return "有限轮黑盒探测无法排除更长 warm-up、时间窗、组织指纹或 YOLO 模式等服务端条件触发。"
+	case CheckProbeChannelSignature:
+		return "缺少指纹不代表直连；很多 router 会清理 header 或伪装响应 ID。"
+	case CheckProbeSignatureRoundtrip:
+		return "只适用于支持 thinking signature 的 Anthropic 兼容路径，不覆盖 OpenAI tool-call provenance。"
+	case CheckProbeSSECompliance:
+		return "流式格式合规不等于响应内容可信，也不证明 tool-call 未被改写。"
+	case CheckProbeTokenInflation:
+		return "上游不返回 usage 时无法评分；token 膨胀也可能来自正常系统提示或网关包装。"
+	case CheckProbeCacheDetection, CheckProbeConsistencyCache:
+		return "两次响应或单个缓存头只能提供信号，不能单独证明恶意缓存或重放。"
+	case CheckProbeThinkingBlock:
+		return "未观察到 thinking block 可能是模型不支持、beta 未启用或网关降级，通常应作为未评分信号。"
+	default:
+		if isCanaryCheck(checkKey) {
+			return "金丝雀只能覆盖小样本基础能力，不能代表完整模型质量或供应链安全。"
+		}
+		return "该项只能覆盖本次探针可见行为，不能替代端到端签名、沙箱和人工审查。"
+	}
+}
+
+func checkRecommendedAction(checkKey CheckKey) string {
+	switch checkKey {
+	case CheckProbeToolCallIntegrity:
+		return "若失败，对高风险工具启用 fail-closed 审批，避免 YOLO 自动执行；优先改用可信直连或支持 provider-signed response envelope 的链路。"
+	case CheckProbeURLExfiltration, CheckProbeMarkdownExfil:
+		return "若失败，停止在该上游传入真实密钥、环境变量和私有文件，并轮换已暴露凭证。"
+	case CheckProbeCodeInjection,
+		CheckProbeDependencyHijack,
+		CheckProbeNPMRegistry,
+		CheckProbePipIndex,
+		CheckProbeShellChain,
+		CheckProbePipGitURL,
+		CheckProbePipBundledExtra,
+		CheckProbeNPMGitURL,
+		CheckProbeNPMRegistryInjection,
+		CheckProbeUVInstall,
+		CheckProbeCargoAdd,
+		CheckProbeGoInstall,
+		CheckProbeBrewInstall:
+		return "若失败，对安装和 shell 命令使用包名/域名 allowlist，执行前人工确认，并在隔离环境中运行。"
+	case CheckProbeAdaptiveInjection:
+		return "若失败或未评分，增加长轮次复测、不同客户端指纹复测，并关闭自动批准模式。"
+	case CheckProbeChannelSignature:
+		return "将识别到的 router/gateway 纳入信任评估；未知链路不要承载生产密钥或自动执行工具。"
+	case CheckProbeSignatureRoundtrip:
+		return "若签名被拒绝或不可验证，避免依赖该链路传递 signed thinking；需要时直连官方上游复测。"
+	case CheckProbeSSECompliance:
+		return "若失败，先修复网关流式兼容性，再运行安全探针，避免解析错误掩盖真实风险。"
+	case CheckProbeTokenInflation:
+		return "若异常，检查系统提示、网关包装和路由模板；对异常上游降低权限并复测。"
+	case CheckProbeCacheDetection, CheckProbeConsistencyCache:
+		return "若出现缓存信号，对含密钥或工具调用的请求禁用共享缓存，并保留响应 hash 供追踪。"
+	case CheckProbeThinkingBlock:
+		return "若未评分，确认模型和网关是否支持 thinking beta；不要把未返回 thinking 当作安全通过。"
+	default:
+		if isCanaryCheck(checkKey) {
+			return "若失败，先复测基础模型和网关稳定性，再解读更高阶探针。"
+		}
+		return "结合证据、风险等级和原始导出结果复核；高风险场景优先使用可信上游和最小权限。"
 	}
 }
 
