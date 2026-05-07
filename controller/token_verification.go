@@ -129,7 +129,7 @@ func CreateTokenVerificationProbe(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), tokenVerificationProbeTimeout(probeProfile))
+	ctx, cancel := context.WithTimeout(c.Request.Context(), tokenVerificationProbeTimeout())
 	defer cancel()
 	result, err := runDirectTokenVerificationProbe(ctx, tokenverifier.DirectProbeRequest{
 		BaseURL:       baseURL,
@@ -286,18 +286,12 @@ func normalizeTokenVerificationProbeProvider(rawProvider string) (string, error)
 	return value, nil
 }
 
-func normalizeTokenVerificationProbeProfile(rawProfile string, role int) (string, error) {
+func normalizeTokenVerificationProbeProfile(rawProfile string, _ int) (string, error) {
 	value := strings.ToLower(strings.TrimSpace(rawProfile))
-	if value == "" || value == tokenverifier.ProbeProfileStandard {
-		return tokenverifier.ProbeProfileStandard, nil
+	if value == "" || value == tokenverifier.ProbeProfileFull {
+		return tokenverifier.ProbeProfileFull, nil
 	}
-	if value != tokenverifier.ProbeProfileDeep && value != tokenverifier.ProbeProfileFull {
-		return "", errors.New("检测深度仅支持 standard、deep 或 full")
-	}
-	if value == tokenverifier.ProbeProfileFull && role < common.RoleAdminUser {
-		return "", errors.New("完整检测仅管理员可用")
-	}
-	return value, nil
+	return "", errors.New("检测深度仅支持 full")
 }
 
 func normalizeTokenVerificationProbeClientProfile(rawProfile string, provider string) (string, error) {
@@ -314,26 +308,8 @@ func normalizeTokenVerificationProbeClientProfile(rawProfile string, provider st
 	return value, nil
 }
 
-func tokenVerificationProbeTimeout(profile string) time.Duration {
-	switch normalizeProbeProfileForTimeout(profile) {
-	case tokenverifier.ProbeProfileFull:
-		return 6 * time.Minute
-	case tokenverifier.ProbeProfileDeep:
-		return 3 * time.Minute
-	default:
-		return 90 * time.Second
-	}
-}
-
-func normalizeProbeProfileForTimeout(profile string) string {
-	switch strings.ToLower(strings.TrimSpace(profile)) {
-	case tokenverifier.ProbeProfileFull:
-		return tokenverifier.ProbeProfileFull
-	case tokenverifier.ProbeProfileDeep:
-		return tokenverifier.ProbeProfileDeep
-	default:
-		return tokenverifier.ProbeProfileStandard
-	}
+func tokenVerificationProbeTimeout() time.Duration {
+	return 6 * time.Minute
 }
 
 func rejectPrivateTokenVerificationProbeHost(host string) error {

@@ -71,30 +71,25 @@ func TestNormalizeTokenVerificationProbeProvider(t *testing.T) {
 func TestNormalizeTokenVerificationProbeProfile(t *testing.T) {
 	profile, err := normalizeTokenVerificationProbeProfile("", common.RoleCommonUser)
 	if err != nil {
-		t.Fatalf("expected empty profile to use standard, got %v", err)
-	}
-	if profile != tokenverifier.ProbeProfileStandard {
-		t.Fatalf("expected standard profile, got %q", profile)
-	}
-
-	profile, err = normalizeTokenVerificationProbeProfile(" deep ", common.RoleCommonUser)
-	if err != nil {
-		t.Fatalf("expected common user deep profile to pass, got %v", err)
-	}
-	if profile != tokenverifier.ProbeProfileDeep {
-		t.Fatalf("expected deep profile, got %q", profile)
-	}
-
-	profile, err = normalizeTokenVerificationProbeProfile(" full ", common.RoleAdminUser)
-	if err != nil {
-		t.Fatalf("expected admin full profile to pass, got %v", err)
+		t.Fatalf("expected empty profile to use full, got %v", err)
 	}
 	if profile != tokenverifier.ProbeProfileFull {
 		t.Fatalf("expected full profile, got %q", profile)
 	}
 
-	if _, err = normalizeTokenVerificationProbeProfile("full", common.RoleCommonUser); err == nil {
-		t.Fatal("expected non-admin full profile to fail")
+	profile, err = normalizeTokenVerificationProbeProfile(" full ", common.RoleCommonUser)
+	if err != nil {
+		t.Fatalf("expected common user full profile to pass, got %v", err)
+	}
+	if profile != tokenverifier.ProbeProfileFull {
+		t.Fatalf("expected full profile, got %q", profile)
+	}
+
+	if _, err = normalizeTokenVerificationProbeProfile("standard", common.RoleAdminUser); err == nil {
+		t.Fatal("expected standard profile to fail")
+	}
+	if _, err = normalizeTokenVerificationProbeProfile("deep", common.RoleAdminUser); err == nil {
+		t.Fatal("expected deep profile to fail")
 	}
 	if _, err = normalizeTokenVerificationProbeProfile("ultimate", common.RoleAdminUser); err == nil {
 		t.Fatal("expected unsupported profile to fail")
@@ -130,7 +125,7 @@ func TestCreateTokenVerificationProbeDoesNotReturnAPIKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	const secret = "sk-test-secret-value"
-	const requestedProfile = tokenverifier.ProbeProfileDeep
+	const requestedProfile = tokenverifier.ProbeProfileFull
 	const requestedClientProfile = tokenverifier.ClientProfileClaudeCode
 	originalRunner := runDirectTokenVerificationProbe
 	runDirectTokenVerificationProbe = func(ctx context.Context, input tokenverifier.DirectProbeRequest) (*tokenverifier.DirectProbeResponse, error) {

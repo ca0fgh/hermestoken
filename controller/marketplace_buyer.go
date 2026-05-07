@@ -90,7 +90,7 @@ func BuyerCreateMarketplaceFixedOrder(c *gin.Context) {
 func BuyerListMarketplaceFixedOrders(c *gin.Context) {
 	userID := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	orders, total, err := service.ListBuyerMarketplaceFixedOrders(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	orders, total, err := service.ListBuyerMarketplaceFixedOrderItems(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -107,7 +107,7 @@ func BuyerGetMarketplaceFixedOrder(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	order, err := service.GetBuyerMarketplaceFixedOrder(userID, orderID)
+	order, err := service.GetBuyerMarketplaceFixedOrderItem(userID, orderID)
 	if err != nil {
 		common.ApiError(c, err)
 		return

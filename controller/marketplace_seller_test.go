@@ -51,6 +51,11 @@ type marketplaceCredentialResponse struct {
 	CapacityStatus     string  `json:"capacity_status"`
 	RouteStatus        string  `json:"route_status"`
 	RiskStatus         string  `json:"risk_status"`
+	ProbeStatus        string  `json:"probe_status"`
+	ProbeScore         int     `json:"probe_score"`
+	ProbeScoreMax      int     `json:"probe_score_max"`
+	ProbeGrade         string  `json:"probe_grade"`
+	ProbeCheckedAt     int64   `json:"probe_checked_at"`
 	ResponseTime       int     `json:"response_time"`
 	TestTime           int64   `json:"test_time"`
 	CurrentConcurrency int     `json:"current_concurrency"`
@@ -264,6 +269,9 @@ func TestSellerCreateMarketplaceCredentialEncryptsKeyAndWritesInitialRows(t *tes
 	require.NoError(t, db.First(&stored, credential.ID).Error)
 	assert.NotContains(t, stored.EncryptedAPIKey, "seller-secret-placeholder")
 	assert.NotEmpty(t, stored.EncryptedAPIKey)
+	assert.Equal(t, model.MarketplaceProbeStatusPending, stored.ProbeStatus)
+	assert.Equal(t, 0, stored.ProbeScore)
+	assert.Equal(t, 0, stored.ProbeScoreMax)
 
 	var stats model.MarketplaceCredentialStats
 	require.NoError(t, db.First(&stats, "credential_id = ?", credential.ID).Error)
@@ -435,9 +443,14 @@ func TestSellerListMarketplaceCredentialsIncludesStatsAndFreshCapacity(t *testin
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", credential.ID).
 		Updates(map[string]any{
-			"quota_mode":      model.MarketplaceQuotaModeLimited,
-			"quota_limit":     100000,
-			"capacity_status": model.MarketplaceCapacityStatusAvailable,
+			"quota_mode":       model.MarketplaceQuotaModeLimited,
+			"quota_limit":      100000,
+			"capacity_status":  model.MarketplaceCapacityStatusAvailable,
+			"probe_status":     model.MarketplaceProbeStatusPassed,
+			"probe_score":      91,
+			"probe_score_max":  96,
+			"probe_grade":      "A",
+			"probe_checked_at": int64(1710000000),
 		}).Error)
 	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
 		Where("credential_id = ?", credential.ID).
@@ -460,6 +473,11 @@ func TestSellerListMarketplaceCredentialsIncludesStatsAndFreshCapacity(t *testin
 	assert.Equal(t, 1, items[0].CurrentConcurrency)
 	assert.Equal(t, model.MarketplaceCapacityStatusExhausted, items[0].CapacityStatus)
 	assert.Equal(t, model.MarketplaceRouteStatusExhausted, items[0].RouteStatus)
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, items[0].ProbeStatus)
+	assert.Equal(t, 91, items[0].ProbeScore)
+	assert.Equal(t, 96, items[0].ProbeScoreMax)
+	assert.Equal(t, "A", items[0].ProbeGrade)
+	assert.Equal(t, int64(1710000000), items[0].ProbeCheckedAt)
 }
 
 func TestSellerListMarketplaceCredentialsReportsFailedHealthAsNotRoutable(t *testing.T) {

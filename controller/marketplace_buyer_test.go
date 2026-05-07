@@ -36,6 +36,11 @@ type marketplaceOrderListItemResponse struct {
 	CapacityStatus        string  `json:"capacity_status"`
 	RouteStatus           string  `json:"route_status"`
 	RiskStatus            string  `json:"risk_status"`
+	ProbeStatus           string  `json:"probe_status"`
+	ProbeScore            int     `json:"probe_score"`
+	ProbeScoreMax         int     `json:"probe_score_max"`
+	ProbeGrade            string  `json:"probe_grade"`
+	ProbeCheckedAt        int64   `json:"probe_checked_at"`
 	FixedOrderSoldQuota   int64   `json:"fixed_order_sold_quota"`
 	ActiveFixedOrderCount int64   `json:"active_fixed_order_count"`
 	PricePreview          []struct {
@@ -93,6 +98,11 @@ type marketplaceFixedOrderResponse struct {
 	BuyerPriceSnapshot      string  `json:"buyer_price_snapshot"`
 	ExpiresAt               int64   `json:"expires_at"`
 	Status                  string  `json:"status"`
+	ProbeStatus             string  `json:"probe_status"`
+	ProbeScore              int     `json:"probe_score"`
+	ProbeScoreMax           int     `json:"probe_score_max"`
+	ProbeGrade              string  `json:"probe_grade"`
+	ProbeCheckedAt          int64   `json:"probe_checked_at"`
 }
 
 type marketplacePoolModelResponse struct {
@@ -227,6 +237,15 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", disabled.ID).
 		Update("service_status", model.MarketplaceServiceStatusDisabled).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", eligible.ID).
+		Updates(map[string]any{
+			"probe_status":     model.MarketplaceProbeStatusPassed,
+			"probe_score":      88,
+			"probe_score_max":  93,
+			"probe_grade":      "B",
+			"probe_checked_at": int64(1710000010),
+		}).Error)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/marketplace/orders?model=gpt-4o-mini&quota_mode=unlimited", nil, buyerID)
 	BuyerListMarketplaceOrders(ctx)
@@ -236,6 +255,7 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	assert.NotContains(t, recorder.Body.String(), "test-key-eligible")
 	assert.NotContains(t, recorder.Body.String(), "encrypted_api_key")
 	assert.NotContains(t, recorder.Body.String(), "key_fingerprint")
+	assert.NotContains(t, recorder.Body.String(), "base_url")
 
 	var page marketplacePageResponse
 	require.NoError(t, json.Unmarshal(response.Data, &page))
@@ -257,6 +277,11 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	assert.Equal(t, model.MarketplaceRouteStatusAvailable, byID[own.ID].RouteStatus)
 	assert.Equal(t, model.MarketplaceTimeModeLimited, byID[eligible.ID].TimeMode)
 	assert.Equal(t, int64(3600), byID[eligible.ID].TimeLimitSeconds)
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, byID[eligible.ID].ProbeStatus)
+	assert.Equal(t, 88, byID[eligible.ID].ProbeScore)
+	assert.Equal(t, 93, byID[eligible.ID].ProbeScoreMax)
+	assert.Equal(t, "B", byID[eligible.ID].ProbeGrade)
+	assert.Equal(t, int64(1710000010), byID[eligible.ID].ProbeCheckedAt)
 	require.NotEmpty(t, byID[eligible.ID].PricePreview)
 	assert.Equal(t, "gpt-4o-mini", byID[eligible.ID].PricePreview[0].Model)
 	assert.Equal(t, 1.25, byID[eligible.ID].PricePreview[0].Multiplier)
@@ -759,6 +784,15 @@ func TestBuyerMarketplaceFixedOrderListAndDetailAreOwnerScoped(t *testing.T) {
 	seedMarketplaceUser(t, db, buyerID, 10000)
 	seedMarketplaceUser(t, db, otherBuyerID, 10000)
 	credential := createHealthyMarketplaceCredential(t, db, 10, "test-key-seller")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"probe_status":     model.MarketplaceProbeStatusWarning,
+			"probe_score":      64,
+			"probe_score_max":  82,
+			"probe_grade":      "C",
+			"probe_checked_at": int64(1710000020),
+		}).Error)
 
 	body := map[string]any{
 		"credential_id":   credential.ID,
@@ -776,12 +810,27 @@ func TestBuyerMarketplaceFixedOrderListAndDetailAreOwnerScoped(t *testing.T) {
 	listResponse := decodeAPIResponse(t, listRecorder)
 	require.True(t, listResponse.Success, listResponse.Message)
 	assert.Contains(t, listRecorder.Body.String(), fmt.Sprintf(`"id":%d`, order.ID))
+	assert.NotContains(t, listRecorder.Body.String(), "base_url")
+	assert.NotContains(t, listRecorder.Body.String(), "key_fingerprint")
+	var listPage marketplacePageResponse
+	require.NoError(t, json.Unmarshal(listResponse.Data, &listPage))
+	var listedOrders []marketplaceFixedOrderResponse
+	require.NoError(t, json.Unmarshal(listPage.Items, &listedOrders))
+	require.Len(t, listedOrders, 1)
+	assert.Equal(t, model.MarketplaceProbeStatusWarning, listedOrders[0].ProbeStatus)
+	assert.Equal(t, 64, listedOrders[0].ProbeScore)
+	assert.Equal(t, 82, listedOrders[0].ProbeScoreMax)
 
 	ctx, detailRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/marketplace/fixed-orders/1", nil, buyerID)
 	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", order.ID)}}
 	BuyerGetMarketplaceFixedOrder(ctx)
 	detailResponse := decodeAPIResponse(t, detailRecorder)
 	require.True(t, detailResponse.Success, detailResponse.Message)
+	var detail marketplaceFixedOrderResponse
+	require.NoError(t, json.Unmarshal(detailResponse.Data, &detail))
+	assert.Equal(t, model.MarketplaceProbeStatusWarning, detail.ProbeStatus)
+	assert.Equal(t, 64, detail.ProbeScore)
+	assert.Equal(t, 82, detail.ProbeScoreMax)
 
 	ctx, otherRecorder := newAuthenticatedContext(t, http.MethodGet, "/api/marketplace/fixed-orders/1", nil, otherBuyerID)
 	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", order.ID)}}
@@ -1033,6 +1082,15 @@ func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t
 			"upstream_error_count": 1,
 			"avg_latency_ms":       120,
 		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", available.ID).
+		Updates(map[string]any{
+			"probe_status":     model.MarketplaceProbeStatusPassed,
+			"probe_score":      95,
+			"probe_score_max":  100,
+			"probe_grade":      "A",
+			"probe_checked_at": int64(1710000030),
+		}).Error)
 	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
 		Where("credential_id = ?", busy.ID).
 		Update("current_concurrency", 2).Error)
@@ -1053,6 +1111,8 @@ func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t
 	require.True(t, response.Success, response.Message)
 	assert.NotContains(t, recorder.Body.String(), "pool-key-available")
 	assert.NotContains(t, recorder.Body.String(), "encrypted_api_key")
+	assert.NotContains(t, recorder.Body.String(), "key_fingerprint")
+	assert.NotContains(t, recorder.Body.String(), "base_url")
 
 	var page marketplacePageResponse
 	require.NoError(t, json.Unmarshal(response.Data, &page))
@@ -1066,6 +1126,9 @@ func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t
 	require.Contains(t, candidatesByID, available.ID)
 	require.Contains(t, candidatesByID, own.ID)
 	assert.Greater(t, candidatesByID[available.ID].RouteScore, 0.0)
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, candidatesByID[available.ID].Credential.ProbeStatus)
+	assert.Equal(t, 95, candidatesByID[available.ID].Credential.ProbeScore)
+	assert.Equal(t, 100, candidatesByID[available.ID].Credential.ProbeScoreMax)
 	assert.InDelta(t, 0.9, candidatesByID[available.ID].SuccessRate, 0.000001)
 	assert.Equal(t, 0.0, candidatesByID[available.ID].LoadRatio)
 }

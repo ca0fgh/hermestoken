@@ -166,6 +166,7 @@ func CreateSellerMarketplaceCredential(input MarketplaceCredentialCreateInput) (
 		HealthStatus:       model.MarketplaceHealthStatusUntested,
 		CapacityStatus:     model.MarketplaceCapacityStatusAvailable,
 		RiskStatus:         model.MarketplaceRiskStatusNormal,
+		ProbeStatus:        model.MarketplaceProbeStatusPending,
 	}
 
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
@@ -181,6 +182,7 @@ func CreateSellerMarketplaceCredential(input MarketplaceCredentialCreateInput) (
 	if err != nil {
 		return nil, err
 	}
+	EnqueueMarketplaceCredentialProbe(credential.ID)
 	return credential, nil
 }
 
@@ -352,6 +354,10 @@ func UpdateSellerMarketplaceCredential(input MarketplaceCredentialUpdateInput) (
 		credential.KeyFingerprint = fingerprint
 		changedFields = append(changedFields, "api_key")
 	}
+	probeTargetChanged := marketplaceCredentialProbeTargetChanged(changedFields, keyReplaced)
+	if probeTargetChanged {
+		setMarketplaceCredentialProbePending(credential)
+	}
 	if len(changedFields) == 0 {
 		return credential, nil
 	}
@@ -369,6 +375,9 @@ func UpdateSellerMarketplaceCredential(input MarketplaceCredentialUpdateInput) (
 	})
 	if err != nil {
 		return nil, err
+	}
+	if probeTargetChanged {
+		EnqueueMarketplaceCredentialProbe(credential.ID)
 	}
 	return credential, nil
 }

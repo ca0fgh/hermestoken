@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Button,
   Card,
@@ -34,7 +34,6 @@ import {
 } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
 import { API, downloadTextAsFile, showError, showSuccess } from '../../helpers';
-import { UserContext } from '../../context/User';
 import './index.css';
 
 const { Text, Title } = Typography;
@@ -157,24 +156,12 @@ function formatProbeScore(rating) {
   return String(rating.score);
 }
 
-function probeRequestTimeout(profile) {
-  if (profile === 'full') {
-    return 370000;
-  }
-  if (profile === 'deep') {
-    return 190000;
-  }
-  return 100000;
+function probeRequestTimeout() {
+  return 370000;
 }
 
-function probeProfileTagColor(profile) {
-  if (profile === 'full') {
-    return 'red';
-  }
-  if (profile === 'deep') {
-    return 'orange';
-  }
-  return 'light-blue';
+function probeProfileTagColor() {
+  return 'red';
 }
 
 function buildProbeEvidenceFilename(result) {
@@ -280,7 +267,7 @@ function renderIdentityEvidence(items = [], record = {}, t = (value) => value) {
   const evidence = Array.isArray(items) ? items : [];
   const notes = [...evidence];
   if (record.status === 'uncertain' && notes.length === 0) {
-    notes.push(t('当前信号不足，建议重跑 Deep/Full 探针或查看原始响应'));
+    notes.push(t('当前信号不足，建议重跑完整探针或查看原始响应'));
   }
   if (record.verdict?.status === 'insufficient_data') {
     notes.push(t('交叉判定数据不足，不能作为身份不一致结论'));
@@ -293,29 +280,21 @@ function renderIdentityEvidence(items = [], record = {}, t = (value) => value) {
 
 function TokenVerification() {
   const { t } = useTranslation();
-  const [userState] = useContext(UserContext);
   const [provider, setProvider] = useState('anthropic');
   const [baseURL, setBaseURL] = useState(providerDefaults.anthropic.baseURL);
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState(providerDefaults.anthropic.model);
-  const [probeProfile, setProbeProfile] = useState('standard');
+  const [probeProfile, setProbeProfile] = useState('full');
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState(null);
 
-  const isAdminUser = Number(userState?.user?.role || 0) >= 10;
   const selectedReport = probeResult?.report;
   const checklistItems =
     selectedReport?.checklist || probeResult?.results || [];
-  const profileOptions = useMemo(() => {
-    const options = [
-      { label: t('标准检测'), value: 'standard' },
-      { label: t('深度检测'), value: 'deep' },
-    ];
-    if (isAdminUser) {
-      options.push({ label: t('完整检测'), value: 'full' });
-    }
-    return options;
-  }, [isAdminUser, t]);
+  const profileOptions = useMemo(
+    () => [{ label: t('完整检测'), value: 'full' }],
+    [t],
+  );
   const profileLabelMap = useMemo(
     () =>
       Object.fromEntries(
@@ -324,11 +303,6 @@ function TokenVerification() {
     [profileOptions],
   );
 
-  useEffect(() => {
-    if (!isAdminUser && probeProfile === 'full') {
-      setProbeProfile('deep');
-    }
-  }, [isAdminUser, probeProfile]);
   const modelOptions = useMemo(() => {
     const presets = providerModelPresets[provider] || [];
     const options = presets.map((value) => ({ label: value, value }));
@@ -734,7 +708,7 @@ function TokenVerification() {
                   optionList={profileOptions}
                   value={probeProfile}
                   onChange={(value) =>
-                    setProbeProfile(String(value || 'standard'))
+                    setProbeProfile(String(value || 'full'))
                   }
                   style={{ width: '100%' }}
                 />

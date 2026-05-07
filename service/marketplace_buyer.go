@@ -48,6 +48,11 @@ type MarketplaceOrderListItem struct {
 	CapacityStatus         string                    `json:"capacity_status"`
 	RouteStatus            string                    `json:"route_status"`
 	RiskStatus             string                    `json:"risk_status"`
+	ProbeStatus            string                    `json:"probe_status"`
+	ProbeScore             int                       `json:"probe_score"`
+	ProbeScoreMax          int                       `json:"probe_score_max"`
+	ProbeGrade             string                    `json:"probe_grade"`
+	ProbeCheckedAt         int64                     `json:"probe_checked_at"`
 	CurrentConcurrency     int                       `json:"current_concurrency"`
 	TotalRequestCount      int64                     `json:"total_request_count"`
 	PoolRequestCount       int64                     `json:"pool_request_count"`
@@ -93,6 +98,15 @@ type MarketplaceFixedOrderTokenBindingResult struct {
 	FixedOrderID int            `json:"fixed_order_id"`
 	TokenIDs     []int          `json:"token_ids"`
 	Tokens       []*model.Token `json:"tokens"`
+}
+
+type MarketplaceFixedOrderItem struct {
+	model.MarketplaceFixedOrder
+	ProbeStatus    string `json:"probe_status"`
+	ProbeScore     int    `json:"probe_score"`
+	ProbeScoreMax  int    `json:"probe_score_max"`
+	ProbeGrade     string `json:"probe_grade"`
+	ProbeCheckedAt int64  `json:"probe_checked_at"`
 }
 
 func ListMarketplaceOrders(input MarketplaceOrderListInput, startIdx int, pageSize int) ([]MarketplaceOrderListItem, int64, error) {
@@ -296,6 +310,22 @@ func ListBuyerMarketplaceFixedOrders(buyerUserID int, startIdx int, pageSize int
 	return orders, total, nil
 }
 
+func ListBuyerMarketplaceFixedOrderItems(buyerUserID int, startIdx int, pageSize int) ([]MarketplaceFixedOrderItem, int64, error) {
+	orders, total, err := ListBuyerMarketplaceFixedOrders(buyerUserID, startIdx, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	credentialsByID, err := marketplaceCredentialsByIDForFixedOrders(orders)
+	if err != nil {
+		return nil, 0, err
+	}
+	items := make([]MarketplaceFixedOrderItem, 0, len(orders))
+	for _, order := range orders {
+		items = append(items, newMarketplaceFixedOrderItem(order, credentialsByID[order.CredentialID]))
+	}
+	return items, total, nil
+}
+
 func GetBuyerMarketplaceFixedOrder(buyerUserID int, fixedOrderID int) (*model.MarketplaceFixedOrder, error) {
 	if err := validateMarketplaceEnabled(); err != nil {
 		return nil, err
@@ -321,6 +351,19 @@ func GetBuyerMarketplaceFixedOrder(buyerUserID int, fixedOrderID int) (*model.Ma
 		err = model.DB.Where("id = ? AND buyer_user_id = ?", fixedOrderID, buyerUserID).First(&order).Error
 	}
 	return &order, err
+}
+
+func GetBuyerMarketplaceFixedOrderItem(buyerUserID int, fixedOrderID int) (*MarketplaceFixedOrderItem, error) {
+	order, err := GetBuyerMarketplaceFixedOrder(buyerUserID, fixedOrderID)
+	if err != nil {
+		return nil, err
+	}
+	credentialsByID, err := marketplaceCredentialsByIDForFixedOrders([]model.MarketplaceFixedOrder{*order})
+	if err != nil {
+		return nil, err
+	}
+	item := newMarketplaceFixedOrderItem(*order, credentialsByID[order.CredentialID])
+	return &item, nil
 }
 
 func ValidateBuyerMarketplaceFixedOrderBindings(buyerUserID int, fixedOrderIDs []int) ([]int, error) {
@@ -693,6 +736,11 @@ func newMarketplaceOrderListItem(credential model.MarketplaceCredential, stats m
 		CapacityStatus:         capacityStatus,
 		RouteStatus:            routeStatus,
 		RiskStatus:             credential.RiskStatus,
+		ProbeStatus:            marketplaceProbeStatusForCredential(credential),
+		ProbeScore:             credential.ProbeScore,
+		ProbeScoreMax:          credential.ProbeScoreMax,
+		ProbeGrade:             credential.ProbeGrade,
+		ProbeCheckedAt:         credential.ProbeCheckedAt,
 		CurrentConcurrency:     stats.CurrentConcurrency,
 		TotalRequestCount:      stats.TotalRequestCount,
 		PoolRequestCount:       stats.PoolRequestCount,
@@ -711,6 +759,54 @@ func newMarketplaceOrderListItem(credential model.MarketplaceCredential, stats m
 		LastFailedReason:       stats.LastFailedReason,
 		PricePreview:           marketplacePricePreviewForCredential(credential),
 	}
+}
+
+func marketplaceCredentialsByIDForFixedOrders(orders []model.MarketplaceFixedOrder) (map[int]model.MarketplaceCredential, error) {
+	credentialsByID := make(map[int]model.MarketplaceCredential)
+	if len(orders) == 0 {
+		return credentialsByID, nil
+	}
+	credentialIDs := make([]int, 0, len(orders))
+	seen := make(map[int]struct{}, len(orders))
+	for _, order := range orders {
+		if order.CredentialID <= 0 {
+			continue
+		}
+		if _, ok := seen[order.CredentialID]; ok {
+			continue
+		}
+		seen[order.CredentialID] = struct{}{}
+		credentialIDs = append(credentialIDs, order.CredentialID)
+	}
+	if len(credentialIDs) == 0 {
+		return credentialsByID, nil
+	}
+	var credentials []model.MarketplaceCredential
+	if err := model.DB.Where("id IN ?", credentialIDs).Find(&credentials).Error; err != nil {
+		return nil, err
+	}
+	for _, credential := range credentials {
+		credentialsByID[credential.ID] = credential
+	}
+	return credentialsByID, nil
+}
+
+func newMarketplaceFixedOrderItem(order model.MarketplaceFixedOrder, credential model.MarketplaceCredential) MarketplaceFixedOrderItem {
+	return MarketplaceFixedOrderItem{
+		MarketplaceFixedOrder: order,
+		ProbeStatus:           marketplaceProbeStatusForCredential(credential),
+		ProbeScore:            credential.ProbeScore,
+		ProbeScoreMax:         credential.ProbeScoreMax,
+		ProbeGrade:            credential.ProbeGrade,
+		ProbeCheckedAt:        credential.ProbeCheckedAt,
+	}
+}
+
+func marketplaceProbeStatusForCredential(credential model.MarketplaceCredential) string {
+	if strings.TrimSpace(credential.ProbeStatus) == "" {
+		return model.MarketplaceProbeStatusUnscored
+	}
+	return credential.ProbeStatus
 }
 
 func validateMarketplaceFixedOrderInput(input MarketplaceFixedOrderCreateInput) error {

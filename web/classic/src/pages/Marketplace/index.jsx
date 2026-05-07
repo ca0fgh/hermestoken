@@ -783,6 +783,12 @@ const marketplaceStatusLabels = {
   normal: '正常',
   watching: '观察中',
   risk_paused: '风险暂停',
+  unscored: '未检测',
+  pending_probe: '待检测',
+  running_probe: '检测中',
+  passed_probe: '通过',
+  warning_probe: '需复核',
+  failed_probe: '失败',
   route_available: '可路由',
   route_unlisted: '未上架',
   route_disabled: '已停用',
@@ -828,6 +834,57 @@ function statusTag(status, t) {
     <Tag color={colorMap[status] || 'grey'}>
       {t(marketplaceStatusLabels[status] || status || '-')}
     </Tag>
+  );
+}
+
+const marketplaceProbeStatusLabels = {
+  unscored: '未检测',
+  pending: '待检测',
+  running: '检测中',
+  passed: '通过',
+  warning: '需复核',
+  failed: '失败',
+};
+
+function renderMarketplaceProbeScore(record, t) {
+  const status = String(record?.probe_status || 'unscored');
+  const score = Number(record?.probe_score) || 0;
+  const scoreMax = Number(record?.probe_score_max) || score;
+  const grade = String(record?.probe_grade || '').trim();
+  const checkedAt = Number(record?.probe_checked_at) || 0;
+  const hasScore = score > 0 || scoreMax > 0;
+  const scoreText = hasScore
+    ? scoreMax > score
+      ? `${score}/${scoreMax}`
+      : String(score)
+    : t(marketplaceProbeStatusLabels[status] || '未检测');
+  const colorMap = {
+    passed: 'green',
+    warning: 'orange',
+    failed: 'red',
+    running: 'blue',
+    pending: 'amber',
+    unscored: 'grey',
+  };
+
+  return (
+    <Space vertical spacing={2}>
+      <Tooltip content={t(marketplaceProbeStatusLabels[status] || status)}>
+        <Tag color={colorMap[status] || 'grey'} shape='circle'>
+          {scoreText}
+        </Tag>
+      </Tooltip>
+      {grade ? (
+        <Text type='tertiary' size='small'>
+          {grade}
+        </Text>
+      ) : null}
+      {checkedAt > 0 ? (
+        <Text type='tertiary' size='small'>
+          {formatFixedOrderExpiresAt(checkedAt)}
+        </Text>
+      ) : null}
+    </Space>
   );
 }
 
@@ -2563,6 +2620,10 @@ function OrdersTab() {
       ),
     },
     {
+      title: t('探针评分'),
+      render: (_, record) => renderMarketplaceProbeScore(record, t),
+    },
+    {
       title: t('成功率'),
       render: (_, record) => {
         const totalCount =
@@ -2952,6 +3013,11 @@ function PoolTab({
               `${Math.round((record.success_rate || 0) * 100)}%`,
           },
           {
+            title: t('探针评分'),
+            render: (_, record) =>
+              renderMarketplaceProbeScore(record.credential, t),
+          },
+          {
             title: t('负载'),
             render: (_, record) =>
               `${Math.round((record.load_ratio || 0) * 100)}%`,
@@ -3161,6 +3227,10 @@ function FixedOrdersTab({ buyerTokens, onBuyerTokensChange }) {
         columns={[
           { title: 'ID', dataIndex: 'id' },
           { title: t('托管Key'), dataIndex: 'credential_id' },
+          {
+            title: t('探针评分'),
+            render: (_, record) => renderMarketplaceProbeScore(record, t),
+          },
           {
             title: t('已买断金额'),
             render: (_, record) =>
@@ -4255,6 +4325,10 @@ function SellerTab() {
                 {renderMarketplaceResponseTime(text, t, record.health_status)}
               </div>
             ),
+          },
+          {
+            title: t('探针评分'),
+            render: (_, record) => renderMarketplaceProbeScore(record, t),
           },
           {
             title: t('操作'),
