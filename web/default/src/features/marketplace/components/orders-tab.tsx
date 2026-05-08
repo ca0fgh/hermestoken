@@ -51,6 +51,15 @@ const MARKETPLACE_FEE_DEFAULTS = {
   MarketplaceFeeRate: 0,
 }
 
+function formatOrderConcurrency(
+  item: MarketplaceOrderListItem,
+  t: (key: string) => string
+) {
+  const limit =
+    item.concurrency_limit > 0 ? item.concurrency_limit : t('Unlimited')
+  return `${item.current_concurrency}/${limit}`
+}
+
 export function OrdersTab({
   onFixedOrderCreated,
 }: {
@@ -280,7 +289,7 @@ function OrderCard({
           <StatPill label={t('Quota')} value={t(marketplaceQuotaText(item))} />
           <StatPill
             label={t('Concurrency')}
-            value={`${item.current_concurrency}/${item.concurrency_limit}`}
+            value={formatOrderConcurrency(item, t)}
           />
         </div>
         <Button className='w-full sm:w-auto' onClick={() => onBuy(item)}>

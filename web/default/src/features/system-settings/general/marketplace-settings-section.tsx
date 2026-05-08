@@ -42,7 +42,7 @@ const marketplaceSchema = z.object({
   MarketplaceMaxFixedOrderQuota: z.coerce.number().int().min(0),
   MarketplaceFixedOrderDefaultExpirySeconds: z.coerce.number().int().min(1),
   MarketplaceMaxSellerMultiplier: z.coerce.number().min(0.01),
-  MarketplaceMaxCredentialConcurrency: z.coerce.number().int().min(1),
+  MarketplaceMaxCredentialConcurrency: z.coerce.number().int().min(0),
 })
 
 type MarketplaceSettingsFormValues = z.infer<typeof marketplaceSchema>
@@ -109,8 +109,9 @@ const numberFields: MarketplaceNumberField[] = [
   {
     name: 'MarketplaceMaxCredentialConcurrency',
     label: 'Maximum credential concurrency',
-    description: 'Upper bound for seller routing concurrency',
-    min: 1,
+    description:
+      'Upper bound for seller routing concurrency; 0 disables the upper bound',
+    min: 0,
     step: 1,
   },
 ]

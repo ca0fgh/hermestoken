@@ -166,10 +166,7 @@ func isMarketplacePoolCredentialEligible(credential model.MarketplaceCredential,
 	if marketplaceCredentialCapacityStatus(credential, stats) != model.MarketplaceCapacityStatusAvailable {
 		return false
 	}
-	if credential.ConcurrencyLimit <= 0 {
-		return false
-	}
-	if stats.CurrentConcurrency >= credential.ConcurrencyLimit {
+	if credential.ConcurrencyLimit > 0 && stats.CurrentConcurrency >= credential.ConcurrencyLimit {
 		return false
 	}
 	if credential.QuotaMode == model.MarketplaceQuotaModeLimited && stats.QuotaUsed >= credential.QuotaLimit {
@@ -227,7 +224,7 @@ func marketplacePoolSuccessRate(stats model.MarketplaceCredentialStats) float64 
 
 func marketplacePoolLoadRatio(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats) float64 {
 	if credential.ConcurrencyLimit <= 0 {
-		return 1
+		return 0
 	}
 	return math.Min(1, float64(stats.CurrentConcurrency)/float64(credential.ConcurrencyLimit))
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/constant"
 	"github.com/ca0fgh/hermestoken/model"
 	tokenverifier "github.com/ca0fgh/hermestoken/service/token_verifier"
@@ -22,7 +23,7 @@ func TestRunMarketplaceCredentialProbeUsesFullClaudeCodeProbeForAnthropic(t *tes
 		Models:           []string{"claude-sonnet-4-6"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1,
-		ConcurrencyLimit: 1,
+		ConcurrencyLimit: common.GetPointer(1),
 	})
 	require.NoError(t, err)
 
@@ -77,7 +78,7 @@ func TestRunMarketplaceCredentialProbeStoresRedactedFailure(t *testing.T) {
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1,
-		ConcurrencyLimit: 1,
+		ConcurrencyLimit: common.GetPointer(1),
 	})
 	require.NoError(t, err)
 
@@ -118,7 +119,7 @@ func TestRequestSellerMarketplaceCredentialProbeMarksPending(t *testing.T) {
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1,
-		ConcurrencyLimit: 1,
+		ConcurrencyLimit: common.GetPointer(1),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
@@ -157,7 +158,7 @@ func TestRequestSellerMarketplaceCredentialProbeRejectsRunning(t *testing.T) {
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1,
-		ConcurrencyLimit: 1,
+		ConcurrencyLimit: common.GetPointer(1),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).

@@ -22,7 +22,7 @@ const Loading = ({ size = 'small' }) => {
     size === 'large' ? 'h-12 w-12 border-[5px]' : 'h-8 w-8 border-4';
 
   return (
-    <div className='fixed inset-0 w-screen h-screen flex items-center justify-center'>
+    <div className='min-h-[calc(100dvh-64px)] w-full flex items-center justify-center bg-white dark:bg-slate-950'>
       <div
         className={`animate-spin rounded-full border-slate-300 border-t-slate-900 dark:border-slate-700 dark:border-t-slate-100 ${dimensionClass}`}
       />

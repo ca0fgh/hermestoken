@@ -270,18 +270,28 @@ function marketplaceCredentialProxy(setting) {
 
 function normalizeMaxCredentialConcurrency(value) {
   const parsed = Math.floor(Number(value));
-  return Number.isFinite(parsed) && parsed > 0
+  return Number.isFinite(parsed) && parsed >= 0
     ? parsed
     : DEFAULT_MAX_CREDENTIAL_CONCURRENCY;
 }
 
 function clampCredentialConcurrency(value, maxCredentialConcurrency) {
   const parsed = Math.floor(Number(value));
-  if (!Number.isFinite(parsed) || parsed < 1) return 1;
-  return Math.min(
-    parsed,
-    normalizeMaxCredentialConcurrency(maxCredentialConcurrency),
-  );
+  if (!Number.isFinite(parsed) || parsed < 0) return 1;
+  const normalizedMax =
+    normalizeMaxCredentialConcurrency(maxCredentialConcurrency);
+  if (normalizedMax <= 0) return parsed;
+  return Math.min(parsed, normalizedMax);
+}
+
+function formatConcurrencyLimit(value, t) {
+  const numeric = Math.floor(Number(value) || 0);
+  return numeric > 0 ? String(numeric) : t('无限制');
+}
+
+function formatCurrentConcurrency(record, t) {
+  const current = Math.max(0, Math.floor(Number(record?.current_concurrency) || 0));
+  return `${current}/${formatConcurrencyLimit(record?.concurrency_limit, t)}`;
 }
 
 function compactParams(params) {
@@ -4217,7 +4227,7 @@ function SellerTab() {
       multiplier: String(record.multiplier || 1),
       concurrency_limit: String(
         clampCredentialConcurrency(
-          record.concurrency_limit || 1,
+          record.concurrency_limit,
           maxCredentialConcurrency,
         ),
       ),
@@ -4458,12 +4468,16 @@ function SellerTab() {
           <Col xs={24} md={8}>
             <MarketplaceField
               label={t('并发上限')}
-              help={t('此托管 Key 同时可承载的请求数')}
+              help={`${t('此托管 Key 同时可承载的请求数')}，${t('0 表示不限')}`}
             >
               <InputNumber
-                value={Number(form.concurrency_limit) || 1}
-                min={1}
-                max={maxCredentialConcurrency}
+                value={Number(form.concurrency_limit)}
+                min={0}
+                max={
+                  maxCredentialConcurrency > 0
+                    ? maxCredentialConcurrency
+                    : undefined
+                }
                 step={1}
                 onChange={(value) =>
                   patch({
@@ -4553,6 +4567,11 @@ function SellerTab() {
             render: (_, record) => formatTimeCondition(record),
           },
           { title: t('倍率'), dataIndex: 'multiplier', width: 72 },
+          {
+            title: t('并发'),
+            width: 92,
+            render: (_, record) => formatCurrentConcurrency(record, t),
+          },
           {
             title: t('状态'),
             width: 136,
