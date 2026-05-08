@@ -32,7 +32,7 @@ type MarketplaceCredentialCreateInput struct {
 	TimeMode           string
 	TimeLimitSeconds   int64
 	Multiplier         float64
-	ConcurrencyLimit   int
+	ConcurrencyLimit   *int
 }
 
 type MarketplaceCredentialUpdateInput struct {
@@ -110,7 +110,11 @@ func CreateSellerMarketplaceCredential(input MarketplaceCredentialCreateInput) (
 	if err != nil {
 		return nil, err
 	}
-	concurrencyLimit, err := normalizeMarketplaceConcurrency(input.ConcurrencyLimit)
+	concurrencyInput := 1
+	if input.ConcurrencyLimit != nil {
+		concurrencyInput = *input.ConcurrencyLimit
+	}
+	concurrencyLimit, err := normalizeMarketplaceConcurrency(concurrencyInput)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +176,12 @@ func CreateSellerMarketplaceCredential(input MarketplaceCredentialCreateInput) (
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(credential).Error; err != nil {
 			return err
+		}
+		if concurrencyLimit == 0 {
+			if err := tx.Model(credential).Update("concurrency_limit", 0).Error; err != nil {
+				return err
+			}
+			credential.ConcurrencyLimit = 0
 		}
 		stats := &model.MarketplaceCredentialStats{CredentialID: credential.ID}
 		if err := tx.Create(stats).Error; err != nil {
@@ -547,11 +557,8 @@ func normalizeMarketplaceMultiplier(multiplier float64) (float64, error) {
 }
 
 func normalizeMarketplaceConcurrency(concurrencyLimit int) (int, error) {
-	if concurrencyLimit == 0 {
-		concurrencyLimit = 1
-	}
-	if concurrencyLimit <= 0 {
-		return 0, errors.New("marketplace concurrency_limit must be positive")
+	if concurrencyLimit < 0 {
+		return 0, errors.New("marketplace concurrency_limit must be non-negative")
 	}
 	if setting.MarketplaceMaxCredentialConcurrency > 0 && concurrencyLimit > setting.MarketplaceMaxCredentialConcurrency {
 		return 0, fmt.Errorf("marketplace concurrency_limit exceeds max %d", setting.MarketplaceMaxCredentialConcurrency)
