@@ -46,6 +46,7 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
         self.assertIn("APP_VERSION: ${APP_VERSION:-}", compose_text)
+        self.assertIn("network: host", compose_text)
 
     def test_build_local_health_url_uses_port_from_env_file(self):
         self.assertEqual(
