@@ -12,6 +12,10 @@ const consoleAppPath = new URL(
   '../classic/src/bootstrap/consoleApp.jsx',
   import.meta.url,
 );
+const loadingPath = new URL(
+  '../classic/src/components/common/ui/Loading.jsx',
+  import.meta.url,
+);
 
 test('status fetch helper only fetches full status when bootstrap requires it', async () => {
   const { shouldFetchFullStatus } = await import(statusFetchModePath);
@@ -84,4 +88,11 @@ test('console bootstrap no longer aliases the public bootstrap renderer', async 
     source,
     /export function renderConsoleApp\(rootElement\)\s*\{\s*return renderPublicApp\(rootElement\);\s*\}/,
   );
+});
+
+test('route loading fallback keeps main content height so the footer stays below the fold', async () => {
+  const source = await readFile(loadingPath, 'utf8');
+
+  assert.match(source, /min-h-\[calc\(100dvh-64px\)\]/);
+  assert.doesNotMatch(source, /fixed inset-0/);
 });
