@@ -85,6 +85,18 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("application/javascript", config)
         self.assertIn("application/json", config)
 
+    def test_build_nginx_site_config_without_host_dist_proxies_all_routes_to_backend(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+        )
+
+        self.assertIn("location / {", config)
+        self.assertIn("proxy_pass http://127.0.0.1:3000;", config)
+        self.assertNotIn("root /opt/hermestoken/web/dist;", config)
+        self.assertNotIn("location ^~ /assets/ {", config)
+        self.assertNotIn("proxy_pass http://127.0.0.1:3000/__internal/public-home;", config)
+
     def test_build_nginx_site_config_can_skip_cloudflare_real_ip_block(self):
         config = prod.build_nginx_site_config(
             public_url="https://hermestoken.top",
@@ -589,7 +601,7 @@ class ProdLauncherTests(unittest.TestCase):
 
         deploy_cloudflare_static_assets.assert_called_once_with(
             worker_name="old-base-c009",
-            asset_dir=repo_root / "web" / "dist",
+            asset_dir=repo_root / "web" / "classic" / "dist",
             env=mock.ANY,
             output=stdout,
             repo_root=repo_root,
@@ -713,13 +725,8 @@ class ProdLauncherTests(unittest.TestCase):
             public_url="https://hermestoken.top",
             env_values={"APP_PORT": "3000"},
             output=stdout,
-            frontend_dist_path=prod.REPO_ROOT / "web" / "dist",
         )
-        verify_public_frontend_dist.assert_called_once_with(
-            public_url="https://hermestoken.top",
-            dist_dir=prod.REPO_ROOT / "web" / "dist",
-            output=stdout,
-        )
+        verify_public_frontend_dist.assert_not_called()
 
     @mock.patch(
         "prod.run_stack",
