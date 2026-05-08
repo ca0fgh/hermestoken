@@ -91,11 +91,12 @@ class ProdLauncherTests(unittest.TestCase):
             app_port="3000",
         )
 
+        self.assertIn("location = / {", config)
+        self.assertIn("proxy_pass http://127.0.0.1:3000/__internal/public-home;", config)
         self.assertIn("location / {", config)
         self.assertIn("proxy_pass http://127.0.0.1:3000;", config)
         self.assertNotIn("root /opt/hermestoken/web/dist;", config)
         self.assertNotIn("location ^~ /assets/ {", config)
-        self.assertNotIn("proxy_pass http://127.0.0.1:3000/__internal/public-home;", config)
 
     def test_build_nginx_site_config_can_skip_cloudflare_real_ip_block(self):
         config = prod.build_nginx_site_config(

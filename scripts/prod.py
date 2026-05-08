@@ -299,7 +299,10 @@ real_ip_recursive on;
     }}
 """
     else:
-        static_assets_block = f"""    location / {{
+        static_assets_block = f"""    location = / {{
+{public_home_proxy_directives}    }}
+
+    location / {{
 {backend_proxy_directives}    }}
 """
 
