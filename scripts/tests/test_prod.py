@@ -64,6 +64,13 @@ class ProdLauncherTests(unittest.TestCase):
             "http://127.0.0.1:3000/api/status",
         )
 
+    def test_resolve_postgres_database_name_uses_current_compose_default(self):
+        self.assertEqual(prod.resolve_postgres_database_name({}), "new-api")
+        self.assertEqual(
+            prod.resolve_postgres_database_name({"POSTGRES_DB": "custom-db"}),
+            "custom-db",
+        )
+
     def test_build_nginx_site_config_uses_domain_port_and_cloudflare_real_ip(self):
         config = prod.build_nginx_site_config(
             public_url="https://hermestoken.top",
@@ -630,6 +637,7 @@ class ProdLauncherTests(unittest.TestCase):
             local_health_url="http://127.0.0.1:3000/api/status",
             output=stdout,
             repo_root=repo_root,
+            env_values={"POSTGRES_DB": "new-api"},
         )
 
         self.assertEqual(run_command.call_count, 2)
@@ -650,6 +658,8 @@ class ProdLauncherTests(unittest.TestCase):
             ],
         )
         sql_command = sql_call.args[0]
+        self.assertIn("-d", sql_command)
+        self.assertEqual(sql_command[sql_command.index("-d") + 1], "new-api")
         self.assertIn("https://hermestoken.top", sql_command[-1])
         self.assertIn("hermestoken.top", sql_command[-1])
 
@@ -665,7 +675,7 @@ class ProdLauncherTests(unittest.TestCase):
                     "-f",
                     str(compose_file),
                     "restart",
-                    "hermestoken",
+                    "new-api",
                 ],
                 check=True,
                 stream_output=True,
@@ -723,6 +733,7 @@ class ProdLauncherTests(unittest.TestCase):
             cloudflare_worker_name="old-base-c009",
         )
         set_public_url.assert_called_once()
+        self.assertEqual(set_public_url.call_args.kwargs["env_values"], {"APP_PORT": "3000"})
         sync_nginx_site_config.assert_called_once_with(
             public_url="https://hermestoken.top",
             env_values={"APP_PORT": "3000"},

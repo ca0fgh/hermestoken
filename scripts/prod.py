@@ -33,6 +33,8 @@ from launcher_common import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROD_COMPOSE_FILE = "docker-compose.prod.yml"
 DEFAULT_PROD_ENV_FILE = ".env.production"
+DEFAULT_APP_SERVICE_NAME = "new-api"
+DEFAULT_POSTGRES_DATABASE = "new-api"
 DEFAULT_HEALTHCHECK_TIMEOUT_SECONDS = 60
 DEFAULT_HEALTHCHECK_INTERVAL_SECONDS = 1
 DEFAULT_PUBLIC_FRONTEND_TIMEOUT_SECONDS = 15
@@ -548,6 +550,11 @@ def _sql_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def resolve_postgres_database_name(env_values: Optional[Mapping[str, str]] = None) -> str:
+    candidate = ((env_values or {}).get("POSTGRES_DB") or "").strip()
+    return candidate or DEFAULT_POSTGRES_DATABASE
+
+
 def set_public_url(
     *,
     compose_file_path: Path,
@@ -556,9 +563,11 @@ def set_public_url(
     local_health_url: str,
     output: Optional[TextIO] = None,
     repo_root: Optional[Path] = None,
+    env_values: Optional[Mapping[str, str]] = None,
 ) -> None:
     stream = output or sys.stdout
     effective_repo_root = repo_root or REPO_ROOT
+    postgres_database = resolve_postgres_database_name(env_values)
 
     parsed = urlparse(public_url)
     if not parsed.scheme or not parsed.hostname:
@@ -594,7 +603,7 @@ def set_public_url(
             "-U",
             "root",
             "-d",
-            "hermestoken",
+            postgres_database,
             "-v",
             "ON_ERROR_STOP=1",
             "-c",
@@ -606,7 +615,7 @@ def set_public_url(
     )
 
     run_command(
-        _compose_command_prefix(compose_file_path, env_file_path) + ["restart", "hermestoken"],
+        _compose_command_prefix(compose_file_path, env_file_path) + ["restart", DEFAULT_APP_SERVICE_NAME],
         check=True,
         stream_output=True,
         cwd=effective_repo_root,
@@ -669,6 +678,7 @@ def main() -> int:
                 local_health_url=local_health_url,
                 output=sys.stdout,
                 repo_root=REPO_ROOT,
+                env_values=env_values,
             )
             sync_nginx_site_config(
                 public_url=args.domain,
