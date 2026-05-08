@@ -428,7 +428,7 @@ func TestListModelsReturnsMarketplaceTokenModels(t *testing.T) {
 		Models:           []string{"zz-marketplace-fixed", "zz-marketplace-shared"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1,
-		ConcurrencyLimit: 2,
+		ConcurrencyLimit: common.GetPointer(2),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
@@ -452,7 +452,7 @@ func TestListModelsReturnsMarketplaceTokenModels(t *testing.T) {
 		Models:           []string{"zz-marketplace-pool", "zz-marketplace-shared"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1,
-		ConcurrencyLimit: 2,
+		ConcurrencyLimit: common.GetPointer(2),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).

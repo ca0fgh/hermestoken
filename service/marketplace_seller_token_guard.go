@@ -54,8 +54,7 @@ func validateMarketplaceHostedTokenRoutes(token *model.Token) error {
 	if len(token.MarketplaceFixedOrderIDList()) > 0 {
 		return errors.New("token bound to marketplace fixed order cannot be hosted in marketplace")
 	}
-	enabledRoutes := model.MarketplaceRouteEnabledMap(token.MarketplaceRouteEnabledList())
-	if enabledRoutes[model.MarketplaceRoutePool] {
+	if token.MarketplacePoolFiltersEnabled {
 		return errors.New("token bound to marketplace order pool cannot be hosted in marketplace")
 	}
 	return nil

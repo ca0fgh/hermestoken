@@ -110,19 +110,25 @@ func seedMarketplaceBoundToken(t *testing.T, db *gorm.DB) {
 func seedDefaultGroupChannel(t *testing.T, db *gorm.DB, channelID int, modelName string) {
 	t.Helper()
 
+	seedGroupChannel(t, db, channelID, "default", modelName)
+}
+
+func seedGroupChannel(t *testing.T, db *gorm.DB, channelID int, groupName string, modelName string) {
+	t.Helper()
+
 	priority := int64(0)
 	require.NoError(t, db.Create(&model.Channel{
 		Id:       channelID,
 		Type:     constant.ChannelTypeOpenAI,
 		Key:      "normal-group-channel-key",
 		Status:   common.ChannelStatusEnabled,
-		Name:     "default group channel",
+		Name:     groupName + " group channel",
 		Models:   modelName,
-		Group:    "default",
+		Group:    groupName,
 		Priority: &priority,
 	}).Error)
 	require.NoError(t, db.Create(&model.Ability{
-		Group:     "default",
+		Group:     groupName,
 		Model:     modelName,
 		ChannelId: channelID,
 		Enabled:   true,
@@ -475,6 +481,56 @@ func TestDistributeUsesNormalGroupForBlankGroupMarketplaceTokenWhenModelMatches(
 		bytes.NewBufferString(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}]}`),
 	)
 	request.Header.Set("Authorization", "Bearer sk-marketplacetoken")
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+}
+
+func TestDistributeAllowsPlaygroundSubscriptionUpgradeGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupMarketplaceTokenAuthTestDB(t)
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"standard":1,"cc-opus-福利渠道":1}`))
+	require.NoError(t, db.Create(&model.User{
+		Id:       9,
+		Username: "playground-subscription-buyer",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		Quota:    10000,
+	}).Error)
+	require.NoError(t, db.Create(&model.UserSubscription{
+		UserId:        9,
+		PlanId:        0,
+		AmountTotal:   10000,
+		AmountUsed:    0,
+		StartTime:     common.GetTimestamp() - 60,
+		EndTime:       common.GetTimestamp() + 3600,
+		Status:        "active",
+		Source:        "order",
+		UpgradeGroup:  "cc-opus-福利渠道",
+		PrevUserGroup: "default",
+	}).Error)
+	seedGroupChannel(t, db, 9, "cc-opus-福利渠道", "claude-opus-4-7")
+
+	router := gin.New()
+	router.POST("/pg/chat/completions", func(c *gin.Context) {
+		common.SetContextKey(c, constant.ContextKeyUserId, 9)
+		common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		c.Next()
+	}, Distribute(), func(c *gin.Context) {
+		require.Equal(t, "cc-opus-福利渠道", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, 9, common.GetContextKeyInt(c, constant.ContextKeyChannelId))
+		c.Status(http.StatusNoContent)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/pg/chat/completions",
+		bytes.NewBufferString(`{"model":"claude-opus-4-7","group":"cc-opus-福利渠道"}`),
+	)
 	request.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, request)
 

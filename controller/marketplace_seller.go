@@ -34,7 +34,7 @@ type marketplaceCredentialCreateRequest struct {
 	TimeMode           string   `json:"time_mode"`
 	TimeLimitSeconds   int64    `json:"time_limit_seconds"`
 	Multiplier         float64  `json:"multiplier"`
-	ConcurrencyLimit   int      `json:"concurrency_limit"`
+	ConcurrencyLimit   *int     `json:"concurrency_limit"`
 }
 
 type marketplaceCredentialUpdateRequest struct {

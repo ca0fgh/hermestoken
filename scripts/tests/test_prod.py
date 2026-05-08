@@ -46,6 +46,7 @@ class ProdLauncherTests(unittest.TestCase):
 
         self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
         self.assertIn("APP_VERSION: ${APP_VERSION:-}", compose_text)
+        self.assertIn("network: host", compose_text)
 
     def test_build_local_health_url_uses_port_from_env_file(self):
         self.assertEqual(
@@ -61,6 +62,13 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertEqual(
             prod.build_local_health_url({"APP_PORT": "not-a-number"}),
             "http://127.0.0.1:3000/api/status",
+        )
+
+    def test_resolve_postgres_database_name_uses_current_compose_default(self):
+        self.assertEqual(prod.resolve_postgres_database_name({}), "new-api")
+        self.assertEqual(
+            prod.resolve_postgres_database_name({"POSTGRES_DB": "custom-db"}),
+            "custom-db",
         )
 
     def test_build_nginx_site_config_uses_domain_port_and_cloudflare_real_ip(self):
@@ -84,6 +92,19 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("gzip_comp_level 5;", config)
         self.assertIn("application/javascript", config)
         self.assertIn("application/json", config)
+
+    def test_build_nginx_site_config_without_host_dist_proxies_all_routes_to_backend(self):
+        config = prod.build_nginx_site_config(
+            public_url="https://hermestoken.top",
+            app_port="3000",
+        )
+
+        self.assertIn("location = / {", config)
+        self.assertIn("proxy_pass http://127.0.0.1:3000/__internal/public-home;", config)
+        self.assertIn("location / {", config)
+        self.assertIn("proxy_pass http://127.0.0.1:3000;", config)
+        self.assertNotIn("root /opt/hermestoken/web/dist;", config)
+        self.assertNotIn("location ^~ /assets/ {", config)
 
     def test_build_nginx_site_config_can_skip_cloudflare_real_ip_block(self):
         config = prod.build_nginx_site_config(
@@ -589,7 +610,7 @@ class ProdLauncherTests(unittest.TestCase):
 
         deploy_cloudflare_static_assets.assert_called_once_with(
             worker_name="old-base-c009",
-            asset_dir=repo_root / "web" / "dist",
+            asset_dir=repo_root / "web" / "classic" / "dist",
             env=mock.ANY,
             output=stdout,
             repo_root=repo_root,
@@ -616,6 +637,7 @@ class ProdLauncherTests(unittest.TestCase):
             local_health_url="http://127.0.0.1:3000/api/status",
             output=stdout,
             repo_root=repo_root,
+            env_values={"POSTGRES_DB": "new-api"},
         )
 
         self.assertEqual(run_command.call_count, 2)
@@ -636,6 +658,8 @@ class ProdLauncherTests(unittest.TestCase):
             ],
         )
         sql_command = sql_call.args[0]
+        self.assertIn("-d", sql_command)
+        self.assertEqual(sql_command[sql_command.index("-d") + 1], "new-api")
         self.assertIn("https://hermestoken.top", sql_command[-1])
         self.assertIn("hermestoken.top", sql_command[-1])
 
@@ -651,7 +675,7 @@ class ProdLauncherTests(unittest.TestCase):
                     "-f",
                     str(compose_file),
                     "restart",
-                    "hermestoken",
+                    "new-api",
                 ],
                 check=True,
                 stream_output=True,
@@ -709,17 +733,13 @@ class ProdLauncherTests(unittest.TestCase):
             cloudflare_worker_name="old-base-c009",
         )
         set_public_url.assert_called_once()
+        self.assertEqual(set_public_url.call_args.kwargs["env_values"], {"APP_PORT": "3000"})
         sync_nginx_site_config.assert_called_once_with(
             public_url="https://hermestoken.top",
             env_values={"APP_PORT": "3000"},
             output=stdout,
-            frontend_dist_path=prod.REPO_ROOT / "web" / "dist",
         )
-        verify_public_frontend_dist.assert_called_once_with(
-            public_url="https://hermestoken.top",
-            dist_dir=prod.REPO_ROOT / "web" / "dist",
-            output=stdout,
-        )
+        verify_public_frontend_dist.assert_not_called()
 
     @mock.patch(
         "prod.run_stack",

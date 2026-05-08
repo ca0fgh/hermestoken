@@ -304,6 +304,12 @@ class LauncherCommonTests(unittest.TestCase):
             repo_root = Path(tmpdir)
             web_dir = repo_root / "web"
             web_dir.mkdir()
+            default_dir = web_dir / "default"
+            classic_dir = web_dir / "classic"
+            default_dir.mkdir()
+            classic_dir.mkdir()
+            (default_dir / "package.json").write_text("{}", encoding="utf-8")
+            (classic_dir / "package.json").write_text("{}", encoding="utf-8")
             (repo_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
             stdout = io.StringIO()
 
@@ -316,14 +322,33 @@ class LauncherCommonTests(unittest.TestCase):
                     ["bun", "install"],
                     check=True,
                     stream_output=True,
-                    cwd=web_dir,
+                    cwd=default_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
                     ["bun", "run", "build"],
                     check=True,
                     stream_output=True,
-                    cwd=web_dir,
+                    cwd=default_dir,
+                    env={
+                        "DISABLE_ESLINT_PLUGIN": "true",
+                        "NODE_OPTIONS": "--max-old-space-size=4096",
+                        "VITE_REACT_APP_VERSION": "1.2.3",
+                    },
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "install"],
+                    check=True,
+                    stream_output=True,
+                    cwd=classic_dir,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "run", "build"],
+                    check=True,
+                    stream_output=True,
+                    cwd=classic_dir,
                     env={
                         "DISABLE_ESLINT_PLUGIN": "true",
                         "NODE_OPTIONS": "--max-old-space-size=4096",
@@ -333,7 +358,12 @@ class LauncherCommonTests(unittest.TestCase):
                 ),
             ]
         )
-        validate_frontend_dist_integrity.assert_called_once_with(web_dir / "dist")
+        validate_frontend_dist_integrity.assert_has_calls(
+            [
+                mock.call(default_dir / "dist"),
+                mock.call(classic_dir / "dist"),
+            ]
+        )
         self.assertIn("WEB_DIST_STRATEGY=prebuilt", stdout.getvalue())
 
     @mock.patch.dict(os.environ, {}, clear=True)
@@ -350,6 +380,12 @@ class LauncherCommonTests(unittest.TestCase):
             repo_root = Path(tmpdir)
             web_dir = repo_root / "web"
             web_dir.mkdir()
+            default_dir = web_dir / "default"
+            classic_dir = web_dir / "classic"
+            default_dir.mkdir()
+            classic_dir.mkdir()
+            (default_dir / "package.json").write_text("{}", encoding="utf-8")
+            (classic_dir / "package.json").write_text("{}", encoding="utf-8")
             (repo_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
             stdout = io.StringIO()
 
@@ -366,14 +402,34 @@ class LauncherCommonTests(unittest.TestCase):
                     ["bun", "install"],
                     check=True,
                     stream_output=True,
-                    cwd=web_dir,
+                    cwd=default_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
                     ["bun", "run", "build"],
                     check=True,
                     stream_output=True,
-                    cwd=web_dir,
+                    cwd=default_dir,
+                    env={
+                        "DISABLE_ESLINT_PLUGIN": "true",
+                        "NODE_OPTIONS": "--max-old-space-size=4096",
+                        "VITE_ASSET_BASE_URL": "https://static.hermestoken.top/",
+                        "VITE_REACT_APP_VERSION": "1.2.3",
+                    },
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "install"],
+                    check=True,
+                    stream_output=True,
+                    cwd=classic_dir,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "run", "build"],
+                    check=True,
+                    stream_output=True,
+                    cwd=classic_dir,
                     env={
                         "DISABLE_ESLINT_PLUGIN": "true",
                         "NODE_OPTIONS": "--max-old-space-size=4096",
@@ -384,7 +440,12 @@ class LauncherCommonTests(unittest.TestCase):
                 ),
             ]
         )
-        validate_frontend_dist_integrity.assert_called_once_with(web_dir / "dist")
+        validate_frontend_dist_integrity.assert_has_calls(
+            [
+                mock.call(default_dir / "dist"),
+                mock.call(classic_dir / "dist"),
+            ]
+        )
         self.assertIn("Asset base URL", stdout.getvalue())
 
     @mock.patch.dict(os.environ, {}, clear=True)
@@ -401,6 +462,12 @@ class LauncherCommonTests(unittest.TestCase):
             repo_root = Path(tmpdir)
             web_dir = repo_root / "web"
             web_dir.mkdir()
+            default_dir = web_dir / "default"
+            classic_dir = web_dir / "classic"
+            default_dir.mkdir()
+            classic_dir.mkdir()
+            (default_dir / "package.json").write_text("{}", encoding="utf-8")
+            (classic_dir / "package.json").write_text("{}", encoding="utf-8")
             (repo_root / "VERSION").write_text("", encoding="utf-8")
             stdout = io.StringIO()
             run_command.side_effect = [
@@ -410,6 +477,8 @@ class LauncherCommonTests(unittest.TestCase):
                     stdout="e3f7bef8\n",
                     stderr="",
                 ),
+                subprocess.CompletedProcess(args=["bun", "install"], returncode=0, stdout="", stderr=""),
+                subprocess.CompletedProcess(args=["bun", "run", "build"], returncode=0, stdout="", stderr=""),
                 subprocess.CompletedProcess(args=["bun", "install"], returncode=0, stdout="", stderr=""),
                 subprocess.CompletedProcess(args=["bun", "run", "build"], returncode=0, stdout="", stderr=""),
             ]
@@ -429,14 +498,33 @@ class LauncherCommonTests(unittest.TestCase):
                     ["bun", "install"],
                     check=True,
                     stream_output=True,
-                    cwd=web_dir,
+                    cwd=default_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
                     ["bun", "run", "build"],
                     check=True,
                     stream_output=True,
-                    cwd=web_dir,
+                    cwd=default_dir,
+                    env={
+                        "DISABLE_ESLINT_PLUGIN": "true",
+                        "NODE_OPTIONS": "--max-old-space-size=4096",
+                        "VITE_REACT_APP_VERSION": "e3f7bef8",
+                    },
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "install"],
+                    check=True,
+                    stream_output=True,
+                    cwd=classic_dir,
+                    stdout_stream=stdout,
+                ),
+                mock.call(
+                    ["bun", "run", "build"],
+                    check=True,
+                    stream_output=True,
+                    cwd=classic_dir,
                     env={
                         "DISABLE_ESLINT_PLUGIN": "true",
                         "NODE_OPTIONS": "--max-old-space-size=4096",
@@ -446,8 +534,36 @@ class LauncherCommonTests(unittest.TestCase):
                 ),
             ]
         )
-        validate_frontend_dist_integrity.assert_called_once_with(web_dir / "dist")
+        validate_frontend_dist_integrity.assert_has_calls(
+            [
+                mock.call(default_dir / "dist"),
+                mock.call(classic_dir / "dist"),
+            ]
+        )
         self.assertIn("git describe fallback", stdout.getvalue())
+
+    @mock.patch.dict(os.environ, {}, clear=True)
+    @mock.patch("launcher_common.require_executable")
+    def test_prepare_frontend_dist_for_docker_packaging_requires_dual_frontend_packages(
+        self,
+        require_executable,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            web_dir = repo_root / "web"
+            (web_dir / "default").mkdir(parents=True)
+            (web_dir / "classic").mkdir()
+            (web_dir / "default" / "package.json").write_text("{}", encoding="utf-8")
+            (repo_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
+
+            with self.assertRaises(launcher_common.LauncherError) as ctx:
+                launcher_common.prepare_frontend_dist_for_docker_packaging(
+                    output=io.StringIO(),
+                    repo_root=repo_root,
+                )
+
+        require_executable.assert_called_once_with("bun", install_hint=mock.ANY)
+        self.assertIn("web/classic", str(ctx.exception))
 
     def test_validate_frontend_dist_integrity_accepts_index_references_that_exist(self):
         with tempfile.TemporaryDirectory() as tmpdir:

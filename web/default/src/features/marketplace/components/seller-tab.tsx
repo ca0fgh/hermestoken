@@ -82,15 +82,28 @@ const MARKETPLACE_LIMIT_DEFAULTS = {
 
 function normalizeMarketplaceMaxConcurrency(value: number) {
   const parsed = Math.floor(Number(value))
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1
+  return Number.isFinite(parsed) && parsed >= 0
+    ? parsed
+    : MARKETPLACE_LIMIT_DEFAULTS.MarketplaceMaxCredentialConcurrency
 }
 
 function clampMarketplaceConcurrency(value: number, maxConcurrency: number) {
   const parsed = Math.floor(Number(value))
-  if (!Number.isFinite(parsed) || parsed < 1) {
+  if (!Number.isFinite(parsed) || parsed < 0) {
     return 1
   }
-  return Math.min(parsed, normalizeMarketplaceMaxConcurrency(maxConcurrency))
+  const normalizedMax = normalizeMarketplaceMaxConcurrency(maxConcurrency)
+  if (normalizedMax <= 0) {
+    return parsed
+  }
+  return Math.min(parsed, normalizedMax)
+}
+
+function formatMarketplaceConcurrencyLimit(
+  concurrencyLimit: number,
+  t: (key: string) => string
+) {
+  return concurrencyLimit > 0 ? concurrencyLimit : t('Unlimited')
 }
 
 export function SellerTab() {
@@ -229,7 +242,9 @@ export function SellerTab() {
       void queryClient.invalidateQueries({ queryKey: ['marketplace'] })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : t('Detection failed'))
+      toast.error(
+        error instanceof Error ? error.message : t('Detection failed')
+      )
     },
   })
 
@@ -330,7 +345,8 @@ export function SellerTab() {
             }
             onProbe={() => probeMutation.mutate(credential.id)}
             probePending={
-              probeMutation.isPending && probeMutation.variables === credential.id
+              probeMutation.isPending &&
+              probeMutation.variables === credential.id
             }
           />
         ))}
@@ -424,7 +440,10 @@ function CredentialPanel({
           />
           <StatPill
             label={t('Concurrency')}
-            value={credential.concurrency_limit}
+            value={formatMarketplaceConcurrencyLimit(
+              credential.concurrency_limit,
+              t
+            )}
           />
           <StatPill label={t('Probe score')} value={probeScore} />
         </div>
@@ -739,19 +758,22 @@ function CredentialDialog({
             <Label>{t('Concurrency limit')}</Label>
             <Input
               type='number'
-              min='1'
-              max={maxConcurrency}
+              min='0'
+              max={maxConcurrency > 0 ? maxConcurrency : undefined}
               value={values.concurrency_limit}
               onChange={(event) =>
                 setField(
                   'concurrency_limit',
                   clampMarketplaceConcurrency(
-                    Number(event.target.value),
+                    event.target.value === '' ? 1 : Number(event.target.value),
                     maxConcurrency
                   )
                 )
               }
             />
+            <p className='text-muted-foreground text-xs'>
+              {t('0 means unlimited')}
+            </p>
           </div>
           <div className='space-y-1.5 sm:col-span-2'>
             <Label>{t('Pricing preview')}</Label>
