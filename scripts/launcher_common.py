@@ -41,8 +41,9 @@ DEFAULT_CA_BUNDLE_CANDIDATES = (
 DEFAULT_WEB_DIST_STRATEGY = "prebuilt"
 DEFAULT_WEB_BUILD_NODE_OPTIONS = "--max-old-space-size=4096"
 DEFAULT_ASSET_BASE_URL = "/"
+FRONTEND_APP_DIR_NAMES = ("default", "classic")
 FRONTEND_DIST_ASSET_REFERENCE_PATTERN = re.compile(
-    r"""(?:src|href)=["'](?:(?:https?:)?//[^"']+)?(/assets/[^"']+)["']"""
+    r"""(?:src|href)=["'](?:(?:https?:)?//[^"']+)?(/(?:assets|static)/[^"']+)["']"""
 )
 
 
@@ -348,7 +349,7 @@ def validate_frontend_dist_integrity(dist_dir: Path) -> None:
         raise LauncherError(
             _build_actionable_message(
                 f"Frontend dist integrity check failed: missing index.html at {index_path}.",
-                "Rebuild the frontend so `web/dist/index.html` exists before packaging.",
+                f"Rebuild the frontend so `{dist_dir}/index.html` exists before packaging.",
             )
         )
 
@@ -366,7 +367,7 @@ def validate_frontend_dist_integrity(dist_dir: Path) -> None:
             _build_actionable_message(
                 "Frontend dist integrity check failed: "
                 f"`index.html` references missing assets: {missing_asset_list}.",
-                "Rebuild the frontend so `web/dist/index.html` and `web/dist/assets` stay in sync before packaging.",
+                f"Rebuild the frontend so `{dist_dir}/index.html` and referenced assets stay in sync before packaging.",
             )
         )
 
@@ -382,7 +383,7 @@ def prepare_frontend_dist_for_docker_packaging(
 
     require_executable(
         "bun",
-        install_hint="Install Bun and verify `bun --version` succeeds. These launcher scripts build the frontend on the host so Docker only packages `web/dist` and avoids Docker-side Vite OOM.",
+        install_hint="Install Bun and verify `bun --version` succeeds. These launcher scripts build frontend apps on the host so Docker only packages prebuilt dist directories and avoids Docker-side Vite OOM.",
     )
 
     web_dir = repo_root / "web"
@@ -393,6 +394,20 @@ def prepare_frontend_dist_for_docker_packaging(
                 "Run the launcher from the repository root.",
             )
         )
+    frontend_app_dirs = tuple(web_dir / app_name for app_name in FRONTEND_APP_DIR_NAMES)
+    missing_package_json = [
+        app_dir.relative_to(repo_root).as_posix()
+        for app_dir in frontend_app_dirs
+        if not (app_dir / "package.json").is_file()
+    ]
+    if missing_package_json:
+        raise LauncherError(
+            _build_actionable_message(
+                "Missing frontend package.json for app directories: "
+                + ", ".join(missing_package_json),
+                "Restore the dual frontend app structure under `web/default` and `web/classic` before packaging.",
+            )
+        )
 
     version_file = repo_root / "VERSION"
     raw_version = version_file.read_text(encoding="utf-8").strip() if version_file.is_file() else ""
@@ -401,13 +416,6 @@ def prepare_frontend_dist_for_docker_packaging(
         output.write(f"[info] VERSION file empty; using git describe fallback: {version}\n")
 
     output.write(f"[info] Building frontend on host before docker packaging (WEB_DIST_STRATEGY={strategy})...\n")
-    run_command(
-        ["bun", "install"],
-        check=True,
-        stream_output=True,
-        cwd=web_dir,
-        stdout_stream=output,
-    )
 
     build_env = {
         "DISABLE_ESLINT_PLUGIN": "true",
@@ -421,16 +429,28 @@ def prepare_frontend_dist_for_docker_packaging(
     if "NODE_OPTIONS" not in candidate_env:
         build_env["NODE_OPTIONS"] = DEFAULT_WEB_BUILD_NODE_OPTIONS
 
-    run_command(
-        ["bun", "run", "build"],
-        check=True,
-        stream_output=True,
-        cwd=web_dir,
-        env=build_env,
-        stdout_stream=output,
-    )
-    validate_frontend_dist_integrity(web_dir / "dist")
-    output.write("[ok] Frontend dist integrity verified\n")
+    for app_dir in frontend_app_dirs:
+        output.write(f"[info] Building frontend app: {app_dir.relative_to(repo_root).as_posix()}\n")
+        run_command(
+            ["bun", "install"],
+            check=True,
+            stream_output=True,
+            cwd=app_dir,
+            stdout_stream=output,
+        )
+        run_command(
+            ["bun", "run", "build"],
+            check=True,
+            stream_output=True,
+            cwd=app_dir,
+            env=build_env,
+            stdout_stream=output,
+        )
+        validate_frontend_dist_integrity(app_dir / "dist")
+        output.write(
+            f"[ok] Frontend dist integrity verified: {app_dir.relative_to(repo_root).as_posix()}/dist\n"
+        )
+
     output.write("[ok] Host frontend build ready\n")
 
 

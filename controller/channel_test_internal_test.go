@@ -6,6 +6,7 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/pkg/billingexpr"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	"github.com/ca0fgh/hermestoken/types"
@@ -68,4 +69,21 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	require.Equal(t, "tiered_expr", other["billing_mode"])
 	require.Equal(t, "base", other["matched_tier"])
 	require.NotEmpty(t, other["expr_b64"])
+}
+
+func TestResolveChannelTestModelRequiresConfiguredModel(t *testing.T) {
+	modelName, err := resolveChannelTestModel(&model.Channel{}, "")
+
+	require.Error(t, err)
+	require.Empty(t, modelName)
+	require.Contains(t, err.Error(), "请先指定测试模型")
+}
+
+func TestResolveChannelTestModelUsesFirstConfiguredModel(t *testing.T) {
+	modelName, err := resolveChannelTestModel(&model.Channel{
+		Models: "claude-opus-4-7,claude-opus-4-6",
+	}, "")
+
+	require.NoError(t, err)
+	require.Equal(t, "claude-opus-4-7", modelName)
 }

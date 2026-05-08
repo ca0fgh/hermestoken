@@ -69,7 +69,7 @@ func newMarketplacePoolRelayFixture(t *testing.T) marketplacePoolRelayFixture {
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1.25,
-		ConcurrencyLimit: 2,
+		ConcurrencyLimit: common.GetPointer(2),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
@@ -99,7 +99,7 @@ func TestPrepareMarketplacePoolRelaySelectsEligibleCredentialAndIncrementsConcur
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1.0,
-		ConcurrencyLimit: 1,
+		ConcurrencyLimit: common.GetPointer(1),
 	})
 	require.NoError(t, err)
 	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).

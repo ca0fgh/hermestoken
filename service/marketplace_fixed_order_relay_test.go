@@ -163,7 +163,7 @@ func newMarketplaceFixedOrderRelayFixtureWithFee(t *testing.T, purchasedQuota in
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1.25,
-		ConcurrencyLimit: 2,
+		ConcurrencyLimit: common.GetPointer(2),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
@@ -467,7 +467,7 @@ func TestMarketplaceFixedOrderPurchaseRejectsOwnCredential(t *testing.T) {
 		Models:           []string{"gpt-4o-mini"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1.25,
-		ConcurrencyLimit: 2,
+		ConcurrencyLimit: common.GetPointer(2),
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
@@ -899,7 +899,7 @@ func TestSelectBuyerMarketplaceFixedOrderForTokenBindingsChoosesSupportedModel(t
 		Models:           []string{"gpt-4o"},
 		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
 		Multiplier:       1.5,
-		ConcurrencyLimit: 2,
+		ConcurrencyLimit: common.GetPointer(2),
 	})
 	require.NoError(t, err)
 	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).

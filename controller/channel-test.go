@@ -107,22 +107,22 @@ func channelTestEndpointTypesContain(channel *model.Channel, modelName, endpoint
 	return false
 }
 
-func resolveChannelTestModel(channel *model.Channel, testModel string) string {
+func resolveChannelTestModel(channel *model.Channel, testModel string) (string, error) {
 	testModel = strings.TrimSpace(testModel)
 	if testModel != "" {
-		return testModel
+		return testModel, nil
 	}
 	if channel == nil {
-		return "gpt-4o-mini"
+		return "", errors.New("请输入测试模型")
 	}
 	if channel.TestModel != nil && strings.TrimSpace(*channel.TestModel) != "" {
-		return strings.TrimSpace(*channel.TestModel)
+		return strings.TrimSpace(*channel.TestModel), nil
 	}
 	models := channel.GetModels()
 	if len(models) > 0 && strings.TrimSpace(models[0]) != "" {
-		return strings.TrimSpace(models[0])
+		return strings.TrimSpace(models[0]), nil
 	}
-	return "gpt-4o-mini"
+	return "", errors.New("请先指定测试模型或为渠道配置模型列表")
 }
 
 func orderChannelTestGroups(groups []string) []string {
@@ -231,7 +231,11 @@ func setChannelTestLogContext(c *gin.Context, testGroups []string, logGroup stri
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
 	tik := time.Now()
-	testModel = resolveChannelTestModel(channel, testModel)
+	var resolveErr error
+	testModel, resolveErr = resolveChannelTestModel(channel, testModel)
+	if resolveErr != nil {
+		return testResult{localErr: resolveErr}
+	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
 	isOpenAIVideoTest := endpointType == string(constant.EndpointTypeOpenAIVideo) ||

@@ -402,6 +402,33 @@ func TestSellerCreateMarketplaceCredentialAllowsHostedNormalGroupToken(t *testin
 	assert.NotEmpty(t, credential.KeyFingerprint)
 }
 
+func TestSellerCreateMarketplaceCredentialAllowsHostedDefaultRouteToken(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       23,
+		Username: "default-route-token-owner",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		Quota:    10000,
+		AffCode:  "default_route_token_owner",
+	}).Error)
+	require.NoError(t, db.Create(&model.Token{
+		Id:          23,
+		UserId:      23,
+		Key:         "hosteddefaultroutetoken",
+		Status:      common.TokenStatusEnabled,
+		ExpiredTime: -1,
+		RemainQuota: 10000,
+		Group:       "default",
+	}).Error)
+
+	credential := createMarketplaceCredentialViaController(t, 23, "sk-hosteddefaultroutetoken")
+
+	assert.Equal(t, 23, credential.SellerUserID)
+	assert.NotEmpty(t, credential.KeyFingerprint)
+}
+
 func TestSellerUpdateMarketplaceCredentialRejectsHostedPoolToken(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
@@ -415,14 +442,18 @@ func TestSellerUpdateMarketplaceCredentialRejectsHostedPoolToken(t *testing.T) {
 		AffCode:  "pool_token_owner",
 	}).Error)
 	require.NoError(t, db.Create(&model.Token{
-		Id:                      22,
-		UserId:                  22,
-		Key:                     "hostedpooltoken",
-		Status:                  common.TokenStatusEnabled,
-		ExpiredTime:             -1,
-		RemainQuota:             10000,
-		Group:                   "default",
-		MarketplaceRouteEnabled: model.NewMarketplaceRouteEnabled([]string{model.MarketplaceRoutePool}),
+		Id:                            22,
+		UserId:                        22,
+		Key:                           "hostedpooltoken",
+		Status:                        common.TokenStatusEnabled,
+		ExpiredTime:                   -1,
+		RemainQuota:                   10000,
+		Group:                         "default",
+		MarketplaceRouteEnabled:       model.NewMarketplaceRouteEnabled([]string{model.MarketplaceRoutePool}),
+		MarketplacePoolFiltersEnabled: true,
+		MarketplacePoolFilters: model.NewMarketplacePoolFilters(model.MarketplacePoolFilterValues{
+			Model: "gpt-4o-mini",
+		}),
 	}).Error)
 
 	body := map[string]any{
