@@ -35,12 +35,14 @@ type marketplaceOrderListItemResponse struct {
 	HealthStatus          string  `json:"health_status"`
 	CapacityStatus        string  `json:"capacity_status"`
 	RouteStatus           string  `json:"route_status"`
+	RouteReason           string  `json:"route_reason"`
 	RiskStatus            string  `json:"risk_status"`
 	ProbeStatus           string  `json:"probe_status"`
 	ProbeScore            int     `json:"probe_score"`
 	ProbeScoreMax         int     `json:"probe_score_max"`
 	ProbeGrade            string  `json:"probe_grade"`
 	ProbeCheckedAt        int64   `json:"probe_checked_at"`
+	CurrentConcurrency    int     `json:"current_concurrency"`
 	FixedOrderSoldQuota   int64   `json:"fixed_order_sold_quota"`
 	ActiveFixedOrderCount int64   `json:"active_fixed_order_count"`
 	PricePreview          []struct {
@@ -238,6 +240,7 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	eligible := createHealthyMarketplaceCredential(t, db, 10, "test-key-eligible")
 	untested := createMarketplaceCredentialViaController(t, 11, "test-key-untested")
 	own := createMarketplaceCredentialViaController(t, buyerID, "test-key-own")
+	zeroProbe := createHealthyMarketplaceCredential(t, db, 13, "test-key-zero-probe")
 	disabled := createHealthyMarketplaceCredential(t, db, 12, "test-key-disabled")
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", disabled.ID).
@@ -250,6 +253,14 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 			"probe_score_max":  93,
 			"probe_grade":      "B",
 			"probe_checked_at": int64(1710000010),
+		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", zeroProbe.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusWarning,
+			"probe_score":     0,
+			"probe_score_max": 100,
+			"probe_grade":     "Fail",
 		}).Error)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/marketplace/orders?model=gpt-4o-mini&quota_mode=unlimited", nil, buyerID)
@@ -266,11 +277,12 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	require.NoError(t, json.Unmarshal(response.Data, &page))
 	var items []marketplaceOrderListItemResponse
 	require.NoError(t, json.Unmarshal(page.Items, &items))
-	require.Len(t, items, 3)
+	require.Len(t, items, 4)
 	byID := marketplaceOrderListItemsByID(items)
 	require.Contains(t, byID, eligible.ID)
 	require.Contains(t, byID, untested.ID)
 	require.Contains(t, byID, own.ID)
+	require.Contains(t, byID, zeroProbe.ID)
 	assert.Equal(t, 10, byID[eligible.ID].SellerUserID)
 	assert.Equal(t, buyerID, byID[own.ID].SellerUserID)
 	assert.Equal(t, constant.ChannelTypeOpenAI, byID[eligible.ID].VendorType)
@@ -278,8 +290,12 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	assert.Equal(t, model.MarketplaceHealthStatusUntested, byID[untested.ID].HealthStatus)
 	assert.Equal(t, model.MarketplaceHealthStatusUntested, byID[own.ID].HealthStatus)
 	assert.Equal(t, model.MarketplaceRouteStatusAvailable, byID[eligible.ID].RouteStatus)
-	assert.Equal(t, model.MarketplaceRouteStatusAvailable, byID[untested.ID].RouteStatus)
-	assert.Equal(t, model.MarketplaceRouteStatusAvailable, byID[own.ID].RouteStatus)
+	assert.Equal(t, model.MarketplaceRouteStatusFailed, byID[untested.ID].RouteStatus)
+	assert.Equal(t, model.MarketplaceRouteReasonProbeInProgress, byID[untested.ID].RouteReason)
+	assert.Equal(t, model.MarketplaceRouteStatusFailed, byID[own.ID].RouteStatus)
+	assert.Equal(t, model.MarketplaceRouteReasonProbeInProgress, byID[own.ID].RouteReason)
+	assert.Equal(t, model.MarketplaceRouteStatusFailed, byID[zeroProbe.ID].RouteStatus)
+	assert.Equal(t, model.MarketplaceRouteReasonProbeScoreZero, byID[zeroProbe.ID].RouteReason)
 	assert.Equal(t, model.MarketplaceTimeModeLimited, byID[eligible.ID].TimeMode)
 	assert.Equal(t, int64(3600), byID[eligible.ID].TimeLimitSeconds)
 	assert.Equal(t, model.MarketplaceProbeStatusPassed, byID[eligible.ID].ProbeStatus)
@@ -443,6 +459,13 @@ func TestBuyerMarketplaceOrderListExcludesStatsExhaustedLimitedCredentials(t *te
 	exhausted := createHealthyMarketplaceCredential(t, db, 11, "stats-exhausted")
 	staleAvailable := createHealthyMarketplaceCredential(t, db, 12, "stats-stale-available")
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id IN ?", []int{available.ID, staleAvailable.ID}).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 100,
+		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", exhausted.ID).
 		Updates(map[string]any{
 			"quota_mode":      model.MarketplaceQuotaModeLimited,
@@ -537,8 +560,8 @@ func TestBuyerMarketplaceFixedOrderPurchaseEscrowsQuotaAndKeepsListingAvailable(
 	assert.Equal(t, model.MarketplaceFixedOrderStatusActive, order.Status)
 	assert.Equal(t, 1.25, order.MultiplierSnapshot)
 	assert.Equal(t, 0.0, order.PlatformFeeRateSnapshot)
-	assert.Zero(t, order.PurchaseProbeScore)
-	assert.Zero(t, order.PurchaseProbeScoreMax)
+	assert.Equal(t, 90, order.PurchaseProbeScore)
+	assert.Equal(t, 100, order.PurchaseProbeScoreMax)
 	assert.Contains(t, order.OfficialPriceSnapshot, "gpt-4o-mini")
 	assert.Contains(t, order.BuyerPriceSnapshot, "gpt-4o-mini")
 	assert.Greater(t, order.ExpiresAt, int64(0))
@@ -655,7 +678,7 @@ func TestBuyerMarketplaceFixedOrderPurchaseRejectsInsufficientQuotaWithoutSideEf
 	assert.Equal(t, int64(0), stats.ActiveFixedOrderCount)
 }
 
-func TestBuyerMarketplaceFixedOrderPurchaseAllowsUntestedCredential(t *testing.T) {
+func TestBuyerMarketplaceFixedOrderPurchaseRejectsUntestedCredential(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	buyerID := 20
 	seedMarketplaceUser(t, db, buyerID, 10000)
@@ -669,14 +692,43 @@ func TestBuyerMarketplaceFixedOrderPurchaseAllowsUntestedCredential(t *testing.T
 	BuyerCreateMarketplaceFixedOrder(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	require.True(t, response.Success, response.Message)
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "not eligible")
 	assert.NotContains(t, recorder.Body.String(), "test-key-untested")
 
-	var order marketplaceFixedOrderResponse
-	require.NoError(t, json.Unmarshal(response.Data, &order))
-	assert.Equal(t, credential.ID, order.CredentialID)
-	assert.Equal(t, int64(1000), order.PurchasedQuota)
-	assert.Equal(t, int64(1000), order.RemainingQuota)
+	var orderCount int64
+	require.NoError(t, db.Model(&model.MarketplaceFixedOrder{}).Count(&orderCount).Error)
+	assert.Equal(t, int64(0), orderCount)
+}
+
+func TestBuyerMarketplaceFixedOrderPurchaseRejectsZeroProbeScore(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	buyerID := 20
+	seedMarketplaceUser(t, db, buyerID, 10000)
+	credential := createHealthyMarketplaceCredential(t, db, 10, "test-key-zero-probe-purchase")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusWarning,
+			"probe_score":     0,
+			"probe_score_max": 100,
+			"probe_grade":     "Fail",
+		}).Error)
+
+	body := map[string]any{
+		"credential_id":   credential.ID,
+		"purchased_quota": 1000,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/fixed-orders", body, buyerID)
+	BuyerCreateMarketplaceFixedOrder(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.False(t, response.Success)
+	assert.Contains(t, response.Message, "not eligible")
+
+	var orderCount int64
+	require.NoError(t, db.Model(&model.MarketplaceFixedOrder{}).Count(&orderCount).Error)
+	assert.Equal(t, int64(0), orderCount)
 }
 
 func TestBuyerMarketplaceFixedOrderPurchaseRejectsFailedCredential(t *testing.T) {
@@ -802,7 +854,7 @@ func TestBuyerMarketplaceFixedOrderPurchaseRejectsOwnCredential(t *testing.T) {
 	assert.Equal(t, int64(0), stats.ActiveFixedOrderCount)
 }
 
-func TestBuyerMarketplacePoolModelsShowUntestedAndOwnListedCredentials(t *testing.T) {
+func TestBuyerMarketplacePoolModelsExcludeUntestedAndOwnListedCredentials(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	buyerID := 20
 	seedMarketplaceUser(t, db, buyerID, 10000)
@@ -817,9 +869,7 @@ func TestBuyerMarketplacePoolModelsShowUntestedAndOwnListedCredentials(t *testin
 
 	var models []marketplacePoolModelResponse
 	require.NoError(t, json.Unmarshal(response.Data, &models))
-	require.Len(t, models, 1)
-	assert.Equal(t, "gpt-4o-mini", models[0].Model)
-	assert.Equal(t, 2, models[0].CandidateCount)
+	require.Empty(t, models)
 }
 
 func TestBuyerMarketplaceFixedOrderListAndDetailAreOwnerScoped(t *testing.T) {
@@ -1083,6 +1133,13 @@ func TestBuyerMarketplacePoolModelsAggregateEligibleModels(t *testing.T) {
 	second := createHealthyMarketplaceCredential(t, db, 11, "pool-key-two")
 	disabled := createHealthyMarketplaceCredential(t, db, 12, "pool-key-disabled")
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id IN ?", []int{first.ID, second.ID}).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 100,
+		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", second.ID).
 		Update("multiplier", 1.1).Error)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
@@ -1106,17 +1163,22 @@ func TestBuyerMarketplacePoolModelsAggregateEligibleModels(t *testing.T) {
 	assert.Equal(t, 1.1, models[0].LowestMultiplier)
 }
 
-func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t *testing.T) {
+func TestBuyerMarketplacePoolCandidatesExcludeUnavailableAndSortByRoutePriority(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	buyerID := 20
 	seedMarketplaceUser(t, db, buyerID, 10000)
 	available := createHealthyMarketplaceCredential(t, db, 10, "pool-key-available")
+	lowerPriority := createHealthyMarketplaceCredential(t, db, 13, "pool-key-lower-priority")
+	unscored := createHealthyMarketplaceCredential(t, db, 14, "pool-key-unscored")
 	busy := createHealthyMarketplaceCredential(t, db, 11, "pool-key-busy")
 	exhausted := createHealthyMarketplaceCredential(t, db, 12, "pool-key-exhausted")
 	own := createHealthyMarketplaceCredential(t, db, buyerID, "pool-key-own")
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", available.ID).
 		Update("multiplier", 1.05).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", lowerPriority.ID).
+		Update("multiplier", 1.8).Error)
 	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", own.ID).
 		Update("multiplier", 0.5).Error)
@@ -1135,6 +1197,29 @@ func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t
 			"probe_score_max":  100,
 			"probe_grade":      "A",
 			"probe_checked_at": int64(1710000030),
+		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
+		Where("credential_id = ?", lowerPriority.ID).
+		Updates(map[string]any{
+			"success_count":        8,
+			"upstream_error_count": 2,
+			"avg_latency_ms":       500,
+		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", lowerPriority.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusWarning,
+			"probe_score":     70,
+			"probe_score_max": 100,
+			"probe_grade":     "C",
+		}).Error)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", unscored.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusUnscored,
+			"probe_score":     0,
+			"probe_score_max": 0,
+			"probe_grade":     "",
 		}).Error)
 	require.NoError(t, db.Model(&model.MarketplaceCredentialStats{}).
 		Where("credential_id = ?", busy.ID).
@@ -1164,18 +1249,26 @@ func TestBuyerMarketplacePoolCandidatesExcludeBusyAndQuotaExhaustedCredentials(t
 	var candidates []marketplacePoolCandidateResponse
 	require.NoError(t, json.Unmarshal(page.Items, &candidates))
 	require.Len(t, candidates, 2)
+	assert.Equal(t, available.ID, candidates[0].Credential.ID)
+	assert.Equal(t, lowerPriority.ID, candidates[1].Credential.ID)
+
 	candidatesByID := make(map[int]marketplacePoolCandidateResponse, len(candidates))
 	for _, candidate := range candidates {
 		candidatesByID[candidate.Credential.ID] = candidate
 	}
 	require.Contains(t, candidatesByID, available.ID)
-	require.Contains(t, candidatesByID, own.ID)
+	require.Contains(t, candidatesByID, lowerPriority.ID)
+	require.NotContains(t, candidatesByID, unscored.ID)
+	require.NotContains(t, candidatesByID, own.ID)
 	assert.Greater(t, candidatesByID[available.ID].RouteScore, 0.0)
 	assert.Equal(t, model.MarketplaceProbeStatusPassed, candidatesByID[available.ID].Credential.ProbeStatus)
 	assert.Equal(t, 95, candidatesByID[available.ID].Credential.ProbeScore)
 	assert.Equal(t, 100, candidatesByID[available.ID].Credential.ProbeScoreMax)
 	assert.InDelta(t, 0.9, candidatesByID[available.ID].SuccessRate, 0.000001)
 	assert.Equal(t, 0.0, candidatesByID[available.ID].LoadRatio)
+	assert.Equal(t, 1.05, candidatesByID[available.ID].Credential.Multiplier)
+	assert.Equal(t, 2, candidatesByID[available.ID].Credential.ConcurrencyLimit)
+	assert.Equal(t, 0, candidatesByID[available.ID].Credential.CurrentConcurrency)
 }
 
 func TestBuyerSaveMarketplacePoolFiltersStoresTokenScopedFilters(t *testing.T) {
@@ -1295,10 +1388,16 @@ func createHealthyMarketplaceCredential(t *testing.T, db *gorm.DB, sellerID int,
 			"health_status":   model.MarketplaceHealthStatusHealthy,
 			"capacity_status": model.MarketplaceCapacityStatusAvailable,
 			"risk_status":     model.MarketplaceRiskStatusNormal,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 100,
 		}).Error)
 	credential.HealthStatus = model.MarketplaceHealthStatusHealthy
 	credential.CapacityStatus = model.MarketplaceCapacityStatusAvailable
 	credential.RiskStatus = model.MarketplaceRiskStatusNormal
+	credential.ProbeStatus = model.MarketplaceProbeStatusPassed
+	credential.ProbeScore = 90
+	credential.ProbeScoreMax = 100
 	return credential
 }
 

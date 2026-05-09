@@ -54,9 +54,22 @@ const ModelTestModal = ({
   setIsStreamTest,
   allSelectingRef,
   isMobile,
+  mode = 'test',
   t,
 }) => {
   const hasChannel = Boolean(currentTestChannel);
+  const isProbeMode = mode === 'probe';
+  const actionText = isProbeMode ? t('检测') : t('测试');
+  const runningText = isProbeMode ? t('检测中') : t('测试中');
+  const batchActionText = isProbeMode ? t('批量检测') : t('批量测试');
+  const stopActionText = isProbeMode ? t('停止检测') : t('停止测试');
+  const credentialProbeInProgress =
+    isProbeMode &&
+    ['pending', 'running', 'pending_probe', 'running_probe'].includes(
+      String(currentTestChannel?.probe_status || '').trim(),
+    );
+  const resultKeyForModel = (model) =>
+    `${mode}:${currentTestChannel?.id}-${String(model || '').trim()}`;
   const streamToggleDisabled = [
     'embeddings',
     'image-generation',
@@ -124,7 +137,7 @@ const ModelTestModal = ({
       .split(',')
       .filter((m) => m.toLowerCase().includes(modelSearchKeyword.toLowerCase()))
       .filter((m) => {
-        const result = modelTestResults[`${currentTestChannel.id}-${m}`];
+        const result = modelTestResults[resultKeyForModel(m)];
         return result && result.success;
       });
     if (successKeys.length === 0) {
@@ -147,14 +160,13 @@ const ModelTestModal = ({
       title: t('状态'),
       dataIndex: 'status',
       render: (text, record) => {
-        const testResult =
-          modelTestResults[`${currentTestChannel.id}-${record.model}`];
+        const testResult = modelTestResults[resultKeyForModel(record.model)];
         const isTesting = testingModels.has(record.model);
 
         if (isTesting) {
           return (
             <Tag color='blue' shape='circle'>
-              {t('测试中')}
+              {runningText}
             </Tag>
           );
         }
@@ -171,9 +183,13 @@ const ModelTestModal = ({
           <div className='flex flex-col gap-1'>
             <div className='flex items-center gap-2'>
               <Tag color={testResult.success ? 'green' : 'red'} shape='circle'>
-                {testResult.success ? t('成功') : t('失败')}
+                {testResult.success
+                  ? isProbeMode
+                    ? t('已排队')
+                    : t('成功')
+                  : t('失败')}
               </Tag>
-              {testResult.success && (
+              {testResult.success && !isProbeMode && (
                 <Typography.Text type='tertiary'>
                   {t('请求时长: ${time}s').replace(
                     '${time}',
@@ -198,7 +214,9 @@ const ModelTestModal = ({
                     theme='light'
                     type='warning'
                     icon={<Settings size={12} />}
-                    onClick={() => window.open('/console/setting?tab=ratio', '_blank')}
+                    onClick={() =>
+                      window.open('/console/setting?tab=ratio', '_blank')
+                    }
                     style={{ width: 'fit-content' }}
                   >
                     {t('前往设置')}
@@ -227,9 +245,10 @@ const ModelTestModal = ({
               )
             }
             loading={isTesting}
+            disabled={credentialProbeInProgress}
             size='small'
           >
-            {t('测试')}
+            {credentialProbeInProgress ? runningText : actionText}
           </Button>
         );
       },
@@ -256,7 +275,8 @@ const ModelTestModal = ({
                 strong
                 className='!text-[var(--semi-color-text-0)] !text-base'
               >
-                {currentTestChannel.name} {t('渠道的模型测试')}
+                {currentTestChannel.name}{' '}
+                {isProbeMode ? t('渠道的模型检测') : t('渠道的模型测试')}
               </Typography.Text>
               <Typography.Text type='tertiary' size='small'>
                 {t('共')} {currentTestChannel.models.split(',').length}{' '}
@@ -273,25 +293,24 @@ const ModelTestModal = ({
           <div className='flex justify-end'>
             {isBatchTesting ? (
               <Button type='danger' onClick={handleCloseModal}>
-                {t('停止测试')}
+                {stopActionText}
               </Button>
             ) : (
               <Button type='tertiary' onClick={handleCloseModal}>
                 {t('取消')}
               </Button>
             )}
-            <Button
-              onClick={batchTestModels}
-              loading={isBatchTesting}
-              disabled={isBatchTesting}
-            >
-              {isBatchTesting
-                ? t('测试中...')
-                : t('批量测试${count}个模型').replace(
-                    '${count}',
-                    filteredModels.length,
-                  )}
-            </Button>
+            {!isProbeMode && (
+              <Button
+                onClick={batchTestModels}
+                loading={isBatchTesting}
+                disabled={isBatchTesting}
+              >
+                {isBatchTesting
+                  ? `${runningText}...`
+                  : `${batchActionText}${filteredModels.length}${t('个模型')}`}
+              </Button>
+            )}
           </div>
         ) : null
       }
@@ -335,7 +354,9 @@ const ModelTestModal = ({
             icon={<IconInfoCircle />}
             className='!rounded-lg mb-2'
             description={t(
-              '说明：本页测试为非流式请求；若渠道仅支持流式返回，可能出现测试失败，请以实际使用为准。',
+              isProbeMode
+                ? '说明：本页检测为非流式请求；若渠道仅支持流式返回，可能出现检测失败，请以实际使用为准。'
+                : '说明：本页测试为非流式请求；若渠道仅支持流式返回，可能出现测试失败，请以实际使用为准。',
             )}
           />
 
@@ -355,9 +376,11 @@ const ModelTestModal = ({
 
             <div className='flex items-center justify-end gap-2'>
               <Button onClick={handleCopySelected}>{t('复制已选')}</Button>
-              <Button type='tertiary' onClick={handleSelectSuccess}>
-                {t('选择成功')}
-              </Button>
+              {!isProbeMode && (
+                <Button type='tertiary' onClick={handleSelectSuccess}>
+                  {t('选择成功')}
+                </Button>
+              )}
             </div>
           </div>
 

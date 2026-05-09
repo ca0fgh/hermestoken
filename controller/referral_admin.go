@@ -50,9 +50,28 @@ func AdminUpdateSubscriptionReferralGlobalSetting(c *gin.Context) {
 		return
 	}
 
+	currentSetting := model.GetSubscriptionReferralGlobalSetting()
+	teamDecayRatio := currentSetting.TeamDecayRatio
+	if req.TeamDecayRatio != nil {
+		teamDecayRatio = *req.TeamDecayRatio
+	}
+	teamMaxDepth := currentSetting.TeamMaxDepth
+	if req.TeamMaxDepth != nil {
+		teamMaxDepth = *req.TeamMaxDepth
+	}
+	autoAssignInviteeTemplate := currentSetting.AutoAssignInviteeTemplate
+	if req.AutoAssignInviteeTemplate != nil {
+		autoAssignInviteeTemplate = *req.AutoAssignInviteeTemplate
+	}
+	planOpenToAllUsers := currentSetting.PlanOpenToAllUsers
+	if req.PlanOpenToAllUsers != nil {
+		planOpenToAllUsers = *req.PlanOpenToAllUsers
+	}
 	if err := model.UpdateSubscriptionReferralGlobalSetting(model.SubscriptionReferralGlobalSetting{
-		TeamDecayRatio: req.TeamDecayRatio,
-		TeamMaxDepth:   req.TeamMaxDepth,
+		TeamDecayRatio:            teamDecayRatio,
+		TeamMaxDepth:              teamMaxDepth,
+		AutoAssignInviteeTemplate: autoAssignInviteeTemplate,
+		PlanOpenToAllUsers:        planOpenToAllUsers,
 	}); err != nil {
 		common.ApiError(c, err)
 		return

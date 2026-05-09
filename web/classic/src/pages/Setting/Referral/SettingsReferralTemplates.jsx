@@ -96,6 +96,8 @@ const SettingsReferralTemplates = () => {
   const [subscriptionSetting, setSubscriptionSetting] = useState({
     teamDecayRatio: 0.5,
     teamMaxDepth: 0,
+    autoAssignInviteeTemplate: true,
+    planOpenToAllUsers: false,
   });
   const [groupOptions, setGroupOptions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -133,8 +135,14 @@ const SettingsReferralTemplates = () => {
 
       if (settingRes.data?.success) {
         setSubscriptionSetting({
-          teamDecayRatio: Number(settingRes.data?.data?.team_decay_ratio || 0.5),
+          teamDecayRatio: Number(
+            settingRes.data?.data?.team_decay_ratio || 0.5,
+          ),
           teamMaxDepth: Number(settingRes.data?.data?.team_max_depth || 0),
+          autoAssignInviteeTemplate:
+            settingRes.data?.data?.auto_assign_invitee_template !== false,
+          planOpenToAllUsers:
+            settingRes.data?.data?.plan_open_to_all_users === true,
         });
       }
     } catch (error) {
@@ -150,7 +158,9 @@ const SettingsReferralTemplates = () => {
 
   const updateRow = (id, patch) => {
     setItems((currentItems) =>
-      currentItems.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+      currentItems.map((item) =>
+        item.id === id ? { ...item, ...patch } : item,
+      ),
     );
   };
 
@@ -193,7 +203,9 @@ const SettingsReferralTemplates = () => {
 
   const deleteRow = async (row) => {
     if (row.isDraft) {
-      setItems((currentItems) => currentItems.filter((item) => item.id !== row.id));
+      setItems((currentItems) =>
+        currentItems.filter((item) => item.id !== row.id),
+      );
       return;
     }
     if (!window.confirm(t('确认删除该模板组及其覆盖的所有分组模板吗？'))) {
@@ -222,12 +234,19 @@ const SettingsReferralTemplates = () => {
       const res = await API.put('/api/referral/settings/subscription', {
         team_decay_ratio: Number(subscriptionSetting.teamDecayRatio || 0),
         team_max_depth: Number(subscriptionSetting.teamMaxDepth || 0),
+        auto_assign_invitee_template: Boolean(
+          subscriptionSetting.autoAssignInviteeTemplate,
+        ),
+        plan_open_to_all_users: Boolean(subscriptionSetting.planOpenToAllUsers),
       });
       if (res.data?.success) {
         showSuccess(t('保存成功'));
         setSubscriptionSetting({
           teamDecayRatio: Number(res.data?.data?.team_decay_ratio || 0.5),
           teamMaxDepth: Number(res.data?.data?.team_max_depth || 0),
+          autoAssignInviteeTemplate:
+            res.data?.data?.auto_assign_invitee_template !== false,
+          planOpenToAllUsers: res.data?.data?.plan_open_to_all_users === true,
         });
       } else {
         showError(res.data?.message || t('保存失败'));
@@ -241,9 +260,13 @@ const SettingsReferralTemplates = () => {
 
   const getLevelTypeDescription = (levelType) => {
     if (levelType === 'team') {
-      return t('team 会让最近邀请人直接按团队模板结算；如果它不是最近邀请人，而是向上链路中的 team，则只用自己的团队比例参与定池或分池。');
+      return t(
+        'team 会让最近邀请人直接按团队模板结算；如果它不是最近邀请人，而是向上链路中的 team，则只用自己的团队比例参与定池或分池。',
+      );
     }
-    return t('direct 会先结算最近直接邀请人；它不再配置团队池上限，团队池改由向上命中的第一个有效 team 决定。');
+    return t(
+      'direct 会先结算最近直接邀请人；它不再配置团队池上限，团队池改由向上命中的第一个有效 team 决定。',
+    );
   };
 
   return (
@@ -254,40 +277,86 @@ const SettingsReferralTemplates = () => {
             {t('返佣模板')}
           </Typography.Title>
           <Typography.Text type='secondary'>
-            {t('管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。')}
+            {t(
+              '管理返佣模板组；一个模板组可以覆盖多个系统分组，但每个分组在运行时仍命中各自的单分组模板行。',
+            )}
           </Typography.Text>
         </div>
         <Button type='primary' onClick={addDraft}>
           {t('新增模板组')}
         </Button>
       </div>
-      <Banner
-        type='info'
-        bordered
-        title={t('填写说明')}
-        description={t(
-          '比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。',
-        )}
-      />
       <div className='rounded-xl border border-gray-200 bg-white p-4 space-y-3'>
         <div className='flex items-center justify-between gap-3'>
           <div>
             <Typography.Text strong>{t('订阅返佣全局设置')}</Typography.Text>
             <div>
               <Typography.Text type='secondary'>
-                {t('这些参数对 subscription_referral 的整条团队返佣链统一生效，不属于单个模板。')}
+                {t(
+                  '这些参数对 subscription_referral 的整条团队返佣链统一生效，不属于单个模板。',
+                )}
               </Typography.Text>
             </div>
           </div>
-          <Button type='primary' loading={savingGlobalSetting} onClick={saveSubscriptionSetting}>
+          <Button
+            type='primary'
+            loading={savingGlobalSetting}
+            onClick={saveSubscriptionSetting}
+          >
             {t('保存')}
           </Button>
         </div>
-        <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
+        <div className='grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4'>
+          <ReferralFieldBlock
+            label={t('邀请注册自动开通返佣资格')}
+            description={t(
+              '开启后，被已有订阅返佣资格的用户邀请注册的新用户，会自动绑定当前最低档订阅返佣模板。关闭后，新用户不会自动获得订阅返佣资格，需要管理员手动绑定。',
+            )}
+            note={
+              subscriptionSetting.autoAssignInviteeTemplate
+                ? t('当前开启')
+                : t('当前关闭')
+            }
+          >
+            <Switch
+              checked={subscriptionSetting.autoAssignInviteeTemplate}
+              onChange={(checked) =>
+                setSubscriptionSetting((currentSetting) => ({
+                  ...currentSetting,
+                  autoAssignInviteeTemplate: checked,
+                }))
+              }
+            />
+          </ReferralFieldBlock>
+          <ReferralFieldBlock
+            label={t('订阅套餐开放给所有用户')}
+            description={t(
+              '开启后，所有已登录用户都可以看到并购买订阅套餐。关闭后，只有已开通订阅返佣资格的用户可以看到并购买。',
+            )}
+            note={
+              subscriptionSetting.planOpenToAllUsers
+                ? t('当前开启')
+                : t('当前关闭')
+            }
+          >
+            <Switch
+              checked={subscriptionSetting.planOpenToAllUsers}
+              onChange={(checked) =>
+                setSubscriptionSetting((currentSetting) => ({
+                  ...currentSetting,
+                  planOpenToAllUsers: checked,
+                }))
+              }
+            />
+          </ReferralFieldBlock>
           <ReferralFieldBlock
             label={t('团队衰减系数')}
-            description={t('这是订阅返佣的全局参数。命中有效 team 后，会对整条团队级差分配链统一生效。越小越偏向近层团队节点，例如 0.5 代表每多一层权重减半。')}
-            note={t('当前 {{value}}', { value: Number(subscriptionSetting.teamDecayRatio || 0) })}
+            description={t(
+              '这是订阅返佣的全局参数。命中有效 team 后，会对整条团队级差分配链统一生效。越小越偏向近层团队节点，例如 0.5 代表每多一层权重减半。',
+            )}
+            note={t('当前 {{value}}', {
+              value: Number(subscriptionSetting.teamDecayRatio || 0),
+            })}
           >
             <InputNumber
               value={subscriptionSetting.teamDecayRatio}
@@ -305,10 +374,14 @@ const SettingsReferralTemplates = () => {
           </ReferralFieldBlock>
           <ReferralFieldBlock
             label={t('团队最大深度')}
-            description={t('这是订阅返佣的全局参数，对所有 direct 入场后触发的团队返佣链统一生效。默认值为 0，表示不限深度。超过这个深度的 team 节点不参与分配。')}
+            description={t(
+              '这是订阅返佣的全局参数，对所有 direct 入场后触发的团队返佣链统一生效。默认值为 0，表示不限深度。超过这个深度的 team 节点不参与分配。',
+            )}
             note={
               subscriptionSetting.teamMaxDepth > 0
-                ? t('当前最多 {{count}} 层', { count: Number(subscriptionSetting.teamMaxDepth) })
+                ? t('当前最多 {{count}} 层', {
+                    count: Number(subscriptionSetting.teamMaxDepth),
+                  })
                 : t('当前不限深度')
             }
           >
@@ -327,6 +400,14 @@ const SettingsReferralTemplates = () => {
           </ReferralFieldBlock>
         </div>
       </div>
+      <Banner
+        type='info'
+        bordered
+        title={t('填写说明')}
+        description={t(
+          '比例字段按百分比输入，保存时会自动换算成 bps：10 表示 10%，25 表示 25%。一个模板组可以覆盖多个系统分组，保存时会按 bundle 一次性更新所有关联分组。模板名只需要在同一返佣类型 + 分组内保持唯一。direct 只配置最近直接邀请人的直推比例；命中有效 team 后，团队池按“首个命中 team 的比例 - direct 直推比例”成立，再由所有命中的 team 按全局权重分配。team 表示最近邀请人直接按团队模板结算。团队衰减系数和团队最大深度在订阅返佣全局设置里统一配置，不再跟着单个模板走。',
+        )}
+      />
       <div className='rounded-xl border border-gray-200 bg-white p-4 space-y-3'>
         <div>
           <Typography.Text strong>{t('关键规则')}</Typography.Text>
@@ -346,7 +427,9 @@ const SettingsReferralTemplates = () => {
               <div className='space-y-1'>
                 {section.items.map((item) => (
                   <div key={item}>
-                    <Typography.Text type='secondary'>{t(item)}</Typography.Text>
+                    <Typography.Text type='secondary'>
+                      {t(item)}
+                    </Typography.Text>
                   </div>
                 ))}
               </div>
@@ -362,147 +445,174 @@ const SettingsReferralTemplates = () => {
             const isDirectTemplate = row.levelType === 'direct';
 
             return (
-              <div key={row.id} className='rounded-xl border border-gray-200 p-4 space-y-3'>
+              <div
+                key={row.id}
+                className='rounded-xl border border-gray-200 p-4 space-y-3'
+              >
                 <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
-                <ReferralFieldBlock
-                  label={t('返佣类型')}
-                  description={t('当前模板属于哪个返佣体系。当前页面只支持订阅返佣。')}
-                >
-                  <Select
-                    value={row.referralType}
-                    optionList={referralTypeOptions}
-                    onChange={(value) => updateRow(row.id, { referralType: value })}
-                  />
-                </ReferralFieldBlock>
-                <ReferralFieldBlock
-                  label={t('分组')}
-                  description={t('必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。')}
-                >
-                  <Select
-                    value={row.groups}
-                    multiple={true}
-                    optionList={groupOptions}
-                    placeholder={t('分组')}
-                    onChange={(value) =>
-                      updateRow(row.id, {
-                        groups: Array.isArray(value)
-                          ? value.map((group) => String(group || '').trim()).filter(Boolean)
-                          : [],
-                      })
-                    }
-                  />
-                </ReferralFieldBlock>
-                <ReferralFieldBlock
-                  label={t('模板名')}
-                  description={t('只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。')}
-                >
-                  <Input
-                    value={row.name}
-                    placeholder={t('模板名')}
-                    onChange={(value) => updateRow(row.id, { name: value })}
-                  />
-                </ReferralFieldBlock>
-              </div>
-              <div className='grid grid-cols-1 gap-3 lg:grid-cols-4'>
-                <ReferralFieldBlock
-                  label={t('模板身份')}
-                  description={getLevelTypeDescription(row.levelType)}
-                >
-                  <Select
-                    value={row.levelType}
-                    optionList={levelTypeOptions}
-                    onChange={(value) =>
-                      updateRow(row.id, {
-                        levelType: value,
-                        directCapBps:
-                          value === 'team'
-                            ? 0
-                            : row.directCapBps > 0
-                              ? row.directCapBps
-                              : 1000,
-                        teamCapBps:
-                          value === 'team'
-                            ? row.teamCapBps > 0
-                              ? row.teamCapBps
-                              : 2500
-                            : 0,
-                      })
-                    }
-                  />
-                </ReferralFieldBlock>
-                {isDirectTemplate ? (
                   <ReferralFieldBlock
-                    label={t('直推返佣比例')}
-                    description={t('最近 direct 邀请人那一份的毛额比例。只在模板身份为 direct 时直接生效。')}
-                    note={t('当前约 {{value}}', { value: formatBpsAsPercent(row.directCapBps) })}
+                    label={t('返佣类型')}
+                    description={t(
+                      '当前模板属于哪个返佣体系。当前页面只支持订阅返佣。',
+                    )}
                   >
-                    <InputNumber
-                      value={rateBpsToPercentNumber(row.directCapBps)}
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      style={{ width: '100%' }}
+                    <Select
+                      value={row.referralType}
+                      optionList={referralTypeOptions}
+                      onChange={(value) =>
+                        updateRow(row.id, { referralType: value })
+                      }
+                    />
+                  </ReferralFieldBlock>
+                  <ReferralFieldBlock
+                    label={t('分组')}
+                    description={t(
+                      '必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。',
+                    )}
+                  >
+                    <Select
+                      value={row.groups}
+                      multiple={true}
+                      optionList={groupOptions}
+                      placeholder={t('分组')}
                       onChange={(value) =>
                         updateRow(row.id, {
-                          directCapBps: percentNumberToRateBps(value),
+                          groups: Array.isArray(value)
+                            ? value
+                                .map((group) => String(group || '').trim())
+                                .filter(Boolean)
+                            : [],
                         })
                       }
                     />
                   </ReferralFieldBlock>
-                ) : (
                   <ReferralFieldBlock
-                    label={t('团队返佣比例')}
-                    description={t('仅在 team 模板生效。最近邀请人命中它时直接按这个比例结算；它如果是向上链路中的首个 team，也会用这个比例决定团队池。')}
-                    note={t('当前约 {{value}}', { value: formatBpsAsPercent(row.teamCapBps) })}
+                    label={t('模板名')}
+                    description={t(
+                      '只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。',
+                    )}
                   >
-                    <InputNumber
-                      value={rateBpsToPercentNumber(row.teamCapBps)}
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      style={{ width: '100%' }}
+                    <Input
+                      value={row.name}
+                      placeholder={t('模板名')}
+                      onChange={(value) => updateRow(row.id, { name: value })}
+                    />
+                  </ReferralFieldBlock>
+                </div>
+                <div className='grid grid-cols-1 gap-3 lg:grid-cols-4'>
+                  <ReferralFieldBlock
+                    label={t('模板身份')}
+                    description={getLevelTypeDescription(row.levelType)}
+                  >
+                    <Select
+                      value={row.levelType}
+                      optionList={levelTypeOptions}
                       onChange={(value) =>
                         updateRow(row.id, {
-                          teamCapBps: percentNumberToRateBps(value),
+                          levelType: value,
+                          directCapBps:
+                            value === 'team'
+                              ? 0
+                              : row.directCapBps > 0
+                                ? row.directCapBps
+                                : 1000,
+                          teamCapBps:
+                            value === 'team'
+                              ? row.teamCapBps > 0
+                                ? row.teamCapBps
+                                : 2500
+                              : 0,
                         })
                       }
                     />
                   </ReferralFieldBlock>
-                )}
-                <ReferralFieldBlock
-                  label={t('被邀请人默认返佣比例')}
-                  description={t('默认从最近直接邀请人的毛额里切多少给付款用户本人。0 表示不返给被邀请人。')}
-                  detail={t(
-                    '实际生效优先级：单个 invitee 覆盖 > 用户绑定默认值 > 模板默认值。',
+                  {isDirectTemplate ? (
+                    <ReferralFieldBlock
+                      label={t('直推返佣比例')}
+                      description={t(
+                        '最近 direct 邀请人那一份的毛额比例。只在模板身份为 direct 时直接生效。',
+                      )}
+                      note={t('当前约 {{value}}', {
+                        value: formatBpsAsPercent(row.directCapBps),
+                      })}
+                    >
+                      <InputNumber
+                        value={rateBpsToPercentNumber(row.directCapBps)}
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          updateRow(row.id, {
+                            directCapBps: percentNumberToRateBps(value),
+                          })
+                        }
+                      />
+                    </ReferralFieldBlock>
+                  ) : (
+                    <ReferralFieldBlock
+                      label={t('团队返佣比例')}
+                      description={t(
+                        '仅在 team 模板生效。最近邀请人命中它时直接按这个比例结算；它如果是向上链路中的首个 team，也会用这个比例决定团队池。',
+                      )}
+                      note={t('当前约 {{value}}', {
+                        value: formatBpsAsPercent(row.teamCapBps),
+                      })}
+                    >
+                      <InputNumber
+                        value={rateBpsToPercentNumber(row.teamCapBps)}
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          updateRow(row.id, {
+                            teamCapBps: percentNumberToRateBps(value),
+                          })
+                        }
+                      />
+                    </ReferralFieldBlock>
                   )}
-                  note={t('当前约 {{value}}', {
-                    value: formatBpsAsPercent(row.inviteeShareDefaultBps),
-                  })}
-                >
-                  <InputNumber
-                    value={rateBpsToPercentNumber(row.inviteeShareDefaultBps)}
-                    min={0}
-                    max={100}
-                    step={0.1}
-                    style={{ width: '100%' }}
-                    onChange={(value) =>
-                      updateRow(row.id, {
-                        inviteeShareDefaultBps: percentNumberToRateBps(value),
-                      })
-                    }
-                  />
-                </ReferralFieldBlock>
+                  <ReferralFieldBlock
+                    label={t('被邀请人默认返佣比例')}
+                    description={t(
+                      '默认从最近直接邀请人的毛额里切多少给付款用户本人。0 表示不返给被邀请人。',
+                    )}
+                    detail={t(
+                      '实际生效优先级：单个 invitee 覆盖 > 用户绑定默认值 > 模板默认值。',
+                    )}
+                    note={t('当前约 {{value}}', {
+                      value: formatBpsAsPercent(row.inviteeShareDefaultBps),
+                    })}
+                  >
+                    <InputNumber
+                      value={rateBpsToPercentNumber(row.inviteeShareDefaultBps)}
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      style={{ width: '100%' }}
+                      onChange={(value) =>
+                        updateRow(row.id, {
+                          inviteeShareDefaultBps: percentNumberToRateBps(value),
+                        })
+                      }
+                    />
+                  </ReferralFieldBlock>
                 </div>
                 <div className='grid grid-cols-1 gap-3 lg:grid-cols-1'>
                   <ReferralFieldBlock
                     label={t('启用模板')}
-                    description={t('关闭后，该模板不会被解析为活动模板。即使用户已经绑定，也不会参与新模板返佣结算。')}
+                    description={t(
+                      '关闭后，该模板不会被解析为活动模板。即使用户已经绑定，也不会参与新模板返佣结算。',
+                    )}
                   >
                     <div className='flex items-center gap-2 pt-2'>
                       <Typography.Text>{t('启用')}</Typography.Text>
                       <Switch
                         checked={row.enabled}
-                        onChange={(checked) => updateRow(row.id, { enabled: checked })}
+                        onChange={(checked) =>
+                          updateRow(row.id, { enabled: checked })
+                        }
                       />
                     </div>
                   </ReferralFieldBlock>

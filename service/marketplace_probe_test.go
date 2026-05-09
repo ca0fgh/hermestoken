@@ -68,6 +68,48 @@ func TestRunMarketplaceCredentialProbeUsesFullClaudeCodeProbeForAnthropic(t *tes
 	assert.NotZero(t, stored.ProbeCheckedAt)
 }
 
+func TestRunMarketplaceCredentialProbeUsesPendingRequestedModel(t *testing.T) {
+	db := setupMarketplaceFixedOrderRelayTestDB(t)
+	credential, err := CreateSellerMarketplaceCredential(MarketplaceCredentialCreateInput{
+		SellerUserID:     10,
+		VendorType:       constant.ChannelTypeOpenAI,
+		APIKey:           "openai-marketplace-secret",
+		BaseURL:          "https://openai.example/v1",
+		Models:           []string{"gpt-4o-mini", "gpt-5.5"},
+		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
+		Multiplier:       1,
+		ConcurrencyLimit: common.GetPointer(1),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"probe_status": model.MarketplaceProbeStatusPending,
+			"probe_model":  "gpt-5.5",
+		}).Error)
+
+	var captured tokenverifier.DirectProbeRequest
+	restore := stubMarketplaceCredentialDirectProbe(t, func(ctx context.Context, input tokenverifier.DirectProbeRequest) (*tokenverifier.DirectProbeResponse, error) {
+		captured = input
+		return &tokenverifier.DirectProbeResponse{
+			Report: tokenverifier.ReportSummary{
+				Score:         90,
+				ProbeScore:    90,
+				ProbeScoreMax: 94,
+			},
+		}, nil
+	})
+	defer restore()
+
+	require.NoError(t, RunMarketplaceCredentialProbe(context.Background(), credential.ID))
+
+	assert.Equal(t, "gpt-5.5", captured.Model)
+	var stored model.MarketplaceCredential
+	require.NoError(t, db.First(&stored, credential.ID).Error)
+	assert.Equal(t, "gpt-5.5", stored.ProbeModel)
+	assert.Equal(t, model.MarketplaceProbeStatusPassed, stored.ProbeStatus)
+}
+
 func TestRunMarketplaceCredentialProbeStoresRedactedFailure(t *testing.T) {
 	db := setupMarketplaceFixedOrderRelayTestDB(t)
 	credential, err := CreateSellerMarketplaceCredential(MarketplaceCredentialCreateInput{
@@ -148,6 +190,56 @@ func TestRequestSellerMarketplaceCredentialProbeMarksPending(t *testing.T) {
 	assert.Equal(t, model.MarketplaceProbeStatusPending, stored.ProbeStatus)
 }
 
+func TestRequestSellerMarketplaceCredentialProbeStoresRequestedModel(t *testing.T) {
+	db := setupMarketplaceFixedOrderRelayTestDB(t)
+	credential, err := CreateSellerMarketplaceCredential(MarketplaceCredentialCreateInput{
+		SellerUserID:     10,
+		VendorType:       constant.ChannelTypeOpenAI,
+		APIKey:           "openai-marketplace-secret",
+		BaseURL:          "https://openai.example/v1",
+		Models:           []string{"gpt-4o-mini", "gpt-5.5"},
+		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
+		Multiplier:       1,
+		ConcurrencyLimit: common.GetPointer(1),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Update("probe_status", model.MarketplaceProbeStatusUnscored).Error)
+
+	updated, err := RequestSellerMarketplaceCredentialProbeWithModel(10, credential.ID, " gpt-5.5 ")
+	require.NoError(t, err)
+
+	assert.Equal(t, model.MarketplaceProbeStatusPending, updated.ProbeStatus)
+	assert.Equal(t, "gpt-5.5", updated.ProbeModel)
+	var stored model.MarketplaceCredential
+	require.NoError(t, db.First(&stored, credential.ID).Error)
+	assert.Equal(t, "gpt-5.5", stored.ProbeModel)
+}
+
+func TestRequestSellerMarketplaceCredentialProbeRejectsUnhostedRequestedModel(t *testing.T) {
+	setupMarketplaceFixedOrderRelayTestDB(t)
+	credential, err := CreateSellerMarketplaceCredential(MarketplaceCredentialCreateInput{
+		SellerUserID:     10,
+		VendorType:       constant.ChannelTypeOpenAI,
+		APIKey:           "openai-marketplace-secret",
+		BaseURL:          "https://openai.example/v1",
+		Models:           []string{"gpt-4o-mini"},
+		QuotaMode:        model.MarketplaceQuotaModeUnlimited,
+		Multiplier:       1,
+		ConcurrencyLimit: common.GetPointer(1),
+	})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Update("probe_status", model.MarketplaceProbeStatusUnscored).Error)
+
+	_, err = RequestSellerMarketplaceCredentialProbeWithModel(10, credential.ID, "gpt-5.5")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not include requested probe model")
+}
+
 func TestRequestSellerMarketplaceCredentialProbeRejectsRunning(t *testing.T) {
 	db := setupMarketplaceFixedOrderRelayTestDB(t)
 	credential, err := CreateSellerMarketplaceCredential(MarketplaceCredentialCreateInput{
@@ -180,6 +272,16 @@ func TestMarketplaceProbeReportScoreUsesZeroProbeScoreWhenMaxIsPresent(t *testin
 
 	assert.Equal(t, 0, marketplaceProbeReportScore(report))
 	assert.Equal(t, 82, marketplaceProbeReportScoreMax(report))
+}
+
+func TestMarketplaceProbeStatusFailsZeroProbeScoreEvenWithHighMax(t *testing.T) {
+	report := tokenverifier.ReportSummary{
+		Score:         91,
+		ProbeScore:    0,
+		ProbeScoreMax: 100,
+	}
+
+	assert.Equal(t, model.MarketplaceProbeStatusFailed, marketplaceProbeStatusForReport(report))
 }
 
 func stubMarketplaceCredentialDirectProbe(t *testing.T, fn marketplaceCredentialDirectProbeFunc) func() {

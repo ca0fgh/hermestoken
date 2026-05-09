@@ -49,7 +49,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	if !requireActiveSubscriptionReferral(c) {
+	if !requireSubscriptionPlanAccess(c) {
 		return
 	}
 	callBackAddress := service.GetCallbackAddress()

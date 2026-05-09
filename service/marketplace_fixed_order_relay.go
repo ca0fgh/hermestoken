@@ -72,6 +72,7 @@ func ListBuyerMarketplaceFixedOrderTokenModels(input MarketplaceFixedOrderBindin
 		Where("(marketplace_fixed_orders.expires_at = 0 OR marketplace_fixed_orders.expires_at > ?)", common.GetTimestamp()).
 		Where("marketplace_credentials.service_status = ?", model.MarketplaceServiceStatusEnabled).
 		Where("marketplace_credentials.health_status IN ?", []string{model.MarketplaceHealthStatusHealthy, model.MarketplaceHealthStatusDegraded}).
+		Where("marketplace_credentials.probe_status IN ? AND marketplace_credentials.probe_score > 0 AND marketplace_credentials.probe_score_max > 0", []string{model.MarketplaceProbeStatusPassed, model.MarketplaceProbeStatusWarning}).
 		Where("marketplace_credentials.risk_status <> ?", model.MarketplaceRiskStatusRiskPaused).
 		Where("marketplace_credentials.capacity_status <> ?", model.MarketplaceCapacityStatusExhausted).
 		Where("(marketplace_credentials.quota_mode <> ? OR marketplace_credentials.quota_limit <= 0 OR COALESCE(marketplace_credential_stats.quota_used, 0) < marketplace_credentials.quota_limit)", model.MarketplaceQuotaModeLimited).
@@ -593,6 +594,9 @@ func isMarketplaceCredentialFixedRouteAvailable(credential model.MarketplaceCred
 		return false
 	}
 	if credential.HealthStatus != model.MarketplaceHealthStatusHealthy && credential.HealthStatus != model.MarketplaceHealthStatusDegraded {
+		return false
+	}
+	if !marketplaceCredentialHasRoutableProbeScore(credential) {
 		return false
 	}
 	if marketplaceCredentialCapacityStatus(credential, stats) == model.MarketplaceCapacityStatusExhausted {

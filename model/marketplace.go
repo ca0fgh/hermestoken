@@ -40,6 +40,20 @@ const (
 	MarketplaceRouteStatusRiskPaused = "route_risk_paused"
 	MarketplaceRouteStatusExhausted  = "route_exhausted"
 	MarketplaceRouteStatusBusy       = "route_busy"
+
+	MarketplaceRouteReasonUnlisted           = "route_reason_unlisted"
+	MarketplaceRouteReasonDisabled           = "route_reason_disabled"
+	MarketplaceRouteReasonHealthFailed       = "route_reason_health_failed"
+	MarketplaceRouteReasonHealthUnavailable  = "route_reason_health_unavailable"
+	MarketplaceRouteReasonProbeUnscored      = "route_reason_probe_unscored"
+	MarketplaceRouteReasonProbeInProgress    = "route_reason_probe_in_progress"
+	MarketplaceRouteReasonProbeFailed        = "route_reason_probe_failed"
+	MarketplaceRouteReasonProbeScoreMissing  = "route_reason_probe_score_missing"
+	MarketplaceRouteReasonProbeScoreZero     = "route_reason_probe_score_zero"
+	MarketplaceRouteReasonRiskPaused         = "route_reason_risk_paused"
+	MarketplaceRouteReasonQuotaExhausted     = "route_reason_quota_exhausted"
+	MarketplaceRouteReasonConcurrencyBusy    = "route_reason_concurrency_busy"
+	MarketplaceRouteReasonUnavailableGeneric = "route_reason_unavailable"
 )
 
 const (
