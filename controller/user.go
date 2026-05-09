@@ -134,6 +134,20 @@ func Logout(c *gin.Context) {
 	})
 }
 
+func buildUserInsertOptionsFromInviteLink(affCode string, inviteeRateBps int, inviteeRateSig string) model.UserInsertOptions {
+	trimmedSig := strings.TrimSpace(inviteeRateSig)
+	if inviteeRateBps <= 0 || inviteeRateBps > model.SubscriptionReferralMaxRateBps || trimmedSig == "" {
+		return model.UserInsertOptions{
+			AffCode: strings.TrimSpace(affCode),
+		}
+	}
+	return model.UserInsertOptions{
+		AffCode:               strings.TrimSpace(affCode),
+		InviteeShareBps:       inviteeRateBps,
+		InviteeShareSignature: trimmedSig,
+	}
+}
+
 func Register(c *gin.Context) {
 	if !common.RegisterEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
@@ -175,6 +189,7 @@ func Register(c *gin.Context) {
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
 	inviterId, _ := model.GetUserIdByAffCode(affCode)
+	insertOptions := buildUserInsertOptionsFromInviteLink(affCode, user.InviteeRateBps, user.InviteeRateSig)
 	cleanUser := model.User{
 		Username:    user.Username,
 		Password:    user.Password,
@@ -186,7 +201,7 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := cleanUser.InsertWithOptions(inviterId, insertOptions); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -392,10 +407,33 @@ func GetAffCode(c *gin.Context) {
 			return
 		}
 	}
+	inviteeRateBps := 0
+	if rawRate := strings.TrimSpace(c.Query("invitee_rate_bps")); rawRate != "" {
+		parsedRate, parseErr := strconv.Atoi(rawRate)
+		if parseErr != nil {
+			common.ApiErrorMsg(c, "无效的返佣比例")
+			return
+		}
+		if parsedRate < 0 || parsedRate > model.SubscriptionReferralMaxRateBps {
+			common.ApiErrorMsg(c, "无效的返佣比例")
+			return
+		}
+		inviteeRateBps = parsedRate
+	}
+
+	data := any(user.AffCode)
+	if inviteeRateBps > 0 {
+		data = gin.H{
+			"aff_code":         user.AffCode,
+			"invitee_rate_bps": inviteeRateBps,
+			"invitee_rate_sig": model.NewReferralInviteeShareLinkSignature(user.AffCode, inviteeRateBps),
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user.AffCode,
+		"data":    data,
 	})
 	return
 }

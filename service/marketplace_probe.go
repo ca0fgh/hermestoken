@@ -139,6 +139,10 @@ func RunMarketplaceCredentialProbe(ctx context.Context, credentialID int) error 
 }
 
 func RequestSellerMarketplaceCredentialProbe(sellerUserID int, credentialID int) (*model.MarketplaceCredential, error) {
+	return RequestSellerMarketplaceCredentialProbeWithModel(sellerUserID, credentialID, "")
+}
+
+func RequestSellerMarketplaceCredentialProbeWithModel(sellerUserID int, credentialID int, requestedModel string) (*model.MarketplaceCredential, error) {
 	if err := validateMarketplaceEnabled(); err != nil {
 		return nil, err
 	}
@@ -147,6 +151,11 @@ func RequestSellerMarketplaceCredentialProbe(sellerUserID int, credentialID int)
 	}
 	if credentialID <= 0 {
 		return nil, errors.New("marketplace credential id is required")
+	}
+
+	requestedModel = strings.TrimSpace(requestedModel)
+	if err := validateMarketplaceProbeRequestedModel(requestedModel); err != nil {
+		return nil, err
 	}
 
 	var credential model.MarketplaceCredential
@@ -162,7 +171,13 @@ func RequestSellerMarketplaceCredentialProbe(sellerUserID int, credentialID int)
 		if marketplaceCredentialProbeInProgress(credential.ProbeStatus) {
 			return errors.New("marketplace credential probe is already in progress")
 		}
+		if requestedModel != "" && !marketplaceCredentialModelsContain(credential.Models, requestedModel) {
+			return errors.New("marketplace credential does not include requested probe model")
+		}
 		setMarketplaceCredentialProbePending(&credential)
+		if requestedModel != "" {
+			credential.ProbeModel = requestedModel
+		}
 		return tx.Save(&credential).Error
 	}); err != nil {
 		return nil, err
@@ -170,6 +185,19 @@ func RequestSellerMarketplaceCredentialProbe(sellerUserID int, credentialID int)
 
 	EnqueueMarketplaceCredentialProbe(credential.ID)
 	return &credential, nil
+}
+
+func validateMarketplaceProbeRequestedModel(requestedModel string) error {
+	if requestedModel == "" {
+		return nil
+	}
+	if len(requestedModel) > 191 {
+		return errors.New("marketplace credential probe model is too long")
+	}
+	if strings.ContainsAny(requestedModel, "\r\n,，") {
+		return errors.New("marketplace credential probe supports only one model")
+	}
+	return nil
 }
 
 func setMarketplaceCredentialProbePending(credential *model.MarketplaceCredential) {
@@ -266,6 +294,11 @@ func marketplaceProbeClientProfileForProvider(provider string) string {
 }
 
 func marketplaceProbeModelForCredential(credential model.MarketplaceCredential, provider string) (string, error) {
+	if marketplaceCredentialProbeInProgress(credential.ProbeStatus) {
+		if modelName := strings.TrimSpace(credential.ProbeModel); modelName != "" {
+			return modelName, nil
+		}
+	}
 	if modelName := strings.TrimSpace(credential.TestModel); modelName != "" {
 		return modelName, nil
 	}
@@ -279,6 +312,19 @@ func marketplaceProbeModelForCredential(credential model.MarketplaceCredential, 
 		return "", errors.New("marketplace credential has no Anthropic model for probe")
 	}
 	return "", errors.New("marketplace credential has no model for probe")
+}
+
+func marketplaceCredentialModelsContain(models string, requestedModel string) bool {
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return false
+	}
+	for _, modelName := range strings.Split(models, ",") {
+		if strings.TrimSpace(modelName) == requestedModel {
+			return true
+		}
+	}
+	return false
 }
 
 func marketplaceProbeBaseURLForCredential(credential model.MarketplaceCredential, apiKey string) (string, error) {
@@ -370,11 +416,10 @@ func markMarketplaceCredentialProbeFailed(credential model.MarketplaceCredential
 
 func marketplaceProbeStatusForReport(report tokenverifier.ReportSummary) string {
 	score := marketplaceProbeReportScore(report)
-	scoreMax := marketplaceProbeReportScoreMax(report)
 	switch {
 	case score >= 80:
 		return model.MarketplaceProbeStatusPassed
-	case score >= 50 || scoreMax >= 80:
+	case score >= 50:
 		return model.MarketplaceProbeStatusWarning
 	default:
 		return model.MarketplaceProbeStatusFailed

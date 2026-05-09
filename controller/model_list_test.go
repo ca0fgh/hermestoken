@@ -437,6 +437,9 @@ func TestListModelsReturnsMarketplaceTokenModels(t *testing.T) {
 			"health_status":   model.MarketplaceHealthStatusHealthy,
 			"capacity_status": model.MarketplaceCapacityStatusAvailable,
 			"risk_status":     model.MarketplaceRiskStatusNormal,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 100,
 		}).Error)
 	order, err := service.CreateMarketplaceFixedOrder(service.MarketplaceFixedOrderCreateInput{
 		BuyerUserID:    2001,
@@ -461,6 +464,9 @@ func TestListModelsReturnsMarketplaceTokenModels(t *testing.T) {
 			"health_status":   model.MarketplaceHealthStatusHealthy,
 			"capacity_status": model.MarketplaceCapacityStatusAvailable,
 			"risk_status":     model.MarketplaceRiskStatusNormal,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 100,
 		}).Error)
 
 	token := &model.Token{

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/i18n"
@@ -26,6 +27,10 @@ func GenerateOAuthCode(c *gin.Context) {
 	affCode := c.Query("aff")
 	if affCode != "" {
 		session.Set("aff", affCode)
+	}
+	if inviteeRateBps, inviteeRateSig, ok := readSignedInviteeShareFromQuery(c); ok {
+		session.Set("invitee_rate_bps", inviteeRateBps)
+		session.Set("invitee_rate_sig", inviteeRateSig)
 	}
 	session.Set("oauth_state", state)
 	err := session.Save()
@@ -268,13 +273,14 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if affCode != nil {
 		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
 	}
+	insertOptions := buildUserInsertOptionsFromOAuthSession(session)
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: create user and binding in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
+			if err := user.InsertWithOptionsTx(tx, inviterId, insertOptions); err != nil {
 				return err
 			}
 
@@ -300,7 +306,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
+			if err := user.InsertWithOptionsTx(tx, inviterId, insertOptions); err != nil {
 				return err
 			}
 
@@ -328,6 +334,55 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 
 	return user, nil
+}
+
+func readSignedInviteeShareFromQuery(c *gin.Context) (int, string, bool) {
+	if c == nil {
+		return 0, "", false
+	}
+	rawRate := strings.TrimSpace(c.Query("invitee_rate_bps"))
+	signature := strings.TrimSpace(c.Query("invitee_rate_sig"))
+	if rawRate == "" || signature == "" {
+		return 0, "", false
+	}
+	inviteeRateBps, err := strconv.Atoi(rawRate)
+	if err != nil || inviteeRateBps <= 0 || inviteeRateBps > model.SubscriptionReferralMaxRateBps {
+		return 0, "", false
+	}
+	return inviteeRateBps, signature, true
+}
+
+func buildUserInsertOptionsFromOAuthSession(session sessions.Session) model.UserInsertOptions {
+	if session == nil {
+		return model.UserInsertOptions{}
+	}
+
+	affCodeValue, ok := session.Get("aff").(string)
+	if !ok {
+		return model.UserInsertOptions{}
+	}
+
+	inviteeRateBps := 0
+	switch value := session.Get("invitee_rate_bps").(type) {
+	case int:
+		inviteeRateBps = value
+	case int64:
+		inviteeRateBps = int(value)
+	case float64:
+		inviteeRateBps = int(value)
+	case string:
+		parsedValue, err := strconv.Atoi(strings.TrimSpace(value))
+		if err == nil {
+			inviteeRateBps = parsedValue
+		}
+	}
+
+	signature, ok := session.Get("invitee_rate_sig").(string)
+	if !ok {
+		signature = ""
+	}
+
+	return buildUserInsertOptionsFromInviteLink(affCodeValue, inviteeRateBps, signature)
 }
 
 // Error types for OAuth

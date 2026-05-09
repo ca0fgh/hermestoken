@@ -78,6 +78,7 @@ type MarketplaceSellerCredentialItem struct {
 	LastFailedAt           int64  `json:"last_failed_at"`
 	LastFailedReason       string `json:"last_failed_reason"`
 	RouteStatus            string `json:"route_status"`
+	RouteReason            string `json:"route_reason"`
 }
 
 func CreateSellerMarketplaceCredential(input MarketplaceCredentialCreateInput) (*model.MarketplaceCredential, error) {
@@ -232,6 +233,7 @@ func ListSellerMarketplaceCredentialItems(sellerUserID int, startIdx int, pageSi
 
 func newMarketplaceSellerCredentialItem(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats) MarketplaceSellerCredentialItem {
 	credential.CapacityStatus = marketplaceCredentialCapacityStatus(credential, stats)
+	routeStatus, routeReason := marketplaceCredentialRouteStatusAndReason(credential, stats)
 	return MarketplaceSellerCredentialItem{
 		MarketplaceCredential:  credential,
 		CurrentConcurrency:     stats.CurrentConcurrency,
@@ -251,7 +253,8 @@ func newMarketplaceSellerCredentialItem(credential model.MarketplaceCredential, 
 		LastSuccessAt:          stats.LastSuccessAt,
 		LastFailedAt:           stats.LastFailedAt,
 		LastFailedReason:       stats.LastFailedReason,
-		RouteStatus:            marketplaceCredentialRouteStatus(credential, stats),
+		RouteStatus:            routeStatus,
+		RouteReason:            routeReason,
 	}
 }
 

@@ -172,6 +172,9 @@ func newMarketplaceFixedOrderRelayFixtureWithFee(t *testing.T, purchasedQuota in
 			"health_status":   model.MarketplaceHealthStatusHealthy,
 			"capacity_status": model.MarketplaceCapacityStatusAvailable,
 			"risk_status":     model.MarketplaceRiskStatusNormal,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     90,
+			"probe_score_max": 100,
 		}).Error)
 	require.NoError(t, db.First(credential, credential.ID).Error)
 
@@ -908,6 +911,9 @@ func TestSelectBuyerMarketplaceFixedOrderForTokenBindingsChoosesSupportedModel(t
 			"health_status":   model.MarketplaceHealthStatusHealthy,
 			"capacity_status": model.MarketplaceCapacityStatusAvailable,
 			"risk_status":     model.MarketplaceRiskStatusNormal,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     88,
+			"probe_score_max": 100,
 		}).Error)
 	secondOrder, err := CreateMarketplaceFixedOrder(MarketplaceFixedOrderCreateInput{
 		BuyerUserID:    fixture.BuyerUserID,

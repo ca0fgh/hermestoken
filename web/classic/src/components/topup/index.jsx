@@ -44,6 +44,84 @@ import WithdrawalApplyModal from './modals/WithdrawalApplyModal';
 import WithdrawalHistoryModal from './modals/WithdrawalHistoryModal';
 import CryptoPaymentModal from './modals/CryptoPaymentModal';
 import { formatTopUpPaymentAmount } from './topupAmount';
+import {
+  clampInviteeRateBps,
+  percentNumberToRateBps,
+} from '../../helpers/subscriptionReferral';
+
+const INVITEE_LINK_RATE_STORAGE_KEY = 'invitee_link_rate_bps';
+
+const readStoredInviteeLinkRateBps = () => {
+  if (typeof window === 'undefined') {
+    return 0;
+  }
+  const storedRateBps = Number(
+    window.localStorage.getItem(INVITEE_LINK_RATE_STORAGE_KEY) || 0,
+  );
+  return Number.isFinite(storedRateBps)
+    ? clampInviteeRateBps(storedRateBps, 10000)
+    : 0;
+};
+
+const getReferralGroupTotalRateBps = (group) => {
+  const normalizePositiveRate = (rate) => {
+    const normalizedRate = Number(rate);
+    return Number.isFinite(normalizedRate) && normalizedRate > 0
+      ? normalizedRate
+      : null;
+  };
+
+  const explicitTotalRate =
+    normalizePositiveRate(group?.total_rate_bps) ??
+    normalizePositiveRate(group?.totalRateBps) ??
+    normalizePositiveRate(group?.effective_total_rate_bps) ??
+    normalizePositiveRate(group?.effectiveTotalRateBps);
+  if (explicitTotalRate !== null) {
+    return explicitTotalRate;
+  }
+
+  const levelType = String(group?.level_type ?? group?.levelType ?? '').trim();
+  if (levelType === 'team') {
+    return (
+      normalizePositiveRate(group?.team_cap_bps) ??
+      normalizePositiveRate(group?.teamCapBps) ??
+      0
+    );
+  }
+  if (levelType === 'direct') {
+    return (
+      normalizePositiveRate(group?.direct_cap_bps) ??
+      normalizePositiveRate(group?.directCapBps) ??
+      0
+    );
+  }
+
+  const fallbackRates = [
+    group?.total_rate_bps,
+    group?.totalRateBps,
+    group?.direct_cap_bps,
+    group?.directCapBps,
+    group?.team_cap_bps,
+    group?.teamCapBps,
+  ]
+    .map(normalizePositiveRate)
+    .filter((rate) => rate !== null);
+  return fallbackRates.length > 0 ? Math.max(...fallbackRates) : 0;
+};
+
+const getMaxReferralInviteeRateBps = (groups = []) => {
+  if (!Array.isArray(groups)) {
+    return 0;
+  }
+  return clampInviteeRateBps(
+    groups.reduce(
+      (maxRate, group) =>
+        Math.max(maxRate, getReferralGroupTotalRateBps(group)),
+      0,
+    ),
+    10000,
+  );
+};
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -98,6 +176,14 @@ const TopUp = () => {
 
   // 邀请相关状态
   const [affLink, setAffLink] = useState('');
+  const [inviteeRateBps, setInviteeRateBps] = useState(
+    readStoredInviteeLinkRateBps,
+  );
+  const [inviteeRateDraftBps, setInviteeRateDraftBps] = useState(
+    readStoredInviteeLinkRateBps,
+  );
+  const [maxInviteeRateBps, setMaxInviteeRateBps] = useState(0);
+  const [inviteeRateSaving, setInviteeRateSaving] = useState(false);
   const [openTransfer, setOpenTransfer] = useState(false);
   const [transferAmount, setTransferAmount] = useState(0);
   const [transferSubmitting, setTransferSubmitting] = useState(false);
@@ -119,6 +205,8 @@ const TopUp = () => {
   // 订阅相关
   const [subscriptionPlans, setSubscriptionPlans] = useState([]);
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const [subscriptionPlanOpenToAllUsers, setSubscriptionPlanOpenToAllUsers] =
+    useState(false);
   const [billingPreference, setBillingPreference] =
     useState('subscription_first');
   const [activeSubscriptions, setActiveSubscriptions] = useState([]);
@@ -417,14 +505,33 @@ const TopUp = () => {
     }
   };
 
-  const getSubscriptionPlans = async () => {
+  const getSubscriptionPlans = async (planOpenToAllUsers) => {
+    const openToAllUsers = planOpenToAllUsers ?? subscriptionPlanOpenToAllUsers;
     setSubscriptionLoading(true);
     try {
       const referralRes = await API.get('/api/user/referral/subscription');
       if (!referralRes.data?.success || !referralRes.data?.data?.enabled) {
         setSubscriptionPlans([]);
-        return;
+        setMaxInviteeRateBps(0);
+        setInviteeRateBps(0);
+        setInviteeRateDraftBps(0);
+        if (!openToAllUsers) {
+          return;
+        }
       }
+
+      const groups = Array.isArray(referralRes.data?.data?.groups)
+        ? referralRes.data.data.groups
+        : [];
+      const normalizedMaxInviteeRateBps = getMaxReferralInviteeRateBps(groups);
+      const nextInviteeRateBps = clampInviteeRateBps(
+        readStoredInviteeLinkRateBps(),
+        normalizedMaxInviteeRateBps,
+      );
+      setMaxInviteeRateBps(normalizedMaxInviteeRateBps);
+      setInviteeRateBps(nextInviteeRateBps);
+      setInviteeRateDraftBps(nextInviteeRateBps);
+      getAffLink(nextInviteeRateBps, normalizedMaxInviteeRateBps).then();
 
       const res = await API.get('/api/subscription/plans');
       if (res.data?.success) {
@@ -498,6 +605,8 @@ const TopUp = () => {
       const res = await API.get('/api/user/topup/info');
       const { message, data, success } = res.data;
       if (success) {
+        const planOpenToAllUsers =
+          data.subscription_plan_open_to_all_users === true;
         setTopupInfo({
           amount_options: data.amount_options || [],
           discount: data.discount || {},
@@ -567,6 +676,7 @@ const TopUp = () => {
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
+          setSubscriptionPlanOpenToAllUsers(planOpenToAllUsers);
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
@@ -603,23 +713,92 @@ const TopUp = () => {
           }));
           setPresetAmounts(customPresets);
         }
+        return planOpenToAllUsers;
       } else {
         showError(data || t('获取充值配置失败'));
       }
     } catch (error) {
       showError(t('获取充值配置异常'));
     }
+    return false;
   };
 
   // 获取邀请链接
-  const getAffLink = async () => {
-    const res = await API.get('/api/user/aff');
-    const { success, message, data } = res.data;
-    if (success) {
-      let link = `${window.location.origin}/register?aff=${data}`;
+  const getAffLink = async (
+    nextInviteeRateBps = inviteeRateBps,
+    inviteeRateCapBps = maxInviteeRateBps,
+  ) => {
+    const normalizedInviteeRateBps = clampInviteeRateBps(
+      nextInviteeRateBps,
+      inviteeRateCapBps,
+    );
+    try {
+      const res = await API.get('/api/user/aff', {
+        params:
+          normalizedInviteeRateBps > 0
+            ? { invitee_rate_bps: normalizedInviteeRateBps }
+            : {},
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message);
+        return false;
+      }
+      const payload =
+        typeof data === 'string' ? { aff_code: data } : data || {};
+      const params = new URLSearchParams({
+        aff: payload.aff_code || data,
+      });
+      if (payload.invitee_rate_bps && payload.invitee_rate_sig) {
+        params.set('invitee_rate_bps', String(payload.invitee_rate_bps));
+        params.set('invitee_rate_sig', payload.invitee_rate_sig);
+      }
+      let link = `${window.location.origin}/register?${params.toString()}`;
       setAffLink(link);
-    } else {
-      showError(message);
+      return true;
+    } catch (error) {
+      showError(t('邀请链接更新失败'));
+      return false;
+    }
+  };
+
+  const handleInviteeRateChange = (value) => {
+    const nextInviteeRateBps = clampInviteeRateBps(
+      percentNumberToRateBps(value),
+      maxInviteeRateBps,
+    );
+    setInviteeRateDraftBps(nextInviteeRateBps);
+  };
+
+  const handleInviteeRateSave = async () => {
+    if (inviteeRateSaving) {
+      return;
+    }
+
+    if (maxInviteeRateBps <= 0) {
+      showError(t('当前没有可分配的邀请返佣比例'));
+      return;
+    }
+
+    const nextInviteeRateBps = clampInviteeRateBps(
+      inviteeRateDraftBps,
+      maxInviteeRateBps,
+    );
+    setInviteeRateSaving(true);
+    try {
+      const updated = await getAffLink(nextInviteeRateBps, maxInviteeRateBps);
+      if (!updated) {
+        return;
+      }
+      setInviteeRateBps(nextInviteeRateBps);
+      setInviteeRateDraftBps(nextInviteeRateBps);
+      window.localStorage.setItem(
+        INVITEE_LINK_RATE_STORAGE_KEY,
+        String(nextInviteeRateBps),
+      );
+      showSuccess(t('邀请链接已更新'));
+    } finally {
+      setInviteeRateSaving(false);
     }
   };
 
@@ -798,8 +977,9 @@ const TopUp = () => {
 
   // 在 statusState 可用时获取充值信息
   useEffect(() => {
-    getTopupInfo().then();
-    getSubscriptionPlans().then();
+    getTopupInfo().then((planOpenToAllUsers) => {
+      getSubscriptionPlans(planOpenToAllUsers).then();
+    });
     getSubscriptionSelf().then();
   }, []);
 
@@ -1157,6 +1337,12 @@ const TopUp = () => {
           renderQuota={renderQuota}
           setOpenTransfer={setOpenTransfer}
           affLink={affLink}
+          inviteeRateBps={inviteeRateDraftBps}
+          inviteeRateDirty={inviteeRateDraftBps !== inviteeRateBps}
+          inviteeRateSaving={inviteeRateSaving}
+          maxInviteeRateBps={maxInviteeRateBps}
+          onInviteeRateChange={handleInviteeRateChange}
+          onInviteeRateSave={handleInviteeRateSave}
           handleAffLinkClick={handleAffLinkClick}
         />
       </div>

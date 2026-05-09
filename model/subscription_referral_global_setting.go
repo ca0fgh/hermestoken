@@ -6,28 +6,49 @@ import (
 )
 
 const (
-	SubscriptionReferralTeamDecayRatioOptionKey = "SubscriptionReferralTeamDecayRatio"
-	SubscriptionReferralTeamMaxDepthOptionKey   = "SubscriptionReferralTeamMaxDepth"
+	SubscriptionReferralTeamDecayRatioOptionKey            = "SubscriptionReferralTeamDecayRatio"
+	SubscriptionReferralTeamMaxDepthOptionKey              = "SubscriptionReferralTeamMaxDepth"
+	SubscriptionReferralAutoAssignInviteeTemplateOptionKey = "SubscriptionReferralAutoAssignInviteeTemplate"
+	SubscriptionPlanOpenToAllUsersOptionKey                = "SubscriptionPlanOpenToAllUsers"
 
-	DefaultSubscriptionReferralTeamDecayRatio = 0.5
-	DefaultSubscriptionReferralTeamMaxDepth   = 0
+	DefaultSubscriptionReferralTeamDecayRatio            = 0.5
+	DefaultSubscriptionReferralTeamMaxDepth              = 0
+	DefaultSubscriptionReferralAutoAssignInviteeTemplate = true
+	DefaultSubscriptionPlanOpenToAllUsers                = false
 )
 
 var (
-	subscriptionReferralTeamDecayRatio = DefaultSubscriptionReferralTeamDecayRatio
-	subscriptionReferralTeamMaxDepth   = DefaultSubscriptionReferralTeamMaxDepth
+	subscriptionReferralTeamDecayRatio            = DefaultSubscriptionReferralTeamDecayRatio
+	subscriptionReferralTeamMaxDepth              = DefaultSubscriptionReferralTeamMaxDepth
+	subscriptionReferralAutoAssignInviteeTemplate = DefaultSubscriptionReferralAutoAssignInviteeTemplate
+	subscriptionPlanOpenToAllUsers                = DefaultSubscriptionPlanOpenToAllUsers
 )
 
+func resetSubscriptionReferralGlobalSettingDefaults() {
+	subscriptionReferralTeamDecayRatio = DefaultSubscriptionReferralTeamDecayRatio
+	subscriptionReferralTeamMaxDepth = DefaultSubscriptionReferralTeamMaxDepth
+	subscriptionReferralAutoAssignInviteeTemplate = DefaultSubscriptionReferralAutoAssignInviteeTemplate
+	subscriptionPlanOpenToAllUsers = DefaultSubscriptionPlanOpenToAllUsers
+}
+
 type SubscriptionReferralGlobalSetting struct {
-	TeamDecayRatio float64 `json:"team_decay_ratio"`
-	TeamMaxDepth   int     `json:"team_max_depth"`
+	TeamDecayRatio            float64 `json:"team_decay_ratio"`
+	TeamMaxDepth              int     `json:"team_max_depth"`
+	AutoAssignInviteeTemplate bool    `json:"auto_assign_invitee_template"`
+	PlanOpenToAllUsers        bool    `json:"plan_open_to_all_users"`
 }
 
 func GetSubscriptionReferralGlobalSetting() SubscriptionReferralGlobalSetting {
 	return SubscriptionReferralGlobalSetting{
-		TeamDecayRatio: subscriptionReferralTeamDecayRatio,
-		TeamMaxDepth:   subscriptionReferralTeamMaxDepth,
+		TeamDecayRatio:            subscriptionReferralTeamDecayRatio,
+		TeamMaxDepth:              subscriptionReferralTeamMaxDepth,
+		AutoAssignInviteeTemplate: subscriptionReferralAutoAssignInviteeTemplate,
+		PlanOpenToAllUsers:        subscriptionPlanOpenToAllUsers,
 	}
+}
+
+func IsSubscriptionPlanOpenToAllUsersEnabled() bool {
+	return subscriptionPlanOpenToAllUsers
 }
 
 func ValidateSubscriptionReferralGlobalSetting(setting SubscriptionReferralGlobalSetting) error {
@@ -53,6 +74,18 @@ func UpdateSubscriptionReferralGlobalSetting(setting SubscriptionReferralGlobalS
 	if err := UpdateOption(
 		SubscriptionReferralTeamMaxDepthOptionKey,
 		strconv.Itoa(setting.TeamMaxDepth),
+	); err != nil {
+		return err
+	}
+	if err := UpdateOption(
+		SubscriptionReferralAutoAssignInviteeTemplateOptionKey,
+		strconv.FormatBool(setting.AutoAssignInviteeTemplate),
+	); err != nil {
+		return err
+	}
+	if err := UpdateOption(
+		SubscriptionPlanOpenToAllUsersOptionKey,
+		strconv.FormatBool(setting.PlanOpenToAllUsers),
 	); err != nil {
 		return err
 	}
