@@ -954,6 +954,8 @@
     "可直接用于": "Directly usable for",
     "买家购买": "Buyers purchase",
     "买断额度，绑定令牌固定路由": "Buy fixed quota and bind tokens for fixed routing",
+    "自己的托管": "Own listing",
+    "不能购买自己的托管": "You cannot buy your own marketplace credential.",
     "订单池": "Order pool",
     "订单池调用": "Order pool calls",
     "订单池激活": "Order pool activation",
