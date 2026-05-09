@@ -526,6 +526,9 @@ func AssignLowestSubscriptionReferralTemplateForInvitedUser(tx *gorm.DB, invitee
 	if inviterUserID <= 0 {
 		return nil
 	}
+	if !GetSubscriptionReferralGlobalSetting().AutoAssignInviteeTemplate {
+		return nil
+	}
 	if tx == nil {
 		tx = DB
 	}

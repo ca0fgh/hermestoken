@@ -24,6 +24,7 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 	originalCommonGroupCol := commonGroupCol
 	originalSubscriptionReferralTeamDecayRatio := subscriptionReferralTeamDecayRatio
 	originalSubscriptionReferralTeamMaxDepth := subscriptionReferralTeamMaxDepth
+	originalSubscriptionReferralAutoAssignInviteeTemplate := subscriptionReferralAutoAssignInviteeTemplate
 	originalOptionMap := make(map[string]string, len(common.OptionMap))
 	for key, value := range common.OptionMap {
 		originalOptionMap[key] = value
@@ -74,6 +75,7 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 		commonGroupCol = originalCommonGroupCol
 		subscriptionReferralTeamDecayRatio = originalSubscriptionReferralTeamDecayRatio
 		subscriptionReferralTeamMaxDepth = originalSubscriptionReferralTeamMaxDepth
+		subscriptionReferralAutoAssignInviteeTemplate = originalSubscriptionReferralAutoAssignInviteeTemplate
 		common.OptionMap = originalOptionMap
 	})
 
@@ -254,6 +256,60 @@ func TestAssignLowestSubscriptionReferralTemplateForInvitedUserRequiresInviterAc
 	}
 	if len(bundles[0].TemplateIDs) != len(lowestRows) {
 		t.Fatalf("expected invitee to bind all lowest bundle rows, got template ids %v", bundles[0].TemplateIDs)
+	}
+}
+
+func TestAssignLowestSubscriptionReferralTemplateForInvitedUserCanBeDisabled(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	rows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter"},
+		Name:                   "disabled-auto-assign-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           800,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	inviter := &User{
+		Username: "disabled-auto-assign-inviter",
+		Password: "password",
+		AffCode:  "disabled_auto_assign_inviter",
+		Group:    "default",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+	if _, err := UpsertReferralTemplateBindingBundleForUser(inviter.Id, ReferralTypeSubscription, rows[0].Id, nil, 1); err != nil {
+		t.Fatalf("failed to bind inviter: %v", err)
+	}
+	if err := UpdateSubscriptionReferralGlobalSetting(SubscriptionReferralGlobalSetting{
+		TeamDecayRatio:            DefaultSubscriptionReferralTeamDecayRatio,
+		TeamMaxDepth:              DefaultSubscriptionReferralTeamMaxDepth,
+		AutoAssignInviteeTemplate: false,
+	}); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGlobalSetting() error = %v", err)
+	}
+
+	invitee := &User{
+		Username: "disabled-auto-assign-invitee",
+		Password: "password123",
+		Group:    "default",
+	}
+	if err := invitee.Insert(inviter.Id); err != nil {
+		t.Fatalf("Insert(invited user) error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBindingBundlesByUser(invitee.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingBundlesByUser(invitee) error = %v", err)
+	}
+	if len(bundles) != 0 {
+		t.Fatalf("expected no subscription referral bundle when auto assign is disabled, got %d", len(bundles))
 	}
 }
 
@@ -442,6 +498,9 @@ func TestSubscriptionReferralGlobalSettingDefaults(t *testing.T) {
 	}
 	if setting.TeamMaxDepth != DefaultSubscriptionReferralTeamMaxDepth {
 		t.Fatalf("TeamMaxDepth = %d, want %d", setting.TeamMaxDepth, DefaultSubscriptionReferralTeamMaxDepth)
+	}
+	if setting.AutoAssignInviteeTemplate != DefaultSubscriptionReferralAutoAssignInviteeTemplate {
+		t.Fatalf("AutoAssignInviteeTemplate = %v, want %v", setting.AutoAssignInviteeTemplate, DefaultSubscriptionReferralAutoAssignInviteeTemplate)
 	}
 }
 

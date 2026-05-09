@@ -38,7 +38,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	if !requireActiveSubscriptionReferral(c) {
+	if !requireSubscriptionPlanAccess(c) {
 		return
 	}
 

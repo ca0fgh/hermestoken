@@ -249,7 +249,7 @@ func SellerProbeMarketplaceCredential(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	credential, err := service.RequestSellerMarketplaceCredentialProbe(userID, credentialID)
+	credential, err := service.RequestSellerMarketplaceCredentialProbeWithModel(userID, credentialID, c.Query("model"))
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -232,8 +232,9 @@ func LinuxdoOAuth(c *gin.Context) {
 				if affCode != nil {
 					inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
 				}
+				insertOptions := buildUserInsertOptionsFromOAuthSession(session)
 
-				if err := user.Insert(inviterId); err != nil {
+				if err := user.InsertWithOptions(inviterId, insertOptions); err != nil {
 					c.JSON(http.StatusOK, gin.H{
 						"success": false,
 						"message": err.Error(),

@@ -19,6 +19,8 @@ type ReferralTemplateBindingUpsertRequest struct {
 }
 
 type SubscriptionReferralGlobalSettingUpsertRequest struct {
-	TeamDecayRatio float64 `json:"team_decay_ratio"`
-	TeamMaxDepth   int     `json:"team_max_depth"`
+	TeamDecayRatio            *float64 `json:"team_decay_ratio"`
+	TeamMaxDepth              *int     `json:"team_max_depth"`
+	AutoAssignInviteeTemplate *bool    `json:"auto_assign_invitee_template"`
+	PlanOpenToAllUsers        *bool    `json:"plan_open_to_all_users"`
 }

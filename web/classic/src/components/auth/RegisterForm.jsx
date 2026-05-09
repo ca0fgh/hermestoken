@@ -111,9 +111,20 @@ const RegisterForm = () => {
   const githubButtonText = t(githubButtonTextKeyByState[githubButtonState]);
   const logo = getOptimizedLogoUrl(getLogo(), { size: 80 });
 
-  let affCode = new URLSearchParams(window.location.search).get('aff');
+  const inviteParams = new URLSearchParams(window.location.search);
+  let affCode = inviteParams.get('aff');
+  let inviteeRateBps = inviteParams.get('invitee_rate_bps');
+  let inviteeRateSig = inviteParams.get('invitee_rate_sig');
+
   if (affCode) {
     localStorage.setItem('aff', affCode);
+    if (inviteeRateBps && inviteeRateSig) {
+      localStorage.setItem('invitee_rate_bps', inviteeRateBps);
+      localStorage.setItem('invitee_rate_sig', inviteeRateSig);
+    } else {
+      localStorage.removeItem('invitee_rate_bps');
+      localStorage.removeItem('invitee_rate_sig');
+    }
   }
 
   const status = useMemo(() => {
@@ -232,6 +243,14 @@ const RegisterForm = () => {
           affCode = localStorage.getItem('aff');
         }
         inputs.aff_code = affCode;
+        if (!inviteeRateBps) {
+          inviteeRateBps = localStorage.getItem('invitee_rate_bps');
+        }
+        if (!inviteeRateSig) {
+          inviteeRateSig = localStorage.getItem('invitee_rate_sig');
+        }
+        inputs.invitee_rate_bps = Number(inviteeRateBps || 0);
+        inputs.invitee_rate_sig = inviteeRateSig || '';
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
           inputs,

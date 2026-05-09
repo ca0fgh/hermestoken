@@ -16,8 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
 import React from 'react';
-import { Avatar, Typography, Card, Button, Input, Badge, Space } from '@douyinfe/semi-ui';
+import {
+  Avatar,
+  Typography,
+  Card,
+  Button,
+  Input,
+  InputNumber,
+  Badge,
+  Space,
+} from '@douyinfe/semi-ui';
 import { Copy, Users, BarChart2, TrendingUp, Gift, Zap } from 'lucide-react';
+import {
+  formatRateBpsPercent,
+  rateBpsToPercentNumber,
+} from '../../helpers/subscriptionReferral';
 
 const { Text } = Typography;
 
@@ -27,8 +40,17 @@ const InvitationCard = ({
   renderQuota,
   setOpenTransfer,
   affLink,
+  inviteeRateBps,
+  inviteeRateDirty,
+  inviteeRateSaving,
+  maxInviteeRateBps,
+  onInviteeRateChange,
+  onInviteeRateSave,
   handleAffLinkClick,
 }) => {
+  const hasInviteeRateCapacity = Number(maxInviteeRateBps || 0) > 0;
+  const canSaveInviteeRate = hasInviteeRateCapacity && inviteeRateDirty;
+
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
       {/* 卡片头部 */}
@@ -163,24 +185,62 @@ const InvitationCard = ({
             </div>
           }
         >
-          {/* 邀请链接部分 */}
-          <Input
-            value={affLink}
-            readonly
-            className='!rounded-lg'
-            prefix={t('邀请链接')}
-            suffix={
-              <Button
-                type='primary'
-                theme='solid'
-                onClick={handleAffLinkClick}
-                icon={<Copy size={14} />}
-                className='!rounded-lg'
-              >
-                {t('复制')}
-              </Button>
-            }
-          />
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-[240px_minmax(0,1fr)]'>
+            <div className='rounded-xl border border-[rgba(var(--semi-grey-2),1)] bg-[rgba(var(--semi-grey-0),.55)] px-4 py-3'>
+              <div className='mb-2 flex items-center justify-between gap-2'>
+                <Text strong className='whitespace-nowrap text-sm'>
+                  {t('受邀人比例')}
+                </Text>
+                <div className='flex items-center gap-2'>
+                  <Text type='tertiary' className='whitespace-nowrap text-xs'>
+                    {t('最高')} {formatRateBpsPercent(maxInviteeRateBps)}
+                  </Text>
+                  <Button
+                    type={canSaveInviteeRate ? 'primary' : 'tertiary'}
+                    theme={canSaveInviteeRate ? 'solid' : 'borderless'}
+                    size='small'
+                    disabled={!canSaveInviteeRate}
+                    loading={inviteeRateSaving}
+                    onClick={onInviteeRateSave}
+                    className='!rounded-lg'
+                  >
+                    {t('保存')}
+                  </Button>
+                </div>
+              </div>
+              <InputNumber
+                value={rateBpsToPercentNumber(inviteeRateBps)}
+                min={0}
+                max={rateBpsToPercentNumber(maxInviteeRateBps)}
+                step={0.01}
+                precision={2}
+                suffix='%'
+                disabled={!hasInviteeRateCapacity}
+                className='w-full'
+                style={{ width: '100%' }}
+                onChange={onInviteeRateChange}
+              />
+            </div>
+
+            <div className='min-w-0 rounded-xl border border-[rgba(var(--semi-grey-2),1)] bg-[rgba(var(--semi-grey-0),.55)] px-4 py-3'>
+              <div className='mb-2 flex items-center justify-between gap-3'>
+                <Text strong className='whitespace-nowrap text-sm'>
+                  {t('邀请链接')}
+                </Text>
+                <Button
+                  type='primary'
+                  theme='solid'
+                  size='small'
+                  onClick={handleAffLinkClick}
+                  icon={<Copy size={14} />}
+                  className='!rounded-lg'
+                >
+                  {t('复制')}
+                </Button>
+              </div>
+              <Input value={affLink} readOnly className='!rounded-lg' />
+            </div>
+          </div>
         </Card>
 
         {/* 奖励说明 */}

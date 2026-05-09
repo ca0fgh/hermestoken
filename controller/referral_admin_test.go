@@ -777,8 +777,10 @@ func TestAdminUpdateSubscriptionReferralGlobalSetting(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/settings/subscription", map[string]interface{}{
-		"team_decay_ratio": 0.25,
-		"team_max_depth":   0,
+		"team_decay_ratio":             0.25,
+		"team_max_depth":               0,
+		"auto_assign_invitee_template": false,
+		"plan_open_to_all_users":       true,
 	}, 1)
 	AdminUpdateSubscriptionReferralGlobalSetting(ctx)
 
@@ -793,6 +795,48 @@ func TestAdminUpdateSubscriptionReferralGlobalSetting(t *testing.T) {
 	}
 	if setting.TeamMaxDepth != 0 {
 		t.Fatalf("TeamMaxDepth = %d, want 0", setting.TeamMaxDepth)
+	}
+	if setting.AutoAssignInviteeTemplate {
+		t.Fatal("AutoAssignInviteeTemplate = true, want false")
+	}
+	if !setting.PlanOpenToAllUsers {
+		t.Fatal("PlanOpenToAllUsers = false, want true")
+	}
+}
+
+func TestAdminUpdateSubscriptionReferralGlobalSettingPreservesOmittedFields(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	if err := model.UpdateSubscriptionReferralGlobalSetting(model.SubscriptionReferralGlobalSetting{
+		TeamDecayRatio:            0.25,
+		TeamMaxDepth:              3,
+		AutoAssignInviteeTemplate: false,
+		PlanOpenToAllUsers:        false,
+	}); err != nil {
+		t.Fatalf("failed to seed subscription referral global setting: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/settings/subscription", map[string]interface{}{
+		"plan_open_to_all_users": true,
+	}, 1)
+	AdminUpdateSubscriptionReferralGlobalSetting(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	setting := model.GetSubscriptionReferralGlobalSetting()
+	if setting.TeamDecayRatio != 0.25 {
+		t.Fatalf("TeamDecayRatio = %v, want 0.25", setting.TeamDecayRatio)
+	}
+	if setting.TeamMaxDepth != 3 {
+		t.Fatalf("TeamMaxDepth = %d, want 3", setting.TeamMaxDepth)
+	}
+	if setting.AutoAssignInviteeTemplate {
+		t.Fatal("AutoAssignInviteeTemplate = true, want false")
+	}
+	if !setting.PlanOpenToAllUsers {
+		t.Fatal("PlanOpenToAllUsers = false, want true")
 	}
 }
 

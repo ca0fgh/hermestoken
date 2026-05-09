@@ -24,17 +24,20 @@ type BillingPreferenceRequest struct {
 
 const subscriptionReferralRequiredMessage = "该用户未开通订阅返佣"
 
-func userHasActiveSubscriptionReferral(userID int) (bool, error) {
+func userCanAccessSubscriptionPlans(userID int) (bool, error) {
+	if model.IsSubscriptionPlanOpenToAllUsersEnabled() {
+		return true, nil
+	}
 	return model.HasAnyActiveReferralTemplateBindingByUser(userID, model.ReferralTypeSubscription)
 }
 
-func requireActiveSubscriptionReferral(c *gin.Context) bool {
-	active, err := userHasActiveSubscriptionReferral(c.GetInt("id"))
+func requireSubscriptionPlanAccess(c *gin.Context) bool {
+	allowed, err := userCanAccessSubscriptionPlans(c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return false
 	}
-	if !active {
+	if !allowed {
 		common.ApiErrorMsg(c, subscriptionReferralRequiredMessage)
 		return false
 	}
@@ -44,12 +47,12 @@ func requireActiveSubscriptionReferral(c *gin.Context) bool {
 // ---- User APIs ----
 
 func GetSubscriptionPlans(c *gin.Context) {
-	active, err := userHasActiveSubscriptionReferral(c.GetInt("id"))
+	allowed, err := userCanAccessSubscriptionPlans(c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	if !active {
+	if !allowed {
 		common.ApiSuccess(c, []SubscriptionPlanDTO{})
 		return
 	}

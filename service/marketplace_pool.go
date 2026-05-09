@@ -10,6 +10,18 @@ import (
 	"github.com/ca0fgh/hermestoken/model"
 )
 
+const (
+	marketplacePoolReliabilityWeight = 50.0
+	marketplacePoolProbeWeight       = 20.0
+	marketplacePoolLoadWeight        = 15.0
+	marketplacePoolPriceWeight       = 10.0
+	marketplacePoolLatencyWeight     = 5.0
+	marketplacePoolMaxLatencyMS      = 10000.0
+	marketplacePoolMaxMultiplier     = 5.0
+	marketplacePoolReliabilityPrior  = 0.75
+	marketplacePoolPriorRequestCount = 8.0
+)
+
 type MarketplacePoolModel struct {
 	VendorType         int                     `json:"vendor_type"`
 	VendorNameSnapshot string                  `json:"vendor_name_snapshot"`
@@ -38,7 +50,7 @@ func ListMarketplacePoolModels(input MarketplaceOrderListInput) ([]MarketplacePo
 	modelFilter := strings.TrimSpace(input.Model)
 	for _, credential := range credentials {
 		stats := statsByCredentialID[credential.ID]
-		if !isMarketplacePoolCredentialEligible(credential, stats) {
+		if !isMarketplacePoolRelayEligible(credential, stats, input.BuyerUserID) {
 			continue
 		}
 		for _, modelName := range strings.Split(credential.Models, ",") {
@@ -118,7 +130,7 @@ func ListMarketplacePoolCandidates(input MarketplaceOrderListInput, startIdx int
 	candidates := make([]MarketplacePoolCandidate, 0, len(credentials))
 	for _, credential := range credentials {
 		stats := statsByCredentialID[credential.ID]
-		if !isMarketplacePoolCredentialEligible(credential, stats) {
+		if !isMarketplacePoolRelayEligible(credential, stats, input.BuyerUserID) {
 			continue
 		}
 		candidates = append(candidates, newMarketplacePoolCandidate(credential, stats))
@@ -200,6 +212,9 @@ func isMarketplacePoolRelayEligible(credential model.MarketplaceCredential, stat
 	if !isMarketplaceCredentialPurchaseEligible(credential, stats) {
 		return false
 	}
+	if !marketplaceCredentialHasRoutableProbeScore(credential) {
+		return false
+	}
 	return isMarketplacePoolCredentialEligible(credential, stats)
 }
 
@@ -230,12 +245,59 @@ func marketplacePoolLoadRatio(credential model.MarketplaceCredential, stats mode
 }
 
 func marketplacePoolRouteScore(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats, successRate float64, loadRatio float64) float64 {
-	latencyPenalty := math.Min(1, float64(stats.AvgLatencyMS)/10000)
-	score := 100 + successRate*100 - loadRatio*50 - credential.Multiplier*10 - latencyPenalty*10
-	if score < 0 {
+	reliabilityScore := marketplacePoolReliabilityScoreRatio(stats, successRate)
+	probeScore := marketplacePoolProbeScoreRatio(credential)
+	loadScore := 1 - clampMarketplacePoolScoreRatio(loadRatio)
+	priceScore := marketplacePoolPriceScoreRatio(credential.Multiplier)
+	latencyScore := marketplacePoolLatencyScoreRatio(stats.AvgLatencyMS)
+
+	score := reliabilityScore*marketplacePoolReliabilityWeight +
+		probeScore*marketplacePoolProbeWeight +
+		loadScore*marketplacePoolLoadWeight +
+		priceScore*marketplacePoolPriceWeight +
+		latencyScore*marketplacePoolLatencyWeight
+	return math.Round(score*100) / 100
+}
+
+func marketplacePoolReliabilityScoreRatio(stats model.MarketplaceCredentialStats, successRate float64) float64 {
+	total := stats.SuccessCount + stats.UpstreamErrorCount + stats.TimeoutCount + stats.RateLimitCount + stats.PlatformErrorCount
+	if total <= 0 {
+		return marketplacePoolReliabilityPrior
+	}
+	success := float64(stats.SuccessCount) + marketplacePoolReliabilityPrior*marketplacePoolPriorRequestCount
+	requests := float64(total) + marketplacePoolPriorRequestCount
+	return clampMarketplacePoolScoreRatio(success / requests)
+}
+
+func marketplacePoolProbeScoreRatio(credential model.MarketplaceCredential) float64 {
+	if credential.ProbeScoreMax <= 0 {
 		return 0
 	}
-	return score
+	return clampMarketplacePoolScoreRatio(float64(credential.ProbeScore) / float64(credential.ProbeScoreMax))
+}
+
+func marketplacePoolPriceScoreRatio(multiplier float64) float64 {
+	if multiplier <= 0 {
+		return 1
+	}
+	return 1 - math.Min(1, multiplier/marketplacePoolMaxMultiplier)
+}
+
+func marketplacePoolLatencyScoreRatio(avgLatencyMS int64) float64 {
+	if avgLatencyMS <= 0 {
+		return 1
+	}
+	return 1 - math.Min(1, float64(avgLatencyMS)/marketplacePoolMaxLatencyMS)
+}
+
+func clampMarketplacePoolScoreRatio(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
 }
 
 func marketplacePoolModelKey(vendorType int, modelName string) string {

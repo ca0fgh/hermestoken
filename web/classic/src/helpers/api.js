@@ -111,7 +111,9 @@ function patchAPIInstance(instance) {
     }
 
     const key = genKey(url, config);
-    const cacheTTL = config?.disableResponseCache ? 0 : getResponseCacheTTL(url);
+    const cacheTTL = config?.disableResponseCache
+      ? 0
+      : getResponseCacheTTL(url);
 
     if (cacheTTL > 0) {
       const cachedResponse = cachedGetResponses.get(key);
@@ -332,7 +334,14 @@ export async function getOAuthState() {
   let path = '/api/oauth/state';
   let affCode = localStorage.getItem('aff');
   if (affCode && affCode.length > 0) {
-    path += `?aff=${affCode}`;
+    const params = new URLSearchParams({ aff: affCode });
+    const inviteeRateBps = localStorage.getItem('invitee_rate_bps');
+    const inviteeRateSig = localStorage.getItem('invitee_rate_sig');
+    if (inviteeRateBps && inviteeRateSig) {
+      params.set('invitee_rate_bps', inviteeRateBps);
+      params.set('invitee_rate_sig', inviteeRateSig);
+    }
+    path += `?${params.toString()}`;
   }
   const res = await API.get(path);
   const { success, message, data } = res.data;

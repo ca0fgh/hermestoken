@@ -83,7 +83,7 @@ func seedSubscriptionPlan(t *testing.T, db *gorm.DB, title string) *model.Subscr
 	return plan
 }
 
-func TestGetSubscriptionPlansHidesPlansWithoutActiveSubscriptionReferralBinding(t *testing.T) {
+func TestGetSubscriptionPlansHidesPlansWithoutActiveSubscriptionReferralBindingWhenOpenToAllDisabled(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	user := seedSubscriptionPaymentUser(t, db, 1, "plan-hidden@example.com", "plan_hidden", "")
 	seedSubscriptionPlan(t, db, "hidden-plan")
@@ -102,6 +102,39 @@ func TestGetSubscriptionPlansHidesPlansWithoutActiveSubscriptionReferralBinding(
 	}
 	if len(plans) != 0 {
 		t.Fatalf("expected no subscription plans for user without active subscription referral binding, got %d", len(plans))
+	}
+}
+
+func TestGetSubscriptionPlansReturnsEnabledPlansWithoutActiveSubscriptionReferralBindingWhenOpenToAllEnabled(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	if err := model.UpdateSubscriptionReferralGlobalSetting(model.SubscriptionReferralGlobalSetting{
+		TeamDecayRatio:            model.DefaultSubscriptionReferralTeamDecayRatio,
+		TeamMaxDepth:              model.DefaultSubscriptionReferralTeamMaxDepth,
+		AutoAssignInviteeTemplate: model.DefaultSubscriptionReferralAutoAssignInviteeTemplate,
+		PlanOpenToAllUsers:        true,
+	}); err != nil {
+		t.Fatalf("failed to enable subscription plans for all users: %v", err)
+	}
+	user := seedSubscriptionPaymentUser(t, db, 1, "plan-public@example.com", "plan_public", "")
+	plan := seedSubscriptionPlan(t, db, "public-plan")
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/subscription/plans", nil, user.Id)
+	GetSubscriptionPlans(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var plans []SubscriptionPlanDTO
+	if err := common.Unmarshal(response.Data, &plans); err != nil {
+		t.Fatalf("failed to decode plan response: %v", err)
+	}
+	if len(plans) != 1 {
+		t.Fatalf("expected subscription plans for user without active subscription referral binding when open to all is enabled, got %d", len(plans))
+	}
+	if plans[0].Plan.Id != plan.Id {
+		t.Fatalf("expected returned plan id %d, got %d", plan.Id, plans[0].Plan.Id)
 	}
 }
 
