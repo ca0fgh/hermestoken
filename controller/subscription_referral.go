@@ -514,8 +514,5 @@ func hasActiveTemplateBinding(userID int, group string) bool {
 }
 
 func subscriptionTemplateVisibleTotalRateBps(template model.ReferralTemplate) int {
-	if template.LevelType == model.ReferralLevelTypeTeam {
-		return model.NormalizeSubscriptionReferralRateBps(template.TeamCapBps)
-	}
-	return model.NormalizeSubscriptionReferralRateBps(template.DirectCapBps)
+	return model.SubscriptionReferralTemplateVisibleTotalRateBps(template)
 }

@@ -50,6 +50,7 @@ type marketplaceCredentialResponse struct {
 	HealthStatus       string  `json:"health_status"`
 	CapacityStatus     string  `json:"capacity_status"`
 	RouteStatus        string  `json:"route_status"`
+	RouteReason        string  `json:"route_reason"`
 	RiskStatus         string  `json:"risk_status"`
 	ProbeStatus        string  `json:"probe_status"`
 	ProbeScore         int     `json:"probe_score"`
@@ -534,6 +535,7 @@ func TestSellerListMarketplaceCredentialsReportsFailedHealthAsNotRoutable(t *tes
 	assert.Equal(t, model.MarketplaceHealthStatusFailed, items[0].HealthStatus)
 	assert.Equal(t, model.MarketplaceCapacityStatusAvailable, items[0].CapacityStatus)
 	assert.Equal(t, model.MarketplaceRouteStatusFailed, items[0].RouteStatus)
+	assert.Equal(t, model.MarketplaceRouteReasonHealthFailed, items[0].RouteReason)
 }
 
 func TestApplySellerMarketplaceCredentialTestResultUpdatesHealth(t *testing.T) {
@@ -751,6 +753,32 @@ func TestSellerProbeMarketplaceCredentialQueuesOwnedCredential(t *testing.T) {
 	updated := decodeMarketplaceCredentialResponse(t, response)
 	assert.Equal(t, model.MarketplaceProbeStatusPending, updated.ProbeStatus)
 	assert.Zero(t, updated.ProbeCheckedAt)
+}
+
+func TestSellerProbeMarketplaceCredentialAcceptsRequestedModel(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	credential := createMarketplaceCredentialViaController(t, 10, "seller-secret-placeholder")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"models":           "gpt-4o-mini,gpt-5.5",
+			"probe_status":     model.MarketplaceProbeStatusUnscored,
+			"probe_score":      0,
+			"probe_score_max":  0,
+			"probe_checked_at": 0,
+		}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/marketplace/seller/credentials/1/probe?model=gpt-5.5", nil, 10)
+	ctx.Params = gin.Params{{Key: "id", Value: fmt.Sprintf("%d", credential.ID)}}
+	SellerProbeMarketplaceCredential(ctx)
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+
+	updated := decodeMarketplaceCredentialResponse(t, response)
+	assert.Equal(t, model.MarketplaceProbeStatusPending, updated.ProbeStatus)
+	var stored model.MarketplaceCredential
+	require.NoError(t, db.First(&stored, credential.ID).Error)
+	assert.Equal(t, "gpt-5.5", stored.ProbeModel)
 }
 
 func TestSellerProbeMarketplaceCredentialRejectsOtherSeller(t *testing.T) {

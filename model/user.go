@@ -36,6 +36,8 @@ type User struct {
 	WeChatId                   string         `json:"wechat_id" gorm:"column:wechat_id;index"`
 	TelegramId                 string         `json:"telegram_id" gorm:"column:telegram_id;index"`
 	VerificationCode           string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
+	InviteeRateBps             int            `json:"invitee_rate_bps,omitempty" gorm:"-:all"`                           // request-only: signed invitee referral share from invite links
+	InviteeRateSig             string         `json:"invitee_rate_sig,omitempty" gorm:"-:all"`                           // request-only: signature for InviteeRateBps
 	AccessToken                *string        `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota                      int            `json:"quota" gorm:"type:int;default:0"`
 	WithdrawFrozenQuota        int            `json:"withdraw_frozen_quota" gorm:"type:int;default:0;column:withdraw_frozen_quota"`
@@ -590,6 +592,10 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 }
 
 func (user *User) Insert(inviterId int) error {
+	return user.InsertWithOptions(inviterId, UserInsertOptions{})
+}
+
+func (user *User) InsertWithOptions(inviterId int, options UserInsertOptions) error {
 	var err error
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -598,6 +604,9 @@ func (user *User) Insert(inviterId int) error {
 		}
 	}
 	user.normalizeGroupForCreate()
+	if inviterId > 0 && user.InviterId == 0 {
+		user.InviterId = inviterId
+	}
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
 	user.AffCode = common.GetRandomString(4)
@@ -613,7 +622,10 @@ func (user *User) Insert(inviterId int) error {
 		if err := tx.Create(user).Error; err != nil {
 			return err
 		}
-		return AssignLowestSubscriptionReferralTemplateForInvitedUser(tx, user.Id, inviterId)
+		if err := AssignLowestSubscriptionReferralTemplateForInvitedUser(tx, user.Id, inviterId); err != nil {
+			return err
+		}
+		return ApplySignedReferralInviteeShareOverridesForNewInviteeTx(tx, inviterId, user.Id, options)
 	})
 	if err != nil {
 		return err
@@ -655,6 +667,10 @@ func (user *User) Insert(inviterId int) error {
 // This is used for OAuth registration where user creation and binding need to be atomic.
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
 func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
+	return user.InsertWithOptionsTx(tx, inviterId, UserInsertOptions{})
+}
+
+func (user *User) InsertWithOptionsTx(tx *gorm.DB, inviterId int, options UserInsertOptions) error {
 	var err error
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -663,6 +679,9 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		}
 	}
 	user.normalizeGroupForCreate()
+	if inviterId > 0 && user.InviterId == 0 {
+		user.InviterId = inviterId
+	}
 	user.Quota = common.QuotaForNewUser
 	user.AffCode = common.GetRandomString(4)
 
@@ -677,7 +696,10 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		return result.Error
 	}
 
-	return AssignLowestSubscriptionReferralTemplateForInvitedUser(tx, user.Id, inviterId)
+	if err := AssignLowestSubscriptionReferralTemplateForInvitedUser(tx, user.Id, inviterId); err != nil {
+		return err
+	}
+	return ApplySignedReferralInviteeShareOverridesForNewInviteeTx(tx, inviterId, user.Id, options)
 }
 
 func (user *User) normalizeGroupForCreate() {

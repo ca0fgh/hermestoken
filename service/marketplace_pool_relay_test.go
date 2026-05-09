@@ -92,6 +92,13 @@ func newMarketplacePoolRelayFixture(t *testing.T) marketplacePoolRelayFixture {
 
 func TestPrepareMarketplacePoolRelaySelectsEligibleCredentialAndIncrementsConcurrency(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 	busyCredential, err := CreateSellerMarketplaceCredential(MarketplaceCredentialCreateInput{
 		SellerUserID:     11,
 		VendorType:       constant.ChannelTypeOpenAI,
@@ -108,6 +115,9 @@ func TestPrepareMarketplacePoolRelaySelectsEligibleCredentialAndIncrementsConcur
 			"health_status":   model.MarketplaceHealthStatusHealthy,
 			"capacity_status": model.MarketplaceCapacityStatusAvailable,
 			"risk_status":     model.MarketplaceRiskStatusNormal,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     100,
+			"probe_score_max": 100,
 		}).Error)
 	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredentialStats{}).
 		Where("credential_id = ?", busyCredential.ID).
@@ -129,6 +139,13 @@ func TestPrepareMarketplacePoolRelaySelectsEligibleCredentialAndIncrementsConcur
 
 func TestPrepareMarketplacePoolRelayHonorsBuyerFilters(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 
 	_, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
 		BuyerUserID:   fixture.BuyerUserID,
@@ -153,6 +170,13 @@ func TestPrepareMarketplacePoolRelayHonorsBuyerFilters(t *testing.T) {
 
 func TestMarketplacePoolRelayBillingSessionSettleChargesWalletAndWritesSettlement(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 	preparation, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
 		BuyerUserID: fixture.BuyerUserID,
 		Model:       "gpt-4o-mini",
@@ -213,6 +237,13 @@ func TestMarketplacePoolRelayBillingSessionSettleChargesWalletAndWritesSettlemen
 func TestMarketplacePoolRelayBillingSessionSettleChargesWalletWithTransactionFee(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
 	setting.MarketplaceFeeRate = 0.05
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 
 	preparation, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
 		BuyerUserID: fixture.BuyerUserID,
@@ -253,6 +284,13 @@ func TestMarketplacePoolRelayBillingSessionSettleChargesWalletWithTransactionFee
 func TestMarketplacePoolRelayBuyerChargeForQuotaIncludesTransactionFee(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
 	setting.MarketplaceFeeRate = 0.05
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 
 	preparation, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
 		BuyerUserID: fixture.BuyerUserID,
@@ -267,6 +305,13 @@ func TestMarketplacePoolRelayBuyerChargeForQuotaIncludesTransactionFee(t *testin
 
 func TestMarketplacePoolRelayBillingSessionRefundRestoresWalletAndReleasesConcurrency(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 	preparation, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
 		BuyerUserID: fixture.BuyerUserID,
 		Model:       "gpt-4o-mini",
@@ -299,6 +344,13 @@ func TestMarketplacePoolRelayBillingSessionRefundRestoresWalletAndReleasesConcur
 
 func TestPrepareMarketplacePoolRelayRejectsWhenNoEligibleCredential(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredentialStats{}).
 		Where("credential_id = ?", fixture.Credential.ID).
 		Update("current_concurrency", 2).Error)
@@ -316,7 +368,12 @@ func TestPrepareMarketplacePoolRelayRejectsOwnCredential(t *testing.T) {
 	fixture := newMarketplacePoolRelayFixture(t)
 	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
 		Where("id = ?", fixture.Credential.ID).
-		Update("seller_user_id", fixture.BuyerUserID).Error)
+		Updates(map[string]any{
+			"seller_user_id":  fixture.BuyerUserID,
+			"probe_status":    model.MarketplaceProbeStatusPassed,
+			"probe_score":     92,
+			"probe_score_max": 100,
+		}).Error)
 
 	_, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
 		BuyerUserID: fixture.BuyerUserID,
@@ -325,6 +382,92 @@ func TestPrepareMarketplacePoolRelayRejectsOwnCredential(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no eligible")
+}
+
+func TestPrepareMarketplacePoolRelayRejectsCredentialWithoutProbeScore(t *testing.T) {
+	fixture := newMarketplacePoolRelayFixture(t)
+
+	_, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
+		BuyerUserID: fixture.BuyerUserID,
+		Model:       "gpt-4o-mini",
+		RequestID:   "pool-unscored-candidate",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no eligible")
+}
+
+func TestPrepareMarketplacePoolRelayRejectsZeroProbeScore(t *testing.T) {
+	fixture := newMarketplacePoolRelayFixture(t)
+	require.NoError(t, fixture.DB.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", fixture.Credential.ID).
+		Updates(map[string]any{
+			"probe_status":    model.MarketplaceProbeStatusWarning,
+			"probe_score":     0,
+			"probe_score_max": 100,
+		}).Error)
+
+	_, err := PrepareMarketplacePoolRelay(MarketplacePoolRelayInput{
+		BuyerUserID: fixture.BuyerUserID,
+		Model:       "gpt-4o-mini",
+		RequestID:   "pool-zero-probe-score",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no eligible")
+}
+
+func TestMarketplacePoolCandidateScoreUsesReliabilityProbeLoadPriceAndLatency(t *testing.T) {
+	reliable := model.MarketplaceCredential{
+		ID:               1,
+		Multiplier:       1.5,
+		ConcurrencyLimit: 10,
+		ProbeStatus:      model.MarketplaceProbeStatusPassed,
+		ProbeScore:       80,
+		ProbeScoreMax:    100,
+	}
+	reliableStats := model.MarketplaceCredentialStats{
+		SuccessCount:       95,
+		UpstreamErrorCount: 5,
+		CurrentConcurrency: 2,
+		AvgLatencyMS:       2000,
+	}
+	cheapButLowProbe := model.MarketplaceCredential{
+		ID:               2,
+		Multiplier:       0.8,
+		ConcurrencyLimit: 10,
+		ProbeStatus:      model.MarketplaceProbeStatusWarning,
+		ProbeScore:       45,
+		ProbeScoreMax:    100,
+	}
+	cheapButLowProbeStats := model.MarketplaceCredentialStats{
+		SuccessCount:       70,
+		UpstreamErrorCount: 30,
+		CurrentConcurrency: 0,
+		AvgLatencyMS:       300,
+	}
+	highProbeButFailing := model.MarketplaceCredential{
+		ID:               3,
+		Multiplier:       0.7,
+		ConcurrencyLimit: 10,
+		ProbeStatus:      model.MarketplaceProbeStatusPassed,
+		ProbeScore:       100,
+		ProbeScoreMax:    100,
+	}
+	highProbeButFailingStats := model.MarketplaceCredentialStats{
+		SuccessCount:       50,
+		UpstreamErrorCount: 50,
+		CurrentConcurrency: 0,
+		AvgLatencyMS:       100,
+	}
+
+	reliableCandidate := newMarketplacePoolCandidate(reliable, reliableStats)
+	cheapCandidate := newMarketplacePoolCandidate(cheapButLowProbe, cheapButLowProbeStats)
+	failingCandidate := newMarketplacePoolCandidate(highProbeButFailing, highProbeButFailingStats)
+
+	assert.InDelta(t, 85.76, reliableCandidate.RouteScore, 0.000001)
+	assert.InDelta(t, 72.44, cheapCandidate.RouteScore, 0.000001)
+	assert.InDelta(t, 74.48, failingCandidate.RouteScore, 0.000001)
+	assert.True(t, marketplacePoolCandidateBetter(reliableCandidate, cheapCandidate))
+	assert.True(t, marketplacePoolCandidateBetter(failingCandidate, cheapCandidate))
 }
 
 func newMarketplacePoolNormalBilling(t *testing.T, fixture marketplacePoolRelayFixture, preConsumedQuota int) relaycommon.BillingSettler {

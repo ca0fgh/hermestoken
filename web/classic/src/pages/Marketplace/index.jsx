@@ -65,8 +65,6 @@ import {
   API,
   copy,
   createUnifiedPaginationProps,
-  getModelCategories,
-  selectFilter,
   showError,
   showInfo,
   showSuccess,
@@ -84,7 +82,6 @@ import {
 } from '../../helpers/quota';
 import { useIsMobile } from '../../hooks/common/useIsMobile';
 import MarketplaceCredentialModelTestModal from '../../components/table/channels/modals/ModelTestModal';
-import ModelSelectModal from '../../components/table/channels/modals/ModelSelectModal';
 import './index.css';
 
 const { Text, Title } = Typography;
@@ -166,8 +163,6 @@ function normalizeMarketplacePoolFilters(filters = {}) {
     max_time_limit_seconds: filters?.max_time_limit_seconds || '',
     min_multiplier: filters?.min_multiplier || '',
     max_multiplier: filters?.max_multiplier || '',
-    min_concurrency_limit: filters?.min_concurrency_limit || '',
-    max_concurrency_limit: filters?.max_concurrency_limit || '',
     p: 1,
   };
 }
@@ -278,8 +273,9 @@ function normalizeMaxCredentialConcurrency(value) {
 function clampCredentialConcurrency(value, maxCredentialConcurrency) {
   const parsed = Math.floor(Number(value));
   if (!Number.isFinite(parsed) || parsed < 0) return 1;
-  const normalizedMax =
-    normalizeMaxCredentialConcurrency(maxCredentialConcurrency);
+  const normalizedMax = normalizeMaxCredentialConcurrency(
+    maxCredentialConcurrency,
+  );
   if (normalizedMax <= 0) return parsed;
   return Math.min(parsed, normalizedMax);
 }
@@ -290,7 +286,10 @@ function formatConcurrencyLimit(value, t) {
 }
 
 function formatCurrentConcurrency(record, t) {
-  const current = Math.max(0, Math.floor(Number(record?.current_concurrency) || 0));
+  const current = Math.max(
+    0,
+    Math.floor(Number(record?.current_concurrency) || 0),
+  );
   return `${current}/${formatConcurrencyLimit(record?.concurrency_limit, t)}`;
 }
 
@@ -584,41 +583,6 @@ function splitModels(models) {
     .filter(Boolean);
 }
 
-function getModelOptionIcon(model, t) {
-  const categories = getModelCategories(t);
-  for (const [key, category] of Object.entries(categories)) {
-    if (key !== 'all' && category.filter({ model_name: model })) {
-      return category.icon;
-    }
-  }
-  return null;
-}
-
-function renderModelOptionLabel(model, t) {
-  const modelName = String(model || '').trim();
-  const icon = getModelOptionIcon(modelName, t);
-  return (
-    <span className='marketplace-model-option-label'>
-      {icon ? (
-        <span className='marketplace-model-option-icon'>{icon}</span>
-      ) : null}
-      <span className='marketplace-model-option-name'>{modelName}</span>
-    </span>
-  );
-}
-
-function buildModelOptions(models) {
-  return Array.from(new Set(models.map((model) => String(model).trim())))
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b))
-    .map((model) => ({
-      label: model,
-      value: model,
-      fullLabel: model,
-      optionDescription: model,
-    }));
-}
-
 function marketplaceVendorFilterValue(vendorType) {
   return `${MARKETPLACE_VENDOR_VALUE_PREFIX}${vendorType}`;
 }
@@ -804,6 +768,19 @@ const marketplaceStatusLabels = {
   route_risk_paused: '风险暂停',
   route_exhausted: '额度耗尽',
   route_busy: '并发忙碌',
+  route_reason_unlisted: '卖家尚未上架该托管 Key。',
+  route_reason_disabled: '卖家已停用该托管 Key。',
+  route_reason_health_failed: '最近测试失败，需先修复并重新测试通过。',
+  route_reason_health_unavailable: '当前健康状态不可用，暂时不能路由。',
+  route_reason_probe_unscored: '尚未完成探针检测，完成检测后才可路由。',
+  route_reason_probe_in_progress: '探针检测正在进行中，完成后会重新判断。',
+  route_reason_probe_failed: '探针检测失败，需重新检测通过后才可路由。',
+  route_reason_probe_score_missing: '探针评分不完整，需重新检测生成有效评分。',
+  route_reason_probe_score_zero: '探针评分为 0，不能参与路由。',
+  route_reason_risk_paused: '该托管 Key 已被风险控制暂停。',
+  route_reason_quota_exhausted: '额度条件已耗尽，不能继续路由。',
+  route_reason_concurrency_busy: '当前并发已达到上限，请稍后重试。',
+  route_reason_unavailable: '当前状态不满足路由条件。',
 };
 
 function statusTag(status, t) {
@@ -938,7 +915,7 @@ function renderMarketplaceSellerStatus(record, t) {
       {statusTag(record.listing_status, t)}
       {statusTag(record.service_status, t)}
       {statusTag(record.health_status, t)}
-      {statusTag(record.route_status, t)}
+      {renderMarketplaceRouteStatusTag(record, t)}
     </div>
   );
 }
@@ -947,8 +924,25 @@ function renderMarketplaceRouteStatus(record, t) {
   return (
     <div className='marketplace-status-tags'>
       {statusTag(record?.health_status, t)}
-      {statusTag(record?.route_status, t)}
+      {renderMarketplaceRouteStatusTag(record, t)}
     </div>
+  );
+}
+
+function marketplaceRouteReasonText(record, t) {
+  const routeReason = String(record?.route_reason || '').trim();
+  if (!routeReason) return '';
+  return t(marketplaceStatusLabels[routeReason] || routeReason);
+}
+
+function renderMarketplaceRouteStatusTag(record, t) {
+  const tag = statusTag(record?.route_status, t);
+  const reasonText = marketplaceRouteReasonText(record, t);
+  if (!reasonText) return tag;
+  return (
+    <Tooltip content={reasonText} position='top'>
+      <span className='marketplace-route-status-with-reason'>{tag}</span>
+    </Tooltip>
   );
 }
 
@@ -1709,6 +1703,22 @@ function formatPricePreview(item) {
   };
 }
 
+function renderMarketplacePricePreview(item) {
+  const price = formatPricePreview(item);
+  if (!price) return <span className='marketplace-price-empty'>-</span>;
+  return (
+    <div className='marketplace-price-cell'>
+      <span className='marketplace-price-line marketplace-price-line-primary'>
+        买方 {price.buyer}
+      </span>
+      <span className='marketplace-price-line marketplace-price-line-secondary'>
+        官方 {price.official}
+        {price.multiplier ? ` x ${price.multiplier}` : ''}
+      </span>
+    </div>
+  );
+}
+
 function formatQuota(item) {
   if (item.quota_mode === 'unlimited') return '不限额';
   return `${formatMarketplaceQuotaUSD(item.quota_used || 0)}/${formatMarketplaceQuotaUSD(
@@ -2447,6 +2457,7 @@ function FilterBar({
   onReset,
   showResetButton = true,
   showQuotaTimeFilters = true,
+  showConcurrencyFilter = true,
 }) {
   const { t } = useTranslation();
   const patch = (next) => onChange({ ...filters, ...next, p: 1 });
@@ -2581,13 +2592,15 @@ function FilterBar({
             t,
             'marketplace-filter-multiplier-range',
           )}
-          {renderMarketplaceConcurrencyRangeInputs(
-            filters,
-            filterRanges,
-            patch,
-            t,
-            'marketplace-filter-concurrency-range',
-          )}
+          {showConcurrencyFilter
+            ? renderMarketplaceConcurrencyRangeInputs(
+                filters,
+                filterRanges,
+                patch,
+                t,
+                'marketplace-filter-concurrency-range',
+              )
+            : null}
         </div>
       </div>
     </Card>
@@ -2610,27 +2623,30 @@ function OrdersTab() {
     buyFeeRate,
   );
 
-  const load = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setLoading(true);
-    }
-    try {
-      const response = await API.get('/api/marketplace/orders', {
-        params: compactParams(filters),
-      });
-      ensureSuccess(response);
-      setItems(pageItems(response));
-      setTotal(pageTotal(response));
-    } catch (error) {
+  const load = useCallback(
+    async ({ silent = false } = {}) => {
       if (!silent) {
-        showError(error.message);
+        setLoading(true);
       }
-    } finally {
-      if (!silent) {
-        setLoading(false);
+      try {
+        const response = await API.get('/api/marketplace/orders', {
+          params: compactParams(filters),
+        });
+        ensureSuccess(response);
+        setItems(pageItems(response));
+        setTotal(pageTotal(response));
+      } catch (error) {
+        if (!silent) {
+          showError(error.message);
+        }
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
       }
-    }
-  }, [filters]);
+    },
+    [filters],
+  );
 
   useEffect(() => {
     load();
@@ -2704,21 +2720,7 @@ function OrdersTab() {
     { title: t('时间'), render: (_, record) => formatTimeCondition(record) },
     {
       title: t('价格'),
-      render: (_, record) => {
-        const price = formatPricePreview(record);
-        if (!price) return <span className='marketplace-price-empty'>-</span>;
-        return (
-          <div className='marketplace-price-cell'>
-            <span className='marketplace-price-line marketplace-price-line-primary'>
-              买方 {price.buyer}
-            </span>
-            <span className='marketplace-price-line marketplace-price-line-secondary'>
-              官方 {price.official}
-              {price.multiplier ? ` x ${price.multiplier}` : ''}
-            </span>
-          </div>
-        );
-      },
+      render: (_, record) => renderMarketplacePricePreview(record),
     },
     {
       title: t('状态'),
@@ -2741,17 +2743,31 @@ function OrdersTab() {
     {
       title: t('操作'),
       render: (_, record) => {
-        return (
+        const canCreateFixedOrder = record?.route_status === 'route_available';
+        const button = (
           <Button
             size='small'
             type='primary'
+            disabled={!canCreateFixedOrder}
             onClick={() => {
+              if (!canCreateFixedOrder) return;
               setBuying(record);
               setBuyAmountUSD('1');
             }}
           >
             {t('买断金额')}
           </Button>
+        );
+        if (canCreateFixedOrder) {
+          return button;
+        }
+        const reasonText = marketplaceRouteReasonText(record, t);
+        return (
+          <Tooltip content={reasonText || t('当前订单不可路由')} position='top'>
+            <span className='marketplace-disabled-action-tooltip'>
+              {button}
+            </span>
+          </Tooltip>
         );
       },
     },
@@ -2815,10 +2831,13 @@ function OrdersTab() {
             onChange={setBuyAmountUSD}
           />
           <Text type='secondary'>
-            {t('填写的是基础调用额度，创建时会额外收取买家交易手续费。当前费率 {{rate}}，预计实际扣除 {{amount}}。', {
-              rate: formatMarketplaceFeePercent(buyFeeRate),
-              amount: formatUSD(estimatedBuyerPaymentUSD),
-            })}
+            {t(
+              '填写的是基础调用额度，创建时会额外收取买家交易手续费。当前费率 {{rate}}，预计实际扣除 {{amount}}。',
+              {
+                rate: formatMarketplaceFeePercent(buyFeeRate),
+                amount: formatUSD(estimatedBuyerPaymentUSD),
+              },
+            )}
           </Text>
         </Space>
       </Modal>
@@ -2838,7 +2857,6 @@ function PoolTab({
   const [savingPoolFilters, setSavingPoolFilters] = useState(false);
   const [resettingPoolFilters, setResettingPoolFilters] = useState(false);
   const filterRanges = useMarketplaceFilterRanges(filters);
-  const [models, setModels] = useState([]);
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(false);
   const selectedBuyerToken = useMemo(
@@ -2858,13 +2876,11 @@ function PoolTab({
     setLoading(true);
     try {
       const params = compactParams(filters);
-      const [modelResponse, candidateResponse] = await Promise.all([
-        API.get('/api/marketplace/pool/models', { params }),
-        API.get('/api/marketplace/pool/candidates', { params }),
-      ]);
-      ensureSuccess(modelResponse);
+      const candidateResponse = await API.get(
+        '/api/marketplace/pool/candidates',
+        { params },
+      );
       ensureSuccess(candidateResponse);
-      setModels(modelResponse.data.data || []);
       setCandidates(pageItems(candidateResponse));
     } catch (error) {
       showError(error.message);
@@ -3033,6 +3049,7 @@ function PoolTab({
         onChange={setFilters}
         showResetButton={false}
         showQuotaTimeFilters={false}
+        showConcurrencyFilter={false}
       />
       <div className='marketplace-pool-activation'>
         <div className='marketplace-pool-activation-header'>
@@ -3078,28 +3095,6 @@ function PoolTab({
         </div>
       </div>
       <Table
-        rowKey={(record) => `${record.vendor_type}:${record.model}`}
-        title={() => t('可路由模型')}
-        columns={[
-          {
-            title: t('厂商'),
-            render: (_, record) =>
-              getVendorName(record.vendor_type, record.vendor_name_snapshot),
-          },
-          { title: t('模型'), dataIndex: 'model' },
-          { title: t('候选数'), dataIndex: 'candidate_count' },
-          { title: t('最低倍率'), dataIndex: 'lowest_multiplier' },
-          {
-            title: t('最低价格'),
-            render: (_, record) =>
-              formatPricePoint(record.lowest_price_preview?.buyer),
-          },
-        ]}
-        dataSource={models}
-        loading={loading}
-        pagination={false}
-      />
-      <Table
         rowKey={(record) => record.credential?.id}
         title={() => t('路由候选')}
         columns={[
@@ -3112,6 +3107,11 @@ function PoolTab({
               ),
           },
           { title: t('评分'), dataIndex: 'route_score' },
+          {
+            title: t('价格'),
+            render: (_, record) =>
+              renderMarketplacePricePreview(record.credential),
+          },
           {
             title: t('成功率'),
             render: (_, record) =>
@@ -3384,7 +3384,9 @@ function FixedOrdersTab({ buyerTokens, onBuyerTokensChange }) {
           const updatedOrder = response?.data?.data;
           setItems((current) =>
             current.map((item) =>
-              item.id === updatedOrder?.id ? { ...item, ...updatedOrder } : item,
+              item.id === updatedOrder?.id
+                ? { ...item, ...updatedOrder }
+                : item,
             ),
           );
           const refundedQuota = Number(updatedOrder?.refunded_quota) || 0;
@@ -3569,13 +3571,11 @@ function SellerTab() {
   const [maxCredentialConcurrency, setMaxCredentialConcurrency] = useState(
     DEFAULT_MAX_CREDENTIAL_CONCURRENCY,
   );
-  const [modelOptions, setModelOptions] = useState([]);
   const [pricingByModel, setPricingByModel] = useState({});
-  const [pricedModelsLoading, setPricedModelsLoading] = useState(false);
-  const [pricedModelsReady, setPricedModelsReady] = useState(false);
   const [customModel, setCustomModel] = useState('');
   const [loading, setLoading] = useState(false);
   const [showModelTestModal, setShowModelTestModal] = useState(false);
+  const [modelActionMode, setModelActionMode] = useState('test');
   const [currentTestChannel, setCurrentTestChannel] = useState(null);
   const [modelTestResults, setModelTestResults] = useState({});
   const [testingModels, setTestingModels] = useState(new Set());
@@ -3585,8 +3585,6 @@ function SellerTab() {
   const [modelTablePage, setModelTablePage] = useState(1);
   const [selectedEndpointType, setSelectedEndpointType] = useState('');
   const [isStreamTest, setIsStreamTest] = useState(false);
-  const [modelSelectOpen, setModelSelectOpen] = useState(false);
-  const [fetchedModelCandidates, setFetchedModelCandidates] = useState([]);
   const allSelectingRef = useRef(false);
   const shouldStopBatchTestingRef = useRef(false);
   const pricedModelsRef = useRef([]);
@@ -3594,6 +3592,8 @@ function SellerTab() {
   const pricedModelsPromiseRef = useRef(null);
 
   const patch = (next) => setForm({ ...form, ...next });
+  const modelActionResultKey = (mode, credentialID, modelName) =>
+    `${mode}:${credentialID}-${String(modelName || '').trim()}`;
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -3651,14 +3651,12 @@ function SellerTab() {
   const loadPricedModels = useCallback(
     async ({ silent = false } = {}) => {
       if (pricedModelsLoadedRef.current) {
-        setPricedModelsReady(true);
         return pricedModelsRef.current;
       }
 
       let request = pricedModelsPromiseRef.current;
       if (!request) {
         request = (async () => {
-          setPricedModelsLoading(true);
           const response = await API.get(
             '/api/marketplace/seller/priced-models',
             {
@@ -3677,9 +3675,7 @@ function SellerTab() {
           const modelNames = Object.keys(pricedModelsByName);
           pricedModelsRef.current = modelNames;
           setPricingByModel(pricedModelsByName);
-          setModelOptions(buildModelOptions(modelNames));
           pricedModelsLoadedRef.current = true;
-          setPricedModelsReady(true);
           return modelNames;
         })();
 
@@ -3695,7 +3691,6 @@ function SellerTab() {
       } finally {
         if (pricedModelsPromiseRef.current === request) {
           pricedModelsPromiseRef.current = null;
-          setPricedModelsLoading(false);
         }
       }
     },
@@ -3705,14 +3700,6 @@ function SellerTab() {
   const marketplaceModelsForSave = useMemo(
     () => mergeModels(selectedModels, splitModels(customModel)),
     [customModel, selectedModels],
-  );
-  const modelOptionsWithSelected = useMemo(
-    () =>
-      buildModelOptions([
-        ...modelOptions.map((option) => option.value),
-        ...selectedModels,
-      ]),
-    [modelOptions, selectedModels],
   );
 
   useEffect(() => {
@@ -3744,22 +3731,7 @@ function SellerTab() {
 
   const setSelectedModels = (models) => {
     const nextModels = mergeModels(models);
-    setModelOptions((options) =>
-      buildModelOptions([
-        ...options.map((option) => option.value),
-        ...nextModels,
-      ]),
-    );
     patch({ models: nextModels.join(',') });
-  };
-
-  const fillAllPricedModels = async () => {
-    const models = await loadPricedModels();
-    if (models.length === 0) {
-      showInfo(t('暂无模型'));
-      return;
-    }
-    setSelectedModels(models);
   };
 
   const addCustomModels = () => {
@@ -3810,21 +3782,8 @@ function SellerTab() {
         showInfo(t('暂无模型'));
         return;
       }
-      const pricedModels = await loadPricedModels({ silent: true });
-      setModelOptions((options) =>
-        buildModelOptions([
-          ...options.map((option) => option.value),
-          ...pricedModels,
-          ...fetchedModels,
-        ]),
-      );
-      setFetchedModelCandidates(fetchedModels);
-      setModelSelectOpen(true);
-      showSuccess(
-        t('已获取 {{count}} 个模型，请选择要填入的模型', {
-          count: fetchedModels.length,
-        }),
-      );
+      setSelectedModels(fetchedModels);
+      showSuccess(t('模型列表已更新'));
     } catch (error) {
       showError(error.message || t('获取模型列表失败'));
     } finally {
@@ -3956,7 +3915,7 @@ function SellerTab() {
     stream = false,
   ) => {
     const testModel = String(model || '').trim();
-    const testKey = `${record.id}-${testModel}`;
+    const testKey = modelActionResultKey('test', record.id, testModel);
 
     if (shouldStopBatchTestingRef.current) {
       return undefined;
@@ -4037,7 +3996,88 @@ function SellerTab() {
     }
   };
 
-  const batchTestMarketplaceCredentialModels = async () => {
+  const probeMarketplaceCredential = async (record, model = '') => {
+    const probeModel = String(model || '').trim();
+    const probeKey = modelActionResultKey('probe', record.id, probeModel);
+
+    if (shouldStopBatchTestingRef.current) {
+      return undefined;
+    }
+
+    setTestingModels((current) => new Set([...current, probeModel]));
+
+    try {
+      let url = `/api/marketplace/seller/credentials/${record.id}/probe`;
+      if (probeModel) {
+        url += `?model=${encodeURIComponent(probeModel)}`;
+      }
+      const response = await API.post(url, null, {
+        skipErrorHandler: true,
+      });
+      const responseData = response?.data || {};
+      const updatedCredential = responseData.data;
+
+      if (responseData.success && updatedCredential?.id) {
+        updateTestedCredential(updatedCredential);
+      }
+
+      setModelTestResults((current) => ({
+        ...current,
+        [probeKey]: {
+          success: Boolean(responseData.success),
+          message: responseData.message || '',
+          time: 0,
+          timestamp: Date.now(),
+          errorCode: responseData.error_code || null,
+        },
+      }));
+
+      if (!responseData.success) {
+        showError(responseData.message || t('检测失败'));
+        return response;
+      }
+
+      showSuccess(
+        probeModel
+          ? t('模型 {{model}} 检测已排队', { model: probeModel })
+          : t('检测已排队'),
+      );
+      return response;
+    } catch (error) {
+      setModelTestResults((current) => ({
+        ...current,
+        [probeKey]: {
+          success: false,
+          message: error.message || t('网络错误'),
+          time: 0,
+          timestamp: Date.now(),
+          errorCode: null,
+        },
+      }));
+      showError(error.message || t('检测失败'));
+      return undefined;
+    } finally {
+      setTestingModels((current) => {
+        const next = new Set(current);
+        next.delete(probeModel);
+        return next;
+      });
+    }
+  };
+
+  const runMarketplaceCredentialModelAction = (
+    record,
+    model = '',
+    endpointType = '',
+    stream = false,
+  ) => {
+    if (modelActionMode === 'probe') {
+      return probeMarketplaceCredential(record, model);
+    }
+    return testMarketplaceCredential(record, model, endpointType, stream);
+  };
+
+  const batchRunMarketplaceCredentialModels = async () => {
     if (!currentTestChannel?.models) {
       showError(t('渠道模型信息不完整'));
       return;
@@ -4057,36 +4097,42 @@ function SellerTab() {
     setModelTestResults((current) => {
       const next = { ...current };
       models.forEach((model) => {
-        delete next[`${currentTestChannel.id}-${model}`];
+        delete next[
+          modelActionResultKey(modelActionMode, currentTestChannel.id, model)
+        ];
       });
       return next;
     });
 
+    const isProbeMode = modelActionMode === 'probe';
+    const actionText = isProbeMode ? t('检测') : t('测试');
     try {
       showInfo(
-        t('开始批量测试 ${count} 个模型，已清空上次结果...').replace(
-          '${count}',
-          models.length,
-        ),
+        t('开始批量{{action}} {{count}} 个模型，已清空上次结果...', {
+          action: actionText,
+          count: models.length,
+        }),
       );
       const concurrencyLimit = 5;
       for (let i = 0; i < models.length; i += concurrencyLimit) {
         if (shouldStopBatchTestingRef.current) {
-          showInfo(t('批量测试已停止'));
+          showInfo(t('批量{{action}}已停止', { action: actionText }));
           break;
         }
 
         const batch = models.slice(i, i + concurrencyLimit);
         showInfo(
-          t('正在测试第 ${current} - ${end} 个模型 (共 ${total} 个)')
-            .replace('${current}', i + 1)
-            .replace('${end}', Math.min(i + concurrencyLimit, models.length))
-            .replace('${total}', models.length),
+          t('正在{{action}}第 {{current}} - {{end}} 个模型 (共 {{total}} 个)', {
+            action: actionText,
+            current: i + 1,
+            end: Math.min(i + concurrencyLimit, models.length),
+            total: models.length,
+          }),
         );
 
         await Promise.allSettled(
           batch.map((model) =>
-            testMarketplaceCredential(
+            runMarketplaceCredentialModelAction(
               currentTestChannel,
               model,
               selectedEndpointType,
@@ -4096,7 +4142,7 @@ function SellerTab() {
         );
 
         if (shouldStopBatchTestingRef.current) {
-          showInfo(t('批量测试已停止'));
+          showInfo(t('批量{{action}}已停止', { action: actionText }));
           break;
         }
 
@@ -4110,7 +4156,14 @@ function SellerTab() {
           let successCount = 0;
           let failCount = 0;
           models.forEach((model) => {
-            const result = currentResults[`${currentTestChannel.id}-${model}`];
+            const result =
+              currentResults[
+                modelActionResultKey(
+                  modelActionMode,
+                  currentTestChannel.id,
+                  model,
+                )
+              ];
             if (result?.success) {
               successCount++;
             } else {
@@ -4119,24 +4172,33 @@ function SellerTab() {
           });
           setTimeout(() => {
             showSuccess(
-              t('批量测试完成！成功: ${success}, 失败: ${fail}, 总计: ${total}')
-                .replace('${success}', successCount)
-                .replace('${fail}', failCount)
-                .replace('${total}', models.length),
+              t(
+                '批量{{action}}完成！成功: {{success}}, 失败: {{fail}}, 总计: {{total}}',
+                {
+                  action: actionText,
+                  success: successCount,
+                  fail: failCount,
+                  total: models.length,
+                },
+              ),
             );
           }, 100);
           return currentResults;
         });
       }
     } catch (error) {
-      showError(t('批量测试过程中发生错误: ') + error.message);
+      showError(
+        t('批量{{action}}过程中发生错误: ', { action: actionText }) +
+          error.message,
+      );
     } finally {
       setIsBatchTesting(false);
     }
   };
 
-  const openMarketplaceModelTestModal = (record) => {
+  const openMarketplaceModelActionModal = (record, mode = 'test') => {
     shouldStopBatchTestingRef.current = false;
+    setModelActionMode(mode);
     setCurrentTestChannel(marketplaceCredentialTestChannel(record));
     setModelSearchKeyword('');
     setSelectedModelKeys([]);
@@ -4147,7 +4209,11 @@ function SellerTab() {
   const handleCloseModal = () => {
     if (isBatchTesting) {
       shouldStopBatchTestingRef.current = true;
-      showInfo(t('关闭弹窗，已停止批量测试'));
+      showInfo(
+        modelActionMode === 'probe'
+          ? t('关闭弹窗，已停止批量检测')
+          : t('关闭弹窗，已停止批量测试'),
+      );
     }
     setShowModelTestModal(false);
     setModelSearchKeyword('');
@@ -4158,47 +4224,6 @@ function SellerTab() {
     setSelectedEndpointType('');
     setIsStreamTest(false);
   };
-
-  const renderSellerModelOption = useCallback(
-    ({
-      disabled,
-      selected,
-      label,
-      value,
-      focused,
-      className,
-      style,
-      onMouseEnter,
-      onClick,
-    }) => {
-      const modelName = String(value || label || '').trim();
-      const optionClassName = [
-        'marketplace-model-option',
-        focused && 'is-focused',
-        selected && 'is-selected',
-        disabled && 'is-disabled',
-        className,
-      ]
-        .filter(Boolean)
-        .join(' ');
-
-      return (
-        <div
-          style={style}
-          className={optionClassName}
-          onClick={(event) => {
-            if (!disabled) {
-              onClick?.(event);
-            }
-          }}
-          onMouseEnter={(event) => onMouseEnter?.(event)}
-        >
-          {renderModelOptionLabel(modelName, t)}
-        </div>
-      );
-    },
-    [t],
-  );
 
   const edit = (record) => {
     setEditing(record);
@@ -4290,66 +4315,20 @@ function SellerTab() {
               )}
             >
               <Select
-                key={
-                  pricedModelsReady
-                    ? 'priced-models-ready'
-                    : 'priced-models-loading'
-                }
                 className='marketplace-seller-model-select'
+                dropdownClassName='marketplace-seller-model-dropdown-hidden'
                 value={selectedModels}
-                placeholder={t('请选择该渠道所支持的模型')}
+                placeholder={t('暂无模型')}
                 multiple
-                filter={selectFilter}
-                allowCreate
-                autoClearSearchValue={false}
-                searchPosition='dropdown'
-                optionList={modelOptionsWithSelected}
-                loading={pricedModelsLoading}
-                emptyContent={
-                  pricedModelsLoading
-                    ? t('正在加载模型...')
-                    : t('暂无可用模型，请先在模型定价中配置模型')
-                }
-                style={{ width: '100%' }}
-                position='bottomLeft'
+                optionList={[]}
+                emptyContent={null}
+                showArrow={false}
                 autoAdjustOverflow={false}
-                dropdownStyle={{ maxHeight: 360, overflowY: 'auto' }}
-                onDropdownVisibleChange={(visible) => {
-                  if (visible) {
-                    loadPricedModels({ silent: true });
-                  }
-                }}
+                style={{ width: '100%' }}
                 onChange={(value) => setSelectedModels(value)}
-                renderOptionItem={renderSellerModelOption}
-                renderSelectedItem={(optionNode) => {
-                  const modelName = String(optionNode?.value ?? '');
-                  return {
-                    isRenderInTag: true,
-                    content: (
-                      <span
-                        className='cursor-pointer select-none'
-                        role='button'
-                        tabIndex={0}
-                        title={t('点击复制模型名称')}
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          const ok = await copy(modelName);
-                          if (ok) {
-                            showSuccess(
-                              t('已复制：{{name}}', { name: modelName }),
-                            );
-                          } else {
-                            showError(t('复制失败'));
-                          }
-                        }}
-                      >
-                        {renderModelOptionLabel(modelName, t)}
-                      </span>
-                    ),
-                  };
-                }}
+                onDropdownVisibleChange={() => {}}
               />
-              <Space wrap>
+              <Space wrap className='marketplace-seller-model-actions'>
                 {MODEL_FETCHABLE_CHANNEL_TYPES.has(
                   Number(form.vendor_type),
                 ) && (
@@ -4361,44 +4340,6 @@ function SellerTab() {
                     {t('获取模型列表')}
                   </Button>
                 )}
-                <Dropdown
-                  trigger='click'
-                  position='bottomRight'
-                  menu={[
-                    {
-                      node: 'item',
-                      name: t('填入所有模型'),
-                      onClick: fillAllPricedModels,
-                    },
-                    { node: 'divider' },
-                    {
-                      node: 'item',
-                      name: t('复制所有模型'),
-                      onClick: async () => {
-                        if (selectedModels.length === 0) {
-                          showInfo(t('没有模型可以复制'));
-                          return;
-                        }
-                        const ok = await copy(selectedModels.join(','));
-                        if (ok) {
-                          showSuccess(t('模型列表已复制到剪贴板'));
-                        } else {
-                          showError(t('复制失败'));
-                        }
-                      },
-                    },
-                    {
-                      node: 'item',
-                      name: t('清除所有模型'),
-                      type: 'danger',
-                      onClick: () => setSelectedModels([]),
-                    },
-                  ]}
-                >
-                  <Button size='small' type='tertiary'>
-                    {t('更多')} <IconChevronDown size={12} />
-                  </Button>
-                </Dropdown>
               </Space>
             </MarketplaceField>
           </Col>
@@ -4527,16 +4468,6 @@ function SellerTab() {
           </Col>
         </Row>
       </Card>
-      <ModelSelectModal
-        visible={modelSelectOpen}
-        models={fetchedModelCandidates}
-        selected={selectedModels}
-        onConfirm={(models) => {
-          setSelectedModels(models);
-          setModelSelectOpen(false);
-        }}
-        onCancel={() => setModelSelectOpen(false)}
-      />
       <Table
         rowKey='id'
         className='marketplace-seller-credentials-table'
@@ -4553,8 +4484,7 @@ function SellerTab() {
           {
             title: t('模型'),
             width: 128,
-            render: (_, record) =>
-              renderMarketplaceSellerModels(record.models),
+            render: (_, record) => renderMarketplaceSellerModels(record.models),
           },
           {
             title: t('额度'),
@@ -4575,8 +4505,7 @@ function SellerTab() {
           {
             title: t('状态'),
             width: 136,
-            render: (_, record) =>
-              renderMarketplaceSellerStatus(record, t),
+            render: (_, record) => renderMarketplaceSellerStatus(record, t),
           },
           {
             title: t('探针评分'),
@@ -4616,9 +4545,7 @@ function SellerTab() {
                 {
                   node: 'item',
                   name:
-                    record.service_status === 'enabled'
-                      ? t('禁用')
-                      : t('启用'),
+                    record.service_status === 'enabled' ? t('禁用') : t('启用'),
                   onClick: () =>
                     callAction(
                       record,
@@ -4631,22 +4558,16 @@ function SellerTab() {
                   node: 'item',
                   name: marketplaceProbeInProgress(record)
                     ? t('检测中')
-                    : t('检测'),
+                    : t('检测指定模型'),
                   disabled: marketplaceProbeInProgress(record),
-                  onClick: () => callAction(record, 'probe'),
-                },
-                {
-                  node: 'item',
-                  name: t('测试'),
-                  onClick: () => {
-                    shouldStopBatchTestingRef.current = false;
-                    testMarketplaceCredential(record, '');
-                  },
+                  onClick: () =>
+                    openMarketplaceModelActionModal(record, 'probe'),
                 },
                 {
                   node: 'item',
                   name: t('测试指定模型'),
-                  onClick: () => openMarketplaceModelTestModal(record),
+                  onClick: () =>
+                    openMarketplaceModelActionModal(record, 'test'),
                 },
                 {
                   node: 'item',
@@ -4660,7 +4581,8 @@ function SellerTab() {
                 <div className='marketplace-seller-actions'>
                   <Dropdown
                     trigger='click'
-                    position='bottomRight'
+                    position='topRight'
+                    contentClassName='marketplace-seller-actions-dropdown'
                     menu={marketplaceCredentialMoreMenu}
                   >
                     <Button size='small' type='tertiary' icon={<IconMore />} />
@@ -4679,14 +4601,14 @@ function SellerTab() {
         currentTestChannel={currentTestChannel}
         handleCloseModal={handleCloseModal}
         isBatchTesting={isBatchTesting}
-        batchTestModels={batchTestMarketplaceCredentialModels}
+        batchTestModels={batchRunMarketplaceCredentialModels}
         modelSearchKeyword={modelSearchKeyword}
         setModelSearchKeyword={setModelSearchKeyword}
         selectedModelKeys={selectedModelKeys}
         setSelectedModelKeys={setSelectedModelKeys}
         modelTestResults={modelTestResults}
         testingModels={testingModels}
-        testChannel={testMarketplaceCredential}
+        testChannel={runMarketplaceCredentialModelAction}
         modelTablePage={modelTablePage}
         setModelTablePage={setModelTablePage}
         selectedEndpointType={selectedEndpointType}
@@ -4695,6 +4617,7 @@ function SellerTab() {
         setIsStreamTest={setIsStreamTest}
         allSelectingRef={allSelectingRef}
         isMobile={isMobile}
+        mode={modelActionMode}
         t={t}
       />
     </Space>

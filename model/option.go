@@ -60,6 +60,7 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+	resetSubscriptionReferralGlobalSettingDefaults()
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -211,6 +212,8 @@ func InitOptionMap() {
 	common.OptionMap["AudioCompletionRatio"] = ratio_setting.AudioCompletionRatio2JSONString()
 	common.OptionMap[SubscriptionReferralTeamDecayRatioOptionKey] = strconv.FormatFloat(DefaultSubscriptionReferralTeamDecayRatio, 'f', -1, 64)
 	common.OptionMap[SubscriptionReferralTeamMaxDepthOptionKey] = strconv.Itoa(DefaultSubscriptionReferralTeamMaxDepth)
+	common.OptionMap[SubscriptionReferralAutoAssignInviteeTemplateOptionKey] = strconv.FormatBool(DefaultSubscriptionReferralAutoAssignInviteeTemplate)
+	common.OptionMap[SubscriptionPlanOpenToAllUsersOptionKey] = strconv.FormatBool(DefaultSubscriptionPlanOpenToAllUsers)
 	common.OptionMap["TopUpLink"] = common.TopUpLink
 	common.OptionMap["WithdrawalEnabled"] = "false"
 	common.OptionMap["WithdrawalMinAmount"] = "10"
@@ -791,6 +794,10 @@ func updateOptionMap(key string, value string) (err error) {
 		subscriptionReferralTeamDecayRatio, _ = strconv.ParseFloat(value, 64)
 	case SubscriptionReferralTeamMaxDepthOptionKey:
 		subscriptionReferralTeamMaxDepth, _ = strconv.Atoi(value)
+	case SubscriptionReferralAutoAssignInviteeTemplateOptionKey:
+		subscriptionReferralAutoAssignInviteeTemplate, _ = strconv.ParseBool(value)
+	case SubscriptionPlanOpenToAllUsersOptionKey:
+		subscriptionPlanOpenToAllUsers, _ = strconv.ParseBool(value)
 	case "TopUpLink":
 		common.TopUpLink = value
 	//case "ChatLink":
