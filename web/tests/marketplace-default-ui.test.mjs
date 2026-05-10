@@ -224,7 +224,10 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(poolTabSource, /Order pool deactivated for this token/);
   assert.match(poolTabSource, /tokenWithoutMarketplacePoolRoute/);
   assert.match(poolTabSource, /PowerOff/);
-  assert.match(poolTabSource, /setFilters\(savedPoolFilters \?\? defaultFilters\)/);
+  assert.match(
+    poolTabSource,
+    /setFilters\(savedPoolFilters \?\? defaultFilters\)/,
+  );
   assert.doesNotMatch(poolTabSource, /MARKETPLACE_POOL_RELAY_ENDPOINT/);
   assert.match(buyerTokenPanelSource, /getApiKeys/);
   assert.match(buyerTokenPanelSource, /to='\/keys'/);
@@ -351,10 +354,7 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
 
   const defaultEnLocale = JSON.parse(defaultEnLocaleSource).translation;
   const defaultZhLocale = JSON.parse(defaultZhLocaleSource).translation;
-  assert.equal(
-    defaultEnLocale["Release fixed order"],
-    "Release fixed order",
-  );
+  assert.equal(defaultEnLocale["Release fixed order"], "Release fixed order");
   assert.equal(defaultZhLocale["Refundable amount"], "可退金额");
   assert.equal(defaultZhLocale["Release order"], "解除订单");
   assert.match(keyFormSource, /DEFAULT_MARKETPLACE_ROUTE_ENABLED/);
@@ -393,7 +393,10 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(`${pageSource}\n${libSource}`, /\/v1\/chat\/completions/);
   assert.match(libSource, /min_concurrency_limit/);
   assert.match(generalRegistrySource, /id:\s*'marketplace'/);
-  assert.match(generalRegistrySource, /MarketplaceFeeRate:\s*settings\.MarketplaceFeeRate/);
+  assert.match(
+    generalRegistrySource,
+    /MarketplaceFeeRate:\s*settings\.MarketplaceFeeRate/,
+  );
   assert.match(marketplaceSettingsSource, /MarketplaceFeeRate/);
   assert.match(marketplaceSettingsSource, /Buyer transaction fee rate/);
   assert.match(marketplaceSettingsSource, /0\.05 means 5%/);
@@ -491,7 +494,10 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   );
   assert.match(pageSource, /aria-label=\{t\('厂商模型级联筛选'\)\}/);
   assert.match(pageSource, /insetLabel=\{t\('厂商 \/ 模型'\)\}/);
-  assert.match(pageSource, /dropdownStyle=\{\{ maxHeight:\s*360/);
+  assert.match(
+    pageSource,
+    /dropdownStyle=\{\{[\s\S]*maxHeight:\s*360[\s\S]*\}\}/,
+  );
   assert.doesNotMatch(pageSource, /\ssearchable\b/);
   assert.match(pageSource, /separator=' -> '/);
   assert.match(pageSource, /return selected\.join\(' -> '\)/);
@@ -634,10 +640,7 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
         poolTabSource.indexOf("onClick={saveMarketplacePoolFiltersForToken}"),
       "reset and save condition actions should be grouped in the activation control",
     );
-    assert.doesNotMatch(
-      poolTabSource,
-      /<CallSnippet/,
-    );
+    assert.doesNotMatch(poolTabSource, /<CallSnippet/);
     assert.doesNotMatch(pageStyleSource, /marketplace-pool-call-snippet/);
   }
   assert.match(tokenModalSource, /订单池已激活/);
@@ -682,73 +685,57 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   );
   assert.doesNotMatch(pageSource, /showEvents/);
   assert.doesNotMatch(pageSource, /历史状态变更/);
-  assert.match(pageSource, /import ModelSelectModal/);
-  assert.match(pageSource, /modelSelectOpen,\s*setModelSelectOpen/);
-  assert.match(pageSource, /fetchedModelCandidates,\s*setFetchedModelCandidates/);
-  assert.match(pageSource, /setFetchedModelCandidates\(fetchedModels\)/);
-  assert.match(pageSource, /setModelSelectOpen\(true\)/);
+  assert.match(pageSource, /MarketplaceCredentialModelTestModal/);
+  assert.match(pageSource, /showModelTestModal,\s*setShowModelTestModal/);
+  assert.match(pageSource, /modelActionMode,\s*setModelActionMode/);
+  assert.match(pageSource, /openMarketplaceModelActionModal/);
+  assert.doesNotMatch(pageSource, /import ModelSelectModal/);
+  assert.doesNotMatch(pageSource, /modelSelectOpen/);
+  assert.doesNotMatch(pageSource, /fetchedModelCandidates/);
   assert.doesNotMatch(pageSource, /openSellerModelModal/);
   assert.doesNotMatch(pageSource, /sellerModelModalVisible/);
   assert.match(
     sellerTabSource,
-    /label=\{t\('模型 \*'\)\}[\s\S]*?<Select[\s\S]*?multiple[\s\S]*?optionList=\{modelOptionsWithSelected\}/,
+    /label=\{t\('模型 \*'\)\}[\s\S]*?<Select[\s\S]*?multiple[\s\S]*?optionList=\{\[\]\}/,
   );
-  assert.match(sellerTabSource, /filter=\{selectFilter\}/);
-  assert.match(sellerTabSource, /renderSelectedItem=\{\(optionNode\) =>/);
   assert.match(sellerTabSource, /value=\{selectedModels\}/);
-  assert.match(sellerTabSource, /onDropdownVisibleChange=\{\(visible\) =>/);
+  assert.match(sellerTabSource, /className='marketplace-seller-model-select'/);
   assert.match(
     sellerTabSource,
-    /if \(visible\) \{\s*loadPricedModels\(\{ silent: true \}\);\s*\}/,
+    /dropdownClassName='marketplace-seller-model-dropdown-hidden'/,
+  );
+  assert.match(sellerTabSource, /emptyContent=\{null\}/);
+  assert.match(sellerTabSource, /showArrow=\{false\}/);
+  assert.match(sellerTabSource, /autoAdjustOverflow=\{false\}/);
+  assert.match(sellerTabSource, /onDropdownVisibleChange=\{\(\) => \{\}\}/);
+  assert.match(
+    sellerTabSource,
+    /onChange=\{\(value\) => setSelectedModels\(value\)\}/,
   );
   assert.doesNotMatch(
     sellerTabSource,
     /<TextArea[\s\S]*?value=\{selectedModels\.join\(','\)\}/,
   );
-  assert.match(pageSource, /modelOptionsWithSelected/);
-  assert.match(pageSource, /function renderModelOptionLabel/);
-  assert.match(sellerTabSource, /renderOptionItem=\{renderSellerModelOption\}/);
-  assert.match(sellerTabSource, /pricedModelsReady/);
-  assert.match(
-    sellerTabSource,
-    /key=\{\s*pricedModelsReady[\s\S]*?'priced-models-ready'[\s\S]*?'priced-models-loading'[\s\S]*?\}/,
-  );
-  assert.match(sellerTabSource, /position='bottomLeft'/);
-  assert.match(sellerTabSource, /autoAdjustOverflow=\{false\}/);
   assert.match(sellerTabSource, /pricedModelsLoadedRef/);
-  assert.match(
-    pageSource,
-    /label:\s*model,[\s\S]*?value:\s*model/,
-  );
-  assert.doesNotMatch(
-    pageSource,
-    /label:\s*\(\s*<span className='flex items-center gap-1'>/,
-  );
   assert.doesNotMatch(sellerTabSource, /models=\{fullModels\}/);
-  assert.match(sellerTabSource, /<ModelSelectModal/);
-  assert.match(sellerTabSource, /models=\{fetchedModelCandidates\}/);
-  assert.match(sellerTabSource, /selected=\{selectedModels\}/);
-  assert.match(
-    sellerTabSource,
-    /onConfirm=\{\(models\) => \{\s*setSelectedModels\(models\);\s*setModelSelectOpen\(false\);/,
-  );
-  assert.match(pageSource, /getModelCategories/);
+  assert.doesNotMatch(sellerTabSource, /<ModelSelectModal/);
   assert.match(sellerTabSource, /loadPricedModels\(\{ silent: true \}\)/);
   assert.match(
     sellerTabSource,
     /useEffect\(\(\) => \{\s*loadPricedModels\(\{ silent: true \}\);\s*\}, \[loadPricedModels\]\);/,
   );
-  assert.match(sellerTabSource, /emptyContent=\{/);
-  assert.match(sellerTabSource, /正在加载模型/);
-  assert.match(sellerTabSource, /暂无可用模型，请先在模型定价中配置模型/);
   assert.doesNotMatch(sellerTabSource, /setFullModels\(models\)/);
   assert.doesNotMatch(sellerTabSource, /setFullModels\(selectableModels\)/);
   assert.doesNotMatch(sellerTabSource, /setSellerModelModalVisible\(true\)/);
-  assert.match(pageSource, /已获取 \{\{count\}\} 个模型，请选择要填入的模型/);
+  assert.match(pageSource, /setSelectedModels\(fetchedModels\)/);
+  assert.match(pageSource, /模型列表已更新/);
   assert.doesNotMatch(pageSource, /模型列表加载失败，点击重试/);
   assert.doesNotMatch(sellerTabSource, />\s*\{t\('选择模型'\)\}/);
   assert.match(sellerTabSource, /fetchUpstreamModels/);
-  assert.match(sellerTabSource, /\/api\/marketplace\/seller\/credentials\/fetch-models/);
+  assert.match(
+    sellerTabSource,
+    /\/api\/marketplace\/seller\/credentials\/fetch-models/,
+  );
   assert.match(sellerTabSource, />\s*\{t\('获取模型列表'\)\}/);
   assert.match(pageSource, /marketplaceModelsForSave/);
   assert.match(
@@ -802,8 +789,13 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.match(pageSource, /buildSellerPricePreview/);
   assert.match(pageSource, /计费倍率/);
   assert.match(pageSource, /并发上限/);
-  assert.match(pageSource, /SplitButtonGroup/);
-  assert.match(pageSource, /IconTreeTriangleDown/);
+  assert.doesNotMatch(pageSource, /SplitButtonGroup/);
+  assert.match(pageSource, /IconMore/);
+  assert.match(
+    pageSource,
+    /contentClassName='marketplace-seller-actions-dropdown'/,
+  );
+  assert.doesNotMatch(pageSource, /IconTreeTriangleDown/);
   assert.match(pageSource, /MarketplaceCredentialModelTestModal/);
   assert.match(pageSource, /testMarketplaceCredential/);
   assert.match(pageSource, /renderMarketplaceResponseTime/);
@@ -813,7 +805,8 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   );
   assert.match(pageSource, /healthStatus === 'failed'/);
   assert.match(pageSource, /statusTag\(record\.health_status,\s*t\)/);
-  assert.match(pageSource, /statusTag\(record\.route_status,\s*t\)/);
+  assert.match(pageSource, /renderMarketplaceRouteStatusTag\(record,\s*t\)/);
+  assert.match(pageSource, /statusTag\(record\?\.route_status,\s*t\)/);
   assert.doesNotMatch(pageSource, /statusTag\(record\.capacity_status,\s*t\)/);
   assert.match(pageSource, /response_time/);
   assert.match(pageSource, /响应时间/);
