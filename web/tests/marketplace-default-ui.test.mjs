@@ -371,6 +371,13 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(ordersTabSource, /MarketplaceFeeRate/);
   assert.match(ordersTabSource, /marketplaceBuyerPaymentUSD/);
   assert.match(ordersTabSource, /Buyer transaction fee \{\{rate\}\}/);
+  assert.match(ordersTabSource, /useAuthStore/);
+  assert.match(ordersTabSource, /item\.seller_user_id === currentUserId/);
+  assert.match(ordersTabSource, /Own listing/);
+  assert.match(
+    ordersTabSource,
+    /You cannot buy your own marketplace credential\./,
+  );
   assert.match(
     ordersTabSource,
     /final fixed order balance and deduction include the global buyer transaction fee/,
@@ -379,7 +386,6 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(ordersTabSource, /Official price/);
   assert.match(ordersTabSource, /Multiplied price/);
   assert.doesNotMatch(ordersTabSource, /Own escrow/);
-  assert.doesNotMatch(ordersTabSource, /disabled=\{isOwnOrder\}/);
   assert.doesNotMatch(poolTabSource, /CallSnippet/);
   assert.match(poolTabSource, /Activate order pool/);
   assert.match(poolTabSource, /updateApiKey/);
@@ -837,12 +843,15 @@ test("classic frontend exposes marketplace top navigation, route, and page", asy
   assert.match(pageSource, /formatMarketplaceFeePercent/);
   assert.match(pageSource, /预计实际扣除 \{\{amount\}\}/);
   assert.match(pageSource, /填写的是基础调用额度/);
+  assert.match(pageSource, /getUserIdFromLocalStorage/);
+  assert.match(pageSource, /record\.seller_user_id === currentUserId/);
+  assert.match(pageSource, /自己的托管/);
+  assert.match(pageSource, /不能购买自己的托管/);
   assert.doesNotMatch(pageSource, /折算固定额度/);
   assert.doesNotMatch(pageSource, /dataIndex:\s*'purchased_quota'/);
   assert.doesNotMatch(pageSource, /dataIndex:\s*'remaining_quota'/);
   assert.match(pageSource, /官方计费/);
   assert.match(pageSource, /倍率后计费/);
-  assert.doesNotMatch(pageSource, /自己的托管/);
   assert.doesNotMatch(
     pageSource,
     /测试模型|OpenAI Organization|Header override JSON/,

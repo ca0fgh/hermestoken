@@ -20,6 +20,22 @@ func referralTemplateRequestGroups(req dto.ReferralTemplateUpsertRequest) []stri
 	return nil
 }
 
+func referralTemplateRequestGroupRates(req dto.ReferralTemplateUpsertRequest) []model.ReferralTemplateGroupRate {
+	if len(req.GroupRates) == 0 {
+		return nil
+	}
+	groupRates := make([]model.ReferralTemplateGroupRate, 0, len(req.GroupRates))
+	for _, rate := range req.GroupRates {
+		groupRates = append(groupRates, model.ReferralTemplateGroupRate{
+			Group:                  rate.Group,
+			DirectCapBps:           rate.DirectCapBps,
+			TeamCapBps:             rate.TeamCapBps,
+			InviteeShareDefaultBps: rate.InviteeShareDefaultBps,
+		})
+	}
+	return groupRates
+}
+
 func AdminListReferralTemplates(c *gin.Context) {
 	if strings.EqualFold(strings.TrimSpace(c.Query("view")), "bundle") {
 		bundles, err := model.ListReferralTemplateBundles(c.Query("referral_type"))
@@ -96,6 +112,7 @@ func AdminCreateReferralTemplate(c *gin.Context) {
 		DirectCapBps:           req.DirectCapBps,
 		TeamCapBps:             req.TeamCapBps,
 		InviteeShareDefaultBps: req.InviteeShareDefaultBps,
+		GroupRates:             referralTemplateRequestGroupRates(req),
 	}, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
@@ -126,6 +143,7 @@ func AdminUpdateReferralTemplate(c *gin.Context) {
 		DirectCapBps:           req.DirectCapBps,
 		TeamCapBps:             req.TeamCapBps,
 		InviteeShareDefaultBps: req.InviteeShareDefaultBps,
+		GroupRates:             referralTemplateRequestGroupRates(req),
 	}, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)

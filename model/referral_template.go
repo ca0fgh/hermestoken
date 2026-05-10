@@ -43,21 +43,30 @@ type ReferralTemplateBundleUpsertInput struct {
 	DirectCapBps           int
 	TeamCapBps             int
 	InviteeShareDefaultBps int
+	GroupRates             []ReferralTemplateGroupRate
+}
+
+type ReferralTemplateGroupRate struct {
+	Group                  string `json:"group"`
+	DirectCapBps           int    `json:"direct_cap_bps"`
+	TeamCapBps             int    `json:"team_cap_bps"`
+	InviteeShareDefaultBps int    `json:"invitee_share_default_bps"`
 }
 
 type ReferralTemplateBundle struct {
-	BundleKey              string   `json:"bundle_key"`
-	TemplateIDs            []int    `json:"template_ids"`
-	ReferralType           string   `json:"referral_type"`
-	Groups                 []string `json:"groups"`
-	Name                   string   `json:"name"`
-	LevelType              string   `json:"level_type"`
-	Enabled                bool     `json:"enabled"`
-	DirectCapBps           int      `json:"direct_cap_bps"`
-	TeamCapBps             int      `json:"team_cap_bps"`
-	InviteeShareDefaultBps int      `json:"invitee_share_default_bps"`
-	CreatedAt              int64    `json:"created_at"`
-	UpdatedAt              int64    `json:"updated_at"`
+	BundleKey              string                      `json:"bundle_key"`
+	TemplateIDs            []int                       `json:"template_ids"`
+	ReferralType           string                      `json:"referral_type"`
+	Groups                 []string                    `json:"groups"`
+	Name                   string                      `json:"name"`
+	LevelType              string                      `json:"level_type"`
+	Enabled                bool                        `json:"enabled"`
+	DirectCapBps           int                         `json:"direct_cap_bps"`
+	TeamCapBps             int                         `json:"team_cap_bps"`
+	InviteeShareDefaultBps int                         `json:"invitee_share_default_bps"`
+	GroupRates             []ReferralTemplateGroupRate `json:"group_rates"`
+	CreatedAt              int64                       `json:"created_at"`
+	UpdatedAt              int64                       `json:"updated_at"`
 }
 
 func (t *ReferralTemplate) normalize() {
@@ -194,6 +203,38 @@ func normalizeReferralTemplateGroups(groups []string) []string {
 	return normalized
 }
 
+func normalizeReferralTemplateGroupRates(rates []ReferralTemplateGroupRate) map[string]ReferralTemplateGroupRate {
+	normalized := make(map[string]ReferralTemplateGroupRate, len(rates))
+	for _, rate := range rates {
+		group := strings.TrimSpace(rate.Group)
+		if group == "" {
+			continue
+		}
+		normalized[group] = ReferralTemplateGroupRate{
+			Group:                  group,
+			DirectCapBps:           rate.DirectCapBps,
+			TeamCapBps:             rate.TeamCapBps,
+			InviteeShareDefaultBps: NormalizeSubscriptionReferralRateBps(rate.InviteeShareDefaultBps),
+		}
+	}
+	return normalized
+}
+
+func referralTemplateInputRateForGroup(input ReferralTemplateBundleUpsertInput, group string, groupRateByGroup map[string]ReferralTemplateGroupRate) ReferralTemplateGroupRate {
+	trimmedGroup := strings.TrimSpace(group)
+	rate := ReferralTemplateGroupRate{
+		Group:                  trimmedGroup,
+		DirectCapBps:           input.DirectCapBps,
+		TeamCapBps:             input.TeamCapBps,
+		InviteeShareDefaultBps: input.InviteeShareDefaultBps,
+	}
+	if groupRate, exists := groupRateByGroup[trimmedGroup]; exists {
+		rate = groupRate
+		rate.Group = trimmedGroup
+	}
+	return rate
+}
+
 func referralTemplateBundleKeyForRow(template ReferralTemplate) string {
 	if trimmed := strings.TrimSpace(template.BundleKey); trimmed != "" {
 		return trimmed
@@ -288,6 +329,12 @@ func ListReferralTemplateBundles(referralType string) ([]ReferralTemplateBundle,
 		}
 		bundle.TemplateIDs = append(bundle.TemplateIDs, row.Id)
 		bundle.Groups = append(bundle.Groups, row.Group)
+		bundle.GroupRates = append(bundle.GroupRates, ReferralTemplateGroupRate{
+			Group:                  row.Group,
+			DirectCapBps:           row.DirectCapBps,
+			TeamCapBps:             row.TeamCapBps,
+			InviteeShareDefaultBps: row.InviteeShareDefaultBps,
+		})
 		if bundle.CreatedAt == 0 || (row.CreatedAt != 0 && row.CreatedAt < bundle.CreatedAt) {
 			bundle.CreatedAt = row.CreatedAt
 		}
@@ -301,6 +348,9 @@ func ListReferralTemplateBundles(referralType string) ([]ReferralTemplateBundle,
 		bundle := bundleMap[bundleKey]
 		sort.Ints(bundle.TemplateIDs)
 		bundle.Groups = normalizeReferralTemplateGroups(bundle.Groups)
+		sort.Slice(bundle.GroupRates, func(i, j int) bool {
+			return bundle.GroupRates[i].Group < bundle.GroupRates[j].Group
+		})
 		bundles = append(bundles, *bundle)
 	}
 	return bundles, nil
@@ -316,9 +366,11 @@ func CreateReferralTemplateBundle(input ReferralTemplateBundleUpsertInput, opera
 		return nil, fmt.Errorf("at least one group is required")
 	}
 	bundleKey := newReferralTemplateBundleKey()
+	groupRateByGroup := normalizeReferralTemplateGroupRates(input.GroupRates)
 	rows := make([]ReferralTemplate, 0, len(groups))
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		for _, group := range groups {
+			groupRate := referralTemplateInputRateForGroup(input, group, groupRateByGroup)
 			row := ReferralTemplate{
 				BundleKey:              bundleKey,
 				ReferralType:           strings.TrimSpace(input.ReferralType),
@@ -326,9 +378,9 @@ func CreateReferralTemplateBundle(input ReferralTemplateBundleUpsertInput, opera
 				Name:                   strings.TrimSpace(input.Name),
 				LevelType:              strings.TrimSpace(input.LevelType),
 				Enabled:                input.Enabled,
-				DirectCapBps:           input.DirectCapBps,
-				TeamCapBps:             input.TeamCapBps,
-				InviteeShareDefaultBps: input.InviteeShareDefaultBps,
+				DirectCapBps:           groupRate.DirectCapBps,
+				TeamCapBps:             groupRate.TeamCapBps,
+				InviteeShareDefaultBps: groupRate.InviteeShareDefaultBps,
 				CreatedBy:              operatorID,
 				UpdatedBy:              operatorID,
 			}
@@ -385,8 +437,10 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 		trimmedReferralType := strings.TrimSpace(input.ReferralType)
 		trimmedName := strings.TrimSpace(input.Name)
 		trimmedLevelType := strings.TrimSpace(input.LevelType)
+		groupRateByGroup := normalizeReferralTemplateGroupRates(input.GroupRates)
 		retainedTemplateIDs := make([]int, 0, len(groups))
 		for _, group := range groups {
+			groupRate := referralTemplateInputRateForGroup(input, group, groupRateByGroup)
 			row, exists := currentByGroup[group]
 			if !exists {
 				row = ReferralTemplate{
@@ -402,9 +456,9 @@ func UpdateReferralTemplateBundleByTemplateID(templateID int, input ReferralTemp
 			row.Name = trimmedName
 			row.LevelType = trimmedLevelType
 			row.Enabled = input.Enabled
-			row.DirectCapBps = input.DirectCapBps
-			row.TeamCapBps = input.TeamCapBps
-			row.InviteeShareDefaultBps = input.InviteeShareDefaultBps
+			row.DirectCapBps = groupRate.DirectCapBps
+			row.TeamCapBps = groupRate.TeamCapBps
+			row.InviteeShareDefaultBps = groupRate.InviteeShareDefaultBps
 			row.UpdatedBy = operatorID
 
 			var saveErr error

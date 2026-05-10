@@ -19,9 +19,23 @@ import { Typography } from '@douyinfe/semi-ui';
 
 const { Text } = Typography;
 
-const ReferralFieldBlock = ({ label, description, detail, note, children }) => {
+const ReferralFieldBlock = ({
+  label,
+  description,
+  detail,
+  note,
+  className,
+  children,
+}) => {
   return (
-    <div className='space-y-2 rounded-xl border border-gray-200 bg-gray-50/60 p-3'>
+    <div
+      className={[
+        'space-y-2 rounded-xl border border-gray-200 bg-gray-50/60 p-3',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <div className='flex items-start justify-between gap-3'>
         <div className='space-y-1'>
           <Text strong>{label}</Text>

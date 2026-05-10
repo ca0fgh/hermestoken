@@ -1,15 +1,23 @@
 package dto
 
 type ReferralTemplateUpsertRequest struct {
-	ReferralType           string   `json:"referral_type"`
-	Group                  string   `json:"group"`
-	Groups                 []string `json:"groups"`
-	Name                   string   `json:"name"`
-	LevelType              string   `json:"level_type"`
-	Enabled                bool     `json:"enabled"`
-	DirectCapBps           int      `json:"direct_cap_bps"`
-	TeamCapBps             int      `json:"team_cap_bps"`
-	InviteeShareDefaultBps int      `json:"invitee_share_default_bps"`
+	ReferralType           string                             `json:"referral_type"`
+	Group                  string                             `json:"group"`
+	Groups                 []string                           `json:"groups"`
+	Name                   string                             `json:"name"`
+	LevelType              string                             `json:"level_type"`
+	Enabled                bool                               `json:"enabled"`
+	DirectCapBps           int                                `json:"direct_cap_bps"`
+	TeamCapBps             int                                `json:"team_cap_bps"`
+	InviteeShareDefaultBps int                                `json:"invitee_share_default_bps"`
+	GroupRates             []ReferralTemplateGroupRateRequest `json:"group_rates"`
+}
+
+type ReferralTemplateGroupRateRequest struct {
+	Group                  string `json:"group"`
+	DirectCapBps           int    `json:"direct_cap_bps"`
+	TeamCapBps             int    `json:"team_cap_bps"`
+	InviteeShareDefaultBps int    `json:"invitee_share_default_bps"`
 }
 
 type ReferralTemplateBindingUpsertRequest struct {
