@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, ShoppingCart } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/stores/auth-store'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,6 +15,12 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { StatusBadge } from '@/components/status-badge'
 import { getSystemOptions } from '@/features/system-settings/api'
 import { getOptionValue } from '@/features/system-settings/hooks/use-system-options'
@@ -67,6 +74,7 @@ export function OrdersTab({
 }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const currentUserId = useAuthStore((state) => state.auth.user?.id ?? 0)
   const [filters, setFilters] =
     useState<MarketplaceOrderFilters>(defaultFilters)
   const [selectedOrder, setSelectedOrder] =
@@ -132,6 +140,7 @@ export function OrdersTab({
           <OrderCard
             key={item.id}
             item={item}
+            currentUserId={currentUserId}
             onBuy={(order) => {
               setSelectedOrder(order)
               setPurchaseAmountUSD('1')
@@ -247,12 +256,28 @@ function PurchasePricePreview({ item }: { item: MarketplaceOrderListItem }) {
 
 function OrderCard({
   item,
+  currentUserId,
   onBuy,
 }: {
   item: MarketplaceOrderListItem
+  currentUserId: number
   onBuy: (order: MarketplaceOrderListItem) => void
 }) {
   const { t } = useTranslation()
+  const isOwnOrder = currentUserId > 0 && item.seller_user_id === currentUserId
+  const buyButton = (
+    <Button
+      className='w-full sm:w-auto'
+      disabled={isOwnOrder}
+      onClick={() => {
+        if (isOwnOrder) return
+        onBuy(item)
+      }}
+    >
+      <ShoppingCart className='size-4' />
+      {isOwnOrder ? t('Own listing') : t('Buy fixed amount')}
+    </Button>
+  )
 
   return (
     <div className='rounded-md border p-4'>
@@ -292,10 +317,22 @@ function OrderCard({
             value={formatOrderConcurrency(item, t)}
           />
         </div>
-        <Button className='w-full sm:w-auto' onClick={() => onBuy(item)}>
-          <ShoppingCart className='size-4' />
-          {t('Buy fixed amount')}
-        </Button>
+        {isOwnOrder ? (
+          <TooltipProvider delayDuration={100}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className='inline-flex w-full sm:w-auto'>
+                  {buyButton}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {t('You cannot buy your own marketplace credential.')}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          buyButton
+        )}
       </div>
     </div>
   )

@@ -192,8 +192,16 @@ func ListReferralTemplateBindingBundlesByUser(userID int, referralType string) (
 				DirectCapBps:           view.Template.DirectCapBps,
 				TeamCapBps:             view.Template.TeamCapBps,
 				InviteeShareDefaultBps: view.Template.InviteeShareDefaultBps,
-				CreatedAt:              view.Template.CreatedAt,
-				UpdatedAt:              view.Template.UpdatedAt,
+				GroupRates: []ReferralTemplateGroupRate{
+					{
+						Group:                  view.Template.Group,
+						DirectCapBps:           view.Template.DirectCapBps,
+						TeamCapBps:             view.Template.TeamCapBps,
+						InviteeShareDefaultBps: view.Template.InviteeShareDefaultBps,
+					},
+				},
+				CreatedAt: view.Template.CreatedAt,
+				UpdatedAt: view.Template.UpdatedAt,
 			}
 		}
 
@@ -212,6 +220,7 @@ func ListReferralTemplateBindingBundlesByUser(userID int, referralType string) (
 					DirectCapBps:           bundle.DirectCapBps,
 					TeamCapBps:             bundle.TeamCapBps,
 					InviteeShareDefaultBps: bundle.InviteeShareDefaultBps,
+					GroupRates:             bundle.GroupRates,
 					CreatedAt:              bundle.CreatedAt,
 					UpdatedAt:              bundle.UpdatedAt,
 				},
