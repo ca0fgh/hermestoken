@@ -2504,6 +2504,7 @@ function FilterBar({
                 emptyContent={t('暂无模型')}
                 dropdownStyle={{
                   minWidth: 360,
+                  maxHeight: 360,
                   maxWidth: 'calc(100vw - 48px)',
                 }}
                 style={{ width: '100%' }}
