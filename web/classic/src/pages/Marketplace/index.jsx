@@ -65,6 +65,7 @@ import {
   API,
   copy,
   createUnifiedPaginationProps,
+  getUserIdFromLocalStorage,
   showError,
   showInfo,
   showSuccess,
@@ -2609,6 +2610,7 @@ function FilterBar({
 
 function OrdersTab() {
   const { t } = useTranslation();
+  const currentUserId = getUserIdFromLocalStorage();
   const [filters, setFilters] = useState(defaultFilters);
   const filterRanges = useMarketplaceFilterRanges(filters);
   const [items, setItems] = useState([]);
@@ -2743,7 +2745,9 @@ function OrdersTab() {
     {
       title: t('操作'),
       render: (_, record) => {
-        const canCreateFixedOrder = record?.route_status === 'route_available';
+        const isOwnOrder = record.seller_user_id === currentUserId;
+        const canCreateFixedOrder =
+          record?.route_status === 'route_available' && !isOwnOrder;
         const button = (
           <Button
             size='small'
@@ -2755,13 +2759,15 @@ function OrdersTab() {
               setBuyAmountUSD('1');
             }}
           >
-            {t('买断金额')}
+            {isOwnOrder ? t('自己的托管') : t('买断金额')}
           </Button>
         );
         if (canCreateFixedOrder) {
           return button;
         }
-        const reasonText = marketplaceRouteReasonText(record, t);
+        const reasonText = isOwnOrder
+          ? t('不能购买自己的托管')
+          : marketplaceRouteReasonText(record, t);
         return (
           <Tooltip content={reasonText || t('当前订单不可路由')} position='top'>
             <span className='marketplace-disabled-action-tooltip'>
