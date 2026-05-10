@@ -249,6 +249,45 @@ func TestAdminCreateReferralTemplateWithGroupsCreatesBundleRows(t *testing.T) {
 	}
 }
 
+func TestAdminCreateReferralTemplateWithGroupRatesCreatesDistinctBundleRows(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+
+	body := map[string]interface{}{
+		"referral_type": model.ReferralTypeSubscription,
+		"groups":        []string{"cc-opus", "gpt-5.5"},
+		"name":          "group-rate-team",
+		"level_type":    model.ReferralLevelTypeTeam,
+		"enabled":       true,
+		"team_cap_bps":  5000,
+		"group_rates": []map[string]interface{}{
+			{"group": "cc-opus", "team_cap_bps": 5900},
+			{"group": "gpt-5.5", "team_cap_bps": 6400},
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/referral/templates", body, 1)
+	AdminCreateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var rows []model.ReferralTemplate
+	if err := db.Where("name = ?", "group-rate-team").Order("`group` ASC").Find(&rows).Error; err != nil {
+		t.Fatalf("failed to list templates: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("row count = %d, want 2", len(rows))
+	}
+	if rows[0].Group != "cc-opus" || rows[0].TeamCapBps != 5900 {
+		t.Fatalf("cc-opus row = %#v, want team cap 5900", rows[0])
+	}
+	if rows[1].Group != "gpt-5.5" || rows[1].TeamCapBps != 6400 {
+		t.Fatalf("gpt-5.5 row = %#v, want team cap 6400", rows[1])
+	}
+}
+
 func TestAdminListReferralTemplatesBundleViewAggregatesGroups(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	created, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
@@ -777,8 +816,10 @@ func TestAdminUpdateSubscriptionReferralGlobalSetting(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 
 	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/settings/subscription", map[string]interface{}{
-		"team_decay_ratio": 0.25,
-		"team_max_depth":   0,
+		"team_decay_ratio":             0.25,
+		"team_max_depth":               0,
+		"auto_assign_invitee_template": false,
+		"plan_open_to_all_users":       true,
 	}, 1)
 	AdminUpdateSubscriptionReferralGlobalSetting(ctx)
 
@@ -793,6 +834,48 @@ func TestAdminUpdateSubscriptionReferralGlobalSetting(t *testing.T) {
 	}
 	if setting.TeamMaxDepth != 0 {
 		t.Fatalf("TeamMaxDepth = %d, want 0", setting.TeamMaxDepth)
+	}
+	if setting.AutoAssignInviteeTemplate {
+		t.Fatal("AutoAssignInviteeTemplate = true, want false")
+	}
+	if !setting.PlanOpenToAllUsers {
+		t.Fatal("PlanOpenToAllUsers = false, want true")
+	}
+}
+
+func TestAdminUpdateSubscriptionReferralGlobalSettingPreservesOmittedFields(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+	if err := model.UpdateSubscriptionReferralGlobalSetting(model.SubscriptionReferralGlobalSetting{
+		TeamDecayRatio:            0.25,
+		TeamMaxDepth:              3,
+		AutoAssignInviteeTemplate: false,
+		PlanOpenToAllUsers:        false,
+	}); err != nil {
+		t.Fatalf("failed to seed subscription referral global setting: %v", err)
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/referral/settings/subscription", map[string]interface{}{
+		"plan_open_to_all_users": true,
+	}, 1)
+	AdminUpdateSubscriptionReferralGlobalSetting(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	setting := model.GetSubscriptionReferralGlobalSetting()
+	if setting.TeamDecayRatio != 0.25 {
+		t.Fatalf("TeamDecayRatio = %v, want 0.25", setting.TeamDecayRatio)
+	}
+	if setting.TeamMaxDepth != 3 {
+		t.Fatalf("TeamMaxDepth = %d, want 3", setting.TeamMaxDepth)
+	}
+	if setting.AutoAssignInviteeTemplate {
+		t.Fatal("AutoAssignInviteeTemplate = true, want false")
+	}
+	if !setting.PlanOpenToAllUsers {
+		t.Fatal("PlanOpenToAllUsers = false, want true")
 	}
 }
 

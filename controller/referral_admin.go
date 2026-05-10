@@ -20,6 +20,22 @@ func referralTemplateRequestGroups(req dto.ReferralTemplateUpsertRequest) []stri
 	return nil
 }
 
+func referralTemplateRequestGroupRates(req dto.ReferralTemplateUpsertRequest) []model.ReferralTemplateGroupRate {
+	if len(req.GroupRates) == 0 {
+		return nil
+	}
+	groupRates := make([]model.ReferralTemplateGroupRate, 0, len(req.GroupRates))
+	for _, rate := range req.GroupRates {
+		groupRates = append(groupRates, model.ReferralTemplateGroupRate{
+			Group:                  rate.Group,
+			DirectCapBps:           rate.DirectCapBps,
+			TeamCapBps:             rate.TeamCapBps,
+			InviteeShareDefaultBps: rate.InviteeShareDefaultBps,
+		})
+	}
+	return groupRates
+}
+
 func AdminListReferralTemplates(c *gin.Context) {
 	if strings.EqualFold(strings.TrimSpace(c.Query("view")), "bundle") {
 		bundles, err := model.ListReferralTemplateBundles(c.Query("referral_type"))
@@ -50,9 +66,28 @@ func AdminUpdateSubscriptionReferralGlobalSetting(c *gin.Context) {
 		return
 	}
 
+	currentSetting := model.GetSubscriptionReferralGlobalSetting()
+	teamDecayRatio := currentSetting.TeamDecayRatio
+	if req.TeamDecayRatio != nil {
+		teamDecayRatio = *req.TeamDecayRatio
+	}
+	teamMaxDepth := currentSetting.TeamMaxDepth
+	if req.TeamMaxDepth != nil {
+		teamMaxDepth = *req.TeamMaxDepth
+	}
+	autoAssignInviteeTemplate := currentSetting.AutoAssignInviteeTemplate
+	if req.AutoAssignInviteeTemplate != nil {
+		autoAssignInviteeTemplate = *req.AutoAssignInviteeTemplate
+	}
+	planOpenToAllUsers := currentSetting.PlanOpenToAllUsers
+	if req.PlanOpenToAllUsers != nil {
+		planOpenToAllUsers = *req.PlanOpenToAllUsers
+	}
 	if err := model.UpdateSubscriptionReferralGlobalSetting(model.SubscriptionReferralGlobalSetting{
-		TeamDecayRatio: req.TeamDecayRatio,
-		TeamMaxDepth:   req.TeamMaxDepth,
+		TeamDecayRatio:            teamDecayRatio,
+		TeamMaxDepth:              teamMaxDepth,
+		AutoAssignInviteeTemplate: autoAssignInviteeTemplate,
+		PlanOpenToAllUsers:        planOpenToAllUsers,
 	}); err != nil {
 		common.ApiError(c, err)
 		return
@@ -77,6 +112,7 @@ func AdminCreateReferralTemplate(c *gin.Context) {
 		DirectCapBps:           req.DirectCapBps,
 		TeamCapBps:             req.TeamCapBps,
 		InviteeShareDefaultBps: req.InviteeShareDefaultBps,
+		GroupRates:             referralTemplateRequestGroupRates(req),
 	}, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)
@@ -107,6 +143,7 @@ func AdminUpdateReferralTemplate(c *gin.Context) {
 		DirectCapBps:           req.DirectCapBps,
 		TeamCapBps:             req.TeamCapBps,
 		InviteeShareDefaultBps: req.InviteeShareDefaultBps,
+		GroupRates:             referralTemplateRequestGroupRates(req),
 	}, c.GetInt("id"))
 	if err != nil {
 		common.ApiError(c, err)

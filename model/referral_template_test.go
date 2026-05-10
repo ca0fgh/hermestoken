@@ -24,6 +24,7 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 	originalCommonGroupCol := commonGroupCol
 	originalSubscriptionReferralTeamDecayRatio := subscriptionReferralTeamDecayRatio
 	originalSubscriptionReferralTeamMaxDepth := subscriptionReferralTeamMaxDepth
+	originalSubscriptionReferralAutoAssignInviteeTemplate := subscriptionReferralAutoAssignInviteeTemplate
 	originalOptionMap := make(map[string]string, len(common.OptionMap))
 	for key, value := range common.OptionMap {
 		originalOptionMap[key] = value
@@ -74,6 +75,7 @@ func setupReferralTemplateDB(t *testing.T) *gorm.DB {
 		commonGroupCol = originalCommonGroupCol
 		subscriptionReferralTeamDecayRatio = originalSubscriptionReferralTeamDecayRatio
 		subscriptionReferralTeamMaxDepth = originalSubscriptionReferralTeamMaxDepth
+		subscriptionReferralAutoAssignInviteeTemplate = originalSubscriptionReferralAutoAssignInviteeTemplate
 		common.OptionMap = originalOptionMap
 	})
 
@@ -254,6 +256,60 @@ func TestAssignLowestSubscriptionReferralTemplateForInvitedUserRequiresInviterAc
 	}
 	if len(bundles[0].TemplateIDs) != len(lowestRows) {
 		t.Fatalf("expected invitee to bind all lowest bundle rows, got template ids %v", bundles[0].TemplateIDs)
+	}
+}
+
+func TestAssignLowestSubscriptionReferralTemplateForInvitedUserCanBeDisabled(t *testing.T) {
+	db := setupReferralTemplateDB(t)
+
+	rows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"starter"},
+		Name:                   "disabled-auto-assign-template",
+		LevelType:              ReferralLevelTypeDirect,
+		Enabled:                true,
+		DirectCapBps:           800,
+		InviteeShareDefaultBps: 200,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	inviter := &User{
+		Username: "disabled-auto-assign-inviter",
+		Password: "password",
+		AffCode:  "disabled_auto_assign_inviter",
+		Group:    "default",
+	}
+	if err := db.Create(inviter).Error; err != nil {
+		t.Fatalf("failed to create inviter: %v", err)
+	}
+	if _, err := UpsertReferralTemplateBindingBundleForUser(inviter.Id, ReferralTypeSubscription, rows[0].Id, nil, 1); err != nil {
+		t.Fatalf("failed to bind inviter: %v", err)
+	}
+	if err := UpdateSubscriptionReferralGlobalSetting(SubscriptionReferralGlobalSetting{
+		TeamDecayRatio:            DefaultSubscriptionReferralTeamDecayRatio,
+		TeamMaxDepth:              DefaultSubscriptionReferralTeamMaxDepth,
+		AutoAssignInviteeTemplate: false,
+	}); err != nil {
+		t.Fatalf("UpdateSubscriptionReferralGlobalSetting() error = %v", err)
+	}
+
+	invitee := &User{
+		Username: "disabled-auto-assign-invitee",
+		Password: "password123",
+		Group:    "default",
+	}
+	if err := invitee.Insert(inviter.Id); err != nil {
+		t.Fatalf("Insert(invited user) error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBindingBundlesByUser(invitee.Id, ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBindingBundlesByUser(invitee) error = %v", err)
+	}
+	if len(bundles) != 0 {
+		t.Fatalf("expected no subscription referral bundle when auto assign is disabled, got %d", len(bundles))
 	}
 }
 
@@ -443,6 +499,9 @@ func TestSubscriptionReferralGlobalSettingDefaults(t *testing.T) {
 	if setting.TeamMaxDepth != DefaultSubscriptionReferralTeamMaxDepth {
 		t.Fatalf("TeamMaxDepth = %d, want %d", setting.TeamMaxDepth, DefaultSubscriptionReferralTeamMaxDepth)
 	}
+	if setting.AutoAssignInviteeTemplate != DefaultSubscriptionReferralAutoAssignInviteeTemplate {
+		t.Fatalf("AutoAssignInviteeTemplate = %v, want %v", setting.AutoAssignInviteeTemplate, DefaultSubscriptionReferralAutoAssignInviteeTemplate)
+	}
 }
 
 func TestSubscriptionReferralGlobalSettingRejectsInvalidValues(t *testing.T) {
@@ -591,6 +650,56 @@ func TestCreateReferralTemplateBundleCreatesOneRowPerGroup(t *testing.T) {
 	}
 }
 
+func TestCreateReferralTemplateBundleAppliesGroupRates(t *testing.T) {
+	setupReferralTemplateDB(t)
+
+	rows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType:           ReferralTypeSubscription,
+		Groups:                 []string{"gpt-image-2", "cc-opus"},
+		Name:                   "team-by-group",
+		LevelType:              ReferralLevelTypeTeam,
+		Enabled:                true,
+		TeamCapBps:             5000,
+		InviteeShareDefaultBps: 100,
+		GroupRates: []ReferralTemplateGroupRate{
+			{Group: "cc-opus", TeamCapBps: 5900, InviteeShareDefaultBps: 200},
+			{Group: "gpt-image-2", TeamCapBps: 7300, InviteeShareDefaultBps: 300},
+		},
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("bundle row count = %d, want 2", len(rows))
+	}
+
+	if rows[0].Group != "cc-opus" || rows[0].TeamCapBps != 5900 || rows[0].InviteeShareDefaultBps != 200 {
+		t.Fatalf("cc-opus row = %#v, want team cap 5900 and invitee share 200", rows[0])
+	}
+	if rows[1].Group != "gpt-image-2" || rows[1].TeamCapBps != 7300 || rows[1].InviteeShareDefaultBps != 300 {
+		t.Fatalf("gpt-image-2 row = %#v, want team cap 7300 and invitee share 300", rows[1])
+	}
+}
+
+func TestCreateReferralTemplateBundleRejectsInvalidGroupRate(t *testing.T) {
+	setupReferralTemplateDB(t)
+
+	_, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType: ReferralTypeSubscription,
+		Groups:       []string{"default"},
+		Name:         "invalid-group-rate",
+		LevelType:    ReferralLevelTypeDirect,
+		Enabled:      true,
+		DirectCapBps: 1000,
+		GroupRates: []ReferralTemplateGroupRate{
+			{Group: "default", DirectCapBps: SubscriptionReferralMaxRateBps + 1},
+		},
+	}, 1)
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "cap bps") {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v, want cap bps validation error", err)
+	}
+}
+
 func TestListReferralTemplateBundlesAggregatesRowsByBundleKey(t *testing.T) {
 	setupReferralTemplateDB(t)
 
@@ -621,6 +730,84 @@ func TestListReferralTemplateBundlesAggregatesRowsByBundleKey(t *testing.T) {
 	}
 	if len(bundles[0].TemplateIDs) != 2 {
 		t.Fatalf("TemplateIDs count = %d, want 2", len(bundles[0].TemplateIDs))
+	}
+}
+
+func TestListReferralTemplateBundlesIncludesGroupRates(t *testing.T) {
+	setupReferralTemplateDB(t)
+
+	_, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType: ReferralTypeSubscription,
+		Groups:       []string{"default", "vip"},
+		Name:         "bundle-rates",
+		LevelType:    ReferralLevelTypeDirect,
+		Enabled:      true,
+		DirectCapBps: 1200,
+		GroupRates: []ReferralTemplateGroupRate{
+			{Group: "default", DirectCapBps: 1200},
+			{Group: "vip", DirectCapBps: 1800},
+		},
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	bundles, err := ListReferralTemplateBundles(ReferralTypeSubscription)
+	if err != nil {
+		t.Fatalf("ListReferralTemplateBundles() error = %v", err)
+	}
+	if len(bundles) != 1 {
+		t.Fatalf("bundle count = %d, want 1", len(bundles))
+	}
+	if len(bundles[0].GroupRates) != 2 {
+		t.Fatalf("GroupRates count = %d, want 2", len(bundles[0].GroupRates))
+	}
+	if bundles[0].GroupRates[0].Group != "default" || bundles[0].GroupRates[0].DirectCapBps != 1200 {
+		t.Fatalf("first group rate = %#v, want default direct 1200", bundles[0].GroupRates[0])
+	}
+	if bundles[0].GroupRates[1].Group != "vip" || bundles[0].GroupRates[1].DirectCapBps != 1800 {
+		t.Fatalf("second group rate = %#v, want vip direct 1800", bundles[0].GroupRates[1])
+	}
+}
+
+func TestUpdateReferralTemplateBundleAppliesGroupRates(t *testing.T) {
+	setupReferralTemplateDB(t)
+
+	rows, err := CreateReferralTemplateBundle(ReferralTemplateBundleUpsertInput{
+		ReferralType: ReferralTypeSubscription,
+		Groups:       []string{"default", "vip"},
+		Name:         "mutable-rates",
+		LevelType:    ReferralLevelTypeDirect,
+		Enabled:      true,
+		DirectCapBps: 1000,
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateReferralTemplateBundle() error = %v", err)
+	}
+
+	updated, err := UpdateReferralTemplateBundleByTemplateID(rows[0].Id, ReferralTemplateBundleUpsertInput{
+		ReferralType: ReferralTypeSubscription,
+		Groups:       []string{"default", "vip"},
+		Name:         "mutable-rates",
+		LevelType:    ReferralLevelTypeDirect,
+		Enabled:      true,
+		DirectCapBps: 1000,
+		GroupRates: []ReferralTemplateGroupRate{
+			{Group: "default", DirectCapBps: 1500},
+			{Group: "vip", DirectCapBps: 2200},
+		},
+	}, 2)
+	if err != nil {
+		t.Fatalf("UpdateReferralTemplateBundleByTemplateID() error = %v", err)
+	}
+	if len(updated) != 2 {
+		t.Fatalf("updated row count = %d, want 2", len(updated))
+	}
+	if updated[0].Group != "default" || updated[0].DirectCapBps != 1500 {
+		t.Fatalf("default row = %#v, want direct cap 1500", updated[0])
+	}
+	if updated[1].Group != "vip" || updated[1].DirectCapBps != 2200 {
+		t.Fatalf("vip row = %#v, want direct cap 2200", updated[1])
 	}
 }
 

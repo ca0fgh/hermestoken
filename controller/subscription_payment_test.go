@@ -350,7 +350,7 @@ func TestSubscriptionRequestEpayConvertsUsdTotalToGatewayAmount(t *testing.T) {
 		"plan_id":        plan.Id,
 		"quantity":       3,
 		"payment_method": "alipay",
-	}, 1)
+	}, user.Id)
 
 	SubscriptionRequestEpay(ctx)
 
@@ -496,7 +496,7 @@ func TestSubscriptionRequestWalletPayDeductsBalanceAndCreatesSubscriptions(t *te
 	}
 }
 
-func TestSubscriptionRequestWalletPayRejectsUserWithoutSubscriptionReferralBinding(t *testing.T) {
+func TestSubscriptionRequestWalletPayRejectsUserWithoutSubscriptionReferralBindingWhenOpenToAllDisabled(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit
 	common.QuotaPerUnit = 100
@@ -543,7 +543,66 @@ func TestSubscriptionRequestWalletPayRejectsUserWithoutSubscriptionReferralBindi
 		t.Fatalf("failed to count subscription orders: %v", err)
 	}
 	if orderCount != 0 {
-		t.Fatalf("expected no subscription order when subscription referral is disabled, found %d", orderCount)
+		t.Fatalf("expected no subscription order when subscription access is disabled, found %d", orderCount)
+	}
+}
+
+func TestSubscriptionRequestWalletPayAllowsUserWithoutSubscriptionReferralBindingWhenOpenToAllEnabled(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() {
+		common.QuotaPerUnit = originalQuotaPerUnit
+	})
+	if err := model.UpdateSubscriptionReferralGlobalSetting(model.SubscriptionReferralGlobalSetting{
+		TeamDecayRatio:            model.DefaultSubscriptionReferralTeamDecayRatio,
+		TeamMaxDepth:              model.DefaultSubscriptionReferralTeamMaxDepth,
+		AutoAssignInviteeTemplate: model.DefaultSubscriptionReferralAutoAssignInviteeTemplate,
+		PlanOpenToAllUsers:        true,
+	}); err != nil {
+		t.Fatalf("failed to enable subscription plans for all users: %v", err)
+	}
+
+	user := seedSubscriptionPaymentUser(t, db, 1, "wallet-open@example.com", "wallet_open_user", "")
+	user.Quota = 1000
+	if err := db.Save(user).Error; err != nil {
+		t.Fatalf("failed to seed user quota: %v", err)
+	}
+	plan := seedSubscriptionPlan(t, db, "wallet-open-plan")
+	mustUpdateSubscriptionPlan(t, db, plan.Id, map[string]interface{}{
+		"price_amount": 3.5,
+		"stock_total":  10,
+	})
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/subscription/wallet/pay", map[string]interface{}{
+		"plan_id":  plan.Id,
+		"quantity": 1,
+	}, user.Id)
+
+	SubscriptionRequestWalletPay(ctx)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected http status 200, got %d", recorder.Code)
+	}
+	response := decodeSubscriptionPaymentResponse(t, recorder.Body.Bytes())
+	if response.Message != "success" {
+		t.Fatalf("expected success message, got %s body=%s", response.Message, recorder.Body.String())
+	}
+
+	var reloadedUser model.User
+	if err := db.First(&reloadedUser, user.Id).Error; err != nil {
+		t.Fatalf("failed to reload user: %v", err)
+	}
+	if reloadedUser.Quota != 650 {
+		t.Fatalf("expected user quota 650 after wallet purchase, got %d", reloadedUser.Quota)
+	}
+
+	var orderCount int64
+	if err := db.Model(&model.SubscriptionOrder{}).Count(&orderCount).Error; err != nil {
+		t.Fatalf("failed to count subscription orders: %v", err)
+	}
+	if orderCount != 1 {
+		t.Fatalf("expected one subscription order without subscription referral binding, found %d", orderCount)
 	}
 }
 

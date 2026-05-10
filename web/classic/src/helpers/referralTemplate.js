@@ -33,8 +33,14 @@ const buildFallbackBundleKey = (item) => {
 };
 
 const normalizeGroups = (item) => {
-  const sourceGroups = Array.isArray(item?.groups) ? item.groups : [item?.group];
-  return [...new Set(sourceGroups.map((group) => String(group || '').trim()).filter(Boolean))].sort();
+  const sourceGroups = Array.isArray(item?.groups)
+    ? item.groups
+    : [item?.group];
+  return [
+    ...new Set(
+      sourceGroups.map((group) => String(group || '').trim()).filter(Boolean),
+    ),
+  ].sort();
 };
 
 const normalizeTemplateIds = (item) => {
@@ -44,9 +50,29 @@ const normalizeTemplateIds = (item) => {
       ? [item.id]
       : [];
 
-  return [...new Set(sourceTemplateIds.map((templateId) => Number(templateId || 0)).filter((templateId) => templateId > 0))].sort(
-    (left, right) => left - right,
-  );
+  return [
+    ...new Set(
+      sourceTemplateIds
+        .map((templateId) => Number(templateId || 0))
+        .filter((templateId) => templateId > 0),
+    ),
+  ].sort((left, right) => left - right);
+};
+
+const normalizeGroupRates = (item) => {
+  const sourceGroupRates = Array.isArray(item?.group_rates)
+    ? item.group_rates
+    : [];
+
+  return sourceGroupRates
+    .map((rate) => ({
+      group: String(rate?.group || '').trim(),
+      directCapBps: Number(rate?.direct_cap_bps || 0),
+      teamCapBps: Number(rate?.team_cap_bps || 0),
+      inviteeShareDefaultBps: Number(rate?.invitee_share_default_bps || 0),
+    }))
+    .filter((rate) => rate.group)
+    .sort((left, right) => left.group.localeCompare(right.group));
 };
 
 export function normalizeReferralTemplateItems(items = []) {
@@ -67,5 +93,6 @@ export function normalizeReferralTemplateItems(items = []) {
     directCapBps: Number(item?.direct_cap_bps || 0),
     teamCapBps: Number(item?.team_cap_bps || 0),
     inviteeShareDefaultBps: Number(item?.invitee_share_default_bps || 0),
+    groupRates: normalizeGroupRates(item),
   }));
 }

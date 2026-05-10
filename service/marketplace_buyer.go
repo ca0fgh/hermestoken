@@ -51,6 +51,7 @@ type MarketplaceOrderListItem struct {
 	HealthStatus           string                    `json:"health_status"`
 	CapacityStatus         string                    `json:"capacity_status"`
 	RouteStatus            string                    `json:"route_status"`
+	RouteReason            string                    `json:"route_reason"`
 	RiskStatus             string                    `json:"risk_status"`
 	ProbeStatus            string                    `json:"probe_status"`
 	ProbeScore             int                       `json:"probe_score"`
@@ -841,7 +842,7 @@ func marketplaceStatsByCredentialID(credentials []model.MarketplaceCredential) (
 
 func newMarketplaceOrderListItem(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats) MarketplaceOrderListItem {
 	capacityStatus := marketplaceCredentialCapacityStatus(credential, stats)
-	routeStatus := marketplaceCredentialRouteStatus(credential, stats)
+	routeStatus, routeReason := marketplaceCredentialRouteStatusAndReason(credential, stats)
 	return MarketplaceOrderListItem{
 		ID:                     credential.ID,
 		SellerUserID:           credential.SellerUserID,
@@ -859,6 +860,7 @@ func newMarketplaceOrderListItem(credential model.MarketplaceCredential, stats m
 		HealthStatus:           credential.HealthStatus,
 		CapacityStatus:         capacityStatus,
 		RouteStatus:            routeStatus,
+		RouteReason:            routeReason,
 		RiskStatus:             credential.RiskStatus,
 		ProbeStatus:            marketplaceProbeStatusForCredential(credential),
 		ProbeScore:             credential.ProbeScore,
@@ -1196,6 +1198,9 @@ func isMarketplaceCredentialPurchaseEligible(credential model.MarketplaceCredent
 	switch credential.HealthStatus {
 	case model.MarketplaceHealthStatusUntested, model.MarketplaceHealthStatusHealthy, model.MarketplaceHealthStatusDegraded:
 	default:
+		return false
+	}
+	if !marketplaceCredentialHasRoutableProbeScore(credential) {
 		return false
 	}
 	if marketplaceCredentialCapacityStatus(credential, stats) == model.MarketplaceCapacityStatusExhausted {

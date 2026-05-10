@@ -280,26 +280,79 @@ func marketplaceCredentialCapacityStatus(credential model.MarketplaceCredential,
 }
 
 func marketplaceCredentialRouteStatus(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats) string {
+	status, _ := marketplaceCredentialRouteStatusAndReason(credential, stats)
+	return status
+}
+
+func marketplaceCredentialRouteReason(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats) string {
+	_, reason := marketplaceCredentialRouteStatusAndReason(credential, stats)
+	return reason
+}
+
+func marketplaceCredentialRouteStatusAndReason(credential model.MarketplaceCredential, stats model.MarketplaceCredentialStats) (string, string) {
 	if credential.ListingStatus != model.MarketplaceListingStatusListed {
-		return model.MarketplaceRouteStatusUnlisted
+		return model.MarketplaceRouteStatusUnlisted, model.MarketplaceRouteReasonUnlisted
 	}
 	if credential.ServiceStatus != model.MarketplaceServiceStatusEnabled {
-		return model.MarketplaceRouteStatusDisabled
+		return model.MarketplaceRouteStatusDisabled, model.MarketplaceRouteReasonDisabled
 	}
 	switch credential.HealthStatus {
 	case model.MarketplaceHealthStatusUntested, model.MarketplaceHealthStatusHealthy, model.MarketplaceHealthStatusDegraded:
 	default:
-		return model.MarketplaceRouteStatusFailed
+		return model.MarketplaceRouteStatusFailed, marketplaceCredentialHealthRouteReason(credential.HealthStatus)
+	}
+	if reason := marketplaceCredentialProbeRouteReason(credential); reason != "" {
+		return model.MarketplaceRouteStatusFailed, reason
 	}
 	if credential.RiskStatus == model.MarketplaceRiskStatusRiskPaused {
-		return model.MarketplaceRouteStatusRiskPaused
+		return model.MarketplaceRouteStatusRiskPaused, model.MarketplaceRouteReasonRiskPaused
 	}
 	switch marketplaceCredentialCapacityStatus(credential, stats) {
 	case model.MarketplaceCapacityStatusExhausted:
-		return model.MarketplaceRouteStatusExhausted
+		return model.MarketplaceRouteStatusExhausted, model.MarketplaceRouteReasonQuotaExhausted
 	case model.MarketplaceCapacityStatusBusy:
-		return model.MarketplaceRouteStatusBusy
+		return model.MarketplaceRouteStatusBusy, model.MarketplaceRouteReasonConcurrencyBusy
 	default:
-		return model.MarketplaceRouteStatusAvailable
+		return model.MarketplaceRouteStatusAvailable, ""
+	}
+}
+
+func marketplaceCredentialHasRoutableProbeScore(credential model.MarketplaceCredential) bool {
+	switch credential.ProbeStatus {
+	case model.MarketplaceProbeStatusPassed, model.MarketplaceProbeStatusWarning:
+	default:
+		return false
+	}
+	return credential.ProbeScore > 0 && credential.ProbeScoreMax > 0
+}
+
+func marketplaceCredentialHealthRouteReason(healthStatus string) string {
+	switch healthStatus {
+	case model.MarketplaceHealthStatusFailed:
+		return model.MarketplaceRouteReasonHealthFailed
+	default:
+		return model.MarketplaceRouteReasonHealthUnavailable
+	}
+}
+
+func marketplaceCredentialProbeRouteReason(credential model.MarketplaceCredential) string {
+	switch credential.ProbeStatus {
+	case model.MarketplaceProbeStatusPassed, model.MarketplaceProbeStatusWarning:
+		switch {
+		case credential.ProbeScoreMax <= 0:
+			return model.MarketplaceRouteReasonProbeScoreMissing
+		case credential.ProbeScore <= 0:
+			return model.MarketplaceRouteReasonProbeScoreZero
+		default:
+			return ""
+		}
+	case model.MarketplaceProbeStatusPending, model.MarketplaceProbeStatusRunning:
+		return model.MarketplaceRouteReasonProbeInProgress
+	case model.MarketplaceProbeStatusFailed:
+		return model.MarketplaceRouteReasonProbeFailed
+	case model.MarketplaceProbeStatusUnscored, "":
+		return model.MarketplaceRouteReasonProbeUnscored
+	default:
+		return model.MarketplaceRouteReasonUnavailableGeneric
 	}
 }
