@@ -121,7 +121,36 @@ test("referral settings page saves bundle group arrays instead of a single group
   );
 
   assert.match(templateSource, /groups:\s*row\.groups/);
+  assert.match(
+    templateSource,
+    /group_rates:\s*buildReferralTemplateGroupRatesPayload\(row\)/,
+  );
   assert.doesNotMatch(templateSource, /group:\s*row\.group/);
+});
+
+test("referral settings page merges invitee and identity rate editors by group", () => {
+  const templateSource = fs.readFileSync(
+    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    "utf8",
+  );
+
+  assert.match(templateSource, /分组返佣比例/);
+  assert.match(templateSource, /全部分组批量设置/);
+  assert.match(
+    templateSource,
+    /按分组同时设置付款用户本人默认比例和模板身份返佣比例/,
+  );
+  assert.match(templateSource, /被邀请人默认返佣比例/);
+  assert.match(templateSource, /直推返佣比例/);
+  assert.match(templateSource, /团队返佣比例/);
+  assert.match(templateSource, /ReferralTemplateGroupRatesEditor/);
+  assert.match(templateSource, /referralTemplateIdentityRatePatch/);
+  assert.match(templateSource, /referralTemplateInviteeShareDefaultPatch/);
+  assert.match(templateSource, /referralTemplateIdentityRateBps/);
+  assert.match(templateSource, /referralTemplateInviteeShareDefaultBps/);
+  assert.match(templateSource, /inviteeShareDefaultBps:\s*rateBps/);
+  assert.match(templateSource, /directCapBps:\s*rateBps/);
+  assert.match(templateSource, /teamCapBps:\s*rateBps/);
 });
 
 test("referral settings page copy describes multi-group bundles and scoped uniqueness", () => {
@@ -149,6 +178,18 @@ test("normalizeReferralTemplateItems normalizes bundle-shaped items", () => {
       direct_cap_bps: "1200",
       team_cap_bps: "0",
       invitee_share_default_bps: "300",
+      group_rates: [
+        {
+          group: "vip",
+          direct_cap_bps: "1500",
+          invitee_share_default_bps: "500",
+        },
+        {
+          group: "default",
+          direct_cap_bps: "1200",
+          invitee_share_default_bps: "300",
+        },
+      ],
     },
   ]);
 
@@ -160,4 +201,18 @@ test("normalizeReferralTemplateItems normalizes bundle-shaped items", () => {
   assert.equal(item.levelType, "direct");
   assert.equal(item.directCapBps, 1200);
   assert.equal(item.inviteeShareDefaultBps, 300);
+  assert.deepEqual(item.groupRates, [
+    {
+      group: "default",
+      directCapBps: 1200,
+      teamCapBps: 0,
+      inviteeShareDefaultBps: 300,
+    },
+    {
+      group: "vip",
+      directCapBps: 1500,
+      teamCapBps: 0,
+      inviteeShareDefaultBps: 500,
+    },
+  ]);
 });

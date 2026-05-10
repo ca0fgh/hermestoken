@@ -52,6 +52,7 @@ const createDraftTemplate = () => ({
   directCapBps: 1000,
   teamCapBps: 0,
   inviteeShareDefaultBps: 0,
+  groupRates: [],
   isDraft: true,
 });
 
@@ -61,6 +62,191 @@ const formatBpsAsPercent = (value) => {
     return `${normalized}%`;
   }
   return `${normalized.toFixed(2).replace(/\.?0+$/, '')}%`;
+};
+
+const referralTemplateGroupRateForGroup = (row, group) => {
+  const trimmedGroup = String(group || '').trim();
+  const existingRate = (row.groupRates || []).find(
+    (rate) => rate.group === trimmedGroup,
+  );
+  return {
+    group: trimmedGroup,
+    directCapBps: Number(existingRate?.directCapBps ?? row.directCapBps ?? 0),
+    teamCapBps: Number(existingRate?.teamCapBps ?? row.teamCapBps ?? 0),
+    inviteeShareDefaultBps: Number(
+      existingRate?.inviteeShareDefaultBps ?? row.inviteeShareDefaultBps ?? 0,
+    ),
+  };
+};
+
+const sortReferralTemplateGroupRates = (groupRates = []) =>
+  [...groupRates].sort((left, right) => left.group.localeCompare(right.group));
+
+const mergeReferralTemplateGroupRate = (row, group, patch) => {
+  const trimmedGroup = String(group || '').trim();
+  if (!trimmedGroup) {
+    return row.groupRates || [];
+  }
+  const nextRate = {
+    ...referralTemplateGroupRateForGroup(row, trimmedGroup),
+    ...patch,
+    group: trimmedGroup,
+  };
+  return sortReferralTemplateGroupRates([
+    ...(row.groupRates || []).filter((rate) => rate.group !== trimmedGroup),
+    nextRate,
+  ]);
+};
+
+const mergeReferralTemplateGroupRateForGroups = (row, groups, patch) =>
+  (groups || []).reduce(
+    (groupRates, group) =>
+      mergeReferralTemplateGroupRate({ ...row, groupRates }, group, patch),
+    row.groupRates || [],
+  );
+
+const referralTemplateIdentityRateBps = (row, group) => {
+  const groupRate = referralTemplateGroupRateForGroup(row, group);
+  return row.levelType === 'team'
+    ? groupRate.teamCapBps
+    : groupRate.directCapBps;
+};
+
+const referralTemplateInviteeShareDefaultBps = (row, group) =>
+  referralTemplateGroupRateForGroup(row, group).inviteeShareDefaultBps;
+
+const referralTemplateInviteeShareDefaultPatch = (row, rateBps) => ({
+  inviteeShareDefaultBps: rateBps,
+  groupRates: mergeReferralTemplateGroupRateForGroups(row, row.groups, {
+    inviteeShareDefaultBps: rateBps,
+  }),
+});
+
+const referralTemplateIdentityRatePatch = (row, rateBps) =>
+  row.levelType === 'team'
+    ? {
+        teamCapBps: rateBps,
+        groupRates: mergeReferralTemplateGroupRateForGroups(row, row.groups, {
+          teamCapBps: rateBps,
+        }),
+      }
+    : {
+        directCapBps: rateBps,
+        groupRates: mergeReferralTemplateGroupRateForGroups(row, row.groups, {
+          directCapBps: rateBps,
+        }),
+      };
+
+const buildReferralTemplateGroupRatesPayload = (row) =>
+  (row.groups || []).map((group) => {
+    const groupRate = referralTemplateGroupRateForGroup(row, group);
+    return {
+      group,
+      direct_cap_bps:
+        row.levelType === 'direct' ? Number(groupRate.directCapBps || 0) : 0,
+      team_cap_bps:
+        row.levelType === 'team' ? Number(groupRate.teamCapBps || 0) : 0,
+      invitee_share_default_bps: Number(groupRate.inviteeShareDefaultBps || 0),
+    };
+  });
+
+const ReferralTemplateRateInput = ({ valueBps, onChange }) => (
+  <div className='flex min-w-0 items-center gap-2'>
+    <Typography.Text
+      type='secondary'
+      className='w-12 shrink-0 whitespace-nowrap text-right'
+    >
+      {formatBpsAsPercent(valueBps)}
+    </Typography.Text>
+    <InputNumber
+      value={rateBpsToPercentNumber(valueBps)}
+      min={0}
+      max={100}
+      step={0.1}
+      suffix='%'
+      className='min-w-0 flex-1'
+      style={{ width: '100%' }}
+      onChange={(value) => onChange(percentNumberToRateBps(value))}
+    />
+  </div>
+);
+
+const ReferralTemplateRateColumn = ({ label, valueBps, onChange }) => (
+  <div className='min-w-0 space-y-1'>
+    <Typography.Text type='tertiary' className='block lg:hidden'>
+      {label}
+    </Typography.Text>
+    <ReferralTemplateRateInput valueBps={valueBps} onChange={onChange} />
+  </div>
+);
+
+const ReferralTemplateGroupRatesEditor = ({
+  t,
+  row,
+  identityRateLabel,
+  identityRateBps,
+  onInviteeBulkChange,
+  onInviteeGroupChange,
+  onIdentityBulkChange,
+  onIdentityGroupChange,
+}) => {
+  const inviteeRateLabel = t('被邀请人默认返佣比例');
+
+  return (
+    <div className='overflow-hidden rounded-lg border border-gray-200 bg-white'>
+      <div className='hidden grid-cols-[minmax(0,1fr)_minmax(200px,260px)_minmax(200px,260px)] gap-3 border-b border-gray-100 bg-gray-50/70 px-3 py-2.5 lg:grid lg:items-center'>
+        <Typography.Text type='tertiary'>{t('分组')}</Typography.Text>
+        <Typography.Text type='tertiary'>{inviteeRateLabel}</Typography.Text>
+        <Typography.Text type='tertiary'>{identityRateLabel}</Typography.Text>
+      </div>
+      <div className='grid grid-cols-1 gap-2 border-b border-gray-100 bg-gray-50/70 px-3 py-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(200px,260px)_minmax(200px,260px)] lg:items-center'>
+        <div className='min-w-0'>
+          <Typography.Text strong className='block truncate'>
+            {t('全部分组批量设置')}
+          </Typography.Text>
+          <Typography.Text type='tertiary' className='block'>
+            {t('修改后同步覆盖所有分组，可继续逐项微调')}
+          </Typography.Text>
+        </div>
+        <ReferralTemplateRateColumn
+          label={inviteeRateLabel}
+          valueBps={row.inviteeShareDefaultBps}
+          onChange={onInviteeBulkChange}
+        />
+        <ReferralTemplateRateColumn
+          label={identityRateLabel}
+          valueBps={identityRateBps}
+          onChange={onIdentityBulkChange}
+        />
+      </div>
+      <div className='divide-y divide-gray-100'>
+        {row.groups.map((group) => (
+          <div
+            key={group}
+            className='grid grid-cols-1 gap-2 px-3 py-2.5 lg:grid-cols-[minmax(0,1fr)_minmax(200px,260px)_minmax(200px,260px)] lg:items-center'
+          >
+            <Typography.Text
+              strong
+              className='block min-w-0 truncate'
+              title={group}
+            >
+              {group}
+            </Typography.Text>
+            <ReferralTemplateRateColumn
+              label={inviteeRateLabel}
+              valueBps={referralTemplateInviteeShareDefaultBps(row, group)}
+              onChange={(rateBps) => onInviteeGroupChange(group, rateBps)}
+            />
+            <ReferralTemplateRateColumn
+              label={identityRateLabel}
+              valueBps={referralTemplateIdentityRateBps(row, group)}
+              onChange={(rateBps) => onIdentityGroupChange(group, rateBps)}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 const ruleSections = [
@@ -164,6 +350,19 @@ const SettingsReferralTemplates = () => {
     );
   };
 
+  const updateReferralTemplateGroupRate = (id, group, patch) => {
+    setItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              groupRates: mergeReferralTemplateGroupRate(item, group, patch),
+            }
+          : item,
+      ),
+    );
+  };
+
   const addDraft = () => {
     setItems((currentItems) => [...currentItems, createDraftTemplate()]);
   };
@@ -183,6 +382,7 @@ const SettingsReferralTemplates = () => {
         team_cap_bps:
           row.levelType === 'team' ? Number(row.teamCapBps || 0) : 0,
         invitee_share_default_bps: Number(row.inviteeShareDefaultBps || 0),
+        group_rates: buildReferralTemplateGroupRatesPayload(row),
       };
       const res = row.isDraft
         ? await API.post('/api/referral/templates', payload)
@@ -443,14 +643,21 @@ const SettingsReferralTemplates = () => {
         ) : (
           items.map((row) => {
             const isDirectTemplate = row.levelType === 'direct';
+            const identityRateLabel = isDirectTemplate
+              ? t('直推返佣比例')
+              : t('团队返佣比例');
+            const identityRateBps = isDirectTemplate
+              ? row.directCapBps
+              : row.teamCapBps;
 
             return (
               <div
                 key={row.id}
                 className='rounded-xl border border-gray-200 p-4 space-y-3'
               >
-                <div className='grid grid-cols-1 gap-3 lg:grid-cols-3'>
+                <div className='grid grid-cols-1 gap-3 lg:grid-cols-12'>
                   <ReferralFieldBlock
+                    className='lg:col-span-4'
                     label={t('返佣类型')}
                     description={t(
                       '当前模板属于哪个返佣体系。当前页面只支持订阅返佣。',
@@ -459,12 +666,14 @@ const SettingsReferralTemplates = () => {
                     <Select
                       value={row.referralType}
                       optionList={referralTypeOptions}
+                      style={{ width: '100%' }}
                       onChange={(value) =>
                         updateRow(row.id, { referralType: value })
                       }
                     />
                   </ReferralFieldBlock>
                   <ReferralFieldBlock
+                    className='lg:col-span-8'
                     label={t('分组')}
                     description={t(
                       '必须选择至少一个已存在的系统分组。保存后会为每个分组维护一条运行时模板行。',
@@ -475,6 +684,7 @@ const SettingsReferralTemplates = () => {
                       multiple={true}
                       optionList={groupOptions}
                       placeholder={t('分组')}
+                      style={{ width: '100%' }}
                       onChange={(value) =>
                         updateRow(row.id, {
                           groups: Array.isArray(value)
@@ -487,6 +697,7 @@ const SettingsReferralTemplates = () => {
                     />
                   </ReferralFieldBlock>
                   <ReferralFieldBlock
+                    className='lg:col-span-6'
                     label={t('模板名')}
                     description={t(
                       '只用于后台识别，不参与返佣计算。模板名只需要在同一返佣类型 + 分组内保持唯一，建议按业务含义和模板身份命名。',
@@ -498,15 +709,15 @@ const SettingsReferralTemplates = () => {
                       onChange={(value) => updateRow(row.id, { name: value })}
                     />
                   </ReferralFieldBlock>
-                </div>
-                <div className='grid grid-cols-1 gap-3 lg:grid-cols-4'>
                   <ReferralFieldBlock
+                    className='lg:col-span-6'
                     label={t('模板身份')}
                     description={getLevelTypeDescription(row.levelType)}
                   >
                     <Select
                       value={row.levelType}
                       optionList={levelTypeOptions}
+                      style={{ width: '100%' }}
                       onChange={(value) =>
                         updateRow(row.id, {
                           levelType: value,
@@ -522,83 +733,67 @@ const SettingsReferralTemplates = () => {
                                 ? row.teamCapBps
                                 : 2500
                               : 0,
-                        })
-                      }
-                    />
-                  </ReferralFieldBlock>
-                  {isDirectTemplate ? (
-                    <ReferralFieldBlock
-                      label={t('直推返佣比例')}
-                      description={t(
-                        '最近 direct 邀请人那一份的毛额比例。只在模板身份为 direct 时直接生效。',
-                      )}
-                      note={t('当前约 {{value}}', {
-                        value: formatBpsAsPercent(row.directCapBps),
-                      })}
-                    >
-                      <InputNumber
-                        value={rateBpsToPercentNumber(row.directCapBps)}
-                        min={0}
-                        max={100}
-                        step={0.1}
-                        style={{ width: '100%' }}
-                        onChange={(value) =>
-                          updateRow(row.id, {
-                            directCapBps: percentNumberToRateBps(value),
-                          })
-                        }
-                      />
-                    </ReferralFieldBlock>
-                  ) : (
-                    <ReferralFieldBlock
-                      label={t('团队返佣比例')}
-                      description={t(
-                        '仅在 team 模板生效。最近邀请人命中它时直接按这个比例结算；它如果是向上链路中的首个 team，也会用这个比例决定团队池。',
-                      )}
-                      note={t('当前约 {{value}}', {
-                        value: formatBpsAsPercent(row.teamCapBps),
-                      })}
-                    >
-                      <InputNumber
-                        value={rateBpsToPercentNumber(row.teamCapBps)}
-                        min={0}
-                        max={100}
-                        step={0.1}
-                        style={{ width: '100%' }}
-                        onChange={(value) =>
-                          updateRow(row.id, {
-                            teamCapBps: percentNumberToRateBps(value),
-                          })
-                        }
-                      />
-                    </ReferralFieldBlock>
-                  )}
-                  <ReferralFieldBlock
-                    label={t('被邀请人默认返佣比例')}
-                    description={t(
-                      '默认从最近直接邀请人的毛额里切多少给付款用户本人。0 表示不返给被邀请人。',
-                    )}
-                    detail={t(
-                      '实际生效优先级：单个 invitee 覆盖 > 用户绑定默认值 > 模板默认值。',
-                    )}
-                    note={t('当前约 {{value}}', {
-                      value: formatBpsAsPercent(row.inviteeShareDefaultBps),
-                    })}
-                  >
-                    <InputNumber
-                      value={rateBpsToPercentNumber(row.inviteeShareDefaultBps)}
-                      min={0}
-                      max={100}
-                      step={0.1}
-                      style={{ width: '100%' }}
-                      onChange={(value) =>
-                        updateRow(row.id, {
-                          inviteeShareDefaultBps: percentNumberToRateBps(value),
+                          groupRates: row.groupRates || [],
                         })
                       }
                     />
                   </ReferralFieldBlock>
                 </div>
+                <ReferralFieldBlock
+                  label={t('分组返佣比例')}
+                  description={t(
+                    '按分组同时设置付款用户本人默认比例和模板身份返佣比例；需要统一调整时，先改全部分组行，再单独改个别分组。',
+                  )}
+                  detail={t(
+                    '实际生效优先级：单个 invitee 覆盖 > 用户绑定默认值 > 模板默认值；保存后会按订单命中的分组读取对应模板行。',
+                  )}
+                >
+                  {row.groups.length > 0 ? (
+                    <ReferralTemplateGroupRatesEditor
+                      t={t}
+                      row={row}
+                      identityRateLabel={identityRateLabel}
+                      identityRateBps={identityRateBps}
+                      onInviteeBulkChange={(rateBps) =>
+                        updateRow(
+                          row.id,
+                          referralTemplateInviteeShareDefaultPatch(
+                            row,
+                            rateBps,
+                          ),
+                        )
+                      }
+                      onInviteeGroupChange={(group, rateBps) =>
+                        updateReferralTemplateGroupRate(row.id, group, {
+                          inviteeShareDefaultBps: rateBps,
+                        })
+                      }
+                      onIdentityBulkChange={(rateBps) =>
+                        updateRow(
+                          row.id,
+                          referralTemplateIdentityRatePatch(row, rateBps),
+                        )
+                      }
+                      onIdentityGroupChange={(group, rateBps) =>
+                        updateReferralTemplateGroupRate(
+                          row.id,
+                          group,
+                          isDirectTemplate
+                            ? {
+                                directCapBps: rateBps,
+                              }
+                            : {
+                                teamCapBps: rateBps,
+                              },
+                        )
+                      }
+                    />
+                  ) : (
+                    <Typography.Text type='secondary'>
+                      {t('选择分组后可分别设置比例')}
+                    </Typography.Text>
+                  )}
+                </ReferralFieldBlock>
                 <div className='grid grid-cols-1 gap-3 lg:grid-cols-1'>
                   <ReferralFieldBlock
                     label={t('启用模板')}

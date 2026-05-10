@@ -249,6 +249,45 @@ func TestAdminCreateReferralTemplateWithGroupsCreatesBundleRows(t *testing.T) {
 	}
 }
 
+func TestAdminCreateReferralTemplateWithGroupRatesCreatesDistinctBundleRows(t *testing.T) {
+	db := setupSubscriptionControllerTestDB(t)
+
+	body := map[string]interface{}{
+		"referral_type": model.ReferralTypeSubscription,
+		"groups":        []string{"cc-opus", "gpt-5.5"},
+		"name":          "group-rate-team",
+		"level_type":    model.ReferralLevelTypeTeam,
+		"enabled":       true,
+		"team_cap_bps":  5000,
+		"group_rates": []map[string]interface{}{
+			{"group": "cc-opus", "team_cap_bps": 5900},
+			{"group": "gpt-5.5", "team_cap_bps": 6400},
+		},
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPost, "/api/referral/templates", body, 1)
+	AdminCreateReferralTemplate(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success, got message: %s", response.Message)
+	}
+
+	var rows []model.ReferralTemplate
+	if err := db.Where("name = ?", "group-rate-team").Order("`group` ASC").Find(&rows).Error; err != nil {
+		t.Fatalf("failed to list templates: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("row count = %d, want 2", len(rows))
+	}
+	if rows[0].Group != "cc-opus" || rows[0].TeamCapBps != 5900 {
+		t.Fatalf("cc-opus row = %#v, want team cap 5900", rows[0])
+	}
+	if rows[1].Group != "gpt-5.5" || rows[1].TeamCapBps != 6400 {
+		t.Fatalf("gpt-5.5 row = %#v, want team cap 6400", rows[1])
+	}
+}
+
 func TestAdminListReferralTemplatesBundleViewAggregatesGroups(t *testing.T) {
 	setupSubscriptionControllerTestDB(t)
 	created, err := model.CreateReferralTemplateBundle(model.ReferralTemplateBundleUpsertInput{
