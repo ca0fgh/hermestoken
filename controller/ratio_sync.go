@@ -814,6 +814,7 @@ func convertOpenRouterToRatioData(reader io.Reader) (map[string]any, error) {
 }
 
 type modelsDevProvider struct {
+	Name   string                    `json:"name"`
 	Models map[string]modelsDevModel `json:"models"`
 }
 
@@ -822,16 +823,22 @@ type modelsDevModel struct {
 }
 
 type modelsDevCost struct {
-	Input     *float64 `json:"input"`
-	Output    *float64 `json:"output"`
-	CacheRead *float64 `json:"cache_read"`
+	Input         *float64 `json:"input"`
+	Output        *float64 `json:"output"`
+	CacheRead     *float64 `json:"cache_read"`
+	CacheWrite    *float64 `json:"cache_write"`
+	CacheWrite5m  *float64 `json:"cache_write_5m"`
+	CacheCreate   *float64 `json:"cache_create"`
+	CacheCreation *float64 `json:"cache_creation"`
 }
 
 type modelsDevCandidate struct {
-	Provider  string
-	Input     float64
-	Output    *float64
-	CacheRead *float64
+	Provider     string
+	ProviderName string
+	Input        float64
+	Output       *float64
+	CacheRead    *float64
+	CacheWrite   *float64
 }
 
 func cloneFloatPtr(v *float64) *float64 {
@@ -849,7 +856,17 @@ func isValidNonNegativeCost(v float64) bool {
 	return v >= 0
 }
 
-func buildModelsDevCandidate(provider string, cost modelsDevCost) (modelsDevCandidate, bool) {
+func cloneValidCostPtr(values ...*float64) *float64 {
+	for _, value := range values {
+		if value == nil || !isValidNonNegativeCost(*value) {
+			continue
+		}
+		return cloneFloatPtr(value)
+	}
+	return nil
+}
+
+func buildModelsDevCandidate(provider string, providerName string, cost modelsDevCost) (modelsDevCandidate, bool) {
 	if cost.Input == nil {
 		return modelsDevCandidate{}, false
 	}
@@ -872,26 +889,46 @@ func buildModelsDevCandidate(provider string, cost modelsDevCost) (modelsDevCand
 		return modelsDevCandidate{}, false
 	}
 
-	var cacheRead *float64
-	if cost.CacheRead != nil && isValidNonNegativeCost(*cost.CacheRead) {
-		cacheRead = cloneFloatPtr(cost.CacheRead)
-	}
+	cacheRead := cloneValidCostPtr(cost.CacheRead)
+	cacheWrite := cloneValidCostPtr(cost.CacheWrite, cost.CacheWrite5m, cost.CacheCreate, cost.CacheCreation)
 
 	return modelsDevCandidate{
-		Provider:  provider,
-		Input:     input,
-		Output:    output,
-		CacheRead: cacheRead,
+		Provider:     provider,
+		ProviderName: strings.TrimSpace(providerName),
+		Input:        input,
+		Output:       output,
+		CacheRead:    cacheRead,
+		CacheWrite:   cacheWrite,
 	}, true
 }
 
-func shouldReplaceModelsDevCandidate(current, next modelsDevCandidate) bool {
+func modelsDevProviderPriority(modelName string, candidate modelsDevCandidate) int {
+	normalizedModel := strings.ToLower(strings.TrimSpace(modelName))
+	if strings.HasPrefix(normalizedModel, "claude-") || strings.Contains(normalizedModel, "/claude-") {
+		provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+		providerName := strings.ToLower(strings.TrimSpace(candidate.ProviderName))
+		if provider == "anthropic" || providerName == "anthropic" {
+			return 0
+		}
+		return 1
+	}
+	return 1
+}
+
+func shouldReplaceModelsDevCandidate(modelName string, current, next modelsDevCandidate) bool {
 	currentNonZero := current.Input > 0
 	nextNonZero := next.Input > 0
 	if currentNonZero != nextNonZero {
-		// Prefer non-zero pricing data; this matches "cheapest non-zero" conflict policy.
+		// Prefer usable paid pricing over zero-priced placeholders.
 		return nextNonZero
 	}
+
+	currentPriority := modelsDevProviderPriority(modelName, current)
+	nextPriority := modelsDevProviderPriority(modelName, next)
+	if currentPriority != nextPriority {
+		return nextPriority < currentPriority
+	}
+
 	if nextNonZero && !nearlyEqual(next.Input, current.Input) {
 		return next.Input < current.Input
 	}
@@ -906,10 +943,11 @@ func shouldReplaceModelsDevCandidate(current, next modelsDevCandidate) bool {
 //	model_ratio = input_cost_per_1M / 2
 //	completion_ratio = output_cost / input_cost
 //	cache_ratio = cache_read_cost / input_cost
+//	create_cache_ratio = cache_write_cost / input_cost
 //
-// Duplicate model keys across providers are resolved by selecting the
-// cheapest non-zero input cost. If only zero-priced candidates exist,
-// a zero ratio is kept.
+// Duplicate model keys across providers prefer the official provider for known
+// model families, then fall back to the cheapest non-zero input cost. If only
+// zero-priced candidates exist, a zero ratio is kept.
 func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 	var upstreamData map[string]modelsDevProvider
 	if err := common.DecodeJson(reader, &upstreamData); err != nil {
@@ -939,12 +977,12 @@ func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 		sort.Strings(modelNames)
 
 		for _, modelName := range modelNames {
-			candidate, ok := buildModelsDevCandidate(provider, providerData.Models[modelName].Cost)
+			candidate, ok := buildModelsDevCandidate(provider, providerData.Name, providerData.Models[modelName].Cost)
 			if !ok {
 				continue
 			}
 			current, exists := selectedCandidates[modelName]
-			if !exists || shouldReplaceModelsDevCandidate(current, candidate) {
+			if !exists || shouldReplaceModelsDevCandidate(modelName, current, candidate) {
 				selectedCandidates[modelName] = candidate
 			}
 		}
@@ -957,6 +995,7 @@ func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 	modelRatioMap := make(map[string]any)
 	completionRatioMap := make(map[string]any)
 	cacheRatioMap := make(map[string]any)
+	createCacheRatioMap := make(map[string]any)
 
 	for modelName, candidate := range selectedCandidates {
 		if candidate.Input == 0 {
@@ -976,6 +1015,11 @@ func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 			cacheRatio := *candidate.CacheRead / candidate.Input
 			cacheRatioMap[modelName] = roundRatioValue(cacheRatio)
 		}
+
+		if candidate.CacheWrite != nil {
+			createCacheRatio := *candidate.CacheWrite / candidate.Input
+			createCacheRatioMap[modelName] = roundRatioValue(createCacheRatio)
+		}
 	}
 
 	converted := make(map[string]any)
@@ -987,6 +1031,9 @@ func convertModelsDevToRatioData(reader io.Reader) (map[string]any, error) {
 	}
 	if len(cacheRatioMap) > 0 {
 		converted["cache_ratio"] = cacheRatioMap
+	}
+	if len(createCacheRatioMap) > 0 {
+		converted["create_cache_ratio"] = createCacheRatioMap
 	}
 	return converted, nil
 }
