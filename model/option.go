@@ -270,9 +270,17 @@ func ensureDefaultOptionRecords() {
 	if err := ensureGPT55PricingDefaults(); err != nil {
 		common.SysLog("failed to persist GPT-5.5 pricing defaults: " + err.Error())
 	}
+	if err := ensureAnthropicPricingCorrections(); err != nil {
+		common.SysLog("failed to correct Anthropic pricing defaults: " + err.Error())
+	}
 }
 
 const gpt55PricingDefaultsAppliedOptionKey = "GPT55PricingDefaultsApplied"
+
+type floatMapOptionValueCorrection struct {
+	From []float64
+	To   float64
+}
 
 func ensureDefaultOptionRecord(key string, value string) error {
 	if DB == nil {
@@ -334,6 +342,42 @@ func ensureGPT55PricingDefaults() error {
 	return UpdateOption(gpt55PricingDefaultsAppliedOptionKey, "true")
 }
 
+func ensureAnthropicPricingCorrections() error {
+	if DB == nil {
+		return nil
+	}
+
+	if _, err := ensureFloatMapOptionValueCorrections(
+		"ModelRatio",
+		ratio_setting.ModelRatio2JSONString(),
+		map[string]floatMapOptionValueCorrection{
+			"claude-haiku-4-5-20251001": {
+				From: []float64{0.07},
+				To:   0.5,
+			},
+		},
+		ratio_setting.UpdateModelRatioByJSONString,
+	); err != nil {
+		return err
+	}
+
+	if _, err := ensureFloatMapOptionValueCorrections(
+		"CompletionRatio",
+		ratio_setting.CompletionRatio2JSONString(),
+		map[string]floatMapOptionValueCorrection{
+			"claude-haiku-4-5-20251001": {
+				From: []float64{5.071429},
+				To:   5,
+			},
+		},
+		ratio_setting.UpdateCompletionRatioByJSONString,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func ensureMissingFloatMapOptionDefaults(key string, raw string, defaults map[string]float64, apply func(string) error) (bool, error) {
 	if DB == nil || len(defaults) == 0 {
 		return false, nil
@@ -366,6 +410,55 @@ func ensureMissingFloatMapOptionDefaults(key string, raw string, defaults map[st
 		return false, err
 	}
 	return true, apply(value)
+}
+
+func ensureFloatMapOptionValueCorrections(key string, raw string, corrections map[string]floatMapOptionValueCorrection, apply func(string) error) (bool, error) {
+	if DB == nil || len(corrections) == 0 {
+		return false, nil
+	}
+
+	values := make(map[string]float64)
+	if strings.TrimSpace(raw) != "" {
+		if err := json.Unmarshal([]byte(raw), &values); err != nil {
+			return false, err
+		}
+	}
+
+	changed := false
+	for modelName, correction := range corrections {
+		current, ok := values[modelName]
+		if !ok {
+			continue
+		}
+		for _, staleValue := range correction.From {
+			if nearlyEqualFloat64(current, staleValue) {
+				values[modelName] = correction.To
+				changed = true
+				break
+			}
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+
+	payload, err := json.Marshal(values)
+	if err != nil {
+		return false, err
+	}
+	value := string(payload)
+	if err := UpdateOption(key, value); err != nil {
+		return false, err
+	}
+	return true, apply(value)
+}
+
+func nearlyEqualFloat64(a float64, b float64) bool {
+	const epsilon = 1e-9
+	if a > b {
+		return a-b < epsilon
+	}
+	return b-a < epsilon
 }
 
 func loadOptionsFromDatabase() {
