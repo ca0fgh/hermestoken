@@ -1,24 +1,19 @@
 /**
  * LobeHub Icon Loader
- * Dynamically load and render icons from @lobehub/icons
+ * Render production-safe icons from @lobehub/icons
  *
  * Supports:
  * - Basic: "OpenAI", "OpenAI.Color"
  * - Chained properties: "OpenAI.Avatar.type={'platform'}"
  * - Size parameter: getLobeIcon("OpenAI", 20)
  */
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type ElementType,
-  type ReactNode,
-} from 'react'
+import { useMemo, type ElementType, type ReactNode } from 'react'
 import Ai360 from '@lobehub/icons/es/Ai360'
 import Aws from '@lobehub/icons/es/Aws'
 import Azure from '@lobehub/icons/es/Azure'
 import Baidu from '@lobehub/icons/es/Baidu'
 import Claude from '@lobehub/icons/es/Claude'
+import Cline from '@lobehub/icons/es/Cline'
 import Cloudflare from '@lobehub/icons/es/Cloudflare'
 import Cohere from '@lobehub/icons/es/Cohere'
 import Coze from '@lobehub/icons/es/Coze'
@@ -29,9 +24,10 @@ import FastGPT from '@lobehub/icons/es/FastGPT'
 import Gemini from '@lobehub/icons/es/Gemini'
 import Google from '@lobehub/icons/es/Google'
 import Hunyuan from '@lobehub/icons/es/Hunyuan'
-import Jina from '@lobehub/icons/es/Jina'
 import Jimeng from '@lobehub/icons/es/Jimeng'
+import Jina from '@lobehub/icons/es/Jina'
 import Kling from '@lobehub/icons/es/Kling'
+import LobeHub from '@lobehub/icons/es/LobeHub'
 import Midjourney from '@lobehub/icons/es/Midjourney'
 import Minimax from '@lobehub/icons/es/Minimax'
 import Mistral from '@lobehub/icons/es/Mistral'
@@ -39,6 +35,7 @@ import Moonshot from '@lobehub/icons/es/Moonshot'
 import Ollama from '@lobehub/icons/es/Ollama'
 import OpenAI from '@lobehub/icons/es/OpenAI'
 import OpenRouter from '@lobehub/icons/es/OpenRouter'
+import OpenWebUI from '@lobehub/icons/es/OpenWebUI'
 import Perplexity from '@lobehub/icons/es/Perplexity'
 import Qwen from '@lobehub/icons/es/Qwen'
 import Replicate from '@lobehub/icons/es/Replicate'
@@ -53,14 +50,13 @@ import Xinference from '@lobehub/icons/es/Xinference'
 import Yi from '@lobehub/icons/es/Yi'
 import Zhipu from '@lobehub/icons/es/Zhipu'
 
-const lobeIconModuleCache = new Map<string, unknown>()
-const lobeIconModulePromises = new Map<string, Promise<unknown | null>>()
 const staticLobeIconRegistry: Record<string, unknown> = {
   Ai360,
   Aws,
   Azure,
   Baidu,
   Claude,
+  Cline,
   Cloudflare,
   Cohere,
   Coze,
@@ -74,12 +70,14 @@ const staticLobeIconRegistry: Record<string, unknown> = {
   Jina,
   Jimeng,
   Kling,
+  LobeHub,
   Midjourney,
   Minimax,
   Mistral,
   Moonshot,
   Ollama,
   OpenAI,
+  OpenWebUI,
   OpenRouter,
   Perplexity,
   Qwen,
@@ -94,44 +92,6 @@ const staticLobeIconRegistry: Record<string, unknown> = {
   Xinference,
   Yi,
   Zhipu,
-}
-
-async function loadLobeIconModule(baseKey: string): Promise<unknown | null> {
-  if (!baseKey) {
-    return null
-  }
-
-  if (staticLobeIconRegistry[baseKey]) {
-    return staticLobeIconRegistry[baseKey]
-  }
-
-  if (lobeIconModuleCache.has(baseKey)) {
-    return lobeIconModuleCache.get(baseKey) ?? null
-  }
-
-  if (lobeIconModulePromises.has(baseKey)) {
-    return lobeIconModulePromises.get(baseKey) ?? null
-  }
-
-  const loadPromise = import(
-    /* webpackInclude: /^\.\/(?!New)[^/]+\/index\.js$/ */
-    `../../../node_modules/@lobehub/icons/es/${baseKey}/index.js`
-  )
-    .then((module: { default?: unknown }) => {
-      const loadedModule = (module as { default?: unknown })?.default || module
-      lobeIconModuleCache.set(baseKey, loadedModule)
-      return loadedModule
-    })
-    .catch(() => {
-      lobeIconModuleCache.set(baseKey, null)
-      return null
-    })
-    .finally(() => {
-      lobeIconModulePromises.delete(baseKey)
-    })
-
-  lobeIconModulePromises.set(baseKey, loadPromise)
-  return loadPromise
 }
 
 /**
@@ -240,43 +200,13 @@ function DynamicLobeHubIcon({
   size: number
 }) {
   const baseKey = useMemo(() => iconName.split('.')[0] || '', [iconName])
-  const immediateIconModule = useMemo(() => {
+  const iconModule = useMemo(() => {
     if (!baseKey) {
       return null
     }
 
-    return (
-      staticLobeIconRegistry[baseKey] ||
-      lobeIconModuleCache.get(baseKey) ||
-      null
-    )
+    return staticLobeIconRegistry[baseKey] || null
   }, [baseKey])
-  const [loadedIconModule, setLoadedIconModule] = useState<{
-    baseKey: string
-    module: unknown | null
-  }>({ baseKey: '', module: null })
-
-  useEffect(() => {
-    let cancelled = false
-
-    if (!baseKey || immediateIconModule) {
-      return undefined
-    }
-
-    void loadLobeIconModule(baseKey).then((module) => {
-      if (!cancelled) {
-        setLoadedIconModule({ baseKey, module })
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [baseKey, immediateIconModule])
-
-  const iconModule =
-    immediateIconModule ??
-    (loadedIconModule.baseKey === baseKey ? loadedIconModule.module : null)
 
   const renderSpec = useMemo(
     () => resolveLobeIconRenderSpec(iconName, size, iconModule),
