@@ -50,6 +50,14 @@ func TestConvertModelsDevToRatioDataPrefersOfficialAnthropicPricing(t *testing.T
 						"cache_read": 0.014,
 						"cache_write": 0.175
 					}
+				},
+				"claude-haiku-4-5-20251001": {
+					"cost": {
+						"input": 0.14,
+						"output": 0.71,
+						"cache_read": 0.014,
+						"cache_write": 0.175
+					}
 				}
 			}
 		},
@@ -79,6 +87,14 @@ func TestConvertModelsDevToRatioDataPrefersOfficialAnthropicPricing(t *testing.T
 						"cache_read": 0.1,
 						"cache_write": 1.25
 					}
+				},
+				"claude-haiku-4-5-20251001": {
+					"cost": {
+						"input": 1,
+						"output": 5,
+						"cache_read": 0.1,
+						"cache_write": 1.25
+					}
 				}
 			}
 		}
@@ -101,4 +117,9 @@ func TestConvertModelsDevToRatioDataPrefersOfficialAnthropicPricing(t *testing.T
 	assertConvertedRatioValue(t, converted, "completion_ratio", "claude-haiku-4-5", 5)
 	assertConvertedRatioValue(t, converted, "cache_ratio", "claude-haiku-4-5", 0.1)
 	assertConvertedRatioValue(t, converted, "create_cache_ratio", "claude-haiku-4-5", 1.25)
+
+	assertConvertedRatioValue(t, converted, "model_ratio", "claude-haiku-4-5-20251001", 0.5)
+	assertConvertedRatioValue(t, converted, "completion_ratio", "claude-haiku-4-5-20251001", 5)
+	assertConvertedRatioValue(t, converted, "cache_ratio", "claude-haiku-4-5-20251001", 0.1)
+	assertConvertedRatioValue(t, converted, "create_cache_ratio", "claude-haiku-4-5-20251001", 1.25)
 }
