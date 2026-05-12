@@ -33,6 +33,7 @@ const userAreaPath = new URL(
 );
 const homePath = new URL('../classic/src/pages/Home/index.jsx', import.meta.url);
 const renderHelperPath = new URL('../classic/src/helpers/render.jsx', import.meta.url);
+const defaultLobeIconPath = new URL('../default/src/lib/lobe-icon.tsx', import.meta.url);
 const viteConfigPath = new URL('../classic/vite.config.js', import.meta.url);
 const packageJsonPath = new URL('../classic/package.json', import.meta.url);
 const i18nPath = new URL('../classic/src/i18n/i18n.js', import.meta.url);
@@ -417,6 +418,17 @@ test('render helper lazy loads lobe icons instead of importing the full icon reg
     source,
     /!\.\.\/\.\.\/\.\.\/node_modules\/@lobehub\/icons\/es\/\{Ai360,Claude/,
   );
+  assert.match(source, /function DynamicLobeHubIcon\(/);
+});
+
+test('default web lobe icon loader keeps production-safe explicit lobe icon imports', async () => {
+  const source = await readFile(defaultLobeIconPath, 'utf8');
+
+  assert.doesNotMatch(source, /`..\/..\/..\/node_modules\/@lobehub\/icons\/es\/\$\{baseKey\}\/index\.js`/);
+  assert.doesNotMatch(source, /import\.meta\.webpackContext\(/);
+  assert.match(source, /from '@lobehub\/icons\/es\/LobeHub'/);
+  assert.match(source, /from '@lobehub\/icons\/es\/OpenWebUI'/);
+  assert.match(source, /from '@lobehub\/icons\/es\/Cline'/);
   assert.match(source, /function DynamicLobeHubIcon\(/);
 });
 
