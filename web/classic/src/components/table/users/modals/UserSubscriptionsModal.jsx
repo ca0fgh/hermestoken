@@ -32,6 +32,10 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { API, showError, showSuccess } from '../../../../helpers';
+import {
+  getUserSubscriptionDisplayStatus,
+  isUserSubscriptionDisplayActive,
+} from '../../../../helpers/subscriptionStatus';
 import { createUnifiedPaginationProps } from '../../../../helpers/utils';
 import { convertUSDToCurrency, renderQuota } from '../../../../helpers/render';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
@@ -45,13 +49,9 @@ function formatTs(ts) {
 }
 
 function renderStatusTag(sub, t) {
-  const now = Date.now() / 1000;
-  const end = sub?.end_time || 0;
-  const status = sub?.status || '';
+  const status = getUserSubscriptionDisplayStatus(sub);
 
-  const isExpiredByTime = end > 0 && end < now;
-  const isActive = status === 'active' && !isExpiredByTime;
-  if (isActive) {
+  if (status === 'active') {
     return (
       <Tag color='green' shape='circle' size='small'>
         {t('生效')}
@@ -62,6 +62,13 @@ function renderStatusTag(sub, t) {
     return (
       <Tag color='grey' shape='circle' size='small'>
         {t('已作废')}
+      </Tag>
+    );
+  }
+  if (status === 'exhausted') {
+    return (
+      <Tag color='orange' shape='circle' size='small'>
+        {t('已耗尽')}
       </Tag>
     );
   }
@@ -321,10 +328,7 @@ const UserSubscriptionsModal = ({ visible, onCancel, user, t, onSuccess }) => {
         fixed: 'right',
         render: (_, record) => {
           const sub = record?.subscription;
-          const now = Date.now() / 1000;
-          const isExpired =
-            (sub?.end_time || 0) > 0 && (sub?.end_time || 0) < now;
-          const isActive = sub?.status === 'active' && !isExpired;
+          const isActive = isUserSubscriptionDisplayActive(sub);
           const isCancelled = sub?.status === 'cancelled';
           return (
             <Space>
