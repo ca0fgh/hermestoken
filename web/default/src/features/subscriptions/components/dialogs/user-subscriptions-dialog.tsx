@@ -34,7 +34,11 @@ import {
   invalidateUserSubscription,
   deleteUserSubscription,
 } from '../../api'
-import { formatTimestamp } from '../../lib'
+import {
+  formatTimestamp,
+  getUserSubscriptionDisplayStatus,
+  isUserSubscriptionDisplayActive,
+} from '../../lib'
 import type { PlanRecord, UserSubscriptionRecord } from '../../types'
 
 interface Props {
@@ -48,11 +52,8 @@ function SubscriptionStatusBadge(props: {
   sub: UserSubscriptionRecord['subscription']
   t: (key: string) => string
 }) {
-  // eslint-disable-next-line react-hooks/purity
-  const now = Date.now() / 1000
-  const isExpired = (props.sub.end_time || 0) > 0 && props.sub.end_time < now
-  const isActive = props.sub.status === 'active' && !isExpired
-  if (isActive)
+  const status = getUserSubscriptionDisplayStatus(props.sub)
+  if (status === 'active')
     return (
       <StatusBadge
         label={props.t('Active')}
@@ -60,11 +61,19 @@ function SubscriptionStatusBadge(props: {
         copyable={false}
       />
     )
-  if (props.sub.status === 'cancelled')
+  if (status === 'cancelled')
     return (
       <StatusBadge
         label={props.t('Invalidated')}
         variant='neutral'
+        copyable={false}
+      />
+    )
+  if (status === 'exhausted')
+    return (
+      <StatusBadge
+        label={props.t('Exhausted')}
+        variant='warning'
         copyable={false}
       />
     )
@@ -235,10 +244,7 @@ export function UserSubscriptionsDialog(props: Props) {
                   ) : (
                     subs.map((record) => {
                       const sub = record.subscription
-                      const now = Date.now() / 1000
-                      const isExpired =
-                        (sub.end_time || 0) > 0 && sub.end_time < now
-                      const isActive = sub.status === 'active' && !isExpired
+                      const isActive = isUserSubscriptionDisplayActive(sub)
                       const total = Number(sub.amount_total || 0)
                       const used = Number(sub.amount_used || 0)
 
