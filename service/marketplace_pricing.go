@@ -2,6 +2,7 @@ package service
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ca0fgh/hermestoken/common"
@@ -83,7 +84,158 @@ func marketplacePricePreviewForCredential(credential model.MarketplaceCredential
 			Multiplier: credential.Multiplier,
 		})
 	}
+	sortMarketplacePricePreviewsByDefaultModel(previews)
 	return previews
+}
+
+type marketplaceDefaultModelRank struct {
+	Known       bool
+	Version     [4]int
+	Date        int
+	LatestAlias int
+	Family      int
+}
+
+func sortMarketplacePricePreviewsByDefaultModel(previews []MarketplacePricePreview) {
+	sort.SliceStable(previews, func(i, j int) bool {
+		return marketplaceDefaultModelRankFor(previews[i].Model).comesBefore(marketplaceDefaultModelRankFor(previews[j].Model))
+	})
+}
+
+func marketplaceDefaultModelRankFor(modelName string) marketplaceDefaultModelRank {
+	normalized := strings.ToLower(strings.TrimSpace(modelName))
+	if normalized == "" {
+		return marketplaceDefaultModelRank{}
+	}
+
+	parts := marketplaceModelNameParts(normalized)
+	rank := marketplaceDefaultModelRank{}
+	for _, part := range parts {
+		if part == "latest" {
+			rank.LatestAlias = 1
+		}
+		if family := marketplaceClaudeFamilyRank(part); family > rank.Family {
+			rank.Family = family
+		}
+	}
+
+	versionIndex := 0
+	for i := 0; i < len(parts); i++ {
+		if date, consumed, ok := marketplaceDateFromParts(parts, i); ok {
+			if date > rank.Date {
+				rank.Date = date
+			}
+			i += consumed - 1
+			continue
+		}
+		if number, ok := marketplaceFirstInteger(parts[i]); ok && versionIndex < len(rank.Version) {
+			rank.Version[versionIndex] = number
+			versionIndex++
+		}
+	}
+
+	rank.Known = versionIndex > 0 || rank.Date > 0 || rank.LatestAlias > 0 || rank.Family > 0
+	return rank
+}
+
+func (rank marketplaceDefaultModelRank) comesBefore(other marketplaceDefaultModelRank) bool {
+	if rank.Known != other.Known {
+		return rank.Known
+	}
+	for i := 0; i < len(rank.Version); i++ {
+		if rank.Version[i] != other.Version[i] {
+			return rank.Version[i] > other.Version[i]
+		}
+	}
+	if rank.Date != other.Date {
+		return rank.Date > other.Date
+	}
+	if rank.LatestAlias != other.LatestAlias {
+		return rank.LatestAlias > other.LatestAlias
+	}
+	if rank.Family != other.Family {
+		return rank.Family > other.Family
+	}
+	return false
+}
+
+func marketplaceModelNameParts(modelName string) []string {
+	return strings.FieldsFunc(modelName, func(r rune) bool {
+		return r == '-' || r == '_' || r == '.' || r == '/' || r == ':'
+	})
+}
+
+func marketplaceClaudeFamilyRank(part string) int {
+	switch part {
+	case "opus":
+		return 3
+	case "sonnet":
+		return 2
+	case "haiku":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func marketplaceDateFromParts(parts []string, index int) (int, int, bool) {
+	part := parts[index]
+	if len(part) == 8 && marketplaceAllDigits(part) {
+		year, _ := strconv.Atoi(part[:4])
+		month, _ := strconv.Atoi(part[4:6])
+		day, _ := strconv.Atoi(part[6:8])
+		if marketplaceValidDateParts(year, month, day) {
+			date, _ := strconv.Atoi(part)
+			return date, 1, true
+		}
+	}
+	if index+2 < len(parts) && len(part) == 4 && marketplaceAllDigits(part) && marketplaceAllDigits(parts[index+1]) && marketplaceAllDigits(parts[index+2]) {
+		year, _ := strconv.Atoi(part)
+		month, _ := strconv.Atoi(parts[index+1])
+		day, _ := strconv.Atoi(parts[index+2])
+		if marketplaceValidDateParts(year, month, day) {
+			return year*10000 + month*100 + day, 3, true
+		}
+	}
+	return 0, 0, false
+}
+
+func marketplaceValidDateParts(year int, month int, day int) bool {
+	return year >= 1900 && year <= 2099 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+}
+
+func marketplaceAllDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func marketplaceFirstInteger(value string) (int, bool) {
+	start := -1
+	for i, r := range value {
+		if r >= '0' && r <= '9' {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return 0, false
+	}
+	end := start
+	for end < len(value) && value[end] >= '0' && value[end] <= '9' {
+		end++
+	}
+	number, err := strconv.Atoi(value[start:end])
+	if err != nil {
+		return 0, false
+	}
+	return number, true
 }
 
 func marketplacePricePreviewForModel(credential model.MarketplaceCredential, modelName string) MarketplacePricePreview {

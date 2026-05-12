@@ -320,6 +320,44 @@ func TestBuyerMarketplaceOrderListShowsListedCredentialsIncludingSelfAndUntested
 	}
 }
 
+func TestBuyerMarketplaceOrderListPricePreviewDefaultsToLatestClaudeModel(t *testing.T) {
+	db := setupMarketplaceSellerControllerTestDB(t)
+	buyerID := 20
+	seedMarketplaceUser(t, db, buyerID, 10000)
+	credential := createHealthyMarketplaceCredential(t, db, 10, "test-key-claude-preview")
+	require.NoError(t, db.Model(&model.MarketplaceCredential{}).
+		Where("id = ?", credential.ID).
+		Updates(map[string]any{
+			"vendor_type":          constant.ChannelTypeAnthropic,
+			"vendor_name_snapshot": "Anthropic",
+			"models":               "claude-haiku-4-5-20251001,claude-opus-4-7,claude-opus-4-6,claude-sonnet-4-6",
+			"test_model":           "claude-opus-4-7",
+		}).Error)
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/marketplace/orders", nil, buyerID)
+	BuyerListMarketplaceOrders(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	require.True(t, response.Success, response.Message)
+	var page marketplacePageResponse
+	require.NoError(t, json.Unmarshal(response.Data, &page))
+	var items []marketplaceOrderListItemResponse
+	require.NoError(t, json.Unmarshal(page.Items, &items))
+	byID := marketplaceOrderListItemsByID(items)
+	require.Contains(t, byID, credential.ID)
+
+	preview := byID[credential.ID].PricePreview
+	require.Len(t, preview, 4)
+	assert.Equal(t, "claude-opus-4-7", preview[0].Model)
+	assert.Equal(t, "claude-opus-4-6", preview[1].Model)
+	assert.Equal(t, "claude-sonnet-4-6", preview[2].Model)
+	assert.Equal(t, "claude-haiku-4-5-20251001", preview[3].Model)
+	assert.InDelta(t, 5, preview[0].Official.InputPricePerMTok, 0.000001)
+	assert.InDelta(t, 25, preview[0].Official.OutputPricePerMTok, 0.000001)
+	assert.InDelta(t, 6.25, preview[0].Buyer.InputPricePerMTok, 0.000001)
+	assert.InDelta(t, 31.25, preview[0].Buyer.OutputPricePerMTok, 0.000001)
+}
+
 func TestBuyerMarketplaceOrderFilterRangesUseEligibleListedOrders(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	buyerID := 20
