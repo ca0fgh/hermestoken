@@ -1,10 +1,12 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/setting"
+	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
@@ -57,6 +59,82 @@ func TestEnsureDefaultOptionRecordCreatesMissingFooterRow(t *testing.T) {
 	}
 	if option.Value != common.DefaultFooterHTML {
 		t.Fatalf("persisted Footer = %q, want default footer html", option.Value)
+	}
+}
+
+func TestEnsureAnthropicPricingCorrectionsFixesKnownStaleHaikuValues(t *testing.T) {
+	originalDB := DB
+	originalMap := common.OptionMap
+	originalModelRatio := ratio_setting.ModelRatio2JSONString()
+	originalCompletionRatio := ratio_setting.CompletionRatio2JSONString()
+	defer func() {
+		DB = originalDB
+		common.OptionMap = originalMap
+		_ = ratio_setting.UpdateModelRatioByJSONString(originalModelRatio)
+		_ = ratio_setting.UpdateCompletionRatioByJSONString(originalCompletionRatio)
+	}()
+
+	tempDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open temp db: %v", err)
+	}
+	if err := tempDB.AutoMigrate(&Option{}); err != nil {
+		t.Fatalf("failed to migrate options table: %v", err)
+	}
+	DB = tempDB
+	common.OptionMap = map[string]string{}
+
+	if err := tempDB.Create(&Option{
+		Key:   "ModelRatio",
+		Value: `{"claude-haiku-4-5-20251001":0.07,"manual-model":0.2}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed model ratio option: %v", err)
+	}
+	if err := tempDB.Create(&Option{
+		Key:   "CompletionRatio",
+		Value: `{"claude-haiku-4-5-20251001":5.071429,"manual-model":3}`,
+	}).Error; err != nil {
+		t.Fatalf("failed to seed completion ratio option: %v", err)
+	}
+	if err := ratio_setting.UpdateModelRatioByJSONString(`{"claude-haiku-4-5-20251001":0.07,"manual-model":0.2}`); err != nil {
+		t.Fatalf("failed to seed in-memory model ratio: %v", err)
+	}
+	if err := ratio_setting.UpdateCompletionRatioByJSONString(`{"claude-haiku-4-5-20251001":5.071429,"manual-model":3}`); err != nil {
+		t.Fatalf("failed to seed in-memory completion ratio: %v", err)
+	}
+
+	if err := ensureAnthropicPricingCorrections(); err != nil {
+		t.Fatalf("ensureAnthropicPricingCorrections returned error: %v", err)
+	}
+
+	var modelRatio Option
+	if err := tempDB.First(&modelRatio, "key = ?", "ModelRatio").Error; err != nil {
+		t.Fatalf("failed to load model ratio option: %v", err)
+	}
+	var modelRatios map[string]float64
+	if err := json.Unmarshal([]byte(modelRatio.Value), &modelRatios); err != nil {
+		t.Fatalf("failed to decode model ratio option: %v", err)
+	}
+	if modelRatios["claude-haiku-4-5-20251001"] != 0.5 {
+		t.Fatalf("haiku model ratio = %v, want 0.5", modelRatios["claude-haiku-4-5-20251001"])
+	}
+	if modelRatios["manual-model"] != 0.2 {
+		t.Fatalf("manual model ratio = %v, want 0.2", modelRatios["manual-model"])
+	}
+
+	var completionRatio Option
+	if err := tempDB.First(&completionRatio, "key = ?", "CompletionRatio").Error; err != nil {
+		t.Fatalf("failed to load completion ratio option: %v", err)
+	}
+	var completionRatios map[string]float64
+	if err := json.Unmarshal([]byte(completionRatio.Value), &completionRatios); err != nil {
+		t.Fatalf("failed to decode completion ratio option: %v", err)
+	}
+	if completionRatios["claude-haiku-4-5-20251001"] != 5 {
+		t.Fatalf("haiku completion ratio = %v, want 5", completionRatios["claude-haiku-4-5-20251001"])
+	}
+	if completionRatios["manual-model"] != 3 {
+		t.Fatalf("manual completion ratio = %v, want 3", completionRatios["manual-model"])
 	}
 }
 
