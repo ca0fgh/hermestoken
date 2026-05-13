@@ -100,14 +100,16 @@ func Distribute() func(c *gin.Context) {
 						abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidPlayground, map[string]any{"Error": err.Error()}))
 						return
 					}
-					if playgroundRequest.Group != "" {
-						if !service.GroupInUserUsableGroupsForUser(common.GetContextKeyInt(c, constant.ContextKeyUserId), usingGroup, playgroundRequest.Group) && playgroundRequest.Group != usingGroup {
-							abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorGroupAccessDenied))
-							return
-						}
-						usingGroup = playgroundRequest.Group
-						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+					userId := common.GetContextKeyInt(c, constant.ContextKeyUserId)
+					userGroup := currentUserGroupForPlayground(c, usingGroup)
+					resolvedGroup, groupErr := service.ResolveUsableGroupForUserRequest(userId, userGroup, strings.TrimSpace(playgroundRequest.Group))
+					if groupErr != nil {
+						abortWithOpenAiMessage(c, http.StatusForbidden, groupErr.Error())
+						return
 					}
+					usingGroup = resolvedGroup
+					common.SetContextKey(c, constant.ContextKeyUserGroup, userGroup)
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 				}
 
 				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
@@ -315,6 +317,19 @@ func marketplaceFixedOrderIDsFromContext(c *gin.Context) []int {
 		return []int{id}
 	}
 	return nil
+}
+
+func currentUserGroupForPlayground(c *gin.Context, fallback string) string {
+	userId := common.GetContextKeyInt(c, constant.ContextKeyUserId)
+	if userId > 0 {
+		if group, err := model.GetUserGroup(userId, false); err == nil && strings.TrimSpace(group) != "" {
+			return strings.TrimSpace(group)
+		}
+	}
+	if group := common.GetContextKeyString(c, constant.ContextKeyUserGroup); strings.TrimSpace(group) != "" {
+		return strings.TrimSpace(group)
+	}
+	return strings.TrimSpace(fallback)
 }
 
 // getModelFromRequest 从请求中读取模型信息
