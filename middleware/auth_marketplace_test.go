@@ -208,7 +208,7 @@ func TestTokenAuthAllowsMarketplaceModelListForBlankGroupToken(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/v1/models", TokenAuth(), func(c *gin.Context) {
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 		require.True(t, common.GetContextKeyBool(c, constant.ContextKeyMarketplaceModelList))
 		value, ok := c.Get("token_marketplace_fixed_order_ids")
 		require.True(t, ok)
@@ -231,7 +231,7 @@ func TestTokenAuthAllowsMarketplaceBoundTokenWithoutSelectableGroup(t *testing.T
 
 	router := gin.New()
 	router.POST("/v1/chat/completions", TokenAuth(), func(c *gin.Context) {
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 		value, ok := c.Get("token_marketplace_fixed_order_ids")
 		require.True(t, ok)
 		require.Equal(t, []int{1, 2}, value)
@@ -253,7 +253,7 @@ func TestTokenAuthAllowsMarketplaceBoundTokenOnRootResponsesPath(t *testing.T) {
 
 	router := gin.New()
 	router.POST("/responses", TokenAuth(), func(c *gin.Context) {
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 		value, ok := c.Get("token_marketplace_fixed_order_ids")
 		require.True(t, ok)
 		require.Equal(t, []int{1, 2}, value)
@@ -290,7 +290,7 @@ func TestTokenAuthAllowsMarketplacePoolTokenWithoutSelectableGroup(t *testing.T)
 
 	router := gin.New()
 	router.POST("/v1/chat/completions", TokenAuth(), func(c *gin.Context) {
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 		c.Status(http.StatusNoContent)
 	})
 
@@ -310,7 +310,7 @@ func TestDistributeSkipsNormalChannelSelectionForRootResponsesUnifiedMarketplace
 	router := gin.New()
 	router.POST("/responses", TokenAuth(), Distribute(), func(c *gin.Context) {
 		require.Equal(t, "gpt-5.5", common.GetContextKeyString(c, constant.ContextKeyOriginalModel))
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 		c.Status(http.StatusNoContent)
 	})
 
@@ -362,7 +362,7 @@ func TestTokenAuthRejectsBlankGroupWhenMarketplaceRoutesDisabled(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), "当前令牌未配置可用分组")
 }
 
-func TestTokenAuthAllowsBlankGroupWhenOnlyMarketplaceGroupRouteEnabled(t *testing.T) {
+func TestTokenAuthRejectsBlankDefaultGroupWhenOnlyMarketplaceGroupRouteEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupMarketplaceTokenAuthTestDB(t)
 	require.NoError(t, db.Create(&model.User{
@@ -385,9 +385,7 @@ func TestTokenAuthAllowsBlankGroupWhenOnlyMarketplaceGroupRouteEnabled(t *testin
 
 	router := gin.New()
 	router.POST("/v1/chat/completions", TokenAuth(), func(c *gin.Context) {
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
-		require.False(t, common.GetContextKeyBool(c, constant.ContextKeyMarketplaceUnifiedRelay))
-		c.Status(http.StatusNoContent)
+		t.Fatal("request should be rejected before handler")
 	})
 
 	recorder := httptest.NewRecorder()
@@ -395,7 +393,8 @@ func TestTokenAuthAllowsBlankGroupWhenOnlyMarketplaceGroupRouteEnabled(t *testin
 	request.Header.Set("Authorization", "Bearer sk-grouponlymarketplacetoken")
 	router.ServeHTTP(recorder, request)
 
-	require.Equal(t, http.StatusNoContent, recorder.Code)
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "当前令牌未配置可用分组")
 }
 
 func TestTokenAuthDoesNotMarkNormalGroupRelayAsUnifiedMarketplace(t *testing.T) {
@@ -442,7 +441,7 @@ func TestDistributeSkipsNormalChannelSelectionForUnifiedMarketplaceRelay(t *test
 	router := gin.New()
 	router.POST("/v1/chat/completions", TokenAuth(), Distribute(), func(c *gin.Context) {
 		require.Equal(t, "gpt-5.5", common.GetContextKeyString(c, constant.ContextKeyOriginalModel))
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 		c.Status(http.StatusNoContent)
 	})
 
@@ -459,7 +458,7 @@ func TestDistributeSkipsNormalChannelSelectionForUnifiedMarketplaceRelay(t *test
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 }
 
-func TestDistributeUsesNormalGroupForBlankGroupMarketplaceTokenWhenModelMatches(t *testing.T) {
+func TestDistributeDoesNotUseDefaultGroupForBlankGroupMarketplaceTokenWhenModelMatches(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupMarketplaceTokenAuthTestDB(t)
 	seedMarketplaceBoundToken(t, db)
@@ -467,9 +466,9 @@ func TestDistributeUsesNormalGroupForBlankGroupMarketplaceTokenWhenModelMatches(
 
 	router := gin.New()
 	router.POST("/v1/chat/completions", TokenAuth(), Distribute(), func(c *gin.Context) {
-		require.False(t, common.GetContextKeyBool(c, constant.ContextKeyMarketplaceUnifiedRelay))
-		require.Equal(t, "default", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
-		require.Equal(t, 7, common.GetContextKeyInt(c, constant.ContextKeyChannelId))
+		require.True(t, common.GetContextKeyBool(c, constant.ContextKeyMarketplaceUnifiedRelay))
+		require.Equal(t, "", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
+		require.Equal(t, 0, common.GetContextKeyInt(c, constant.ContextKeyChannelId))
 		require.Equal(t, "gpt-5.4", common.GetContextKeyString(c, constant.ContextKeyOriginalModel))
 		c.Status(http.StatusNoContent)
 	})
