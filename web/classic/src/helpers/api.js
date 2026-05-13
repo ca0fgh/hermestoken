@@ -309,15 +309,7 @@ export const processGroupsData = (data, userGroup) => {
     truncateDescAt: 20,
   });
 
-  if (groupOptions.length === 0) {
-    groupOptions = [
-      {
-        label: '用户分组',
-        value: '',
-        ratio: 1,
-      },
-    ];
-  } else if (userGroup) {
+  if (userGroup) {
     const userGroupIndex = groupOptions.findIndex((g) => g.value === userGroup);
     if (userGroupIndex > -1) {
       const userGroupOption = groupOptions.splice(userGroupIndex, 1)[0];

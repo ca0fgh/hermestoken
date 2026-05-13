@@ -56,11 +56,11 @@ func shouldIncludeAssignedUserGroup(userGroup string, includeAssignedUserGroup b
 	if userGroup == "" {
 		return false
 	}
-	if includeAssignedUserGroup {
-		return true
-	}
 	if userGroup == "default" {
 		return false
+	}
+	if includeAssignedUserGroup {
+		return true
 	}
 	return ratio_setting.ContainsGroupRatio(userGroup)
 }
@@ -114,6 +114,23 @@ func GroupInUserSelectableGroups(userGroup, groupName string) bool {
 func GroupInUserSelectableGroupsForUser(userId int, userGroup, groupName string) bool {
 	_, ok := GetUserSelectableGroupsForUser(userId, userGroup)[groupName]
 	return ok
+}
+
+func ResolveUsableGroupForUserRequest(userId int, userGroup, requestedGroup string) (string, error) {
+	groups := GetUserUsableGroupsForUser(userId, userGroup)
+	if requestedGroup == "" {
+		if _, ok := groups[userGroup]; !ok {
+			return "", errors.New("当前用户未配置可用分组，请选择一个用户可用分组")
+		}
+		return userGroup, nil
+	}
+	if _, ok := groups[requestedGroup]; !ok {
+		return "", fmt.Errorf("无权访问 %s 分组", requestedGroup)
+	}
+	if requestedGroup != "auto" && !ratio_setting.ContainsGroupRatio(requestedGroup) {
+		return "", fmt.Errorf("分组 %s 已被弃用", requestedGroup)
+	}
+	return requestedGroup, nil
 }
 
 func ValidateTokenSelectableGroup(userGroup, tokenGroup string) error {

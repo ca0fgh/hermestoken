@@ -536,6 +536,42 @@ func TestDistributeAllowsPlaygroundSubscriptionUpgradeGroup(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, recorder.Code)
 }
 
+func TestDistributeRejectsPlaygroundBlankDefaultFallbackWhenDefaultIsNotUsable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupMarketplaceTokenAuthTestDB(t)
+	require.NoError(t, db.Create(&model.User{
+		Id:       10,
+		Username: "playground-default-fallback-user",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		Quota:    10000,
+	}).Error)
+	seedDefaultGroupChannel(t, db, 10, "gpt-5.4")
+
+	router := gin.New()
+	router.POST("/pg/chat/completions", func(c *gin.Context) {
+		common.SetContextKey(c, constant.ContextKeyUserId, 10)
+		common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "default")
+		c.Next()
+	}, Distribute(), func(c *gin.Context) {
+		t.Fatal("request should be rejected before handler")
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/pg/chat/completions",
+		bytes.NewBufferString(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}]}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "当前用户未配置可用分组")
+}
+
 func TestDistributePrefersBoundFixedOrderForNormalGroupTokenWhenModelMatches(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupMarketplaceTokenAuthTestDB(t)

@@ -181,6 +181,15 @@ export async function getUserGroups(): Promise<{
   return res.data
 }
 
+export async function getUserTokenGroups(): Promise<{
+  success: boolean
+  message?: string
+  data?: Record<string, { desc: string; ratio: number | string }>
+}> {
+  const res = await api.get('/api/token/groups')
+  return res.data
+}
+
 // ----------------------------------------------------------------------------
 // System APIs
 // ----------------------------------------------------------------------------
