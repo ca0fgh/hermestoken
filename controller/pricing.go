@@ -138,6 +138,14 @@ func GetPricing(c *gin.Context) {
 	}
 
 	usableGroup = service.GetUserUsableGroupsForUser(currentUserID, displayGroup)
+	autoGroups := service.GetUserAutoGroupForUser(currentUserID, displayGroup)
+	if !exists {
+		usableGroup = map[string]string{"default": "用户分组"}
+		autoGroups = []string{}
+		if setting.ContainsAutoGroup("default") {
+			autoGroups = append(autoGroups, "default")
+		}
+	}
 	contextDuration := time.Since(contextStart)
 
 	filterStart := time.Now()
@@ -156,7 +164,7 @@ func GetPricing(c *gin.Context) {
 		"display_groups":     displayGroups,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
-		"auto_groups":        service.GetUserAutoGroupForUser(currentUserID, displayGroup),
+		"auto_groups":        autoGroups,
 		"pricing_version":    "a42d372ccf0b5dd13ecf71203521f9d2",
 	}
 	responseDuration := time.Since(responseStart)

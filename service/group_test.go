@@ -90,13 +90,26 @@ func seedGroupTestSubscription(t *testing.T, userID int, upgradeGroup string, st
 	}
 }
 
-func TestGetUserSelectableGroupsIncludesAssignedGroup(t *testing.T) {
+func TestGetUserSelectableGroupsHidesAssignedDefaultGroupWhenNotSelectable(t *testing.T) {
 	withSelectableGroupSettings(t, `{"standard":"标准价格"}`, `{}`)
 
 	groups := GetUserSelectableGroups("default")
 
-	if got := groups["default"]; got != "用户分组" {
-		t.Fatalf("expected assigned user group to stay visible, got %q", got)
+	if _, ok := groups["default"]; ok {
+		t.Fatalf("expected assigned default group to stay hidden when not selectable, got %#v", groups)
+	}
+	if got := groups["standard"]; got != "标准价格" {
+		t.Fatalf("expected standard group to remain selectable, got %q", got)
+	}
+}
+
+func TestGetUserSelectableGroupsIncludesAssignedNonDefaultGroup(t *testing.T) {
+	withSelectableGroupSettingsAndRatios(t, `{"standard":"标准价格"}`, `{}`, `{"default":1,"standard":1,"vip":1}`)
+
+	groups := GetUserSelectableGroups("vip")
+
+	if got := groups["vip"]; got != "用户分组" {
+		t.Fatalf("expected assigned non-default user group to stay visible, got %q", got)
 	}
 	if got := groups["standard"]; got != "标准价格" {
 		t.Fatalf("expected standard group to remain selectable, got %q", got)
