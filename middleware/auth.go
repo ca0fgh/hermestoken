@@ -394,13 +394,22 @@ func resolveTokenAuthUsingGroup(c *gin.Context, userID int, userGroup string, to
 	if token != nil {
 		tokenGroup = token.Group
 	}
-	if shouldAllowBlankTokenGroupForMarketplaceModelList(c, token) {
-		return userGroup, nil
-	}
-	if shouldAllowBlankTokenGroupForMarketplaceRelay(c, token) {
-		return userGroup, nil
+	if shouldAllowBlankTokenGroupForMarketplaceModelList(c, token) ||
+		shouldAllowBlankTokenGroupForMarketplaceRelay(c, token) {
+		return resolveBlankMarketplaceTokenUsingGroup(userID, userGroup, token)
 	}
 	return service.ResolveTokenGroupForUserRequest(userID, userGroup, tokenGroup)
+}
+
+func resolveBlankMarketplaceTokenUsingGroup(userID int, userGroup string, token *model.Token) (string, error) {
+	usingGroup, err := service.ResolveTokenGroupForUserRequest(userID, userGroup, "")
+	if err == nil {
+		return usingGroup, nil
+	}
+	if tokenMarketplaceNonGroupRouteEnabled(token) {
+		return "", nil
+	}
+	return "", err
 }
 
 func shouldAllowBlankTokenGroupForMarketplaceModelList(c *gin.Context, token *model.Token) bool {
@@ -491,6 +500,11 @@ func tokenMarketplaceAnyRouteEnabled(token *model.Token) bool {
 		return false
 	}
 	return len(token.MarketplaceRouteEnabledList()) > 0
+}
+
+func tokenMarketplaceNonGroupRouteEnabled(token *model.Token) bool {
+	return tokenMarketplaceRouteEnabled(token, model.MarketplaceRouteFixedOrder) ||
+		tokenMarketplaceRouteEnabled(token, model.MarketplaceRoutePool)
 }
 
 func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) error {
