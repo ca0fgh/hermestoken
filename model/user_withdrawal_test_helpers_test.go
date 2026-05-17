@@ -41,7 +41,7 @@ func setupWithdrawalModelDB(t *testing.T) *gorm.DB {
 	DB = db
 	LOG_DB = db
 
-	if err := db.AutoMigrate(&Option{}, &User{}, &UserWithdrawal{}, &Log{}); err != nil {
+	if err := db.AutoMigrate(&Option{}, &User{}, &UserWithdrawal{}, &Log{}, &Redemption{}); err != nil {
 		t.Fatalf("failed to migrate withdrawal tables: %v", err)
 	}
 	InitOptionMap()
@@ -80,6 +80,25 @@ func seedWithdrawalUser(t *testing.T, db *gorm.DB, username string, quota int) *
 		t.Fatalf("failed to create withdrawal user: %v", err)
 	}
 	return user
+}
+
+func seedRedeemedQuota(t *testing.T, db *gorm.DB, userID int, quota int) *Redemption {
+	t.Helper()
+
+	redemption := &Redemption{
+		UserId:       userID,
+		Key:          fmt.Sprintf("redeemed_%d_%d", userID, quota),
+		Status:       common.RedemptionCodeStatusUsed,
+		Name:         "redeemed quota",
+		Quota:        quota,
+		CreatedTime:  common.GetTimestamp(),
+		RedeemedTime: common.GetTimestamp(),
+		UsedUserId:   userID,
+	}
+	if err := db.Create(redemption).Error; err != nil {
+		t.Fatalf("failed to create redeemed quota: %v", err)
+	}
+	return redemption
 }
 
 func seedPendingWithdrawal(t *testing.T, db *gorm.DB, userID int, amount float64) *UserWithdrawal {

@@ -18,20 +18,63 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import React from 'react';
 import { Card, Button, Typography, Tag } from '@douyinfe/semi-ui';
 import { WalletCards, Landmark, FileText } from 'lucide-react';
-import { formatWithdrawalAmount } from '../../helpers';
+import {
+  formatWithdrawalAmount,
+  getWithdrawalBalanceAmounts,
+} from '../../helpers';
 
 const { Text } = Typography;
 
-const WithdrawalMetric = ({ label, value }) => (
-  <div className='rounded-xl border border-[var(--semi-color-border)] p-4 bg-[var(--semi-color-fill-0)]'>
-    <div className='text-xs text-[var(--semi-color-text-2)] mb-2'>{label}</div>
-    <div className='text-xl font-semibold'>{value}</div>
+const getWithdrawalMetricBadgeClassName = (color) => {
+  switch (color) {
+    case 'green':
+      return 'bg-[var(--semi-color-success-light-default)] text-[var(--semi-color-success)]';
+    case 'grey':
+      return 'bg-[var(--semi-color-fill-1)] text-[var(--semi-color-text-1)]';
+    default:
+      return 'bg-[var(--semi-color-primary-light-default)] text-[var(--semi-color-primary)]';
+  }
+};
+
+const WithdrawalMetricBadge = ({ children, color }) => (
+  <span
+    className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium leading-none whitespace-nowrap ${getWithdrawalMetricBadgeClassName(color)}`}
+  >
+    {children}
+  </span>
+);
+
+const WithdrawalMetric = ({ label, value, badge, badgeColor = 'blue' }) => (
+  <div className='rounded-xl border border-[var(--semi-color-border)] p-4 bg-[var(--semi-color-fill-0)] min-h-[132px] flex flex-col justify-between gap-5'>
+    <div className='flex flex-col items-start gap-2'>
+      <div className='text-base font-medium leading-tight text-[var(--semi-color-text-2)] whitespace-nowrap'>
+        {label}
+      </div>
+      {badge ? (
+        <WithdrawalMetricBadge color={badgeColor}>{badge}</WithdrawalMetricBadge>
+      ) : null}
+    </div>
+    <div className='text-3xl font-semibold leading-tight tabular-nums whitespace-nowrap'>
+      {value}
+    </div>
+  </div>
+);
+
+const WithdrawalMetaItem = ({ label, value }) => (
+  <div className='rounded-lg border border-[var(--semi-color-border)] px-4 py-3 bg-[var(--semi-color-fill-0)] flex items-center justify-between gap-3'>
+    <span className='truncate text-sm text-[var(--semi-color-text-2)]'>
+      {label}
+    </span>
+    <span className='text-base font-semibold tabular-nums whitespace-nowrap'>
+      {value}
+    </span>
   </div>
 );
 
 const WithdrawalCard = ({ t, config, onApply, onOpenHistory }) => {
   const currencySymbol = config?.currencySymbol || '¥';
   const disabled = !config?.enabled || config?.hasOpenWithdrawal;
+  const balances = getWithdrawalBalanceAmounts(config);
 
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
@@ -43,7 +86,7 @@ const WithdrawalCard = ({ t, config, onApply, onOpenHistory }) => {
               <Text className='text-lg font-medium'>{t('余额提现')}</Text>
             </div>
             <Text type='tertiary' className='block mt-1'>
-              {t('从主余额发起提现申请，管理员审核后线下支付宝打款。')}
+              {t('充值余额可申请提现，兑换码余额不可提现。')}
             </Text>
           </div>
           {config?.hasOpenWithdrawal ? (
@@ -57,19 +100,37 @@ const WithdrawalCard = ({ t, config, onApply, onOpenHistory }) => {
 
         <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
           <WithdrawalMetric
-            label={t('可提现余额')}
+            label={t('可用总余额')}
+            value={formatWithdrawalAmount(balances.totalAmount, currencySymbol)}
+          />
+          <WithdrawalMetric
+            label={t('充值余额')}
+            badge={t('可提现')}
+            badgeColor='green'
             value={formatWithdrawalAmount(
-              config?.availableAmount,
+              balances.rechargeAmount,
               currencySymbol,
             )}
           />
           <WithdrawalMetric
-            label={t('冻结中余额')}
-            value={formatWithdrawalAmount(config?.frozenAmount, currencySymbol)}
+            label={t('兑换码余额')}
+            badge={t('不可提现')}
+            badgeColor='grey'
+            value={formatWithdrawalAmount(
+              balances.redemptionAmount,
+              currencySymbol,
+            )}
           />
-          <WithdrawalMetric
+        </div>
+
+        <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+          <WithdrawalMetaItem
+            label={t('冻结中余额')}
+            value={formatWithdrawalAmount(balances.frozenAmount, currencySymbol)}
+          />
+          <WithdrawalMetaItem
             label={t('最低提现金额')}
-            value={formatWithdrawalAmount(config?.minAmount, currencySymbol)}
+            value={formatWithdrawalAmount(balances.minAmount, currencySymbol)}
           />
         </div>
 

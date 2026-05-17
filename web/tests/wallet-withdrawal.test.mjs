@@ -5,22 +5,24 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(testDir, '..');
+const webRoot = path.resolve(testDir, '../classic');
 const helperPath = path.join(webRoot, 'src/helpers/withdrawal.js');
 const helperUrl = pathToFileURL(helperPath).href;
 
 const readSource = (relativePath) =>
-  fs.readFileSync(
-    path.join(webRoot, relativePath),
-    'utf8',
-  );
+  fs.readFileSync(path.join(webRoot, relativePath), 'utf8');
 
 const loadHelpers = () => import(`${helperUrl}?t=${Date.now()}`);
 
 test('wallet topup page loads withdrawal config and renders withdrawal entry', () => {
   const source = readSource('src/components/topup/index.jsx');
-  const rechargeCardSource = readSource('src/components/topup/RechargeCard.jsx');
+  const rechargeCardSource = readSource(
+    'src/components/topup/RechargeCard.jsx',
+  );
   const helperSource = readSource('src/helpers/withdrawal.js');
+  const withdrawalCardSource = readSource(
+    'src/components/topup/WithdrawalCard.jsx',
+  );
   const withdrawalModalSource = readSource(
     'src/components/topup/modals/WithdrawalApplyModal.jsx',
   );
@@ -33,7 +35,10 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(source, /USDT 收款地址不能为空/);
   assert.match(source, /channel:\s*withdrawalChannel/);
   assert.match(source, /withdrawalPreview\?\.isValid/);
-  assert.match(source, /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/);
+  assert.match(
+    source,
+    /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/,
+  );
   assert.match(source, /withdrawalSection=\{/);
   assert.doesNotMatch(source, /<\/RechargeCard>\s*<WithdrawalCard/);
   assert.match(rechargeCardSource, /withdrawalSection = null/);
@@ -45,11 +50,70 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(helperSource, /Polygon PoS/);
   assert.match(withdrawalModalSource, /规则说明/);
   assert.match(withdrawalModalSource, /命中规则/);
+  assert.match(helperSource, /getWithdrawalBalanceAmounts/);
+  assert.match(helperSource, /totalAmount\s*=\s*Number\(config\?\.total_amount/);
+  assert.match(
+    helperSource,
+    /rechargeAmount\s*=\s*Number\(config\?\.recharge_amount/,
+  );
+  assert.match(
+    helperSource,
+    /redemptionAmount\s*=\s*Number\(config\?\.redemption_amount/,
+  );
+  assert.match(withdrawalCardSource, /getWithdrawalBalanceAmounts/);
+  assert.match(withdrawalModalSource, /getWithdrawalBalanceAmounts/);
+  assert.match(withdrawalCardSource, /label={t\('充值余额'\)}/);
+  assert.match(withdrawalCardSource, /badge={t\('可提现'\)}/);
+  assert.match(withdrawalCardSource, /label={t\('兑换码余额'\)}/);
+  assert.match(withdrawalCardSource, /badge={t\('不可提现'\)}/);
+  assert.match(withdrawalCardSource, /可用总余额/);
+  assert.match(withdrawalModalSource, /充值余额（可提现）/);
+  assert.match(withdrawalModalSource, /兑换码余额（不可提现）/);
+  assert.match(withdrawalModalSource, /最多可提 {{amount}}/);
   assert.match(
     withdrawalModalSource,
     /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/,
   );
-  assert.doesNotMatch(withdrawalModalSource, /未命中手续费规则，按 0 手续费计算/);
+  assert.doesNotMatch(
+    withdrawalModalSource,
+    /未命中手续费规则，按 0 手续费计算/,
+  );
+});
+
+test('withdrawal config keeps balance breakdown fallback logic in one helper', async () => {
+  const { normalizeWithdrawalConfig, getWithdrawalBalanceAmounts } =
+    await loadHelpers();
+
+  const config = normalizeWithdrawalConfig({
+    available_amount: 80,
+    recharge_amount: 80,
+    redemption_amount: 20,
+    frozen_amount: 15,
+    min_amount: 10,
+  });
+
+  assert.deepEqual(getWithdrawalBalanceAmounts(config), {
+    totalAmount: 100,
+    rechargeAmount: 80,
+    redemptionAmount: 20,
+    frozenAmount: 15,
+    minAmount: 10,
+  });
+
+  assert.deepEqual(
+    getWithdrawalBalanceAmounts(
+      normalizeWithdrawalConfig({
+        available_amount: 42,
+      }),
+    ),
+    {
+      totalAmount: 42,
+      rechargeAmount: 42,
+      redemptionAmount: 0,
+      frozenAmount: 0,
+      minAmount: 0,
+    },
+  );
 });
 
 test('user-facing withdrawal rule descriptions stay currency-aware and preserve the strict first-band lower bound', async () => {

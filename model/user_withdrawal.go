@@ -111,8 +111,14 @@ type UserWithdrawalConfigView struct {
 	QuotaDisplayType  string              `json:"quota_display_type"`
 	ExchangeRate      float64             `json:"exchange_rate"`
 	AvailableQuota    int                 `json:"available_quota"`
+	TotalQuota        int                 `json:"total_quota"`
+	RechargeQuota     int                 `json:"recharge_quota"`
+	RedemptionQuota   int                 `json:"redemption_quota"`
 	FrozenQuota       int                 `json:"frozen_quota"`
 	AvailableAmount   float64             `json:"available_amount"`
+	TotalAmount       float64             `json:"total_amount"`
+	RechargeAmount    float64             `json:"recharge_amount"`
+	RedemptionAmount  float64             `json:"redemption_amount"`
 	FrozenAmount      float64             `json:"frozen_amount"`
 }
 
@@ -246,6 +252,10 @@ func GetUserWithdrawalConfigView(userID int) (UserWithdrawalConfigView, error) {
 	if err != nil {
 		return UserWithdrawalConfigView{}, err
 	}
+	quotaBreakdown, err := getUserWithdrawalQuotaBreakdownTx(DB, userID, user.Quota)
+	if err != nil {
+		return UserWithdrawalConfigView{}, err
+	}
 
 	return UserWithdrawalConfigView{
 		Enabled:           setting.Enabled,
@@ -257,9 +267,15 @@ func GetUserWithdrawalConfigView(userID int) (UserWithdrawalConfigView, error) {
 		CurrencySymbol:    currency.Symbol,
 		QuotaDisplayType:  currency.Type,
 		ExchangeRate:      currency.UsdToCurrencyRate,
-		AvailableQuota:    user.Quota,
+		AvailableQuota:    quotaBreakdown.RechargeQuota,
+		TotalQuota:        quotaBreakdown.TotalQuota,
+		RechargeQuota:     quotaBreakdown.RechargeQuota,
+		RedemptionQuota:   quotaBreakdown.RedemptionQuota,
 		FrozenQuota:       user.WithdrawFrozenQuota,
-		AvailableAmount:   quotaToCurrencyAmount(user.Quota, currency),
+		AvailableAmount:   quotaToCurrencyAmount(quotaBreakdown.RechargeQuota, currency),
+		TotalAmount:       quotaToCurrencyAmount(quotaBreakdown.TotalQuota, currency),
+		RechargeAmount:    quotaToCurrencyAmount(quotaBreakdown.RechargeQuota, currency),
+		RedemptionAmount:  quotaToCurrencyAmount(quotaBreakdown.RedemptionQuota, currency),
 		FrozenAmount:      quotaToCurrencyAmount(user.WithdrawFrozenQuota, currency),
 	}, nil
 }
@@ -332,8 +348,12 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 			return errors.New("existing withdrawal is still pending")
 		}
 
-		if user.Quota < applyQuota {
-			return errors.New("insufficient wallet balance")
+		quotaBreakdown, err := getUserWithdrawalQuotaBreakdownTx(tx, user.Id, user.Quota)
+		if err != nil {
+			return err
+		}
+		if quotaBreakdown.RechargeQuota < applyQuota {
+			return errors.New("insufficient withdrawable balance")
 		}
 
 		tradeNo, err := generateUserWithdrawalTradeNo(tx)
@@ -352,7 +372,7 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 			Channel:                channel,
 			Currency:               currency.Currency,
 			ExchangeRateSnapshot:   currency.UsdToCurrencyRate,
-			AvailableQuotaSnapshot: user.Quota,
+			AvailableQuotaSnapshot: quotaBreakdown.RechargeQuota,
 			FrozenQuotaSnapshot:    user.WithdrawFrozenQuota + applyQuota,
 			ApplyAmount:            amount.InexactFloat64(),
 			FeeAmount:              feeAmount.InexactFloat64(),
@@ -618,6 +638,57 @@ func countOpenUserWithdrawalsTx(tx *gorm.DB, userID int) (int64, error) {
 		Where("user_id = ? AND status IN ?", userID, []string{UserWithdrawalStatusPending, UserWithdrawalStatusApproved}).
 		Count(&count).Error
 	return count, err
+}
+
+type userWithdrawalQuotaBreakdown struct {
+	TotalQuota      int
+	RechargeQuota   int
+	RedemptionQuota int
+}
+
+func getUserWithdrawalQuotaBreakdownTx(tx *gorm.DB, userID int, currentQuota int) (userWithdrawalQuotaBreakdown, error) {
+	redeemedQuota, err := getUserRedeemedQuotaTx(tx, userID)
+	if err != nil {
+		return userWithdrawalQuotaBreakdown{}, err
+	}
+
+	totalQuota := currentQuota
+	if totalQuota < 0 {
+		totalQuota = 0
+	}
+	redemptionQuota := redeemedQuota
+	if redemptionQuota > totalQuota {
+		redemptionQuota = totalQuota
+	}
+	if redemptionQuota < 0 {
+		redemptionQuota = 0
+	}
+
+	return userWithdrawalQuotaBreakdown{
+		TotalQuota:      totalQuota,
+		RechargeQuota:   totalQuota - redemptionQuota,
+		RedemptionQuota: redemptionQuota,
+	}, nil
+}
+
+func getUserRedeemedQuotaTx(tx *gorm.DB, userID int) (int, error) {
+	if tx == nil {
+		return 0, errors.New("database is not initialized")
+	}
+	if userID <= 0 {
+		return 0, errors.New("user id is required")
+	}
+
+	var quota int64
+	err := tx.Unscoped().
+		Model(&Redemption{}).
+		Select("COALESCE(SUM(quota), 0)").
+		Where("used_user_id = ? AND status = ? AND quota > 0", userID, common.RedemptionCodeStatusUsed).
+		Scan(&quota).Error
+	if err != nil {
+		return 0, err
+	}
+	return int(quota), nil
 }
 
 func generateUserWithdrawalTradeNo(tx *gorm.DB) (string, error) {

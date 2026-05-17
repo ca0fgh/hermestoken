@@ -16,13 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
 import React from 'react';
-import { Modal, Typography, Input, InputNumber, Select, Tag } from '@douyinfe/semi-ui';
+import {
+  Modal,
+  Typography,
+  Input,
+  InputNumber,
+  Select,
+  Tag,
+} from '@douyinfe/semi-ui';
 import { HandCoins } from 'lucide-react';
 import {
   WITHDRAWAL_USDT_NETWORK_OPTIONS,
   buildWithdrawalFeeRuleDescriptions,
   describeWithdrawalFeeRuleForUser,
   formatWithdrawalAmount,
+  getWithdrawalBalanceAmounts,
 } from '../../../helpers';
 
 const { Text } = Typography;
@@ -68,7 +76,11 @@ const WithdrawalApplyModal = ({
     ruleDescriptionOptions,
   );
   const matchedRuleText = preview?.matchedRule
-    ? describeWithdrawalFeeRuleForUser(preview.matchedRule, t, ruleDescriptionOptions)
+    ? describeWithdrawalFeeRuleForUser(
+        preview.matchedRule,
+        t,
+        ruleDescriptionOptions,
+      )
     : t('未命中任何手续费规则');
   const blockMessage = preview?.isValid
     ? ''
@@ -76,6 +88,11 @@ const WithdrawalApplyModal = ({
         preview?.blockReason ||
           '当前提现金额未命中任何手续费规则，请调整金额或联系管理员',
       );
+  const balances = getWithdrawalBalanceAmounts(config);
+  const maxWithdrawAmountText = formatWithdrawalAmount(
+    balances.rechargeAmount,
+    symbol,
+  );
 
   return (
     <Modal
@@ -98,12 +115,44 @@ const WithdrawalApplyModal = ({
             {t('提现金额')}
           </Text>
           <InputNumber
-            min={config?.minAmount || 0}
-            max={config?.availableAmount || 0}
+            min={balances.minAmount || 0}
+            max={balances.rechargeAmount || 0}
             value={amount}
             onChange={(value) => setAmount(value || 0)}
             style={{ width: '100%' }}
           />
+          <Text type='tertiary' size='small'>
+            {t('最多可提 {{amount}}', { amount: maxWithdrawAmountText })}
+          </Text>
+        </div>
+
+        <div className='rounded-xl border border-[var(--semi-color-border)] p-3 bg-[var(--semi-color-fill-0)]'>
+          <div className='grid grid-cols-1 sm:grid-cols-3 gap-3'>
+            <div>
+              <div className='text-xs text-[var(--semi-color-text-2)] mb-1'>
+                {t('可用总余额')}
+              </div>
+              <div className='font-medium'>
+                {formatWithdrawalAmount(balances.totalAmount, symbol)}
+              </div>
+            </div>
+            <div>
+              <div className='text-xs text-[var(--semi-color-text-2)] mb-1'>
+                {t('充值余额（可提现）')}
+              </div>
+              <div className='font-medium'>
+                {formatWithdrawalAmount(balances.rechargeAmount, symbol)}
+              </div>
+            </div>
+            <div>
+              <div className='text-xs text-[var(--semi-color-text-2)] mb-1'>
+                {t('兑换码余额（不可提现）')}
+              </div>
+              <div className='font-medium'>
+                {formatWithdrawalAmount(balances.redemptionAmount, symbol)}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div>
@@ -212,9 +261,7 @@ const WithdrawalApplyModal = ({
             </Text>
           </div>
           {preview?.isValid ? (
-            <Tag color='blue'>
-              {t('已命中手续费规则')}
-            </Tag>
+            <Tag color='blue'>{t('已命中手续费规则')}</Tag>
           ) : (
             <div className='space-y-2'>
               <Tag color='red'>{t('未命中任何手续费规则')}</Tag>
