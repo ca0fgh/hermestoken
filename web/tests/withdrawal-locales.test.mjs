@@ -54,6 +54,8 @@ test('withdrawal locales define wallet and admin copy', () => {
     '充值余额（可提现）',
     '兑换码余额（不可提现）',
     '最多可提 {{amount}}',
+    '可提现余额不足',
+    '提现金额不能超过可提现余额',
     '确认已打款',
     '待审核',
     '规则说明',

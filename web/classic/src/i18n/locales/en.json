@@ -4073,6 +4073,8 @@
     "充值余额（可提现）": "Recharge balance (withdrawable)",
     "兑换码余额（不可提现）": "Redemption-code balance (not withdrawable)",
     "最多可提 {{amount}}": "Max withdrawable {{amount}}",
+    "可提现余额不足": "Withdrawable balance is insufficient",
+    "提现金额不能超过可提现余额": "Withdrawal amount cannot exceed withdrawable balance",
     "刷新提现列表": "Refresh withdrawals",
     "加载提现记录失败": "Failed to load withdrawal history",
     "可提现余额": "Withdrawable balance",

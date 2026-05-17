@@ -30,11 +30,14 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(source, /WithdrawalCard/);
   assert.match(source, /WithdrawalApplyModal/);
   assert.match(source, /WithdrawalHistoryModal/);
+  assert.match(source, /getWithdrawalBalanceAmounts/);
   assert.match(source, /submitWithdrawal/);
   assert.match(source, /支付宝姓名不能为空/);
   assert.match(source, /USDT 收款地址不能为空/);
   assert.match(source, /channel:\s*withdrawalChannel/);
   assert.match(source, /withdrawalPreview\?\.isValid/);
+  assert.match(source, /可提现余额不足/);
+  assert.match(source, /提现金额不能超过可提现余额/);
   assert.match(
     source,
     /当前提现金额未命中任何手续费规则，请调整金额或联系管理员/,
@@ -51,7 +54,10 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(withdrawalModalSource, /规则说明/);
   assert.match(withdrawalModalSource, /命中规则/);
   assert.match(helperSource, /getWithdrawalBalanceAmounts/);
-  assert.match(helperSource, /totalAmount\s*=\s*Number\(config\?\.total_amount/);
+  assert.match(
+    helperSource,
+    /totalAmount\s*=\s*Number\(config\?\.total_amount/,
+  );
   assert.match(
     helperSource,
     /rechargeAmount\s*=\s*Number\(config\?\.recharge_amount/,
@@ -67,6 +73,7 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
   assert.match(withdrawalCardSource, /label={t\('兑换码余额'\)}/);
   assert.match(withdrawalCardSource, /badge={t\('不可提现'\)}/);
   assert.match(withdrawalCardSource, /可用总余额/);
+  assert.match(withdrawalCardSource, /balances\.rechargeAmount <= 0/);
   assert.match(withdrawalModalSource, /充值余额（可提现）/);
   assert.match(withdrawalModalSource, /兑换码余额（不可提现）/);
   assert.match(withdrawalModalSource, /最多可提 {{amount}}/);

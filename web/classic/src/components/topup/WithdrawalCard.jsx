@@ -51,7 +51,9 @@ const WithdrawalMetric = ({ label, value, badge, badgeColor = 'blue' }) => (
         {label}
       </div>
       {badge ? (
-        <WithdrawalMetricBadge color={badgeColor}>{badge}</WithdrawalMetricBadge>
+        <WithdrawalMetricBadge color={badgeColor}>
+          {badge}
+        </WithdrawalMetricBadge>
       ) : null}
     </div>
     <div className='text-3xl font-semibold leading-tight tabular-nums whitespace-nowrap'>
@@ -73,8 +75,12 @@ const WithdrawalMetaItem = ({ label, value }) => (
 
 const WithdrawalCard = ({ t, config, onApply, onOpenHistory }) => {
   const currencySymbol = config?.currencySymbol || '¥';
-  const disabled = !config?.enabled || config?.hasOpenWithdrawal;
   const balances = getWithdrawalBalanceAmounts(config);
+  const disabled =
+    !config?.enabled ||
+    config?.hasOpenWithdrawal ||
+    balances.rechargeAmount <= 0 ||
+    balances.rechargeAmount < balances.minAmount;
 
   return (
     <Card className='!rounded-2xl shadow-sm border-0'>
@@ -126,7 +132,10 @@ const WithdrawalCard = ({ t, config, onApply, onOpenHistory }) => {
         <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
           <WithdrawalMetaItem
             label={t('冻结中余额')}
-            value={formatWithdrawalAmount(balances.frozenAmount, currencySymbol)}
+            value={formatWithdrawalAmount(
+              balances.frozenAmount,
+              currencySymbol,
+            )}
           />
           <WithdrawalMetaItem
             label={t('最低提现金额')}

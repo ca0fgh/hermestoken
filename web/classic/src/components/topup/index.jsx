@@ -28,6 +28,7 @@ import {
   getQuotaPerUnit,
   normalizeWithdrawalConfig,
   calculateWithdrawalPreview,
+  getWithdrawalBalanceAmounts,
 } from '../../helpers';
 import { Modal, Toast } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
@@ -811,7 +812,15 @@ const TopUp = () => {
       showError(t('存在未完结提现单'));
       return;
     }
-    setWithdrawalAmount(withdrawalConfig?.minAmount || 0);
+    const withdrawalBalances = getWithdrawalBalanceAmounts(withdrawalConfig);
+    if (
+      withdrawalBalances.rechargeAmount <= 0 ||
+      withdrawalBalances.rechargeAmount < withdrawalBalances.minAmount
+    ) {
+      showError(t('可提现余额不足'));
+      return;
+    }
+    setWithdrawalAmount(withdrawalBalances.minAmount || 0);
     setWithdrawalChannel('alipay');
     setWithdrawalAlipayAccount('');
     setWithdrawalAlipayRealName('');
@@ -821,12 +830,18 @@ const TopUp = () => {
   };
 
   const submitWithdrawal = async () => {
+    const withdrawalBalances = getWithdrawalBalanceAmounts(withdrawalConfig);
+    const numericWithdrawalAmount = Number(withdrawalAmount || 0);
     const withdrawalPreview = calculateWithdrawalPreview(
-      withdrawalAmount,
+      numericWithdrawalAmount,
       withdrawalConfig?.feeRules || [],
     );
-    if (withdrawalAmount < (withdrawalConfig?.minAmount || 0)) {
+    if (numericWithdrawalAmount < (withdrawalConfig?.minAmount || 0)) {
       showError(t('提现金额不能低于最低提现金额'));
+      return;
+    }
+    if (numericWithdrawalAmount > withdrawalBalances.rechargeAmount) {
+      showError(t('提现金额不能超过可提现余额'));
       return;
     }
     if (!withdrawalPreview?.isValid) {
@@ -839,7 +854,7 @@ const TopUp = () => {
       return;
     }
     const withdrawalPayload = {
-      amount: Number(withdrawalAmount),
+      amount: numericWithdrawalAmount,
       channel: withdrawalChannel,
     };
     if (withdrawalChannel === 'usdt') {
