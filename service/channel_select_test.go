@@ -8,6 +8,7 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -58,9 +59,12 @@ func setupChannelSelectTestDB(t *testing.T) *gorm.DB {
 }
 
 func insertChannelForRetryTest(t *testing.T, id int, name string, priority int64) {
+	insertChannelForRetryTestWithOptions(t, id, name, "cc-opus-福利渠道", priority, 0)
+}
+
+func insertChannelForRetryTestWithOptions(t *testing.T, id int, name string, group string, priority int64, weight uint) {
 	t.Helper()
 
-	weight := uint(0)
 	baseURL := fmt.Sprintf("https://%s.example.com", name)
 	channel := &model.Channel{
 		Id:       id,
@@ -69,7 +73,7 @@ func insertChannelForRetryTest(t *testing.T, id int, name string, priority int64
 		Key:      fmt.Sprintf("sk-%s", name),
 		Status:   common.ChannelStatusEnabled,
 		BaseURL:  &baseURL,
-		Group:    "cc-opus-福利渠道",
+		Group:    group,
 		Models:   "claude-opus-4-7",
 		Priority: &priority,
 		Weight:   &weight,
@@ -175,4 +179,35 @@ func TestRetryParamSeedSelectedChannel_AvoidsReusingInitialChannelOnFirstRetry(t
 	require.NoError(t, err)
 	require.NotNil(t, channel)
 	require.Equal(t, 13, channel.Id, "first retry should exhaust same-priority siblings before downgrading or reusing the initial channel")
+}
+
+func TestCacheGetRandomSatisfiedChannel_AutoAvoidsReusingTriedChannel(t *testing.T) {
+	setupChannelSelectTestDB(t)
+
+	originalAutoGroups := setting.AutoGroups2JsonString()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
+	})
+	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["default"]`))
+
+	insertChannelForRetryTestWithOptions(t, 12, "high-a", "default", 2, 100)
+	insertChannelForRetryTestWithOptions(t, 13, "high-b", "default", 2, 0)
+	model.InitChannelCache()
+
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	param := &RetryParam{
+		Ctx:        ctx,
+		TokenGroup: "auto",
+		ModelName:  "claude-opus-4-7",
+		Retry:      common.GetPointer(1),
+	}
+
+	require.NoError(t, param.SeedSelectedChannel("default", 12))
+
+	channel, group, err := CacheGetRandomSatisfiedChannel(param)
+	require.NoError(t, err)
+	require.NotNil(t, channel)
+	require.Equal(t, "default", group)
+	require.Equal(t, 13, channel.Id, "auto retry should exclude channels already tried by this request")
 }

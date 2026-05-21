@@ -43,6 +43,7 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
+		&model.Token{},
 		&model.ReferralTemplate{},
 		&model.ReferralTemplateBinding{},
 		&model.ReferralInviteeShareOverride{},

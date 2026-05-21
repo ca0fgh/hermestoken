@@ -838,6 +838,77 @@ func expireQuotaInsufficientSubscriptionsTx(tx *gorm.DB, subscriptions []UserSub
 	return cacheGroup, nil
 }
 
+func extendFiniteUserTokensToSubscriptionEndTx(tx *gorm.DB, userId int, subscriptionEnd int64) error {
+	if tx == nil {
+		return errors.New("tx is nil")
+	}
+	if userId <= 0 {
+		return errors.New("invalid user id")
+	}
+	now := common.GetTimestamp()
+	var subscriptions []UserSubscription
+	if err := tx.Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
+		Find(&subscriptions).Error; err != nil {
+		return err
+	}
+	latestAnyEnd := subscriptionEnd
+	latestGroupEnd := make(map[string]int64, len(subscriptions))
+	for i := range subscriptions {
+		if subscriptions[i].EndTime > latestAnyEnd {
+			latestAnyEnd = subscriptions[i].EndTime
+		}
+		group, err := getEffectiveSubscriptionUpgradeGroupTx(tx, &subscriptions[i])
+		if err != nil {
+			return err
+		}
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		if subscriptions[i].EndTime > latestGroupEnd[group] {
+			latestGroupEnd[group] = subscriptions[i].EndTime
+		}
+	}
+	if latestAnyEnd <= 0 {
+		return nil
+	}
+	var tokens []Token
+	if err := tx.Where("user_id = ? AND expired_time <> ? AND expired_time < ? AND status IN ?",
+		userId,
+		int64(-1),
+		latestAnyEnd,
+		[]int{common.TokenStatusEnabled, common.TokenStatusExpired},
+	).Find(&tokens).Error; err != nil {
+		return err
+	}
+	for i := range tokens {
+		targetEnd := int64(0)
+		tokenGroup := strings.TrimSpace(tokens[i].Group)
+		switch tokenGroup {
+		case "", "auto":
+			targetEnd = latestAnyEnd
+		default:
+			targetEnd = latestGroupEnd[tokenGroup]
+		}
+		if targetEnd <= 0 || tokens[i].ExpiredTime >= targetEnd {
+			continue
+		}
+		if err := tx.Model(&Token{}).
+			Where("id = ?", tokens[i].Id).
+			Updates(map[string]interface{}{
+				"expired_time": targetEnd,
+				"status": gorm.Expr(
+					"CASE WHEN status = ? THEN ? ELSE status END",
+					common.TokenStatusExpired,
+					common.TokenStatusEnabled,
+				),
+			}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *SubscriptionPlan, source string) (*UserSubscription, error) {
 	if tx == nil {
 		return nil, errors.New("tx is nil")
@@ -903,6 +974,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		UpdatedAt:     common.GetTimestamp(),
 	}
 	if err := tx.Create(sub).Error; err != nil {
+		return nil, err
+	}
+	if err := extendFiniteUserTokensToSubscriptionEndTx(tx, userId, sub.EndTime); err != nil {
 		return nil, err
 	}
 	return sub, nil
@@ -1046,6 +1120,7 @@ func PurchaseSubscriptionWithWallet(userId int, planId int, quantity int, tradeN
 	if planId > 0 {
 		InvalidateSubscriptionPlanCache(planId)
 	}
+	_ = InvalidateUserTokensCache(userId)
 	if upgradeGroup != "" {
 		_ = UpdateUserGroupCache(userId, upgradeGroup)
 	}
@@ -1202,6 +1277,7 @@ func completeSubscriptionOrderWithValidation(tradeNo string, verification *Subsc
 		_ = UpdateUserGroupCache(logUserId, upgradeGroup)
 	}
 	if logUserId > 0 {
+		_ = InvalidateUserTokensCache(logUserId)
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
 	}
@@ -1358,6 +1434,7 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 	if err != nil {
 		return "", err
 	}
+	_ = InvalidateUserTokensCache(userId)
 	if strings.TrimSpace(plan.UpgradeGroup) != "" {
 		_ = UpdateUserGroupCache(userId, plan.UpgradeGroup)
 		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil

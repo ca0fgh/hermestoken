@@ -65,6 +65,185 @@ func TestCreateUserWithdrawalFreezesQuotaAndStoresSnapshots(t *testing.T) {
 	}
 }
 
+func TestGetUserWithdrawalConfigExcludesRedeemedQuotaFromAvailableBalance(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-redeemed-config-user", 12500)
+	seedRedeemedQuota(t, db, user.Id, 2500)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	view, err := GetUserWithdrawalConfigView(user.Id)
+	if err != nil {
+		t.Fatalf("GetUserWithdrawalConfigView returned error: %v", err)
+	}
+
+	if view.AvailableQuota != 10000 {
+		t.Fatalf("available quota = %d, want 10000", view.AvailableQuota)
+	}
+	if view.AvailableAmount != 100 {
+		t.Fatalf("available amount = %.2f, want 100.00", view.AvailableAmount)
+	}
+	if view.TotalQuota != 12500 {
+		t.Fatalf("total quota = %d, want 12500", view.TotalQuota)
+	}
+	if view.TotalAmount != 125 {
+		t.Fatalf("total amount = %.2f, want 125.00", view.TotalAmount)
+	}
+	if view.RechargeQuota != 10000 {
+		t.Fatalf("recharge quota = %d, want 10000", view.RechargeQuota)
+	}
+	if view.RechargeAmount != 100 {
+		t.Fatalf("recharge amount = %.2f, want 100.00", view.RechargeAmount)
+	}
+	if view.RedemptionQuota != 2500 {
+		t.Fatalf("redemption quota = %d, want 2500", view.RedemptionQuota)
+	}
+	if view.RedemptionAmount != 25 {
+		t.Fatalf("redemption amount = %.2f, want 25.00", view.RedemptionAmount)
+	}
+}
+
+func TestCreateUserWithdrawalRejectsRedeemedOnlyBalance(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-redeemed-only-user", 2500)
+	seedRedeemedQuota(t, db, user.Id, 2500)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	_, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
+		UserID:         user.Id,
+		Amount:         25,
+		AlipayAccount:  "alice@example.com",
+		AlipayRealName: "Alice",
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "withdrawable") {
+		t.Fatalf("CreateUserWithdrawal error = %v, want insufficient withdrawable balance", err)
+	}
+}
+
+func TestCreateUserWithdrawalAllowsPaidPortionWhenRedeemedBalanceExists(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-paid-plus-redeemed-user", 12500)
+	seedRedeemedQuota(t, db, user.Id, 2500)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	order, err := CreateUserWithdrawal(&CreateUserWithdrawalParams{
+		UserID:         user.Id,
+		Amount:         100,
+		AlipayAccount:  "alice@example.com",
+		AlipayRealName: "Alice",
+	})
+	if err != nil {
+		t.Fatalf("CreateUserWithdrawal returned error: %v", err)
+	}
+
+	refreshed, _ := GetUserById(user.Id, true)
+	if refreshed.Quota != 2500 {
+		t.Fatalf("quota = %d, want redeemed remainder 2500", refreshed.Quota)
+	}
+	if refreshed.WithdrawFrozenQuota != 10000 {
+		t.Fatalf("withdraw_frozen_quota = %d, want 10000", refreshed.WithdrawFrozenQuota)
+	}
+	if order.AvailableQuotaSnapshot != 10000 {
+		t.Fatalf("available quota snapshot = %d, want withdrawable snapshot 10000", order.AvailableQuotaSnapshot)
+	}
+}
+
+func TestSoftDeletedRedeemedQuotaStillCannotBeWithdrawn(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-soft-deleted-redeemed-user", 2500)
+	redemption := seedRedeemedQuota(t, db, user.Id, 2500)
+	if err := db.Delete(redemption).Error; err != nil {
+		t.Fatalf("failed to soft delete redemption: %v", err)
+	}
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	view, err := GetUserWithdrawalConfigView(user.Id)
+	if err != nil {
+		t.Fatalf("GetUserWithdrawalConfigView returned error: %v", err)
+	}
+
+	if view.AvailableQuota != 0 {
+		t.Fatalf("available quota = %d, want 0 after invalid redemption cleanup", view.AvailableQuota)
+	}
+}
+
+func TestGetUserWithdrawalConfigClampsRedemptionBalanceToCurrentQuota(t *testing.T) {
+	db := setupWithdrawalModelDB(t)
+	originalQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 100
+	t.Cleanup(func() { common.QuotaPerUnit = originalQuotaPerUnit })
+
+	user := seedWithdrawalUser(t, db, "withdraw-redemption-clamped-user", 1500)
+	seedRedeemedQuota(t, db, user.Id, 2500)
+	common.OptionMap = map[string]string{
+		WithdrawalEnabledOptionKey:     "true",
+		WithdrawalMinAmountOptionKey:   "10",
+		WithdrawalInstructionOptionKey: "manual payout",
+		WithdrawalFeeRulesOptionKey:    `[{"min_amount":10,"max_amount":0,"fee_type":"fixed","fee_value":2,"enabled":true,"sort_order":1}]`,
+	}
+
+	view, err := GetUserWithdrawalConfigView(user.Id)
+	if err != nil {
+		t.Fatalf("GetUserWithdrawalConfigView returned error: %v", err)
+	}
+
+	if view.TotalQuota != 1500 {
+		t.Fatalf("total quota = %d, want 1500", view.TotalQuota)
+	}
+	if view.AvailableQuota != 0 {
+		t.Fatalf("available quota = %d, want 0", view.AvailableQuota)
+	}
+	if view.RechargeQuota != 0 {
+		t.Fatalf("recharge quota = %d, want 0", view.RechargeQuota)
+	}
+	if view.RedemptionQuota != 1500 {
+		t.Fatalf("redemption quota = %d, want current balance 1500", view.RedemptionQuota)
+	}
+	if view.TotalAmount != 15 || view.RechargeAmount != 0 || view.RedemptionAmount != 15 {
+		t.Fatalf(
+			"amount breakdown = total %.2f recharge %.2f redemption %.2f, want 15/0/15",
+			view.TotalAmount,
+			view.RechargeAmount,
+			view.RedemptionAmount,
+		)
+	}
+}
+
 func TestCreateUserWithdrawalSupportsUSDTChannel(t *testing.T) {
 	db := setupWithdrawalModelDB(t)
 	originalQuotaPerUnit := common.QuotaPerUnit
