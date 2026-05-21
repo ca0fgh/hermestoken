@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(testDir, '..');
+const webRoot = path.resolve(testDir, '../classic');
 const helperPath = path.join(webRoot, 'src/helpers/withdrawal.js');
 const helperUrl = pathToFileURL(helperPath).href;
 
@@ -15,7 +15,7 @@ const loadHelpers = () => import(`${helperUrl}?t=${Date.now()}`);
 test('withdrawal helper test resolves files from repo-relative paths', () => {
   const source = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8');
 
-  assert.equal(webRoot, path.resolve(testDir, '..'));
+  assert.equal(webRoot, path.resolve(testDir, '../classic'));
   assert.doesNotMatch(source, /\/Users\/money\/project/);
 });
 
