@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const testDir = path.dirname(fileURLToPath(import.meta.url));
+const webRoot = path.resolve(testDir, '../classic');
 
 const readSource = (relativePath) =>
-  fs.readFileSync(
-    path.join('/Users/money/project/subproject/hermestoken/web', relativePath),
-    'utf8',
-  );
+  fs.readFileSync(path.join(webRoot, relativePath), 'utf8');
 
 test('admin route tree exposes wallet withdrawal management', () => {
   const appSource = readSource('src/routes/ConsoleRoutes.jsx');
