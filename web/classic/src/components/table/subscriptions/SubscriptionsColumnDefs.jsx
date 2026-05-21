@@ -282,11 +282,18 @@ const renderOperations = (
         type='tertiary'
         size='small'
         onClick={() => openEdit(record)}
+        disabled={!complianceConfirmed}
       >
         {t('编辑')}
       </Button>
       {isEnabled ? (
-        <Button theme='light' type='danger' size='small' onClick={handleToggle}>
+        <Button
+          theme='light'
+          type='danger'
+          size='small'
+          onClick={handleToggle}
+          disabled={!complianceConfirmed}
+        >
           {t('禁用')}
         </Button>
       ) : (
@@ -295,6 +302,7 @@ const renderOperations = (
           type='primary'
           size='small'
           onClick={handleToggle}
+          disabled={!complianceConfirmed}
         >
           {t('启用')}
         </Button>
@@ -327,6 +335,7 @@ export const getSubscriptionsColumns = ({
   setPlanEnabled,
   deletePlan,
   enableEpay,
+  complianceConfirmed = true,
 }) => {
   return [
     {

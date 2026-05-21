@@ -19,6 +19,7 @@ import (
 	"github.com/ca0fgh/hermestoken/middleware"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/oauth"
+	perfmetrics "github.com/ca0fgh/hermestoken/pkg/perf_metrics"
 	"github.com/ca0fgh/hermestoken/relay"
 	"github.com/ca0fgh/hermestoken/router"
 	"github.com/ca0fgh/hermestoken/service"
@@ -308,6 +309,8 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+
+	perfmetrics.Init()
 
 	// 启动系统监控
 	common.StartSystemMonitor()

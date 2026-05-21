@@ -7,7 +7,14 @@ import (
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 )
 
+func isPaymentComplianceConfirmed() bool {
+	return operation_setting.IsPaymentComplianceConfirmed()
+}
+
 func isStripeTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	return strings.TrimSpace(setting.StripeApiSecret) != "" &&
 		strings.TrimSpace(setting.StripeWebhookSecret) != ""
 }
@@ -21,6 +28,9 @@ func isStripeWebhookEnabled() bool {
 }
 
 func isCreemTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	products := strings.TrimSpace(setting.CreemProducts)
 	return strings.TrimSpace(setting.CreemApiKey) != "" &&
 		products != "" &&
@@ -36,6 +46,9 @@ func isCreemWebhookEnabled() bool {
 }
 
 func isWaffoTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	if !setting.WaffoEnabled {
 		return false
 	}
@@ -60,6 +73,9 @@ func isWaffoWebhookEnabled() bool {
 }
 
 func isWaffoPancakeTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	if !setting.WaffoPancakeEnabled {
 		return false
 	}
@@ -85,6 +101,9 @@ func isWaffoPancakeWebhookEnabled() bool {
 }
 
 func isEpayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	return isEpayWebhookConfigured() && len(operation_setting.PayMethods) > 0
 }
 

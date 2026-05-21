@@ -15,7 +15,6 @@ import (
 	"github.com/ca0fgh/hermestoken/service"
 	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
-	"github.com/ca0fgh/hermestoken/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/thanhpk/randstr"
 	waffo "github.com/waffo-com/waffo-go"
@@ -240,7 +239,7 @@ func RequestWaffoPay(c *gin.Context) {
 	if setting.WaffoNotifyUrl != "" {
 		notifyUrl = setting.WaffoNotifyUrl
 	}
-	returnUrl := system_setting.ServerAddress + "/console/topup?show_history=true"
+	returnUrl := paymentReturnPath("/console/topup?show_history=true")
 	if setting.WaffoReturnUrl != "" {
 		returnUrl = setting.WaffoReturnUrl
 	}

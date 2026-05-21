@@ -16,7 +16,6 @@ import (
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
-	"github.com/ca0fgh/hermestoken/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -385,10 +384,10 @@ func genStripeLink(referenceId string, customerId string, email string, amount f
 
 	// Use custom URLs if provided, otherwise use defaults
 	if successURL == "" {
-		successURL = system_setting.ServerAddress + "/console/log"
+		successURL = paymentReturnPath("/console/log")
 	}
 	if cancelURL == "" {
-		cancelURL = system_setting.ServerAddress + "/console/topup"
+		cancelURL = paymentReturnPath("/console/topup")
 	}
 	unitAmount, err := minorUnitsFromMoney(payMoney, "USD")
 	if err != nil {

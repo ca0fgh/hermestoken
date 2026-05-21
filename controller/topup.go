@@ -27,6 +27,8 @@ import (
 )
 
 func GetTopUpInfo(c *gin.Context) {
+	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
+
 	// 获取支付方式
 	payMethods := append([]map[string]string(nil), operation_setting.PayMethods...)
 	enableStripe := isStripeTopupAvailable()
@@ -102,6 +104,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_topup":                  enableWaffo,
 		"enable_waffo_pancake_topup":          enableWaffoPancake,
 		"enable_crypto_usdt_topup":            setting.CryptoPaymentEnabled && len(setting.GetEnabledCryptoPaymentNetworks()) > 0,
+		"payment_compliance_confirmed":        complianceConfirmed,
+		"payment_compliance_terms_version":    operation_setting.GetPaymentSetting().ComplianceTermsVersion,
 		"subscription_plan_open_to_all_users": model.IsSubscriptionPlanOpenToAllUsersEnabled(),
 		"crypto_networks":                     setting.GetEnabledCryptoPaymentNetworks(),
 		"waffo_pay_methods": func() interface{} {
@@ -118,6 +122,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
+		"topup_link":              common.TopUpLink,
 	}
 	common.ApiSuccess(c, data)
 }
