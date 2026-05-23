@@ -175,6 +175,23 @@ func TestAppendRetryAdminInfo(t *testing.T) {
 	require.Equal(t, retryReasonSelectedChannelUnavailable, adminInfo["retry_reason"])
 }
 
+func TestWillRetryFromAdminInfo(t *testing.T) {
+	t.Parallel()
+
+	// 缺失重试信息时按终态处理（false）。
+	require.False(t, willRetryFromAdminInfo(newRetryTestContext()))
+
+	// 还会重试的中间失败。
+	cRetry := newRetryTestContext()
+	setRetryAdminInfo(cRetry, retryAdminInfo{Index: 0, Remaining: 2, WillRetry: true, Reason: retryReasonChannelError})
+	require.True(t, willRetryFromAdminInfo(cRetry))
+
+	// 重试耗尽的终态失败。
+	cFinal := newRetryTestContext()
+	setRetryAdminInfo(cFinal, retryAdminInfo{Index: 2, Remaining: 0, WillRetry: false, Reason: retryReasonBudgetExhausted})
+	require.False(t, willRetryFromAdminInfo(cFinal))
+}
+
 func TestRetrySeedGroupUsesSelectedAutoGroup(t *testing.T) {
 	t.Parallel()
 
