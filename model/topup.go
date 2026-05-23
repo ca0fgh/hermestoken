@@ -630,9 +630,23 @@ func RechargeWaffo(tradeNo string, paidMoney string, paidCurrency string) (err e
 	return nil
 }
 
-func RechargeWaffoPancake(tradeNo string) (err error) {
+func RechargeWaffoPancake(tradeNo string, args ...string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
+	}
+	var (
+		paidMoney    string
+		paidCurrency string
+		productID    string
+	)
+	if len(args) >= 1 {
+		paidMoney = strings.TrimSpace(args[0])
+	}
+	if len(args) >= 2 {
+		paidCurrency = strings.TrimSpace(args[1])
+	}
+	if len(args) >= 3 {
+		productID = strings.TrimSpace(args[2])
 	}
 
 	var quotaToAdd int
@@ -661,6 +675,21 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		}
 		if topUp.PaymentMethod != PaymentMethodWaffoPancake {
 			return ErrTopUpPaymentMethodMismatch
+		}
+		if paidMoney != "" {
+			matched, matchErr := equalTopUpMoney(topUp.Money, paidMoney)
+			if matchErr != nil {
+				return matchErr
+			}
+			if !matched {
+				return ErrTopUpAmountMismatch
+			}
+		}
+		if paidCurrency != "" && !equalTopUpCurrency(topUp.Currency, paidCurrency) {
+			return ErrTopUpCurrencyMismatch
+		}
+		if productID != "" && topUp.ProviderProductID != "" && strings.TrimSpace(topUp.ProviderProductID) != productID {
+			return ErrTopUpProductMismatch
 		}
 
 		quotaToAdd = int(quotaFromStandardTopUpAmount(topUp.Amount))

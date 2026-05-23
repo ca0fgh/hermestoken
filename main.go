@@ -19,6 +19,7 @@ import (
 	"github.com/ca0fgh/hermestoken/middleware"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/oauth"
+	perfmetrics "github.com/ca0fgh/hermestoken/pkg/perf_metrics"
 	"github.com/ca0fgh/hermestoken/relay"
 	"github.com/ca0fgh/hermestoken/router"
 	"github.com/ca0fgh/hermestoken/service"
@@ -172,6 +173,7 @@ func main() {
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
+	server.Use(middleware.SecurityHeaders())
 	server.Use(middleware.PoweredBy())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
@@ -308,6 +310,8 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+
+	perfmetrics.Init()
 
 	// 启动系统监控
 	common.StartSystemMonitor()

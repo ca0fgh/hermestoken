@@ -19,6 +19,10 @@ import (
 var subscriptionCreemCheckoutLinkGenerator = genCreemLinkWithUnits
 
 func SubscriptionRequestCreemPay(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
 	var req dto.SubscriptionPaymentRequest
 
 	// Keep body for debugging consistency (like RequestCreemPay)

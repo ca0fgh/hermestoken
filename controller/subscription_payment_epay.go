@@ -27,6 +27,10 @@ var subscriptionEpayVerify = func(client *epay.Client, params map[string]string)
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
+	if !requirePaymentCompliance(c) {
+		return
+	}
+
 	var req dto.SubscriptionEpayPaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil || req.PlanId <= 0 {
 		common.ApiErrorMsg(c, "参数错误")

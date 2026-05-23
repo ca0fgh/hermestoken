@@ -7,7 +7,14 @@ import (
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 )
 
+func isPaymentComplianceConfirmed() bool {
+	return operation_setting.IsPaymentComplianceConfirmed()
+}
+
 func isStripeTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	return strings.TrimSpace(setting.StripeApiSecret) != "" &&
 		strings.TrimSpace(setting.StripeWebhookSecret) != ""
 }
@@ -21,6 +28,9 @@ func isStripeWebhookEnabled() bool {
 }
 
 func isCreemTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	products := strings.TrimSpace(setting.CreemProducts)
 	return strings.TrimSpace(setting.CreemApiKey) != "" &&
 		products != "" &&
@@ -36,6 +46,9 @@ func isCreemWebhookEnabled() bool {
 }
 
 func isWaffoTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	if !setting.WaffoEnabled {
 		return false
 	}
@@ -60,31 +73,29 @@ func isWaffoWebhookEnabled() bool {
 }
 
 func isWaffoPancakeTopUpEnabled() bool {
-	if !setting.WaffoPancakeEnabled {
+	if !isPaymentComplianceConfirmed() {
 		return false
 	}
-
-	return isWaffoPancakeWebhookConfigured() &&
-		strings.TrimSpace(setting.WaffoPancakeMerchantID) != "" &&
+	// Wallet top-up requires the gateway-level product. Subscription plans use
+	// per-plan Pancake products and are gated separately.
+	return strings.TrimSpace(setting.WaffoPancakeMerchantID) != "" &&
 		strings.TrimSpace(setting.WaffoPancakePrivateKey) != "" &&
-		strings.TrimSpace(setting.WaffoPancakeStoreID) != "" &&
 		strings.TrimSpace(setting.WaffoPancakeProductID) != ""
 }
 
 func isWaffoPancakeWebhookConfigured() bool {
-	currentWebhookKey := strings.TrimSpace(setting.WaffoPancakeWebhookPublicKey)
-	if setting.WaffoPancakeSandbox {
-		currentWebhookKey = strings.TrimSpace(setting.WaffoPancakeWebhookTestKey)
-	}
-
-	return currentWebhookKey != ""
+	return strings.TrimSpace(setting.WaffoPancakeMerchantID) != "" &&
+		strings.TrimSpace(setting.WaffoPancakePrivateKey) != ""
 }
 
 func isWaffoPancakeWebhookEnabled() bool {
-	return isWaffoPancakeTopUpEnabled()
+	return isPaymentComplianceConfirmed() && isWaffoPancakeWebhookConfigured()
 }
 
 func isEpayTopUpEnabled() bool {
+	if !isPaymentComplianceConfirmed() {
+		return false
+	}
 	return isEpayWebhookConfigured() && len(operation_setting.PayMethods) > 0
 }
 

@@ -11,7 +11,6 @@ import (
 	"github.com/ca0fgh/hermestoken/dto"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting"
-	"github.com/ca0fgh/hermestoken/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/checkout/session"
@@ -150,8 +149,8 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
-		SuccessURL:        stripe.String(system_setting.ServerAddress + "/console/topup"),
-		CancelURL:         stripe.String(system_setting.ServerAddress + "/console/topup"),
+		SuccessURL:        stripe.String(paymentReturnPath("/console/topup")),
+		CancelURL:         stripe.String(paymentReturnPath("/console/topup")),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				Price:    stripe.String(priceId),

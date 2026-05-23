@@ -63,11 +63,9 @@ export function Marketplace() {
         </span>
       </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
-        <Button asChild variant='outline' size='sm'>
-          <Link to='/keys'>
-            <KeyRound className='size-4' />
-            {t('Manage console tokens')}
-          </Link>
+        <Button variant='outline' size='sm' render={<Link to='/keys' />}>
+          <KeyRound className='size-4' />
+          {t('Manage console tokens')}
         </Button>
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
