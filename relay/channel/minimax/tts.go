@@ -11,6 +11,7 @@ import (
 
 	"github.com/ca0fgh/hermestoken/dto"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
+	"github.com/ca0fgh/hermestoken/service"
 	"github.com/ca0fgh/hermestoken/types"
 	"github.com/gin-gonic/gin"
 )
@@ -184,6 +185,9 @@ func handleChatCompletionResponse(c *gin.Context, resp *http.Response, info *rel
 
 	// Set response headers
 	for key, values := range resp.Header {
+		if !service.ShouldCopyUpstreamHeader(c, key, values) {
+			continue
+		}
 		for _, value := range values {
 			c.Header(key, value)
 		}

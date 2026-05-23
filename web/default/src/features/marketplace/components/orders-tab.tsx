@@ -318,12 +318,12 @@ function OrderCard({
           />
         </div>
         {isOwnOrder ? (
-          <TooltipProvider delayDuration={100}>
+          <TooltipProvider delay={100}>
             <Tooltip>
-              <TooltipTrigger asChild>
-                <span className='inline-flex w-full sm:w-auto'>
-                  {buyButton}
-                </span>
+              <TooltipTrigger
+                render={<span className='inline-flex w-full sm:w-auto' />}
+              >
+                {buyButton}
               </TooltipTrigger>
               <TooltipContent>
                 {t('You cannot buy your own marketplace credential.')}

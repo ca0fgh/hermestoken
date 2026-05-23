@@ -10,6 +10,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	appconstant "github.com/ca0fgh/hermestoken/constant"
 	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/logger"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
 	"github.com/ca0fgh/hermestoken/relay/helper"
@@ -102,9 +103,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (hermesTokenEr
 			}
 		}
 
-		if common.DebugEnabled {
-			println("requestBody: ", string(jsonData))
-		}
+		logger.LogDebug(c, "requestBody: %s", jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 

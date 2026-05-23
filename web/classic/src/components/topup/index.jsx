@@ -124,6 +124,23 @@ const getMaxReferralInviteeRateBps = (groups = []) => {
   );
 };
 
+// Reject non-navigable schemes (e.g. javascript:, data:) and relative URLs.
+// Only http / https are allowed for backend-provided redirect targets.
+// Mirrors isSafeHttpCheckoutUrl in the default frontend's
+// features/wallet/hooks/use-waffo-pancake-payment.ts.
+function isSafeHttpCheckoutUrl(value) {
+  const trimmed = (value || '').trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 const TopUp = () => {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -137,9 +154,7 @@ const TopUp = () => {
   const [topUpCount, setTopUpCount] = useState(
     statusState?.status?.min_topup || 1,
   );
-  const [topUpLink, setTopUpLink] = useState(
-    statusState?.status?.top_up_link || '',
-  );
+  const [topUpLink, setTopUpLink] = useState('');
   const [enableOnlineTopUp, setEnableOnlineTopUp] = useState(
     statusState?.status?.enable_online_topup || false,
   );
@@ -160,6 +175,8 @@ const TopUp = () => {
   const [enableWaffoTopUp, setEnableWaffoTopUp] = useState(false);
   const [waffoPayMethods, setWaffoPayMethods] = useState([]);
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
+  const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
+  const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
   const [enableCryptoTopUp, setEnableCryptoTopUp] = useState(false);
   const [cryptoNetworks, setCryptoNetworks] = useState([]);
   const [cryptoOrder, setCryptoOrder] = useState(null);
@@ -222,6 +239,8 @@ const TopUp = () => {
   const [topupInfo, setTopupInfo] = useState({
     amount_options: [],
     discount: {},
+    enable_redemption: true,
+    payment_compliance_confirmed: true,
   });
 
   const topUp = async () => {
@@ -273,6 +292,11 @@ const TopUp = () => {
     return parsedSetting.quota_topup_enabled ?? true;
   };
 
+  const getWaffoPancakeIntegerAmount = (value = topUpCount) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.floor(parsed) : 0;
+  };
+
   const openTopUpLink = () => {
     if (!topUpLink) {
       showError(t('超级管理员未设置充值链接！'));
@@ -282,11 +306,23 @@ const TopUp = () => {
   };
 
   const preTopUp = async (payment) => {
+    let selectedAmount = Number(topUpCount);
     if (payment === 'stripe') {
       if (!enableStripeTopUp) {
         showError(t('管理员未开启Stripe充值！'));
         return;
       }
+    } else if (payment === 'waffo_pancake') {
+      if (!enableWaffoPancakeTopUp) {
+        showError(t('管理员未开启 Waffo Pancake 充值！'));
+        return;
+      }
+      const integerAmount = getWaffoPancakeIntegerAmount();
+      if (integerAmount !== Number(topUpCount)) {
+        setTopUpCount(integerAmount);
+        onlineFormApiRef.current?.setValue('topUpCount', integerAmount);
+      }
+      selectedAmount = integerAmount;
     } else {
       if (!enableOnlineTopUp) {
         showError(t('管理员未开启在线充值！'));
@@ -299,12 +335,16 @@ const TopUp = () => {
     try {
       if (payment === 'stripe') {
         await getStripeAmount();
+      } else if (payment === 'waffo_pancake') {
+        await getWaffoPancakeAmount(selectedAmount);
       } else {
         await getAmount();
       }
 
-      if (topUpCount < minTopUp) {
-        showError(t('充值数量不能小于') + minTopUp);
+      const selectedMinTopUp =
+        payment === 'waffo_pancake' ? waffoPancakeMinTopUp : minTopUp;
+      if (selectedAmount < selectedMinTopUp) {
+        showError(t('充值数量不能小于') + selectedMinTopUp);
         return;
       }
       setOpen(true);
@@ -316,6 +356,17 @@ const TopUp = () => {
   };
 
   const onlineTopUp = async () => {
+    if (payWay === 'waffo_pancake') {
+      setConfirmLoading(true);
+      try {
+        await waffoPancakeTopUp();
+      } finally {
+        setOpen(false);
+        setConfirmLoading(false);
+      }
+      return;
+    }
+
     if (payWay === 'stripe') {
       // Stripe 支付处理
       if (amount === 0) {
@@ -442,7 +493,7 @@ const TopUp = () => {
       }
       setPaymentLoading(true);
       const requestBody = {
-        amount: Number(topUpCount),
+        amount: Math.floor(Number(topUpCount)),
       };
       if (payMethodIndex != null) {
         requestBody.pay_method_index = payMethodIndex;
@@ -462,6 +513,75 @@ const TopUp = () => {
       showError(t('支付请求失败'));
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  const waffoPancakeTopUp = async () => {
+    const minTopUpValue = Number(waffoPancakeMinTopUp || 1);
+    const amount = getWaffoPancakeIntegerAmount();
+    if (amount < minTopUpValue) {
+      showError(t('充值数量不能小于') + minTopUpValue);
+      return;
+    }
+
+    setPaymentLoading(true);
+    try {
+      const res = await API.post('/api/user/waffo-pancake/pay', {
+        amount,
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          const checkoutUrl = data?.checkout_url || '';
+          if (checkoutUrl && isSafeHttpCheckoutUrl(checkoutUrl)) {
+            window.location.href = checkoutUrl;
+          } else if (checkoutUrl) {
+            showError(t('支付跳转地址不安全'));
+          } else {
+            showError(t('支付请求失败'));
+          }
+        } else {
+          const errorMsg =
+            typeof data === 'string' ? data : message || t('支付请求失败');
+          showError(errorMsg);
+        }
+      } else {
+        showError(res);
+      }
+    } catch (e) {
+      showError(t('支付请求失败'));
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const getWaffoPancakeAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    const amount = getWaffoPancakeIntegerAmount(value);
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/waffo-pancake/amount', {
+        amount,
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          setAmount(parseFloat(data));
+          setAmountCurrency('USD');
+        } else {
+          setAmount(0);
+          setAmountCurrency('USD');
+          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+        }
+      } else {
+        showError(res);
+      }
+    } catch (err) {
+      // amount fetch failed silently
+    } finally {
+      setAmountLoading(false);
     }
   };
 
@@ -642,6 +762,15 @@ const TopUp = () => {
                   method.min_topup = stripeMin;
                 }
               }
+              if (
+                method.type === 'waffo_pancake' &&
+                (!method.min_topup || method.min_topup <= 0)
+              ) {
+                const waffoPancakeMin = Number(data.waffo_pancake_min_topup);
+                if (Number.isFinite(waffoPancakeMin)) {
+                  method.min_topup = waffoPancakeMin;
+                }
+              }
 
               if (!method.color) {
                 if (method.type === 'alipay') {
@@ -667,25 +796,40 @@ const TopUp = () => {
           const enableStripeTopUp = data.enable_stripe_topup || false;
           const enableOnlineTopUp = data.enable_online_topup || false;
           const enableCreemTopUp = data.enable_creem_topup || false;
+          const enableWaffoTopUp = data.enable_waffo_topup || false;
+          const enableWaffoPancakeTopUp =
+            data.enable_waffo_pancake_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
               ? data.stripe_min_topup
-              : data.enable_waffo_topup
+              : enableWaffoTopUp
                 ? data.waffo_min_topup
-                : 1;
+                : enableWaffoPancakeTopUp
+                  ? data.waffo_pancake_min_topup
+                  : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
           setEnableCreemTopUp(enableCreemTopUp);
           setSubscriptionPlanOpenToAllUsers(planOpenToAllUsers);
-          const enableWaffoTopUp = data.enable_waffo_topup || false;
           setEnableWaffoTopUp(enableWaffoTopUp);
           setWaffoPayMethods(data.waffo_pay_methods || []);
           setWaffoMinTopUp(data.waffo_min_topup || 1);
+          setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
+          setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
           setEnableCryptoTopUp(data.enable_crypto_usdt_topup || false);
           setCryptoNetworks(data.crypto_networks || []);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
+          setTopUpLink(data.topup_link || '');
+          setTopupInfo((prev) => ({
+            ...prev,
+            enable_redemption: data.enable_redemption !== false,
+            payment_compliance_confirmed:
+              data.payment_compliance_confirmed !== false,
+            payment_compliance_terms_version:
+              data.payment_compliance_terms_version || '',
+          }));
 
           // 设置 Creem 产品
           try {
@@ -1038,7 +1182,6 @@ const TopUp = () => {
       // const minTopUpValue = statusState.status.min_topup || 1;
       // setMinTopUp(minTopUpValue);
       // setTopUpCount(minTopUpValue);
-      setTopUpLink(statusState.status.top_up_link || '');
       setPriceRatio(statusState.status.price || 1);
 
       setStatusLoading(false);
@@ -1295,6 +1438,7 @@ const TopUp = () => {
             creemProducts={creemProducts}
             creemPreTopUp={creemPreTopUp}
             enableWaffoTopUp={enableWaffoTopUp}
+            enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
             waffoTopUp={waffoTopUp}
             waffoPayMethods={waffoPayMethods}
             enableCryptoTopUp={enableCryptoTopUp}
@@ -1359,6 +1503,7 @@ const TopUp = () => {
           onInviteeRateChange={handleInviteeRateChange}
           onInviteeRateSave={handleInviteeRateSave}
           handleAffLinkClick={handleAffLinkClick}
+          complianceConfirmed={topupInfo.payment_compliance_confirmed !== false}
         />
       </div>
     </div>

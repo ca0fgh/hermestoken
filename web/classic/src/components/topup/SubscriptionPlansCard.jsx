@@ -46,6 +46,8 @@ function getEpayMethods(payMethods = []) {
       m?.type &&
       m.type !== 'stripe' &&
       m.type !== 'creem' &&
+      m.type !== 'waffo' &&
+      m.type !== 'waffo_pancake' &&
       m.type !== 'wallet',
   );
 }

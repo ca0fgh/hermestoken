@@ -47,6 +47,7 @@ const InvitationCard = ({
   onInviteeRateChange,
   onInviteeRateSave,
   handleAffLinkClick,
+  complianceConfirmed = true,
 }) => {
   const hasInviteeRateCapacity = Number(maxInviteeRateBps || 0) > 0;
   const canSaveInviteeRate = hasInviteeRateCapacity && inviteeRateDirty;
@@ -93,6 +94,7 @@ const InvitationCard = ({
                     theme='solid'
                     size='small'
                     disabled={
+                      !complianceConfirmed ||
                       !userState?.user?.aff_quota ||
                       userState?.user?.aff_quota <= 0
                     }
@@ -103,6 +105,16 @@ const InvitationCard = ({
                     {t('划转到余额')}
                   </Button>
                 </div>
+                {!complianceConfirmed && (
+                  <Text
+                    style={{
+                      color: 'rgba(255,255,255,0.8)',
+                      fontSize: 12,
+                    }}
+                  >
+                    {t('邀请奖励划转已禁用，管理员需先确认合规声明。')}
+                  </Text>
+                )}
 
                 {/* 统计数据 */}
                 <div className='grid grid-cols-3 gap-6 mt-4'>

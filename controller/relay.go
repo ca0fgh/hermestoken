@@ -15,6 +15,7 @@ import (
 	"github.com/ca0fgh/hermestoken/logger"
 	"github.com/ca0fgh/hermestoken/middleware"
 	"github.com/ca0fgh/hermestoken/model"
+	perfmetrics "github.com/ca0fgh/hermestoken/pkg/perf_metrics"
 	"github.com/ca0fgh/hermestoken/relay"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
@@ -24,6 +25,7 @@ import (
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 	"github.com/ca0fgh/hermestoken/types"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
 
 	"github.com/gin-gonic/gin"
@@ -250,6 +252,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 	}
 
+	if hermesTokenError != nil {
+		gopool.Go(func() {
+			perfmetrics.RecordRelaySample(relayInfo, false, 0)
+		})
+	}
 }
 
 const (

@@ -249,7 +249,9 @@ export function marketplaceStatusLabel(status?: MarketplaceStatus | string) {
 export function marketplaceProbeStatusLabel(
   status?: MarketplaceProbeStatus | string
 ) {
-  return status ? `Marketplace probe status ${status}` : 'Marketplace probe status unscored'
+  return status
+    ? `Marketplace probe status ${status}`
+    : 'Marketplace probe status unscored'
 }
 
 export function marketplaceProbeInProgress(status?: string) {

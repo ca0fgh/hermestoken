@@ -12,8 +12,8 @@ import {
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { formatTimestampToDate } from '@/lib/format'
-import { useStatus } from '@/hooks/use-status'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -147,45 +147,49 @@ function BoundTokenKeyChip({
         {displayLabel}
       </span>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type='button'
-            variant='ghost'
-            size='icon'
-            className='text-muted-foreground hover:text-foreground size-6 shrink-0'
-            disabled={loading}
-            aria-label={revealed ? t('Hide API key') : t('Full API Key')}
-            onClick={() => onToggleVisibility(token)}
-          >
-            {loading ? (
-              <Loader2 className='size-3.5 animate-spin' />
-            ) : revealed ? (
-              <EyeOff className='size-3.5' />
-            ) : (
-              <Eye className='size-3.5' />
-            )}
-          </Button>
+        <TooltipTrigger
+          render={
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon'
+              className='text-muted-foreground hover:text-foreground size-6 shrink-0'
+              disabled={loading}
+              aria-label={revealed ? t('Hide API key') : t('Full API Key')}
+              onClick={() => onToggleVisibility(token)}
+            />
+          }
+        >
+          {loading ? (
+            <Loader2 className='size-3.5 animate-spin' />
+          ) : revealed ? (
+            <EyeOff className='size-3.5' />
+          ) : (
+            <Eye className='size-3.5' />
+          )}
         </TooltipTrigger>
         <TooltipContent>
           <p>{revealed ? t('Hide API key') : t('Full API Key')}</p>
         </TooltipContent>
       </Tooltip>
       <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type='button'
-            variant='ghost'
-            size='icon'
-            className='text-muted-foreground hover:text-foreground size-6 shrink-0'
-            disabled={loading}
-            aria-label={copied ? t('Copied!') : t('Copy')}
-          >
-            {copied ? (
-              <Check className='size-3.5 text-green-600' />
-            ) : (
-              <Copy className='size-3.5' />
-            )}
-          </Button>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon'
+              className='text-muted-foreground hover:text-foreground size-6 shrink-0'
+              disabled={loading}
+              aria-label={copied ? t('Copied!') : t('Copy')}
+            />
+          }
+        >
+          {copied ? (
+            <Check className='size-3.5 text-green-600' />
+          ) : (
+            <Copy className='size-3.5' />
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align='end' className='w-44'>
           <DropdownMenuItem onClick={() => onCopyKey(token)}>
@@ -237,16 +241,18 @@ function BoundTokenDropdown({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type='button'
-          variant='outline'
-          size='sm'
-          className='h-8 rounded-full px-3'
-        >
-          {tokens.length} {t('Token')}
-          <ChevronDown className='size-3.5' />
-        </Button>
+      <PopoverTrigger
+        render={
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='h-8 rounded-full px-3'
+          />
+        }
+      >
+        {tokens.length} {t('Token')}
+        <ChevronDown className='size-3.5' />
       </PopoverTrigger>
       <PopoverContent
         align='end'
@@ -379,7 +385,8 @@ export function FixedOrdersTab() {
     },
   })
   const probeMutation = useMutation({
-    mutationFn: (fixedOrderId: number) => probeMarketplaceFixedOrder(fixedOrderId),
+    mutationFn: (fixedOrderId: number) =>
+      probeMarketplaceFixedOrder(fixedOrderId),
     onSuccess: (response) => {
       if (!response.success || !response.data) {
         toast.error(response.message || t('Detection failed'))
@@ -392,7 +399,9 @@ export function FixedOrdersTab() {
       toast.success(
         releaseAvailable
           ? t('Detection complete. This order can be released.')
-          : t('Detection complete. This order does not meet release conditions.')
+          : t(
+              'Detection complete. This order does not meet release conditions.'
+            )
       )
       queryClient.setQueryData<
         Awaited<ReturnType<typeof listMarketplaceFixedOrders>>
@@ -417,9 +426,9 @@ export function FixedOrdersTab() {
             data: {
               ...current.data,
               items: current.data.items.map((token) => {
-                const nextOrderIds = marketplaceTokenFixedOrderIds(token).filter(
-                  (orderId) => orderId !== order.id
-                )
+                const nextOrderIds = marketplaceTokenFixedOrderIds(
+                  token
+                ).filter((orderId) => orderId !== order.id)
                 return {
                   ...token,
                   marketplace_fixed_order_id: nextOrderIds[0] ?? 0,
@@ -435,7 +444,9 @@ export function FixedOrdersTab() {
       })
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : t('Detection failed'))
+      toast.error(
+        error instanceof Error ? error.message : t('Detection failed')
+      )
     },
   })
   const releaseMutation = useMutation({
@@ -477,9 +488,9 @@ export function FixedOrdersTab() {
             data: {
               ...current.data,
               items: current.data.items.map((token) => {
-                const nextOrderIds = marketplaceTokenFixedOrderIds(token).filter(
-                  (orderId) => orderId !== order.id
-                )
+                const nextOrderIds = marketplaceTokenFixedOrderIds(
+                  token
+                ).filter((orderId) => orderId !== order.id)
                 return {
                   ...token,
                   marketplace_fixed_order_id: nextOrderIds[0] ?? 0,
@@ -500,9 +511,7 @@ export function FixedOrdersTab() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error
-          ? error.message
-          : t('Failed to release order')
+        error instanceof Error ? error.message : t('Failed to release order')
       )
       setReleaseOrderId(null)
     },
@@ -680,10 +689,13 @@ export function FixedOrdersTab() {
                   type='button'
                   variant='outline'
                   size='sm'
-                  disabled={!canProbeAndReleaseOrder(order) || probeMutation.isPending}
+                  disabled={
+                    !canProbeAndReleaseOrder(order) || probeMutation.isPending
+                  }
                   onClick={() => probeMutation.mutate(order.id)}
                 >
-                  {probeMutation.isPending && probeMutation.variables === order.id
+                  {probeMutation.isPending &&
+                  probeMutation.variables === order.id
                     ? t('Detecting...')
                     : t('Detect')}
                 </Button>
@@ -691,7 +703,9 @@ export function FixedOrdersTab() {
                   type='button'
                   variant='destructive'
                   size='sm'
-                  disabled={!canReleaseOrder(order) || releaseMutation.isPending}
+                  disabled={
+                    !canReleaseOrder(order) || releaseMutation.isPending
+                  }
                   onClick={() => setReleaseOrderId(order.id)}
                 >
                   {releaseMutation.isPending &&

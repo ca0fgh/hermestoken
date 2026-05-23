@@ -96,7 +96,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
-	logger.LogDebug(ctx, fmt.Sprintf("UpdateVideoSingleTask response: %s", string(responseBody)))
+	logger.LogDebug(ctx, "UpdateVideoSingleTask response: %s", responseBody)
 
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as HermesToken response format
@@ -116,7 +116,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor channel.TaskAdaptor, cha
 		task.Data = redactVideoResponseBody(responseBody)
 	}
 
-	logger.LogDebug(ctx, fmt.Sprintf("UpdateVideoSingleTask taskResult: %+v", taskResult))
+	logger.LogDebug(ctx, "UpdateVideoSingleTask taskResult: %+v", taskResult)
 
 	now := time.Now().Unix()
 	if taskResult.Status == "" {
