@@ -42,6 +42,7 @@ import {
   ChevronDown,
   Code,
   Boxes,
+  FileText,
   KeyRound,
   Route,
   Server,
@@ -394,6 +395,9 @@ export function ChannelMutateDrawer({
   const currentBaseUrl = form.watch('base_url')
   const currentModels = form.watch('models')
   const currentModelMapping = form.watch('model_mapping')
+  const currentSettings = form.watch('settings')
+  const upstreamModelUpdateCheckEnabled =
+    form.watch('upstream_model_update_check_enabled') === true
   const awsKeyType = form.watch('aws_key_type')
 
   // Fetch models configured in model pricing settings
@@ -3356,7 +3360,9 @@ export function ChannelMutateDrawer({
         redirectSourceModels={redirectModelKeyList}
         customFetcher={!isEditing ? createModeFetcher : undefined}
         existingModelsOverride={
-          !isEditing ? parseModelsString(form.getValues('models') || '') : undefined
+          !isEditing
+            ? parseModelsString(form.getValues('models') || '')
+            : undefined
         }
       />
 

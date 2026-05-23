@@ -19,8 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
+import type { HeaderNavModules } from '@/lib/nav-modules'
 import { useStatus } from '@/hooks/use-status'
-import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 
 export type TopNavLink = {
   title: string
@@ -31,11 +31,14 @@ export type TopNavLink = {
 }
 
 // Default navigation configuration
-const DEFAULT_HEADER_NAV_MODULES = {
+const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules & {
+  marketplace: boolean
+} = {
   home: true,
   marketplace: true,
   console: true,
   pricing: { enabled: true, requireAuth: false },
+  rankings: { enabled: true, requireAuth: false },
   docs: true,
   about: true,
 }

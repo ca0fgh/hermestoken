@@ -20,7 +20,7 @@ import { useState } from 'react'
 import { type ColumnDef } from '@tanstack/react-table'
 import { CircleAlert, Sparkles, KeyRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getAvatarColorClass } from '@/lib/colors'
+import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import {
   formatUseTime,
@@ -182,21 +182,21 @@ function buildDetailSegments(
         })
       }
 
-    const cacheEntries = tieredSummary.priceEntries
-      .filter((entry) =>
-        ['cacheReadPrice', 'cacheCreatePrice', 'cacheCreate1hPrice'].includes(
-          entry.field
+      const cacheEntries = tieredSummary.priceEntries
+        .filter((entry) =>
+          ['cacheReadPrice', 'cacheCreatePrice', 'cacheCreate1hPrice'].includes(
+            entry.field
+          )
         )
-      )
-      .map((entry) => {
-        return formatPriceCompact(entry.price)
-      })
-    if (cacheEntries.length > 0) {
-      segments.push({
-        text: `${t('Cache')} ${formatPriceList(cacheEntries, false)}`,
-        muted: true,
-      })
-    }
+        .map((entry) => {
+          return formatPriceCompact(entry.price)
+        })
+      if (cacheEntries.length > 0) {
+        segments.push({
+          text: `${t('Cache')} ${formatPriceList(cacheEntries, false)}`,
+          muted: true,
+        })
+      }
 
       const otherEntries = tieredSummary.priceEntries
         .filter(
@@ -479,9 +479,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                     {sensitiveVisible ? log.username : '••••'}
                   </TooltipTrigger>
                   {sensitiveVisible && log.username.length > 12 && (
-                    <TooltipContent side='top'>
-                      {log.username}
-                    </TooltipContent>
+                    <TooltipContent side='top'>{log.username}</TooltipContent>
                   )}
                 </Tooltip>
               </TooltipProvider>
@@ -522,11 +520,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         <div className='flex max-w-[200px] flex-col gap-0.5'>
           <TooltipProvider delay={300}>
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <div className='max-w-full' />
-                }
-              >
+              <TooltipTrigger render={<div className='max-w-full' />}>
                 <StatusBadge
                   label={displayName}
                   icon={KeyRound}
@@ -759,6 +753,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         if (!isDisplayableLogType(log.type)) return null
 
         const quota = row.getValue('quota') as number
+        const quotaStr = formatLogQuota(quota)
         const other = parseLogOther(log.other)
         const isSubscription = other?.billing_source === 'subscription'
         const marketplaceLogInfo = getMarketplaceLogInfo(other, t)

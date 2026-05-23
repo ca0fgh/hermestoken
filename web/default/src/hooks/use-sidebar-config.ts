@@ -65,31 +65,6 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
   },
 }
 
-const mergeWithDefaultSidebarModules = (
-  config: SidebarModulesAdminConfig
-): SidebarModulesAdminConfig => {
-  const merged: SidebarModulesAdminConfig = { ...config }
-
-  Object.entries(DEFAULT_SIDEBAR_MODULES).forEach(
-    ([sectionKey, defaultSection]) => {
-      const existingSection = merged[sectionKey]
-      if (!existingSection) {
-        merged[sectionKey] = { ...defaultSection }
-        return
-      }
-
-      merged[sectionKey] = { ...defaultSection, ...existingSection }
-      Object.keys(defaultSection).forEach((moduleKey) => {
-        if (merged[sectionKey][moduleKey] === undefined) {
-          merged[sectionKey][moduleKey] = defaultSection[moduleKey]
-        }
-      })
-    }
-  )
-
-  return merged
-}
-
 /**
  * Mapping from URL to configuration keys
  */

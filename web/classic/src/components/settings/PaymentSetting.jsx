@@ -57,16 +57,13 @@ const PaymentSetting = () => {
     StripeMinTopUp: 1,
     StripePromotionCodesEnabled: false,
     CreemEnabled: true,
-    WaffoPancakeEnabled: false,
-    WaffoPancakeSandbox: false,
     WaffoPancakeMerchantID: '',
     WaffoPancakePrivateKey: '',
-    WaffoPancakeStoreID: '',
-    WaffoPancakeProductID: '',
     WaffoPancakeReturnURL: '',
-    WaffoPancakeCurrency: 'USD',
     WaffoPancakeUnitPrice: 1.0,
     WaffoPancakeMinTopUp: 1,
+    WaffoPancakeStoreID: '',
+    WaffoPancakeProductID: '',
     CryptoPaymentEnabled: false,
     CryptoScannerEnabled: true,
     CryptoOrderExpireMinutes: 10,
@@ -92,6 +89,10 @@ const PaymentSetting = () => {
     CryptoSolanaUSDTMint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
     CryptoSolanaRPCURL: '',
     CryptoSolanaConfirmations: 32,
+    'payment_setting.compliance_confirmed': false,
+    'payment_setting.compliance_terms_version': '',
+    'payment_setting.compliance_confirmed_at': 0,
+    'payment_setting.compliance_confirmed_by': 0,
   });
 
   let [loading, setLoading] = useState(false);
@@ -196,20 +197,12 @@ const PaymentSetting = () => {
           case 'MinTopUp':
           case 'StripeUnitPrice':
           case 'StripeMinTopUp':
-          case 'WaffoPancakeUnitPrice':
-          case 'WaffoPancakeMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
             break;
           case 'WaffoPancakeMerchantID':
           case 'WaffoPancakePrivateKey':
-          case 'WaffoPancakeStoreID':
-          case 'WaffoPancakeProductID':
           case 'WaffoPancakeReturnURL':
-          case 'WaffoPancakeCurrency':
             newInputs[item.key] = item.value;
-            break;
-          case 'WaffoPancakeSandbox':
-            newInputs[item.key] = toBoolean(item.value);
             break;
           default:
             if (item.key.endsWith('Enabled')) {

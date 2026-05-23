@@ -17,13 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { SettingsPage } from '../components/settings-page'
-import type { SiteSettings } from '../types'
 import {
   SITE_DEFAULT_SECTION,
   getSiteSectionContent,
+  type SitePageSettings,
 } from './section-registry.tsx'
 
-const defaultSiteSettings: SiteSettings = {
+const defaultSiteSettings: SitePageSettings = {
   'theme.frontend': 'default',
   Notice: '',
   SystemName: 'New API',

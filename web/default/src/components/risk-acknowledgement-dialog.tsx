@@ -87,19 +87,20 @@ export function RiskAcknowledgementDialog({
   const [typedText, setTypedText] = useState('')
   const [typedTextParts, setTypedTextParts] = useState<string[]>([])
 
-  const normalizedRequiredTextParts = useMemo<
-    NormalizedRequiredTextPart[]
-  >(() => {
-    let inputIndex = 0
-    return requiredTextParts.map((part) => {
-      if (part.type === 'input') {
-        const normalizedPart = { ...part, inputIndex }
-        inputIndex += 1
-        return normalizedPart
-      }
-      return part
-    })
-  }, [requiredTextParts])
+  const normalizedRequiredTextParts = useMemo<NormalizedRequiredTextPart[]>(
+    () =>
+      requiredTextParts.map((part, partIndex) => {
+        if (part.type === 'input') {
+          const inputIndex = requiredTextParts
+            .slice(0, partIndex)
+            .filter((candidate) => candidate.type === 'input').length
+          const normalizedPart = { ...part, inputIndex }
+          return normalizedPart
+        }
+        return part
+      }),
+    [requiredTextParts]
+  )
 
   const requiredTextInputCount = useMemo(
     () =>
@@ -114,9 +115,16 @@ export function RiskAcknowledgementDialog({
 
   useEffect(() => {
     if (!open) return
-    setCheckedItems(Array(checklist.length).fill(false))
-    setTypedText('')
-    setTypedTextParts(Array(requiredTextInputCount).fill(''))
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setCheckedItems(Array(checklist.length).fill(false))
+      setTypedText('')
+      setTypedTextParts(Array(requiredTextInputCount).fill(''))
+    })
+    return () => {
+      cancelled = true
+    }
   }, [open, checklist.length, requiredTextInputCount])
 
   const allChecked = useMemo(() => {

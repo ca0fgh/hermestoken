@@ -33,7 +33,6 @@ import { DataTableColumnHeader } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { marketplaceTokenFixedOrderIds } from '@/features/marketplace/lib'
-import { getSystemOptions } from '@/features/system-settings/api'
 import { API_KEY_STATUSES } from '../constants'
 import { type ApiKey } from '../types'
 import {
@@ -262,11 +261,7 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
                 .map((id) => `#${id}`)
                 .join(', ')} +${fixedOrderIds.length - 3}`
         return fixedOrderIds.length > 0 ? (
-          <StatusBadge
-            label={label}
-            variant='success'
-            copyable={false}
-          />
+          <StatusBadge label={label} variant='success' copyable={false} />
         ) : (
           <span className='text-muted-foreground text-xs'>-</span>
         )

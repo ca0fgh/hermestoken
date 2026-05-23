@@ -35,7 +35,6 @@ import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -135,6 +134,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
       },
     })
 
+  const frontendThemeUnlock = { unlocked: true }
+
   return (
     <>
       <FormNavigationGuard when={isDirty} />
@@ -178,32 +179,6 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 )}
               />
             )}
-
-            <FormField
-              control={form.control}
-              name='Notice'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Notice')}</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder={t(
-                        'Enter announcement content (supports Markdown & HTML)'
-                      )}
-                      rows={6}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t(
-                      'Switch between the new frontend and the classic frontend. Changes take effect after page reload.'
-                    )}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <FormField
               control={form.control}
               name='SystemName'

@@ -29,12 +29,28 @@ import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
 import type { SiteSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 
+export type SitePageSettings = Pick<
+  SiteSettings,
+  | 'theme.frontend'
+  | 'Notice'
+  | 'SystemName'
+  | 'Logo'
+  | 'Footer'
+  | 'About'
+  | 'HomePageContent'
+  | 'ServerAddress'
+  | 'legal.user_agreement'
+  | 'legal.privacy_policy'
+  | 'HeaderNavModules'
+  | 'SidebarModulesAdmin'
+>
+
 const SITE_SECTIONS = [
   {
     id: 'system-info',
     titleKey: 'System Information',
     descriptionKey: 'Configure basic system information and branding',
-    build: (settings: SiteSettings) => (
+    build: (settings: SitePageSettings) => (
       <SystemInfoSection
         defaultValues={{
           theme: {
@@ -58,7 +74,7 @@ const SITE_SECTIONS = [
     id: 'notice',
     titleKey: 'System Notice',
     descriptionKey: 'Configure system maintenance notice',
-    build: (settings: SiteSettings) => (
+    build: (settings: SitePageSettings) => (
       <NoticeSection defaultValue={settings.Notice ?? ''} />
     ),
   },
@@ -66,7 +82,7 @@ const SITE_SECTIONS = [
     id: 'header-navigation',
     titleKey: 'Header navigation',
     descriptionKey: 'Configure header navigation modules',
-    build: (settings: SiteSettings) => {
+    build: (settings: SitePageSettings) => {
       const headerNavConfig = parseHeaderNavModules(settings.HeaderNavModules)
       const headerNavSerialized = serializeHeaderNavModules(headerNavConfig)
       return (
@@ -81,7 +97,7 @@ const SITE_SECTIONS = [
     id: 'sidebar-modules',
     titleKey: 'Sidebar modules',
     descriptionKey: 'Configure sidebar modules for admin',
-    build: (settings: SiteSettings) => {
+    build: (settings: SitePageSettings) => {
       const sidebarConfig = parseSidebarModulesAdmin(
         settings.SidebarModulesAdmin
       )
@@ -98,7 +114,7 @@ const SITE_SECTIONS = [
 
 export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']
 
-const siteRegistry = createSectionRegistry<SiteSectionId, SiteSettings>({
+const siteRegistry = createSectionRegistry<SiteSectionId, SitePageSettings>({
   sections: SITE_SECTIONS,
   defaultSection: 'system-info',
   basePath: '/system-settings/site',
