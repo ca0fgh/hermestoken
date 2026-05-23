@@ -64,6 +64,14 @@ NGINX_COMPRESSIBLE_TYPES = """        text/plain
         image/svg+xml;
 """
 
+NGINX_SECURITY_HEADER_DIRECTIVES = """        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src https: blob: data:; child-src https: blob: data:; media-src 'self' data: blob: https:; worker-src 'self' blob:; form-action 'self'" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+"""
+
 CLOUDFLARE_REAL_IP_CIDRS = (
     "173.245.48.0/20",
     "103.21.244.0/22",
@@ -243,7 +251,7 @@ real_ip_recursive on;
         add_header X-Nginx-Request-Time $request_time always;
         add_header X-Nginx-Upstream-Response-Time $upstream_response_time always;
         add_header X-Nginx-Upstream-Connect-Time $upstream_connect_time always;
-"""
+""" + NGINX_SECURITY_HEADER_DIRECTIVES
 
     backend_proxy_directives = (
         f"        proxy_pass http://127.0.0.1:{app_port};\n{proxy_header_directives}"
@@ -274,6 +282,7 @@ real_ip_recursive on;
         try_files $uri =404;
         add_header Access-Control-Allow-Origin "*" always;
         add_header Cache-Control "public, max-age=31536000, immutable" always;
+{NGINX_SECURITY_HEADER_DIRECTIVES}\
     }}
 
     location = / {{
@@ -291,6 +300,7 @@ real_ip_recursive on;
         etag on;
         try_files $uri =404;
         add_header Cache-Control "no-cache" always;
+{NGINX_SECURITY_HEADER_DIRECTIVES}\
     }}
 
     location / {{
@@ -298,6 +308,7 @@ real_ip_recursive on;
         index index.html;
         etag on;
         try_files $uri $uri/ /index.html;
+{NGINX_SECURITY_HEADER_DIRECTIVES}\
     }}
 """
     else:

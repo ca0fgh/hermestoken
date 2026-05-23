@@ -34,6 +34,7 @@ const SubscriptionsTable = (subscriptionsData) => {
     deletePlan,
     t,
     enableEpay,
+    complianceConfirmed,
   } = subscriptionsData;
 
   const columns = useMemo(() => {
@@ -43,6 +44,7 @@ const SubscriptionsTable = (subscriptionsData) => {
       setPlanEnabled,
       deletePlan,
       enableEpay,
+      complianceConfirmed,
     });
   }, [t, openEdit, setPlanEnabled, deletePlan, enableEpay]);
 

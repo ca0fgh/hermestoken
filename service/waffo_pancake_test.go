@@ -8,7 +8,6 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/model"
-	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -29,7 +28,7 @@ func setupWaffoPancakeTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.SubscriptionOrder{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -41,42 +40,88 @@ func setupWaffoPancakeTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestWaffoPancakeCreateSessionResponseParsesDocumentedPayload(t *testing.T) {
-	var result waffoPancakeCreateSessionResponse
-	err := common.Unmarshal([]byte(`{
-		"data": {
-			"sessionId": "cs_550e8400-e29b-41d4-a716-446655440000",
-			"checkoutUrl": "https://checkout.waffo.ai/my-store-abc123/checkout/cs_550e8400-e29b-41d4-a716-446655440000",
-			"expiresAt": "2026-01-22T10:30:00.000Z"
-		}
-	}`), &result)
-	require.NoError(t, err)
-	require.NotNil(t, result.Data)
-	require.Equal(t, "cs_550e8400-e29b-41d4-a716-446655440000", result.Data.SessionID)
-	require.Empty(t, result.Data.OrderID)
-}
-
-func TestResolveWaffoPancakeTradeNo_UsesWebhookOrderIDWhenLocalOrderExists(t *testing.T) {
+func TestResolveWaffoPancakeTradeNo_UsesOrderMetadataLocalTradeNo(t *testing.T) {
 	db := setupWaffoPancakeTestDB(t)
 
 	topUp := &model.TopUp{
-		UserId:        1,
-		Amount:        10,
-		Money:         29,
-		TradeNo:       "ORD_5dXBtmF2HLlHfbPNm0Wcnz",
-		PaymentMethod: model.PaymentMethodWaffoPancake,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          1,
+		Amount:          10,
+		Money:           29,
+		TradeNo:         "WAFFO_PANCAKE-1-1700000000-abc123",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	require.NoError(t, db.Create(topUp).Error)
 
-	tradeNo, err := ResolveWaffoPancakeTradeNo(&waffoPancakeWebhookEvent{
-		Data: waffoPancakeWebhookData{
-			OrderID: "ORD_5dXBtmF2HLlHfbPNm0Wcnz",
+	tradeNo, err := ResolveWaffoPancakeTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:                       "ORD_5dXBtmF2HLlHfbPNm0Wcnz",
+			OrderMetadata:                 map[string]string{"local_trade_no": topUp.TradeNo},
+			MerchantProvidedBuyerIdentity: WaffoPancakeBuyerIdentityFromUserID(topUp.UserId),
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "ORD_5dXBtmF2HLlHfbPNm0Wcnz", tradeNo)
+	require.Equal(t, topUp.TradeNo, tradeNo)
+}
+
+func TestResolveWaffoPancakeTradeNo_RejectsBuyerIdentityMismatch(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
+
+	topUp := &model.TopUp{
+		UserId:          42,
+		Amount:          10,
+		Money:           29,
+		TradeNo:         "ORD_identity_mismatch_case",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(topUp).Error)
+
+	// Webhook reports the right order but a different buyer — could be a
+	// crossed-wires bug or a tampered payload. Either way: reject.
+	tradeNo, err := ResolveWaffoPancakeTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:                       "ORD_identity_mismatch_case",
+			OrderMetadata:                 map[string]string{"local_trade_no": topUp.TradeNo},
+			MerchantProvidedBuyerIdentity: WaffoPancakeBuyerIdentityFromUserID(99), // wrong user
+		},
+	})
+	require.Error(t, err)
+	require.Empty(t, tradeNo)
+	require.Contains(t, err.Error(), "buyer identity mismatch")
+}
+
+func TestResolveWaffoPancakeTradeNo_RejectsMissingBuyerIdentity(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
+
+	topUp := &model.TopUp{
+		UserId:          7,
+		Amount:          10,
+		Money:           29,
+		TradeNo:         "ORD_missing_identity",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(topUp).Error)
+
+	// An empty MerchantProvidedBuyerIdentity means the order was either created
+	// via the (now-deprecated) anonymous flow or the field was stripped — also
+	// reject so that we never credit anonymous orders to a specific user.
+	tradeNo, err := ResolveWaffoPancakeTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:       "ORD_missing_identity",
+			OrderMetadata: map[string]string{"local_trade_no": topUp.TradeNo},
+		},
+	})
+	require.Error(t, err)
+	require.Empty(t, tradeNo)
+	require.Contains(t, err.Error(), "buyer identity mismatch")
 }
 
 func TestResolveWaffoPancakeTradeNo_FailsWhenWebhookOrderIDIsUnknown(t *testing.T) {
@@ -91,67 +136,134 @@ func TestResolveWaffoPancakeTradeNo_FailsWhenWebhookOrderIDIsUnknown(t *testing.
 	require.NoError(t, db.Create(user).Error)
 
 	topUp := &model.TopUp{
-		UserId:        user.Id,
-		Amount:        10,
-		Money:         29,
-		TradeNo:       "WAFFO_PANCAKE-42-123456-abc123",
-		PaymentMethod: model.PaymentMethodWaffoPancake,
-		CreateTime:    time.Now().Unix(),
-		Status:        common.TopUpStatusPending,
+		UserId:          user.Id,
+		Amount:          10,
+		Money:           29,
+		TradeNo:         "WAFFO_PANCAKE-42-123456-abc123",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
 	require.NoError(t, db.Create(topUp).Error)
 
-	tradeNo, err := ResolveWaffoPancakeTradeNo(&waffoPancakeWebhookEvent{
-		Data: waffoPancakeWebhookData{
-			OrderID:    "ORD_unknown",
-			BuyerEmail: user.Email,
-			Amount:     "29.00",
+	tradeNo, err := ResolveWaffoPancakeTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:       "ORD_unknown",
+			OrderMetadata: map[string]string{"local_trade_no": "WAFFO_PANCAKE-42-missing"},
+			BuyerEmail:    user.Email,
+			Amount:        "29.00",
 		},
 	})
 	require.Error(t, err)
 	require.Empty(t, tradeNo)
 }
 
-func TestResolveWaffoPancakeWebhookEnvironment(t *testing.T) {
-	originalSandbox := setting.WaffoPancakeSandbox
-	t.Cleanup(func() {
-		setting.WaffoPancakeSandbox = originalSandbox
+// Parity tests for ResolveWaffoPancakeSubscriptionTradeNo — same four cases
+// as the TopUp resolver above, exercised against SubscriptionOrder records.
+// Drift between the two webhook flows is a real risk because they share
+// the same buyer-identity defence-in-depth pattern.
+
+func TestResolveWaffoPancakeSubscriptionTradeNo_UsesOrderMetadataLocalTradeNo(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
+
+	order := &model.SubscriptionOrder{
+		UserId:          1,
+		PlanId:          5,
+		Money:           29,
+		TradeNo:         "WAFFO_PANCAKE_SUB-1-1700000000-abc123",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(order).Error)
+
+	tradeNo, err := ResolveWaffoPancakeSubscriptionTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:                       "ORD_sub_5dXBtmF2HLlHfbPNm0Wcnz",
+			OrderMetadata:                 map[string]string{"local_trade_no": order.TradeNo},
+			MerchantProvidedBuyerIdentity: WaffoPancakeBuyerIdentityFromUserID(order.UserId),
+		},
 	})
+	require.NoError(t, err)
+	require.Equal(t, order.TradeNo, tradeNo)
+}
 
-	testCases := []struct {
-		name     string
-		payload  string
-		expected string
-		sandbox  bool
-	}{
-		{
-			name:     "test mode",
-			payload:  `{"mode":"test"}`,
-			expected: "test",
-		},
-		{
-			name:     "prod mode",
-			payload:  `{"mode":"prod"}`,
-			expected: "prod",
-		},
-		{
-			name:     "missing mode falls back to sandbox",
-			payload:  `{}`,
-			expected: "test",
-			sandbox:  true,
-		},
-		{
-			name:     "invalid mode falls back to prod",
-			payload:  `{"mode":"staging"}`,
-			expected: "prod",
-		},
-	}
+func TestResolveWaffoPancakeSubscriptionTradeNo_RejectsBuyerIdentityMismatch(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
 
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			setting.WaffoPancakeSandbox = tc.sandbox
-			environment := resolveWaffoPancakeWebhookEnvironment(tc.payload)
-			require.Equal(t, tc.expected, environment)
-		})
+	order := &model.SubscriptionOrder{
+		UserId:          42,
+		PlanId:          5,
+		Money:           29,
+		TradeNo:         "WAFFO_PANCAKE_SUB-42-mismatch",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
 	}
+	require.NoError(t, db.Create(order).Error)
+
+	tradeNo, err := ResolveWaffoPancakeSubscriptionTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:                       "WAFFO_PANCAKE_SUB-42-mismatch",
+			OrderMetadata:                 map[string]string{"local_trade_no": order.TradeNo},
+			MerchantProvidedBuyerIdentity: WaffoPancakeBuyerIdentityFromUserID(99), // wrong user
+		},
+	})
+	require.Error(t, err)
+	require.Empty(t, tradeNo)
+	require.Contains(t, err.Error(), "buyer identity mismatch")
+}
+
+func TestResolveWaffoPancakeSubscriptionTradeNo_RejectsMissingBuyerIdentity(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
+
+	order := &model.SubscriptionOrder{
+		UserId:          7,
+		PlanId:          5,
+		Money:           29,
+		TradeNo:         "WAFFO_PANCAKE_SUB-7-missing-identity",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(order).Error)
+
+	tradeNo, err := ResolveWaffoPancakeSubscriptionTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:       "ORD_missing_sub_identity",
+			OrderMetadata: map[string]string{"local_trade_no": order.TradeNo},
+		},
+	})
+	require.Error(t, err)
+	require.Empty(t, tradeNo)
+	require.Contains(t, err.Error(), "buyer identity mismatch")
+}
+
+func TestResolveWaffoPancakeSubscriptionTradeNo_FailsWhenWebhookOrderIDIsUnknown(t *testing.T) {
+	db := setupWaffoPancakeTestDB(t)
+
+	order := &model.SubscriptionOrder{
+		UserId:          42,
+		PlanId:          5,
+		Money:           29,
+		TradeNo:         "WAFFO_PANCAKE_SUB-42-real-order",
+		PaymentMethod:   model.PaymentMethodWaffoPancake,
+		PaymentProvider: model.PaymentProviderWaffoPancake,
+		CreateTime:      time.Now().Unix(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, db.Create(order).Error)
+
+	tradeNo, err := ResolveWaffoPancakeSubscriptionTradeNo(&WaffoPancakeWebhookEvent{
+		Data: WaffoPancakeWebhookData{
+			OrderID:       "ORD_unknown_sub",
+			OrderMetadata: map[string]string{"local_trade_no": "WAFFO_PANCAKE_SUB-42-missing"},
+		},
+	})
+	require.Error(t, err)
+	require.Empty(t, tradeNo)
 }

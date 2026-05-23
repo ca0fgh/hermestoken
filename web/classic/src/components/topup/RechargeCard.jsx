@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
+import { useActualTheme } from '../../context/Theme';
 import { getCurrencyConfig } from '../../helpers/render';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 import { formatTopUpPresetSettlementSummary } from './topupAmount';
@@ -87,6 +88,7 @@ const RechargeCard = ({
   topupInfo,
   onOpenHistory,
   enableWaffoTopUp,
+  enableWaffoPancakeTopUp,
   waffoTopUp,
   waffoPayMethods,
   enableCryptoTopUp,
@@ -106,6 +108,7 @@ const RechargeCard = ({
   const redeemFormApiRef = useRef(null);
   const initialTabSetRef = useRef(false);
   const showAmountSkeleton = useMinimumLoadingTime(amountLoading);
+  const actualTheme = useActualTheme();
   const [activeTab, setActiveTab] = useState('topup');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
   const shouldShowSubscription =
@@ -132,6 +135,19 @@ const RechargeCard = ({
     if (payMethod.type === 'stripe') {
       return <SiStripe size={18} color='#635BFF' />;
     }
+    if (payMethod.type === 'waffo_pancake') {
+      return (
+        <img
+          src={
+            actualTheme === 'dark'
+              ? '/waffo-logo-dark.svg'
+              : '/waffo-logo-light.svg'
+          }
+          alt={payMethod.name}
+          style={{ width: 18, height: 18, objectFit: 'contain' }}
+        />
+      );
+    }
     return (
       <CreditCard
         size={18}
@@ -144,9 +160,11 @@ const RechargeCard = ({
     ...standardPayMethods.map((payMethod) => {
       const minTopupVal = Number(payMethod.min_topup) || 0;
       const isStripe = payMethod.type === 'stripe';
+      const isWaffoPancake = payMethod.type === 'waffo_pancake';
       const disabled =
-        (!enableOnlineTopUp && !isStripe) ||
+        (!enableOnlineTopUp && !isStripe && !isWaffoPancake) ||
         (!enableStripeTopUp && isStripe) ||
+        (!enableWaffoPancakeTopUp && isWaffoPancake) ||
         minTopupVal > topUpCountNumber;
       const minTopupText =
         disabled && minTopupVal > topUpCountNumber
@@ -320,6 +338,7 @@ const RechargeCard = ({
         enableStripeTopUp ||
         enableCreemTopUp ||
         enableWaffoTopUp ||
+        enableWaffoPancakeTopUp ||
         enableCryptoTopUp ? (
         <Form
           getFormApi={(api) => (onlineFormApiRef.current = api)}
@@ -329,6 +348,7 @@ const RechargeCard = ({
             {(enableOnlineTopUp ||
               enableStripeTopUp ||
               enableWaffoTopUp ||
+              enableWaffoPancakeTopUp ||
               enableCryptoTopUp) && (
               <Row gutter={12}>
                 <Col xs={24} sm={24} md={24} lg={10} xl={10}>
@@ -339,6 +359,7 @@ const RechargeCard = ({
                       !enableOnlineTopUp &&
                       !enableStripeTopUp &&
                       !enableWaffoTopUp &&
+                      !enableWaffoPancakeTopUp &&
                       !enableCryptoTopUp
                     }
                     placeholder={
@@ -418,6 +439,7 @@ const RechargeCard = ({
             {(enableOnlineTopUp ||
               enableStripeTopUp ||
               enableWaffoTopUp ||
+              enableWaffoPancakeTopUp ||
               enableCryptoTopUp) && (
               <Form.Slot
                 label={

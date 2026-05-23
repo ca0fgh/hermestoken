@@ -92,6 +92,18 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("gzip_comp_level 5;", config)
         self.assertIn("application/javascript", config)
         self.assertIn("application/json", config)
+        self.assertIn('add_header Strict-Transport-Security "max-age=31536000" always;', config)
+        self.assertIn("add_header Content-Security-Policy \"default-src 'self';", config)
+        self.assertIn('add_header X-Content-Type-Options "nosniff" always;', config)
+        self.assertIn('add_header X-Frame-Options "DENY" always;', config)
+        self.assertIn(
+            'add_header Referrer-Policy "strict-origin-when-cross-origin" always;',
+            config,
+        )
+        self.assertIn(
+            'add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;',
+            config,
+        )
 
     def test_build_nginx_site_config_without_host_dist_proxies_all_routes_to_backend(self):
         config = prod.build_nginx_site_config(
@@ -128,6 +140,7 @@ class ProdLauncherTests(unittest.TestCase):
         self.assertIn("root /opt/hermestoken/web/dist;", config)
         self.assertIn('add_header Cache-Control "public, max-age=31536000, immutable" always;', config)
         self.assertIn('add_header Access-Control-Allow-Origin "*" always;', config)
+        self.assertIn('add_header X-Content-Type-Options "nosniff" always;', config)
         self.assertIn("try_files $uri =404;", config)
 
     def test_build_nginx_site_config_can_serve_spa_routes_from_host_dist_and_proxy_backend_prefixes(self):

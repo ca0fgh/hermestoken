@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ca0fgh/hermestoken/common"
+	"github.com/ca0fgh/hermestoken/i18n"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting"
 	"github.com/ca0fgh/hermestoken/setting/console_setting"
@@ -28,13 +29,17 @@ var completionRatioMetaOptionKeys = []string{
 	"AudioCompletionRatio",
 }
 
-func isVisiblePublicKeyOption(key string) bool {
-	switch key {
-	case "WaffoPancakeWebhookPublicKey", "WaffoPancakeWebhookTestKey":
-		return true
-	default:
-		return false
+func isPaymentComplianceOptionKey(key string) bool {
+	return strings.HasPrefix(key, "payment_setting.compliance_")
+}
+
+func isPositiveOptionValue(value string) bool {
+	intValue, err := strconv.Atoi(strings.TrimSpace(value))
+	if err == nil {
+		return intValue > 0
 	}
+	floatValue, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	return err == nil && floatValue > 0
 }
 
 func collectModelNamesFromOptionValue(raw string, modelNames map[string]struct{}) {
@@ -81,7 +86,7 @@ func GetOptions(c *gin.Context) {
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
-		if isSensitiveKey && !isVisiblePublicKeyOption(k) {
+		if isSensitiveKey {
 			continue
 		}
 		options = append(options, &model.Option{
@@ -105,7 +110,6 @@ func GetOptions(c *gin.Context) {
 		"message": "",
 		"data":    options,
 	})
-	return
 }
 
 type OptionUpdateRequest struct {
@@ -146,6 +150,18 @@ func UpdateOption(c *gin.Context) {
 			"message": "该配置项已停用",
 		})
 		return
+	}
+	switch option.Key {
+	case "QuotaForInviter", "QuotaForInvitee":
+		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
+			common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+			return
+		}
+	default:
+		if isPaymentComplianceOptionKey(option.Key) {
+			common.ApiErrorMsg(c, "合规确认字段不允许通过通用设置接口修改")
+			return
+		}
 	}
 	switch option.Key {
 	case "GitHubOAuthEnabled":
@@ -347,5 +363,4 @@ func UpdateOption(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
-	return
 }

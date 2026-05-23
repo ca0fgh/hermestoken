@@ -75,6 +75,10 @@ export default function SettingsChats(props) {
     { name: '流畅阅读', url: 'fluentread' },
     { name: 'CC Switch', url: 'ccswitch' },
     {
+      name: 'DeepChat',
+      url: 'deepchat://provider/install?v=1&data={deepchatConfig}',
+    },
+    {
       name: 'Lobe Chat',
       url: 'https://chat-preview.lobehub.com/?settings={"keyVaults":{"openai":{"apiKey":"{key}","baseURL":"{address}/v1"}}}',
     },

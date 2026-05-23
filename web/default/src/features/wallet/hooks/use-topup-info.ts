@@ -1,3 +1,21 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
 import { useState, useEffect } from 'react'
 import { getTopupInfo } from '../api'
 import {
@@ -36,7 +54,8 @@ function parseJsonArray(data: unknown): unknown[] {
 
 function parsePaymentMethods(
   data: unknown,
-  stripeMinTopup: number
+  stripeMinTopup: number,
+  waffoPancakeMinTopup: number = 0
 ): PaymentMethod[] {
   return parseJsonArray(data)
     .filter(
@@ -55,7 +74,9 @@ function parsePaymentMethods(
         min_topup:
           type === 'stripe' && normalizedMinTopup <= 0
             ? stripeMinTopup
-            : normalizedMinTopup,
+            : type === 'waffo_pancake' && normalizedMinTopup <= 0
+              ? waffoPancakeMinTopup
+              : normalizedMinTopup,
       }
     })
     .filter((item) => item.name && item.type && item.type !== 'waffo')
@@ -164,7 +185,8 @@ export function useTopupInfo() {
         ...response.data,
         pay_methods: parsePaymentMethods(
           response.data.pay_methods,
-          response.data.stripe_min_topup
+          response.data.stripe_min_topup,
+          response.data.waffo_pancake_min_topup
         ),
         amount_options: parseAmountOptions(response.data.amount_options),
         discount: parseDiscountMap(response.data.discount),

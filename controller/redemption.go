@@ -8,6 +8,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/i18n"
 	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -59,6 +60,11 @@ func GetRedemption(c *gin.Context) {
 }
 
 func AddRedemption(c *gin.Context) {
+	if !operation_setting.IsPaymentComplianceConfirmed() {
+		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
+		return
+	}
+
 	redemption := model.Redemption{}
 	err := c.ShouldBindJSON(&redemption)
 	if err != nil {

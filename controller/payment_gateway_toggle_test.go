@@ -12,10 +12,12 @@ import (
 )
 
 type topupInfoResponse struct {
-	EnableOnlineTopup bool                `json:"enable_online_topup"`
-	EnableStripeTopup bool                `json:"enable_stripe_topup"`
-	EnableCreemTopup  bool                `json:"enable_creem_topup"`
-	PayMethods        []map[string]string `json:"pay_methods"`
+	EnableOnlineTopup              bool                `json:"enable_online_topup"`
+	EnableStripeTopup              bool                `json:"enable_stripe_topup"`
+	EnableCreemTopup               bool                `json:"enable_creem_topup"`
+	EnableWaffoPancakeTopup        bool                `json:"enable_waffo_pancake_topup"`
+	EnableWaffoPancakeSubscription bool                `json:"enable_waffo_pancake_subscription"`
+	PayMethods                     []map[string]string `json:"pay_methods"`
 }
 
 func mustUpdateOptionValue(t *testing.T, key string, value string) {
@@ -139,6 +141,68 @@ func TestGetTopUpInfoHonorsPaymentGatewaySwitches(t *testing.T) {
 	}
 	if !containsPaymentMethod(data.PayMethods, "stripe") {
 		t.Fatal("expected stripe pay method to be visible when stripe switch is on")
+	}
+}
+
+func TestGetTopUpInfoSeparatesWaffoPancakeSubscriptionAvailability(t *testing.T) {
+	setupSubscriptionControllerTestDB(t)
+
+	originalMerchantID := setting.WaffoPancakeMerchantID
+	originalPrivateKey := setting.WaffoPancakePrivateKey
+	originalProductID := setting.WaffoPancakeProductID
+	t.Cleanup(func() {
+		setting.WaffoPancakeMerchantID = originalMerchantID
+		setting.WaffoPancakePrivateKey = originalPrivateKey
+		setting.WaffoPancakeProductID = originalProductID
+	})
+
+	setting.WaffoPancakeMerchantID = "merchant"
+	setting.WaffoPancakePrivateKey = "private"
+	setting.WaffoPancakeProductID = ""
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodGet, "/api/user/topup/info", nil, 1)
+	GetTopUpInfo(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got %s", response.Message)
+	}
+
+	var data topupInfoResponse
+	if err := common.Unmarshal(response.Data, &data); err != nil {
+		t.Fatalf("failed to decode topup info response: %v", err)
+	}
+
+	if data.EnableWaffoPancakeTopup {
+		t.Fatal("expected Waffo Pancake wallet topup to require the gateway-level product")
+	}
+	if !data.EnableWaffoPancakeSubscription {
+		t.Fatal("expected Waffo Pancake subscription checkout to be available with gateway credentials only")
+	}
+	if containsPaymentMethod(data.PayMethods, model.PaymentMethodWaffoPancake) {
+		t.Fatal("expected Waffo Pancake wallet pay method to stay hidden without the gateway-level product")
+	}
+
+	setting.WaffoPancakeProductID = "wallet_product"
+	ctx, recorder = newAuthenticatedContext(t, http.MethodGet, "/api/user/topup/info", nil, 1)
+	GetTopUpInfo(ctx)
+
+	response = decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response after wallet product restore, got %s", response.Message)
+	}
+	if err := common.Unmarshal(response.Data, &data); err != nil {
+		t.Fatalf("failed to decode topup info response after wallet product restore: %v", err)
+	}
+
+	if !data.EnableWaffoPancakeTopup {
+		t.Fatal("expected Waffo Pancake wallet topup to be available when the gateway-level product is configured")
+	}
+	if !data.EnableWaffoPancakeSubscription {
+		t.Fatal("expected Waffo Pancake subscription checkout to remain available")
+	}
+	if !containsPaymentMethod(data.PayMethods, model.PaymentMethodWaffoPancake) {
+		t.Fatal("expected Waffo Pancake wallet pay method to be visible when wallet topup is available")
 	}
 }
 
