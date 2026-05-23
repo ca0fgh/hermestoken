@@ -253,7 +253,7 @@ const renderPaymentConfig = (text, record, t, enableEpay) => {
 const renderOperations = (
   text,
   record,
-  { openEdit, setPlanEnabled, deletePlan, t },
+  { openEdit, setPlanEnabled, deletePlan, t, complianceConfirmed },
 ) => {
   const isEnabled = record?.plan?.enabled;
 
@@ -415,6 +415,7 @@ export const getSubscriptionsColumns = ({
           setPlanEnabled,
           deletePlan,
           t,
+          complianceConfirmed,
         }),
     },
   ];
