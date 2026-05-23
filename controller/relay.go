@@ -79,7 +79,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		hermesTokenError *types.HermesTokenError
 		ws               *websocket.Conn
 	)
-	defer logRetryChannels(c)
+	defer func() { logRetryChannels(c, hermesTokenError == nil) }()
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
 		var err error
@@ -328,12 +328,20 @@ func formatRetryChannels(useChannel []string) string {
 	return strings.Join(channels, "->")
 }
 
-func logRetryChannels(c *gin.Context) {
+// logRetryChannels 在请求结束时汇总重试链路。recovered 表示最终是否命中可用渠道。
+// 区分"重试成功"与"重试失败"，避免把"失败后已恢复"的请求误读为彻底失败。
+func logRetryChannels(c *gin.Context, recovered bool) {
 	if c == nil {
 		return
 	}
-	if retryChain := formatRetryChannels(c.GetStringSlice("use_channel")); retryChain != "" {
-		logger.LogInfo(c, fmt.Sprintf("重试：%s", retryChain))
+	retryChain := formatRetryChannels(c.GetStringSlice("use_channel"))
+	if retryChain == "" {
+		return
+	}
+	if recovered {
+		logger.LogInfo(c, fmt.Sprintf("重试成功：%s（已切换到可用渠道，请求最终成功）", retryChain))
+	} else {
+		logger.LogWarn(c, fmt.Sprintf("重试失败：%s（所有渠道均返回错误，请求最终失败）", retryChain))
 	}
 }
 
@@ -444,6 +452,23 @@ func setRetryAdminInfo(c *gin.Context, info retryAdminInfo) {
 	c.Set(contextKeyRetryAdminInfo, info)
 }
 
+// willRetryFromAdminInfo 读取本次尝试前由 setRetryAdminInfo 写入的重试意图。
+// 缺失时（如非重试路径或直接调用）默认 false，即按终态错误处理。
+func willRetryFromAdminInfo(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	value, exists := c.Get(contextKeyRetryAdminInfo)
+	if !exists {
+		return false
+	}
+	info, ok := value.(retryAdminInfo)
+	if !ok {
+		return false
+	}
+	return info.WillRetry
+}
+
 func appendRetryAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
 	if c == nil || adminInfo == nil {
 		return
@@ -466,7 +491,13 @@ func appendRetryAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
 }
 
 func processChannelError(c *gin.Context, channelId int, err *types.HermesTokenError) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelId, err.StatusCode, err.Error()))
+	// 单次渠道失败：若后续仍会重试，按可恢复事件记 WARN（避免和"彻底失败"混淆）；
+	// 只有重试耗尽的终态失败才记 ERROR。错误日志仍照常落库，渠道健康统计不受影响。
+	if willRetryFromAdminInfo(c) {
+		logger.LogWarn(c, fmt.Sprintf("channel error (channel #%d, status code: %d), will retry next channel: %s", channelId, err.StatusCode, err.Error()))
+	} else {
+		logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d), retries exhausted: %s", channelId, err.StatusCode, err.Error()))
+	}
 	modelName := c.GetString("original_model")
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		// 保存错误日志到mysql中
@@ -685,7 +716,7 @@ func RelayTask(c *gin.Context) {
 		}
 	}
 
-	logRetryChannels(c)
+	logRetryChannels(c, taskErr == nil)
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
