@@ -38,6 +38,32 @@ func TestPublicBootstrapEndpointReturnsCacheableJSON(t *testing.T) {
 	}
 }
 
+func TestMergedPublicAPIRoutesAreRegistered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	r := gin.New()
+	SetApiRouter(r)
+
+	registered := make(map[string]bool)
+	for _, route := range r.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+
+	expectedRoutes := []string{
+		http.MethodGet + " /api/pricing",
+		http.MethodGet + " /api/perf-metrics/summary",
+		http.MethodGet + " /api/perf-metrics",
+		http.MethodGet + " /api/rankings",
+		http.MethodPost + " /api/option/payment_compliance",
+	}
+
+	for _, route := range expectedRoutes {
+		if !registered[route] {
+			t.Fatalf("%s is not registered", route)
+		}
+	}
+}
+
 func TestMarketplaceUIAPIRoutesAreRegisteredBeforeAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

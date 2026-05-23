@@ -11,6 +11,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/constant"
 	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/logger"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	"github.com/ca0fgh/hermestoken/relay/helper"
 	"github.com/ca0fgh/hermestoken/service"
@@ -177,9 +178,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (hermesTokenError
 			}
 		}
 
-		if common.DebugEnabled {
-			println("requestBody: ", string(jsonData))
-		}
+		logger.LogDebug(c, "requestBody: %s", jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 

@@ -216,6 +216,14 @@ test('vite build inlines the startup stylesheet into index.html to avoid an extr
 test('static asset deployments define Cloudflare custom headers for cross-origin module loading', async () => {
   const source = await readFile(headersFilePath, 'utf8');
 
+  assert.match(source, /\/\*/);
+  assert.match(source, /Strict-Transport-Security:\s*max-age=31536000/);
+  assert.match(source, /Content-Security-Policy:\s*default-src 'self'/);
+  assert.match(source, /frame-ancestors 'none'/);
+  assert.match(source, /X-Content-Type-Options:\s*nosniff/);
+  assert.match(source, /X-Frame-Options:\s*DENY/);
+  assert.match(source, /Referrer-Policy:\s*strict-origin-when-cross-origin/);
+  assert.match(source, /Permissions-Policy:\s*camera=\(\),\s*microphone=\(\),\s*geolocation=\(\)/);
   assert.match(source, /\/assets\/\*/);
   assert.match(source, /Access-Control-Allow-Origin:\s*\*/);
   assert.match(source, /Cache-Control:\s*public,\s*max-age=31536000,\s*immutable/);

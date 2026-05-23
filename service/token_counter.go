@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/constant"
 	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/logger"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	constant2 "github.com/ca0fgh/hermestoken/relay/constant"
 	"github.com/ca0fgh/hermestoken/types"
@@ -111,7 +111,7 @@ func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, strea
 
 	width := config.Width
 	height := config.Height
-	log.Printf("format: %s, width: %d, height: %d", format, width, height)
+	logger.LogDebug(c, "image token input: format=%s, width=%d, height=%d", format, width, height)
 
 	if isPatchBased {
 		// 32x32 patch-based calculation with 1536 cap and model multiplier
@@ -171,9 +171,7 @@ func getImageToken(c *gin.Context, fileMeta *types.FileMeta, model string, strea
 	tilesH := (finalH + 512 - 1) / 512
 	tiles := tilesW * tilesH
 
-	if common.DebugEnabled {
-		log.Printf("scaled to: %dx%d, tiles: %d", finalW, finalH, tiles)
-	}
+	logger.LogDebug(c, "image token scaled size: width=%d, height=%d, tiles=%d", finalW, finalH, tiles)
 
 	return tiles*tileTokens + baseTokens, nil
 }

@@ -14,7 +14,7 @@ import (
 
 func TestUserCreateWithdrawal(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
-	if err := db.AutoMigrate(&model.UserWithdrawal{}); err != nil {
+	if err := db.AutoMigrate(&model.UserWithdrawal{}, &model.Redemption{}); err != nil {
 		t.Fatalf("failed to migrate user withdrawals: %v", err)
 	}
 
@@ -49,7 +49,7 @@ func TestUserCreateWithdrawal(t *testing.T) {
 
 func TestUserCreateUSDTWithdrawal(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
-	if err := db.AutoMigrate(&model.UserWithdrawal{}); err != nil {
+	if err := db.AutoMigrate(&model.UserWithdrawal{}, &model.Redemption{}); err != nil {
 		t.Fatalf("failed to migrate user withdrawals: %v", err)
 	}
 
@@ -98,7 +98,7 @@ func TestUserCreateUSDTWithdrawal(t *testing.T) {
 
 func TestAdminApproveRejectAndMarkPaidWithdrawal(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
-	if err := db.AutoMigrate(&model.UserWithdrawal{}); err != nil {
+	if err := db.AutoMigrate(&model.UserWithdrawal{}, &model.Redemption{}); err != nil {
 		t.Fatalf("failed to migrate user withdrawals: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestAdminApproveRejectAndMarkPaidWithdrawal(t *testing.T) {
 
 func TestAdminListWithdrawalsKeywordMatchesUserID(t *testing.T) {
 	db := setupSubscriptionControllerTestDB(t)
-	if err := db.AutoMigrate(&model.UserWithdrawal{}); err != nil {
+	if err := db.AutoMigrate(&model.UserWithdrawal{}, &model.Redemption{}); err != nil {
 		t.Fatalf("failed to migrate user withdrawals: %v", err)
 	}
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/logger"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	"github.com/ca0fgh/hermestoken/relay/helper"
 	"github.com/ca0fgh/hermestoken/service"
@@ -67,9 +68,7 @@ func RerankHelper(c *gin.Context, info *relaycommon.RelayInfo) (hermesTokenError
 			}
 		}
 
-		if common.DebugEnabled {
-			println(fmt.Sprintf("Rerank request body: %s", string(jsonData)))
-		}
+		logger.LogDebug(c, "Rerank request body: %s", jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 

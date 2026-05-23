@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
-const webRoot = path.resolve(testDir, '..');
+const webRoot = path.resolve(testDir, '../classic');
 
 const readSource = (relativePath) =>
   fs.readFileSync(path.join(webRoot, relativePath), 'utf8');

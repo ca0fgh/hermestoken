@@ -11,10 +11,12 @@ import (
 	"github.com/ca0fgh/hermestoken/logger"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/pkg/billingexpr"
+	perfmetrics "github.com/ca0fgh/hermestoken/pkg/perf_metrics"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 	"github.com/ca0fgh/hermestoken/types"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 )
@@ -470,5 +472,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
+	})
+	gopool.Go(func() {
+		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
 	})
 }

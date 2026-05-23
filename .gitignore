@@ -72,6 +72,7 @@ node_modules/
 .nuxt/
 .parcel-cache/
 .vite/
+.tanstack/
 .cache/
 .eslintcache
 dist/
@@ -128,3 +129,6 @@ appendonlydir/
 .test
 token_estimator_test.go
 skills-lock.json
+
+# Generated media outputs
+scripts/tool/gpt_image2_output_*.png

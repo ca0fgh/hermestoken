@@ -818,18 +818,55 @@ export const buildWithdrawalFeeSamples = (feeRules = [], t) => {
 export const getWithdrawalFeeTypeLabel = (feeType, t) =>
   feeType === 'ratio' ? resolveWithdrawalCopy(t, '费率') : resolveWithdrawalCopy(t, '固定');
 
-export const normalizeWithdrawalConfig = (config) => ({
-  enabled: config?.enabled === true,
-  minAmount: Number(config?.min_amount || 0),
-  instruction: config?.instruction || '',
-  feeRules: Array.isArray(config?.fee_rules) ? config.fee_rules : [],
-  hasOpenWithdrawal: config?.has_open_withdrawal === true,
-  currency: config?.currency || 'CNY',
-  currencySymbol: config?.currency_symbol || '¥',
-  quotaDisplayType: config?.quota_display_type || 'CNY',
-  exchangeRate: Number(config?.exchange_rate || 1),
-  availableQuota: Number(config?.available_quota || 0),
-  frozenQuota: Number(config?.frozen_quota || 0),
-  availableAmount: Number(config?.available_amount || 0),
-  frozenAmount: Number(config?.frozen_amount || 0),
-});
+export const normalizeWithdrawalConfig = (config) => {
+  const availableQuota = Number(config?.available_quota || 0);
+  const rechargeQuota = Number(config?.recharge_quota ?? availableQuota);
+  const redemptionQuota = Number(config?.redemption_quota ?? 0);
+  const totalQuota = Number(config?.total_quota ?? rechargeQuota + redemptionQuota);
+  const availableAmount = Number(config?.available_amount || 0);
+  const rechargeAmount = Number(config?.recharge_amount ?? availableAmount);
+  const redemptionAmount = Number(config?.redemption_amount ?? 0);
+  const totalAmount = Number(config?.total_amount ?? rechargeAmount + redemptionAmount);
+
+  return {
+    enabled: config?.enabled === true,
+    minAmount: Number(config?.min_amount || 0),
+    instruction: config?.instruction || '',
+    feeRules: Array.isArray(config?.fee_rules) ? config.fee_rules : [],
+    hasOpenWithdrawal: config?.has_open_withdrawal === true,
+    currency: config?.currency || 'CNY',
+    currencySymbol: config?.currency_symbol || '¥',
+    quotaDisplayType: config?.quota_display_type || 'CNY',
+    exchangeRate: Number(config?.exchange_rate || 1),
+    availableQuota,
+    totalQuota,
+    rechargeQuota,
+    redemptionQuota,
+    frozenQuota: Number(config?.frozen_quota || 0),
+    availableAmount,
+    totalAmount,
+    rechargeAmount,
+    redemptionAmount,
+    frozenAmount: Number(config?.frozen_amount || 0),
+  };
+};
+
+export const getWithdrawalBalanceAmounts = (config) => {
+  const rechargeAmount = toFiniteNumber(
+    config?.rechargeAmount ?? config?.availableAmount,
+    0,
+  );
+  const redemptionAmount = toFiniteNumber(config?.redemptionAmount, 0);
+  const totalAmount = toFiniteNumber(
+    config?.totalAmount,
+    rechargeAmount + redemptionAmount,
+  );
+
+  return {
+    totalAmount,
+    rechargeAmount,
+    redemptionAmount,
+    frozenAmount: toFiniteNumber(config?.frozenAmount, 0),
+    minAmount: toFiniteNumber(config?.minAmount, 0),
+  };
+};

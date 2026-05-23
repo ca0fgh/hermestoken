@@ -43,6 +43,7 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 		&model.SubscriptionPlan{},
 		&model.SubscriptionOrder{},
 		&model.UserSubscription{},
+		&model.Token{},
 		&model.ReferralTemplate{},
 		&model.ReferralTemplateBinding{},
 		&model.ReferralInviteeShareOverride{},
@@ -54,6 +55,7 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to migrate subscription tables: %v", err)
 	}
 	model.InitOptionMap()
+	confirmPaymentComplianceForTest(t)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()

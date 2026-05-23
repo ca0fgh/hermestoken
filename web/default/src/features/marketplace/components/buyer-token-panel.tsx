@@ -12,8 +12,8 @@ import {
   Plus,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useStatus } from '@/hooks/use-status'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useStatus } from '@/hooks/use-status'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -195,11 +195,9 @@ export function BuyerTokenPanel({
             )}
           </p>
         </div>
-        <Button asChild variant='outline' size='sm'>
-          <Link to='/keys'>
-            <Plus className='size-4' />
-            {t('Manage console tokens')}
-          </Link>
+        <Button variant='outline' size='sm' render={<Link to='/keys' />}>
+          <Plus className='size-4' />
+          {t('Manage console tokens')}
         </Button>
       </div>
       <div className='mt-4 max-w-md'>
@@ -256,21 +254,23 @@ export function BuyerTokenPanel({
             )}
           </Button>
           <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
-                className='text-muted-foreground hover:text-foreground size-8 shrink-0'
-                disabled={!selectedToken || selectedTokenLoading}
-                aria-label={selectedTokenCopied ? t('Copied!') : t('Copy')}
-              >
-                {selectedTokenCopied ? (
-                  <Check className='size-4 text-green-600' />
-                ) : (
-                  <Copy className='size-4' />
-                )}
-              </Button>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon'
+                  className='text-muted-foreground hover:text-foreground size-8 shrink-0'
+                  disabled={!selectedToken || selectedTokenLoading}
+                  aria-label={selectedTokenCopied ? t('Copied!') : t('Copy')}
+                />
+              }
+            >
+              {selectedTokenCopied ? (
+                <Check className='size-4 text-green-600' />
+              ) : (
+                <Copy className='size-4' />
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='w-44'>
               <DropdownMenuItem onClick={copySelectedTokenKey}>

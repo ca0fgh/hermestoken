@@ -104,6 +104,86 @@ func TestRechargeWaffoPancake_RejectsMismatchedPaymentMethod(t *testing.T) {
 	assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 101))
 }
 
+func TestRechargeWaffoPancake_ValidatesPaidAmountCurrencyAndProduct(t *testing.T) {
+	testCases := []struct {
+		name          string
+		paidMoney     string
+		paidCurrency  string
+		productID     string
+		expectedError error
+	}{
+		{
+			name:          "amount mismatch",
+			paidMoney:     "8.99",
+			paidCurrency:  "USD",
+			productID:     "PROD_expected",
+			expectedError: ErrTopUpAmountMismatch,
+		},
+		{
+			name:          "currency mismatch",
+			paidMoney:     "9.99",
+			paidCurrency:  "EUR",
+			productID:     "PROD_expected",
+			expectedError: ErrTopUpCurrencyMismatch,
+		},
+		{
+			name:          "product mismatch",
+			paidMoney:     "9.99",
+			paidCurrency:  "USD",
+			productID:     "PROD_wrong",
+			expectedError: ErrTopUpProductMismatch,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			truncateTables(t)
+			insertUserForPaymentGuardTest(t, 111, 0)
+			topUp := &TopUp{
+				UserId:            111,
+				Amount:            2,
+				Money:             9.99,
+				TradeNo:           "waffo-pancake-validate-" + tc.name,
+				PaymentMethod:     PaymentMethodWaffoPancake,
+				PaymentProvider:   PaymentProviderWaffoPancake,
+				Currency:          "USD",
+				ProviderProductID: "PROD_expected",
+				Status:            common.TopUpStatusPending,
+				CreateTime:        time.Now().Unix(),
+			}
+			require.NoError(t, topUp.Insert())
+
+			err := RechargeWaffoPancake(topUp.TradeNo, tc.paidMoney, tc.paidCurrency, tc.productID)
+			require.ErrorIs(t, err, tc.expectedError)
+			assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+			assert.Equal(t, 0, getUserQuotaForPaymentGuardTest(t, 111))
+		})
+	}
+}
+
+func TestRechargeWaffoPancake_AcceptsVerifiedPayment(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 112, 0)
+	topUp := &TopUp{
+		UserId:            112,
+		Amount:            2,
+		Money:             9.99,
+		TradeNo:           "waffo-pancake-verified",
+		PaymentMethod:     PaymentMethodWaffoPancake,
+		PaymentProvider:   PaymentProviderWaffoPancake,
+		Currency:          "USD",
+		ProviderProductID: "PROD_expected",
+		Status:            common.TopUpStatusPending,
+		CreateTime:        time.Now().Unix(),
+	}
+	require.NoError(t, topUp.Insert())
+
+	err := RechargeWaffoPancake(topUp.TradeNo, "9.99", "USD", "PROD_expected")
+	require.NoError(t, err)
+	assert.Equal(t, common.TopUpStatusSuccess, getTopUpStatusForPaymentGuardTest(t, topUp.TradeNo))
+	assert.Greater(t, getUserQuotaForPaymentGuardTest(t, 112), 0)
+}
+
 func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T) {
 	testCases := []struct {
 		name                    string
@@ -158,6 +238,32 @@ func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T
 
 	topUp := GetTopUpByTradeNo("sub-guard-order")
 	assert.Nil(t, topUp)
+}
+
+func TestValidateSubscriptionOrderPayment_UsesWaffoPancakeProductID(t *testing.T) {
+	plan := &SubscriptionPlan{
+		CreemProductId:        "creem-product",
+		WaffoPancakeProductId: "pancake-product",
+	}
+	order := &SubscriptionOrder{
+		Money:           9.99,
+		PaymentMoney:    9.99,
+		PaymentCurrency: "USD",
+		PaymentMethod:   PaymentMethodWaffoPancake,
+		PaymentProvider: PaymentProviderWaffoPancake,
+	}
+
+	verification := &SubscriptionPaymentVerification{
+		PaymentMethod:   PaymentMethodWaffoPancake,
+		PaymentProvider: PaymentProviderWaffoPancake,
+		PaidMoney:       "9.99",
+		PaidCurrency:    "USD",
+		ProductID:       "pancake-product",
+	}
+	require.NoError(t, validateSubscriptionOrderPayment(order, plan, verification))
+
+	verification.ProductID = "creem-product"
+	require.ErrorIs(t, validateSubscriptionOrderPayment(order, plan, verification), ErrSubscriptionOrderProductMismatch)
 }
 
 func TestExpireSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {
