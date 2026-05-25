@@ -16,10 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
 import React, { useEffect, useState, useMemo, useContext } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getFooterHTML, getLogo, getSystemName } from '../../helpers/branding';
 import { StatusContext } from '../../context/Status';
-import { getFooterSectionVisibility } from '../../helpers/headerNavModules';
 import { getOptimizedLogoUrl } from '../../helpers/logo';
 import BrandWordmark from '../common/BrandWordmark';
 
@@ -31,15 +31,6 @@ const FooterBar = () => {
   const displayLogo = getOptimizedLogoUrl(logo, { size: 128 });
   const [statusState] = useContext(StatusContext);
   const isDemoSiteMode = statusState?.status?.demo_site_enabled || false;
-  const docsLink = statusState?.status?.docs_link || '';
-  const { showDocsSection, showAboutSection } = useMemo(
-    () =>
-      getFooterSectionVisibility(
-        statusState?.status?.HeaderNavModules,
-        docsLink,
-      ),
-    [docsLink, statusState?.status?.HeaderNavModules],
-  );
 
   const loadFooter = () => {
     const footer_html = localStorage.getItem('footer_html');
@@ -72,74 +63,6 @@ const FooterBar = () => {
             </div>
 
             <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 w-full'>
-              {showAboutSection && (
-                <div className='text-left'>
-                  <p className='!text-semi-color-text-0 font-semibold mb-5'>
-                    {t('关于我们')}
-                  </p>
-                  <div className='flex flex-col gap-4'>
-                    <a
-                      href='https://github.com/ca0fgh/hermestoken'
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='!text-semi-color-text-1'
-                    >
-                      {t('关于项目')}
-                    </a>
-                    <a
-                      href='https://github.com/ca0fgh/hermestoken/issues'
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='!text-semi-color-text-1'
-                    >
-                      {t('联系我们')}
-                    </a>
-                    <a
-                      href='https://github.com/ca0fgh/hermestoken'
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='!text-semi-color-text-1'
-                    >
-                      {t('功能特性')}
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {showDocsSection && (
-                <div className='text-left'>
-                  <p className='!text-semi-color-text-0 font-semibold mb-5'>
-                    {t('文档')}
-                  </p>
-                  <div className='flex flex-col gap-4'>
-                    <a
-                      href='https://github.com/ca0fgh/hermestoken#quick-start'
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='!text-semi-color-text-1'
-                    >
-                      {t('快速开始')}
-                    </a>
-                    <a
-                      href='https://github.com/ca0fgh/hermestoken#deployment'
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='!text-semi-color-text-1'
-                    >
-                      {t('安装指南')}
-                    </a>
-                    <a
-                      href='https://github.com/ca0fgh/hermestoken#api'
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      className='!text-semi-color-text-1'
-                    >
-                      {t('API 文档')}
-                    </a>
-                  </div>
-                </div>
-              )}
-
               <div className='text-left'>
                 <p className='!text-semi-color-text-0 font-semibold mb-5'>
                   {t('相关项目')}
@@ -237,6 +160,21 @@ const FooterBar = () => {
       ) : (
         customFooter
       )}
+      <div className='w-full px-6 md:px-24 pb-6 flex justify-center'>
+        <div className='flex flex-col items-center gap-2 w-full max-w-[1110px] text-center'>
+          <div className='flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-semi-color-text-1'>
+            <Link to='/about' className='!text-semi-color-text-1'>
+              {t('关于')}
+            </Link>
+            <Link to='/user-agreement' className='!text-semi-color-text-1'>
+              {t('服务条款')}
+            </Link>
+            <Link to='/privacy-policy' className='!text-semi-color-text-1'>
+              {t('隐私政策')}
+            </Link>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

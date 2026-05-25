@@ -165,40 +165,6 @@ export function Footer(props: FooterProps) {
   const fallbackColumns = useMemo<FooterColumnProps[]>(
     () => [
       {
-        title: t('footer.columns.about.title'),
-        links: [
-          {
-            text: t('footer.columns.about.links.aboutProject'),
-            href: 'https://github.com/ca0fgh/hermestoken',
-          },
-          {
-            text: t('footer.columns.about.links.contact'),
-            href: 'https://github.com/ca0fgh/hermestoken/issues',
-          },
-          {
-            text: t('footer.columns.about.links.features'),
-            href: 'https://github.com/ca0fgh/hermestoken',
-          },
-        ],
-      },
-      {
-        title: t('footer.columns.docs.title'),
-        links: [
-          {
-            text: t('footer.columns.docs.links.quickStart'),
-            href: 'https://github.com/ca0fgh/hermestoken#quick-start',
-          },
-          {
-            text: t('footer.columns.docs.links.installation'),
-            href: 'https://github.com/ca0fgh/hermestoken#deployment',
-          },
-          {
-            text: t('footer.columns.docs.links.apiDocs'),
-            href: 'https://github.com/ca0fgh/hermestoken#api',
-          },
-        ],
-      },
-      {
         title: t('footer.columns.related.title'),
         links: [
           {
@@ -298,14 +264,7 @@ export function Footer(props: FooterProps) {
             <span className='text-muted-foreground/40 text-xs'>
               {t('Designed and Developed by')}{' '}
             </span>
-            <a
-              href='https://github.com/ca0fgh/hermestoken'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary text-xs font-medium hover:underline'
-            >
-              {t('HermesToken')}
-            </a>
+            <span className='text-xs font-medium'>{t('HermesToken')}</span>
           </div>
         </div>
       </div>

@@ -66,7 +66,13 @@ const sanitizeHtml = (html) => {
  * @param {string} cacheKey - 本地存储缓存键
  * @param {string} emptyMessage - 空内容时的提示消息
  */
-const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
+const DocumentRenderer = ({
+  apiEndpoint,
+  title,
+  cacheKey,
+  emptyMessage,
+  defaultContent = '',
+}) => {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -84,16 +90,25 @@ const DocumentRenderer = ({ apiEndpoint, title, cacheKey, emptyMessage }) => {
       if (success && data) {
         setContent(data);
         localStorage.setItem(cacheKey, data);
-      } else {
-        if (!cachedContent) {
+      } else if (!cachedContent) {
+        // No admin-configured content: fall back to the built-in default
+        // document instead of surfacing an error toast. Admin-configured
+        // content (when set) still takes precedence.
+        if (defaultContent) {
+          setContent(defaultContent);
+        } else {
           showError(message || emptyMessage);
           setContent('');
         }
       }
     } catch (error) {
       if (!cachedContent) {
-        showError(emptyMessage);
-        setContent('');
+        if (defaultContent) {
+          setContent(defaultContent);
+        } else {
+          showError(emptyMessage);
+          setContent('');
+        }
       }
     } finally {
       setLoading(false);
