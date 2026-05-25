@@ -29,9 +29,8 @@ import './index.css';
 // Welcome message (Do not remove this without permission from the original developer)
 if (typeof window !== 'undefined') {
   console.log(
-    '%cWE ❤ HERMESTOKEN%c Github: https://github.com/ca0fgh/hermestoken',
+    '%cWE ❤ HERMESTOKEN',
     'color: #10b981; font-weight: bold; font-size: 24px;',
-    'color: inherit; font-size: 14px;',
   );
 }
 

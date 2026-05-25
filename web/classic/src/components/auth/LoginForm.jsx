@@ -713,6 +713,7 @@ const LoginForm = () => {
                   </Text>
                 </div>
               )}
+
             </div>
           </Card>
         </div>
@@ -875,6 +876,7 @@ const LoginForm = () => {
                   </Text>
                 </div>
               )}
+
             </div>
           </Card>
         </div>
