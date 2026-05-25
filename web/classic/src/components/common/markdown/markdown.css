@@ -8,6 +8,26 @@
   word-break: break-word;
 }
 
+/* 列表样式：Tailwind preflight 会移除默认项目符号，这里恢复 */
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.markdown-body ul {
+  list-style: disc;
+}
+.markdown-body ol {
+  list-style: decimal;
+}
+.markdown-body li {
+  margin: 0.25em 0;
+}
+.markdown-body li > ul,
+.markdown-body li > ol {
+  margin: 0.25em 0;
+}
+
 /* 用户消息样式 - 白色字体适配蓝色背景 */
 .user-message {
   color: white !important;
