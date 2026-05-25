@@ -64,12 +64,24 @@ export function UpdateCheckerSection({
       const response = await fetch(
         'https://api.github.com/repos/ca0fgh/hermestoken/releases/latest',
         {
+          // Browsers forbid setting User-Agent; Accept alone keeps this a simple request.
           headers: {
             Accept: 'application/vnd.github+json',
-            'User-Agent': 'hermestoken-dashboard',
           },
         }
       )
+
+      // The repository has no published releases yet (GitHub returns 404).
+      if (response.status === 404) {
+        toast.info(
+          currentVersion
+            ? t('You are on version {{version}}; no published release was found.', {
+                version: currentVersion,
+              })
+            : t('No published release was found.')
+        )
+        return
+      }
 
       if (!response.ok) {
         throw new Error(t('Failed to contact GitHub releases API'))
