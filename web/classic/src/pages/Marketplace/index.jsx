@@ -23,6 +23,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  Banner,
   Button,
   Card,
   Cascader,
@@ -4269,6 +4270,14 @@ function SellerTab() {
   return (
     <Space vertical style={{ width: '100%' }}>
       <Card title={editing ? t('编辑托管Key') : t('托管 AI API Key')}>
+        <Banner
+          type='info'
+          closeIcon={null}
+          style={{ marginBottom: 12 }}
+          description={t(
+            '你的 API Key 将加密存储，仅用于按你设置的模型转发你自己的请求，不会公开展示给他人。本平台为第三方独立服务。请确认你有权共享该 Key，并自行遵守对应厂商的服务条款。',
+          )}
+        />
         <Row gutter={[12, 12]}>
           <Col xs={24} md={6}>
             <MarketplaceField label={t('类型 *')}>

@@ -26,7 +26,14 @@ import {
   Space,
   Card,
 } from '@douyinfe/semi-ui';
-import { API, showError, showSuccess, timestamp2string } from '../../helpers';
+import {
+  API,
+  showError,
+  showInfo,
+  showSuccess,
+  showWarning,
+  timestamp2string,
+} from '../../helpers';
 import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
@@ -296,40 +303,56 @@ const OtherSetting = () => {
         ...loadingInput,
         CheckUpdate: true,
       }));
-      // Use a CORS proxy to avoid direct cross-origin requests to GitHub API
-      // Option 1: Use a public CORS proxy service
-      // const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-      // const res = await API.get(
-      //   `${proxyUrl}https://api.github.com/repos/ca0fgh/hermestoken/releases/latest`,
-      // );
 
-      // Option 2: Use the JSON proxy approach which often works better with GitHub API
-      const res = await fetch(
+      // 仅带 Accept 头，保持为简单请求（避免不必要的 CORS 预检）。
+      // 浏览器禁止设置 User-Agent，旧代码里的该头会被忽略。
+      const response = await fetch(
         'https://api.github.com/repos/ca0fgh/hermestoken/releases/latest',
         {
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            // Adding User-Agent which is often required by GitHub API
-            'User-Agent': 'hermestoken-update-checker',
-          },
+          headers: { Accept: 'application/vnd.github+json' },
         },
-      ).then((response) => response.json());
+      );
 
-      // Option 3: Use a local proxy endpoint
-      // Create a cached version of the response to avoid frequent GitHub API calls
-      // const res = await API.get('/api/status/github-latest-release');
+      const currentVersion = statusState?.status?.version;
 
-      const { tag_name, body } = res;
-      if (tag_name === statusState?.status?.version) {
-        showSuccess(`已是最新版本：${tag_name}`);
-      } else {
-        setUpdateData({
-          tag_name: tag_name,
-          content: marked.parse(body),
-        });
-        setShowUpdateModal(true);
+      // 仓库尚未发布任何 Release 时 GitHub 返回 404，不应作为错误处理。
+      if (response.status === 404) {
+        showInfo(
+          currentVersion
+            ? `当前版本 ${currentVersion}，暂无新的发布版本`
+            : '暂无新的发布版本',
+        );
+        return;
       }
+
+      // 速率限制、网络异常等，给出可重试的提示而非误导性的失败。
+      if (!response.ok) {
+        showWarning('暂时无法获取版本信息，请稍后再试');
+        return;
+      }
+
+      const res = await response.json();
+      const { tag_name: tagName, body } = res;
+
+      if (!tagName) {
+        showInfo(
+          currentVersion
+            ? `当前版本 ${currentVersion}，暂无新的发布版本`
+            : '暂无新的发布版本',
+        );
+        return;
+      }
+
+      if (tagName === currentVersion) {
+        showSuccess(`已是最新版本：${tagName}`);
+        return;
+      }
+
+      setUpdateData({
+        tag_name: tagName,
+        content: marked.parse(body || ''),
+      });
+      setShowUpdateModal(true);
     } catch (error) {
       console.error('Failed to check for updates:', error);
       showError('检查更新失败，请稍后再试');

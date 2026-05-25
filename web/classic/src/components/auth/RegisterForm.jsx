@@ -103,6 +103,7 @@ const RegisterForm = () => {
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToCompliance, setAgreedToCompliance] = useState(false);
   const [hasUserAgreement, setHasUserAgreement] = useState(false);
   const [hasPrivacyPolicy, setHasPrivacyPolicy] = useState(false);
   const [githubButtonState, setGithubButtonState] = useState('idle');
@@ -224,6 +225,10 @@ const RegisterForm = () => {
   }
 
   async function handleSubmit(e) {
+    if (!agreedToCompliance) {
+      showInfo('请先阅读并确认合规声明');
+      return;
+    }
     if (password.length < 8) {
       showInfo('密码长度不得小于 8 位！');
       return;
@@ -570,6 +575,7 @@ const RegisterForm = () => {
                   </Link>
                 </Text>
               </div>
+
             </div>
           </Card>
         </div>
@@ -667,6 +673,19 @@ const RegisterForm = () => {
                   </>
                 )}
 
+                <div className='pt-4'>
+                  <Checkbox
+                    checked={agreedToCompliance}
+                    onChange={(e) => setAgreedToCompliance(e.target.checked)}
+                  >
+                    <Text size='small' className='text-gray-600'>
+                      {t(
+                        '我已年满法定年龄，确认所在国家或地区允许使用本服务及相关模型，并将自行遵守当地法律法规、承担合规责任。'
+                      )}
+                    </Text>
+                  </Checkbox>
+                </div>
+
                 {(hasUserAgreement || hasPrivacyPolicy) && (
                   <div className='pt-4'>
                     <Checkbox
@@ -714,7 +733,8 @@ const RegisterForm = () => {
                     onClick={handleSubmit}
                     loading={registerLoading}
                     disabled={
-                      (hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms
+                      !agreedToCompliance ||
+                      ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms)
                     }
                   >
                     {t('注册')}
@@ -753,6 +773,7 @@ const RegisterForm = () => {
                   </Link>
                 </Text>
               </div>
+
             </div>
           </Card>
         </div>

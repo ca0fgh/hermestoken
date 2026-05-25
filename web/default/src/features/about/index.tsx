@@ -56,26 +56,8 @@ function EmptyAboutState() {
           </p>
         </div>
         <div className='space-y-4 text-sm'>
-          <p>
-            {t('HermesToken Project Repository:')}{' '}
-            <a
-              href='https://github.com/ca0fgh/hermestoken'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('https://github.com/ca0fgh/hermestoken')}
-            </a>
-          </p>
           <p className='text-muted-foreground'>
-            <a
-              href='https://github.com/ca0fgh/hermestoken'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('HermesToken')}
-            </a>{' '}
+            {t('HermesToken')}{' '}
             © {currentYear}{' '}
             <a
               href='https://github.com/ca0fgh'
@@ -107,7 +89,7 @@ function EmptyAboutState() {
           <p className='text-muted-foreground'>
             {t('This project must be used in compliance with the')}{' '}
             <a
-              href='https://github.com/ca0fgh/hermestoken/blob/main/LICENSE'
+              href='https://www.gnu.org/licenses/agpl-3.0.html'
               target='_blank'
               rel='noopener noreferrer'
               className='text-primary hover:underline'
