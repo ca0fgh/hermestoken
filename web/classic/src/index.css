@@ -906,7 +906,8 @@ html.dark .with-pastel-balls::before {
     max-width: 80px;
   }
 
-  .semi-input-prefix-text, .semi-input-suffix-text {
+  .semi-input-prefix-text,
+  .semi-input-suffix-text {
     margin: 0;
   }
 
@@ -1002,6 +1003,26 @@ html.dark .with-pastel-balls::before {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+}
+
+/* Channel table operation column */
+.channel-operate-cell {
+  min-width: 320px;
+  background: var(--semi-color-bg-0);
+}
+
+.channel-operate-actions {
+  display: inline-flex !important;
+  width: 100%;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.channel-operate-actions .semi-space-item {
+  flex-shrink: 0;
 }
 
 /* ==================== 自定义圆角样式 ==================== */

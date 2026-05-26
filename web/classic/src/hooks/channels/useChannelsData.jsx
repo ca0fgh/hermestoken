@@ -328,46 +328,52 @@ export const useChannelsData = () => {
     const { searchKeyword, searchGroup, searchModel } = getFormValues();
     if (searchKeyword !== '' || searchGroup !== '' || searchModel !== '') {
       setLoading(true);
-      await searchChannels(
-        enableTagMode,
-        typeKey,
-        statusF,
-        page,
-        pageSize,
-        idSort,
-      );
-      setLoading(false);
+      try {
+        await searchChannels(
+          enableTagMode,
+          typeKey,
+          statusF,
+          page,
+          pageSize,
+          idSort,
+        );
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
     const reqId = ++requestCounter.current;
     setLoading(true);
-    const typeParam = typeKey !== 'all' ? `&type=${typeKey}` : '';
-    const statusParam = statusF !== 'all' ? `&status=${statusF}` : '';
-    const res = await API.get(
-      `/api/channel/?p=${page}&page_size=${pageSize}&id_sort=${idSort}&tag_mode=${enableTagMode}${typeParam}${statusParam}`,
-    );
+    try {
+      const typeParam = typeKey !== 'all' ? `&type=${typeKey}` : '';
+      const statusParam = statusF !== 'all' ? `&status=${statusF}` : '';
+      const res = await API.get(
+        `/api/channel/?p=${page}&page_size=${pageSize}&id_sort=${idSort}&tag_mode=${enableTagMode}${typeParam}${statusParam}`,
+      );
 
-    if (res === undefined || reqId !== requestCounter.current) {
-      return;
-    }
-
-    const { success, message, data } = res.data;
-    if (success) {
-      const { items, total, type_counts } = data;
-      if (type_counts) {
-        const sumAll = Object.values(type_counts).reduce(
-          (acc, v) => acc + v,
-          0,
-        );
-        setTypeCounts({ ...type_counts, all: sumAll });
+      if (res !== undefined && reqId === requestCounter.current) {
+        const { success, message, data } = res.data;
+        if (success) {
+          const { items, total, type_counts } = data;
+          if (type_counts) {
+            const sumAll = Object.values(type_counts).reduce(
+              (acc, v) => acc + v,
+              0,
+            );
+            setTypeCounts({ ...type_counts, all: sumAll });
+          }
+          setChannelFormat(items, enableTagMode);
+          setChannelCount(total);
+        } else {
+          showError(message);
+        }
       }
-      setChannelFormat(items, enableTagMode);
-      setChannelCount(total);
-    } else {
-      showError(message);
+    } finally {
+      if (reqId === requestCounter.current) {
+        setLoading(false);
+      }
     }
-    setLoading(false);
   };
 
   // Search channels

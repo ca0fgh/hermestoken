@@ -685,6 +685,8 @@ export const getChannelsColumns = ({
       title: '',
       dataIndex: 'operate',
       fixed: 'right',
+      width: 320,
+      className: 'channel-operate-cell',
       render: (text, record, index) => {
         if (record.children === undefined) {
           const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
@@ -772,7 +774,7 @@ export const getChannelsColumns = ({
           }
 
           return (
-            <Space wrap>
+            <Space className='channel-operate-actions' spacing={8}>
               <SplitButtonGroup
                 className='overflow-hidden'
                 aria-label={t('测试单个渠道操作项目组')}
@@ -870,7 +872,7 @@ export const getChannelsColumns = ({
         } else {
           // 标签操作按钮
           return (
-            <Space wrap>
+            <Space className='channel-operate-actions' spacing={8}>
               <Button
                 type='tertiary'
                 size='small'
