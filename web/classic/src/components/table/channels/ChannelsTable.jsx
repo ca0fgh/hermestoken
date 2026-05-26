@@ -120,13 +120,10 @@ const ChannelsTable = (channelsData) => {
   }, [visibleColumns, allColumns]);
 
   const tableColumns = useMemo(() => {
-    // 始终去除列的 fixed 设置。非紧凑模式原本给操作列设了 fixed:'right' + 表格
-    // scroll x:'max-content'：当视口较宽、表格内容不足以横向溢出时，Semi 的右固定列会
-    // 浮到滚动容器右缘、覆盖并错位真实单元格，从而拦截「编辑」等操作按钮的点击（把窗口
-    // 拉窄、出现横向滚动后才恢复——这正是线上「宽窗编辑按钮点不动」的根因）。去掉 fixed
-    // 后操作列随表格正常排布，任意窗口宽度都可点击；窄屏的横向滚动仍由 scroll x:'max-content' 提供。
-    return visibleColumnsList.map(({ fixed, ...rest }) => rest);
-  }, [visibleColumnsList]);
+    return compactMode
+      ? visibleColumnsList.map(({ fixed, ...rest }) => rest)
+      : visibleColumnsList;
+  }, [compactMode, visibleColumnsList]);
 
   return (
     <CardTable
