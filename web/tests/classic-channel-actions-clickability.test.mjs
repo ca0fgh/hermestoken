@@ -19,6 +19,7 @@ const classicApiPath = new URL(
   "../classic/src/helpers/api.js",
   import.meta.url,
 );
+const classicCssPath = new URL("../classic/src/index.css", import.meta.url);
 
 const loadSource = (path) => readFile(path, "utf8");
 
@@ -28,6 +29,27 @@ test("channel operation column reserves a stable clickable fixed-column area", a
   assert.match(source, /width:\s*320/);
   assert.match(source, /className:\s*'channel-operate-cell'/);
   assert.match(source, /className='channel-operate-actions'/);
+});
+
+test("channel operation fixed cells keep actions above table hit-test layers", async () => {
+  const source = await loadSource(classicCssPath);
+
+  assert.match(
+    source,
+    /\.channel-operate-cell\s*{[\s\S]*pointer-events:\s*auto;/,
+  );
+  assert.match(
+    source,
+    /\.semi-table-tbody\s*>\s*\.semi-table-row\s*>\s*\.channel-operate-cell\.semi-table-cell-fixed-right\s*{[\s\S]*z-index:\s*110;[\s\S]*pointer-events:\s*auto;/,
+  );
+  assert.match(
+    source,
+    /\.channel-operate-actions\s*{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;[\s\S]*pointer-events:\s*auto;/,
+  );
+  assert.match(
+    source,
+    /\.channel-operate-actions\s*\.semi-button,\s*[\s\S]*\.channel-operate-actions\s*\.semi-button-group,\s*[\s\S]*\.channel-operate-actions\s*\.semi-dropdown-trigger\s*{[\s\S]*pointer-events:\s*auto;/,
+  );
 });
 
 test("channel list loading state is always cleared after request failures or stale responses", async () => {

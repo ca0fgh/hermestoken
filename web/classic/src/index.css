@@ -1009,10 +1009,20 @@ html.dark .with-pastel-balls::before {
 .channel-operate-cell {
   min-width: 320px;
   background: var(--semi-color-bg-0);
+  pointer-events: auto;
+}
+
+.semi-table-tbody
+  > .semi-table-row
+  > .channel-operate-cell.semi-table-cell-fixed-right {
+  z-index: 110;
+  pointer-events: auto;
 }
 
 .channel-operate-actions {
   display: inline-flex !important;
+  position: relative;
+  z-index: 1;
   width: 100%;
   flex-wrap: nowrap !important;
   align-items: center;
@@ -1023,6 +1033,12 @@ html.dark .with-pastel-balls::before {
 
 .channel-operate-actions .semi-space-item {
   flex-shrink: 0;
+}
+
+.channel-operate-actions .semi-button,
+.channel-operate-actions .semi-button-group,
+.channel-operate-actions .semi-dropdown-trigger {
+  pointer-events: auto;
 }
 
 /* ==================== 自定义圆角样式 ==================== */
