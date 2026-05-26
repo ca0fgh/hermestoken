@@ -16,8 +16,8 @@ func TestStreamStatus_SetEndReason_FirstWins(t *testing.T) {
 	s.SetEndReason(StreamEndReasonTimeout, nil)
 	s.SetEndReason(StreamEndReasonClientGone, fmt.Errorf("context canceled"))
 
-	assert.Equal(t, StreamEndReasonDone, s.EndReason)
-	assert.Nil(t, s.EndError)
+	assert.Equal(t, StreamEndReasonDone, s.EndReason())
+	assert.Nil(t, s.EndError())
 }
 
 func TestStreamStatus_SetEndReason_WithError(t *testing.T) {
@@ -27,8 +27,8 @@ func TestStreamStatus_SetEndReason_WithError(t *testing.T) {
 	expectedErr := fmt.Errorf("read: connection reset")
 	s.SetEndReason(StreamEndReasonScannerErr, expectedErr)
 
-	assert.Equal(t, StreamEndReasonScannerErr, s.EndReason)
-	assert.Equal(t, expectedErr, s.EndError)
+	assert.Equal(t, StreamEndReasonScannerErr, s.EndReason())
+	assert.Equal(t, expectedErr, s.EndError())
 }
 
 func TestStreamStatus_SetEndReason_NilSafe(t *testing.T) {
@@ -62,7 +62,7 @@ func TestStreamStatus_SetEndReason_Concurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	assert.NotEqual(t, StreamEndReasonNone, s.EndReason)
+	assert.NotEqual(t, StreamEndReasonNone, s.EndReason())
 }
 
 func TestStreamStatus_RecordError_Basic(t *testing.T) {
@@ -75,7 +75,7 @@ func TestStreamStatus_RecordError_Basic(t *testing.T) {
 
 	assert.True(t, s.HasErrors())
 	assert.Equal(t, 3, s.TotalErrorCount())
-	assert.Len(t, s.Errors, 3)
+	assert.Len(t, s.ErrorMessages(), 3)
 }
 
 func TestStreamStatus_RecordError_CapAtMax(t *testing.T) {
@@ -86,7 +86,7 @@ func TestStreamStatus_RecordError_CapAtMax(t *testing.T) {
 		s.RecordError(fmt.Sprintf("error_%d", i))
 	}
 
-	assert.Equal(t, maxStreamErrorEntries, len(s.Errors))
+	assert.Equal(t, maxStreamErrorEntries, len(s.ErrorMessages()))
 	assert.Equal(t, 30, s.TotalErrorCount())
 }
 
@@ -111,7 +111,7 @@ func TestStreamStatus_RecordError_Concurrent(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, 100, s.TotalErrorCount())
-	assert.LessOrEqual(t, len(s.Errors), maxStreamErrorEntries)
+	assert.LessOrEqual(t, len(s.ErrorMessages()), maxStreamErrorEntries)
 }
 
 func TestStreamStatus_HasErrors_Empty(t *testing.T) {

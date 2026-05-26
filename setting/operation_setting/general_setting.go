@@ -14,6 +14,13 @@ type GeneralSetting struct {
 	DocsLink            string `json:"docs_link"`
 	PingIntervalEnabled bool   `json:"ping_interval_enabled"`
 	PingIntervalSeconds int    `json:"ping_interval_seconds"`
+	// FirstChunkTimeoutEnabled 开启「首字超时失败转移」：流式请求等待上游首个 data:
+	// 超过 FirstChunkTimeoutSeconds 且尚未向客户端转发任何输出时，切换到别的渠道重试。
+	// 默认关闭——开启前生产行为完全不变。仅对「非渠道亲和」请求生效（亲和如 codex 钉
+	// channel 51 永不转移，保护 prompt 缓存）。
+	FirstChunkTimeoutEnabled bool `json:"first_chunk_timeout_enabled"`
+	// FirstChunkTimeoutSeconds 首字超时阈值（秒），<=0 时回退为 60。
+	FirstChunkTimeoutSeconds int `json:"first_chunk_timeout_seconds"`
 	// 当前站点额度展示类型：USD / CNY / TOKENS
 	QuotaDisplayType string `json:"quota_display_type"`
 	// 自定义货币符号，用于 CUSTOM 展示类型

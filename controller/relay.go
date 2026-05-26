@@ -217,6 +217,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		// 每次尝试前重置流式状态：relayInfo 在重试间复用，而 StreamScannerHandler 仅在
+		// StreamStatus==nil 时新建，故须在此显式重置，避免上一次尝试（尤其首字超时失败转移）的
+		// StreamStatus（已 ended，后续 SetEndReason 均无效）与已转发计数串入本次尝试，导致结束
+		// 原因 / 计费日志错乱（例如失败转移后重试成功，却仍记为 first_chunk_timeout）。
+		relayInfo.StreamStatus = nil
+		relayInfo.ReceivedResponseCount = 0
+		// 首字超时失败转移：对「非亲和」流式请求设置阈值（默认关闭→恒为 0，零行为变更）。
+		relayInfo.FirstChunkTimeoutSeconds = firstChunkTimeoutSecondsForRequest(c, relayInfo)
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			hermesTokenError = relay.WssHelper(c, relayInfo)
@@ -226,6 +235,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			hermesTokenError = geminiRelayHandler(c, relayInfo)
 		default:
 			hermesTokenError = relayHandler(c, relayInfo)
+		}
+
+		// 首字超时失败转移：StreamScannerHandler 在「等待首个 data: 超时且尚未转发任何输出」时
+		// 把流标记为 FirstChunkTimeout（handler 通常仍返回 nil）。此处合成可重试 504，复用既有重试
+		// 机制切换渠道。仅在 ReceivedResponseCount==0（没出过输出）时合成，满足「只重试没出过输出的」；
+		// 亲和请求因 FirstChunkTimeoutSeconds=0 永不进入此分支，codex 渠道亲和与 prompt 缓存不受影响。
+		// 用 503（在 500-503 自动重试区间内）：504/524 被显式列为「永不重试」(alwaysSkipRetryStatusCodes)，
+		// 且 channel_id 在常规文本中继路径并不置入 ctx，故必须用落在重试区间的状态码才能可靠触发重试。
+		if hermesTokenError == nil && relayInfo.IsStream && relayInfo.StreamStatus != nil &&
+			relayInfo.StreamStatus.EndReason() == relaycommon.StreamEndReasonFirstChunkTimeout &&
+			relayInfo.ReceivedResponseCount == 0 {
+			hermesTokenError = types.NewErrorWithStatusCode(
+				fmt.Errorf("first chunk timeout after %ds, failing over to another channel", relayInfo.FirstChunkTimeoutSeconds),
+				types.ErrorCodeBadResponse, http.StatusServiceUnavailable)
+			logger.LogError(c, fmt.Sprintf("first-chunk-timeout failover: channel=%d, %s", channel.Id, hermesTokenError.Error()))
 		}
 
 		if hermesTokenError == nil {
@@ -398,6 +422,32 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, hermesTokenError
 	}
 	return channel, nil
+}
+
+// firstChunkTimeoutSecondsForRequest 返回本次流式请求的首字超时阈值（秒）；0 表示不启用失败转移。
+// 仅当全局开关开启、且为流式、且非渠道亲和（如 codex 钉 channel 51 不转移以保护 prompt 缓存）、
+// 且未指定固定渠道时返回正值。默认关闭——开关关闭时恒返回 0，生产行为完全不变。
+func firstChunkTimeoutSecondsForRequest(c *gin.Context, info *relaycommon.RelayInfo) int {
+	if info == nil || !info.IsStream {
+		return 0
+	}
+	gs := operation_setting.GetGeneralSetting()
+	if !gs.FirstChunkTimeoutEnabled {
+		return 0
+	}
+	// 渠道亲和（prompt_cache_key 钉渠道）：超时也不得切换，否则破坏上游 prompt 缓存。
+	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+		return 0
+	}
+	// 用户显式指定固定渠道：不转移。
+	if _, ok := c.Get("specific_channel_id"); ok {
+		return 0
+	}
+	secs := gs.FirstChunkTimeoutSeconds
+	if secs <= 0 {
+		secs = 60
+	}
+	return secs
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.HermesTokenError, retryTimes int) bool {
