@@ -6,6 +6,10 @@ const channelColumnsPath = new URL(
   "../classic/src/components/table/channels/ChannelsColumnDefs.jsx",
   import.meta.url,
 );
+const channelOperateActionsPath = new URL(
+  "../classic/src/components/table/channels/ChannelOperateActions.jsx",
+  import.meta.url,
+);
 const channelsDataHookPath = new URL(
   "../classic/src/hooks/channels/useChannelsData.jsx",
   import.meta.url,
@@ -23,33 +27,41 @@ const classicCssPath = new URL("../classic/src/index.css", import.meta.url);
 
 const loadSource = (path) => readFile(path, "utf8");
 
-test("channel operation column reserves a stable clickable fixed-column area", async () => {
+test("channel operation column delegates click actions to a compact fixed action component", async () => {
   const source = await loadSource(channelColumnsPath);
 
-  assert.match(source, /width:\s*320/);
+  assert.match(source, /import ChannelOperateActions/);
+  assert.match(source, /<ChannelOperateActions/);
+  assert.match(source, /fixed:\s*'right'/);
+  assert.match(source, /width:\s*240/);
   assert.match(source, /className:\s*'channel-operate-cell'/);
-  assert.match(source, /className='channel-operate-actions'/);
+  assert.doesNotMatch(source, /SplitButtonGroup/);
 });
 
-test("channel operation fixed cells keep actions above table hit-test layers", async () => {
+test("channel operation actions expose edit as the first direct button", async () => {
+  const source = await loadSource(channelOperateActionsPath);
+
+  assert.match(source, /const handleEdit\s*=/);
+  assert.match(source, /data-testid='channel-edit-action'/);
+  assert.match(
+    source,
+    /<Button[\s\S]*data-testid='channel-edit-action'[\s\S]*onClick=\{handleEdit\}[\s\S]*>\s*\{t\('编辑'\)\}/,
+  );
+  assert.match(
+    source,
+    /const moreMenuItems\s*=\s*\[[\s\S]*name:\s*t\('多密钥管理'\)[\s\S]*name:\s*t\('复制'\)[\s\S]*name:\s*t\('删除'\)/,
+  );
+});
+
+test("channel operation styles are compact without hard z-index hit-test overrides", async () => {
   const source = await loadSource(classicCssPath);
 
+  assert.match(source, /\.channel-operate-cell\s*{[\s\S]*min-width:\s*240px;/);
   assert.match(
     source,
-    /\.channel-operate-cell\s*{[\s\S]*pointer-events:\s*auto;/,
+    /\.channel-operate-actions\s*{[\s\S]*display:\s*flex[\s\S]*justify-content:\s*flex-end;/,
   );
-  assert.match(
-    source,
-    /\.semi-table-tbody\s*>\s*\.semi-table-row\s*>\s*\.channel-operate-cell\.semi-table-cell-fixed-right\s*{[\s\S]*z-index:\s*110;[\s\S]*pointer-events:\s*auto;/,
-  );
-  assert.match(
-    source,
-    /\.channel-operate-actions\s*{[\s\S]*position:\s*relative;[\s\S]*z-index:\s*1;[\s\S]*pointer-events:\s*auto;/,
-  );
-  assert.match(
-    source,
-    /\.channel-operate-actions\s*\.semi-button,\s*[\s\S]*\.channel-operate-actions\s*\.semi-button-group,\s*[\s\S]*\.channel-operate-actions\s*\.semi-dropdown-trigger\s*{[\s\S]*pointer-events:\s*auto;/,
-  );
+  assert.doesNotMatch(source, /z-index:\s*110/);
 });
 
 test("channel list loading state is always cleared after request failures or stale responses", async () => {

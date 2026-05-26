@@ -1007,38 +1007,22 @@ html.dark .with-pastel-balls::before {
 
 /* Channel table operation column */
 .channel-operate-cell {
-  min-width: 320px;
+  min-width: 240px;
   background: var(--semi-color-bg-0);
-  pointer-events: auto;
-}
-
-.semi-table-tbody
-  > .semi-table-row
-  > .channel-operate-cell.semi-table-cell-fixed-right {
-  z-index: 110;
-  pointer-events: auto;
 }
 
 .channel-operate-actions {
-  display: inline-flex !important;
-  position: relative;
-  z-index: 1;
+  display: flex !important;
   width: 100%;
-  flex-wrap: nowrap !important;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
+  gap: 8px;
   white-space: nowrap;
-  pointer-events: auto;
 }
 
 .channel-operate-actions .semi-space-item {
   flex-shrink: 0;
-}
-
-.channel-operate-actions .semi-button,
-.channel-operate-actions .semi-button-group,
-.channel-operate-actions .semi-dropdown-trigger {
-  pointer-events: auto;
 }
 
 /* ==================== 自定义圆角样式 ==================== */

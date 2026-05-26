@@ -33,6 +33,17 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+// applyRelayTransportTimeouts sets the per-attempt response-header timeout on a
+// relay transport. ResponseHeaderTimeout bounds only the wait for response
+// headers, not body/stream reads, so it fails over fast on a hung upstream
+// without ever truncating a long streaming response. 0 leaves it unbounded
+// (current behavior).
+func applyRelayTransportTimeouts(transport *http.Transport) {
+	if common.RelayResponseHeaderTimeout > 0 {
+		transport.ResponseHeaderTimeout = time.Duration(common.RelayResponseHeaderTimeout) * time.Second
+	}
+}
+
 func InitHttpClient() {
 	transport := &http.Transport{
 		MaxIdleConns:        common.RelayMaxIdleConns,
@@ -40,6 +51,7 @@ func InitHttpClient() {
 		ForceAttemptHTTP2:   true,
 		Proxy:               http.ProxyFromEnvironment, // Support HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
 	}
+	applyRelayTransportTimeouts(transport)
 	if common.TLSInsecureSkipVerify {
 		transport.TLSClientConfig = common.InsecureTLSConfig
 	}
@@ -111,6 +123,7 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 			ForceAttemptHTTP2:   true,
 			Proxy:               http.ProxyURL(parsedURL),
 		}
+		applyRelayTransportTimeouts(transport)
 		if common.TLSInsecureSkipVerify {
 			transport.TLSClientConfig = common.InsecureTLSConfig
 		}
@@ -152,6 +165,7 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 				return dialer.Dial(network, addr)
 			},
 		}
+		applyRelayTransportTimeouts(transport)
 		if common.TLSInsecureSkipVerify {
 			transport.TLSClientConfig = common.InsecureTLSConfig
 		}

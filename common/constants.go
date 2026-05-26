@@ -169,6 +169,18 @@ var BatchUpdateInterval int
 
 var RelayTimeout int // unit is second
 
+// RelayResponseHeaderTimeout caps how long an upstream relay request may wait for
+// the response *headers* (not the body). Default 30s (env RELAY_RESPONSE_HEADER_TIMEOUT;
+// set 0 to disable / unbounded). It is the per-attempt failover bound: a hung
+// upstream (e.g. Cloudflare taking ~60s to emit a 504/524) is abandoned after this
+// many seconds so the retry loop moves on to the next channel immediately.
+// Body/stream read time stays unbounded, so it never truncates a long streaming
+// response. NOTE: for NON-stream requests, headers arrive only after the upstream
+// finishes generating, so this also bounds total non-stream latency — a legitimately
+// slow non-stream response (large output / reasoning models) may be failed over
+// before it returns. Unit is second.
+var RelayResponseHeaderTimeout int
+
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 
