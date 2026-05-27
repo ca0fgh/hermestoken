@@ -16,9 +16,17 @@ import (
 )
 
 var (
-	httpClient      *http.Client
-	proxyClientLock sync.Mutex
-	proxyClients    = make(map[string]*http.Client)
+	// httpClient is the STREAMING relay client: its transport carries
+	// ResponseHeaderTimeout for fast hung-upstream failover. Streaming upstreams
+	// emit headers immediately, so this never truncates a long stream.
+	httpClient *http.Client
+	// nonStreamHTTPClient is the NON-STREAM relay client: it has NO
+	// ResponseHeaderTimeout (a non-stream upstream withholds headers until the whole
+	// completion is generated) and is instead bounded by an overall per-attempt
+	// Timeout (RelayNonStreamTimeout) so a truly hung channel still fails over.
+	nonStreamHTTPClient *http.Client
+	proxyClientLock     sync.Mutex
+	proxyClients        = make(map[string]*http.Client)
 )
 
 func checkRedirect(req *http.Request, via []*http.Request) error {
@@ -34,47 +42,89 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 }
 
 // applyRelayTransportTimeouts sets the per-attempt response-header timeout on a
-// relay transport. ResponseHeaderTimeout bounds only the wait for response
+// STREAMING relay transport. ResponseHeaderTimeout bounds only the wait for response
 // headers, not body/stream reads, so it fails over fast on a hung upstream
-// without ever truncating a long streaming response. 0 leaves it unbounded
-// (current behavior).
+// without ever truncating a long streaming response. 0 leaves it unbounded.
+//
+// It must NOT be used for non-stream transports: a non-stream upstream sends its
+// headers only after generation completes, so a header timeout there aborts every
+// legitimately slow completion. Non-stream uses an overall client.Timeout instead
+// (see nonStreamClientTimeout).
 func applyRelayTransportTimeouts(transport *http.Transport) {
 	if common.RelayResponseHeaderTimeout > 0 {
 		transport.ResponseHeaderTimeout = time.Duration(common.RelayResponseHeaderTimeout) * time.Second
 	}
 }
 
-func InitHttpClient() {
+// streamClientTimeout returns the overall Timeout for the streaming client.
+// 0 means unbounded — required so long streams are never truncated.
+func streamClientTimeout() time.Duration {
+	if common.RelayTimeout > 0 {
+		return time.Duration(common.RelayTimeout) * time.Second
+	}
+	return 0
+}
+
+// nonStreamClientTimeout returns the overall per-attempt Timeout for the non-stream
+// client. Prefer RelayNonStreamTimeout; if unset (0) fall back to RelayTimeout; if
+// that is also 0, unbounded.
+func nonStreamClientTimeout() time.Duration {
+	if common.RelayNonStreamTimeout > 0 {
+		return time.Duration(common.RelayNonStreamTimeout) * time.Second
+	}
+	if common.RelayTimeout > 0 {
+		return time.Duration(common.RelayTimeout) * time.Second
+	}
+	return 0
+}
+
+// newRelayTransport builds a relay transport. The response-header timeout is
+// applied only for streaming; non-stream transports never carry it.
+func newRelayTransport(stream bool) *http.Transport {
 	transport := &http.Transport{
 		MaxIdleConns:        common.RelayMaxIdleConns,
 		MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
 		ForceAttemptHTTP2:   true,
 		Proxy:               http.ProxyFromEnvironment, // Support HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
 	}
-	applyRelayTransportTimeouts(transport)
+	if stream {
+		applyRelayTransportTimeouts(transport)
+	}
 	if common.TLSInsecureSkipVerify {
 		transport.TLSClientConfig = common.InsecureTLSConfig
 	}
+	return transport
+}
 
-	if common.RelayTimeout == 0 {
-		httpClient = &http.Client{
-			Transport:     transport,
-			CheckRedirect: checkRedirect,
-		}
-	} else {
-		httpClient = &http.Client{
-			Transport:     transport,
-			Timeout:       time.Duration(common.RelayTimeout) * time.Second,
-			CheckRedirect: checkRedirect,
-		}
+func InitHttpClient() {
+	httpClient = &http.Client{
+		Transport:     newRelayTransport(true),
+		Timeout:       streamClientTimeout(),
+		CheckRedirect: checkRedirect,
+	}
+	nonStreamHTTPClient = &http.Client{
+		Transport:     newRelayTransport(false),
+		Timeout:       nonStreamClientTimeout(),
+		CheckRedirect: checkRedirect,
 	}
 }
 
+// GetHttpClient returns the streaming relay client (carries the response-header
+// timeout). Existing non-relay callers keep their current behavior.
 func GetHttpClient() *http.Client {
 	return httpClient
 }
 
-// GetHttpClientWithProxy returns the default client or a proxy-enabled one when proxyURL is provided.
+// GetNonStreamHttpClient returns the non-stream relay client (no response-header
+// timeout, bounded by an overall per-attempt timeout). Like GetHttpClient, this is
+// nil until InitHttpClient runs at startup; intentionally NOT falling back to the
+// streaming client, since that would silently reattach the response-header timeout
+// to non-stream traffic and reintroduce the cascade bug.
+func GetNonStreamHttpClient() *http.Client {
+	return nonStreamHTTPClient
+}
+
+// GetHttpClientWithProxy returns the default streaming client or a proxy-enabled one.
 func GetHttpClientWithProxy(proxyURL string) (*http.Client, error) {
 	if proxyURL == "" {
 		return GetHttpClient(), nil
@@ -94,17 +144,40 @@ func ResetProxyClientCache() {
 	proxyClients = make(map[string]*http.Client)
 }
 
-// NewProxyHttpClient 创建支持代理的 HTTP 客户端
+// NewProxyHttpClient 创建支持代理的 HTTP 客户端（流式：带响应头超时）。
 func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
+	return newProxyHttpClient(proxyURL, true)
+}
+
+// NewNonStreamProxyHttpClient 创建支持代理的非流式 HTTP 客户端（无响应头超时，
+// 由整体超时兜底），用于非流式中继请求，避免慢但正常的补全被头超时误切。
+func NewNonStreamProxyHttpClient(proxyURL string) (*http.Client, error) {
+	return newProxyHttpClient(proxyURL, false)
+}
+
+func newProxyHttpClient(proxyURL string, stream bool) (*http.Client, error) {
 	if proxyURL == "" {
-		if client := GetHttpClient(); client != nil {
+		if stream {
+			if client := GetHttpClient(); client != nil {
+				return client, nil
+			}
+			return http.DefaultClient, nil
+		}
+		if client := GetNonStreamHttpClient(); client != nil {
 			return client, nil
 		}
 		return http.DefaultClient, nil
 	}
 
+	// Stream and non-stream proxy clients differ in their timeout configuration,
+	// so they are cached under distinct keys.
+	cacheKey := proxyURL
+	if !stream {
+		cacheKey = "nonstream|" + proxyURL
+	}
+
 	proxyClientLock.Lock()
-	if client, ok := proxyClients[proxyURL]; ok {
+	if client, ok := proxyClients[cacheKey]; ok {
 		proxyClientLock.Unlock()
 		return client, nil
 	}
@@ -115,6 +188,11 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 		return nil, err
 	}
 
+	clientTimeout := streamClientTimeout()
+	if !stream {
+		clientTimeout = nonStreamClientTimeout()
+	}
+
 	switch parsedURL.Scheme {
 	case "http", "https":
 		transport := &http.Transport{
@@ -123,17 +201,19 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 			ForceAttemptHTTP2:   true,
 			Proxy:               http.ProxyURL(parsedURL),
 		}
-		applyRelayTransportTimeouts(transport)
+		if stream {
+			applyRelayTransportTimeouts(transport)
+		}
 		if common.TLSInsecureSkipVerify {
 			transport.TLSClientConfig = common.InsecureTLSConfig
 		}
 		client := &http.Client{
 			Transport:     transport,
 			CheckRedirect: checkRedirect,
+			Timeout:       clientTimeout,
 		}
-		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
 		proxyClientLock.Lock()
-		proxyClients[proxyURL] = client
+		proxyClients[cacheKey] = client
 		proxyClientLock.Unlock()
 		return client, nil
 
@@ -165,15 +245,16 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 				return dialer.Dial(network, addr)
 			},
 		}
-		applyRelayTransportTimeouts(transport)
+		if stream {
+			applyRelayTransportTimeouts(transport)
+		}
 		if common.TLSInsecureSkipVerify {
 			transport.TLSClientConfig = common.InsecureTLSConfig
 		}
 
-		client := &http.Client{Transport: transport, CheckRedirect: checkRedirect}
-		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
+		client := &http.Client{Transport: transport, CheckRedirect: checkRedirect, Timeout: clientTimeout}
 		proxyClientLock.Lock()
-		proxyClients[proxyURL] = client
+		proxyClients[cacheKey] = client
 		proxyClientLock.Unlock()
 		return client, nil
 

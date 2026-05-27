@@ -169,17 +169,31 @@ var BatchUpdateInterval int
 
 var RelayTimeout int // unit is second
 
-// RelayResponseHeaderTimeout caps how long an upstream relay request may wait for
-// the response *headers* (not the body). Default 30s (env RELAY_RESPONSE_HEADER_TIMEOUT;
-// set 0 to disable / unbounded). It is the per-attempt failover bound: a hung
-// upstream (e.g. Cloudflare taking ~60s to emit a 504/524) is abandoned after this
-// many seconds so the retry loop moves on to the next channel immediately.
-// Body/stream read time stays unbounded, so it never truncates a long streaming
-// response. NOTE: for NON-stream requests, headers arrive only after the upstream
-// finishes generating, so this also bounds total non-stream latency — a legitimately
-// slow non-stream response (large output / reasoning models) may be failed over
-// before it returns. Unit is second.
+// RelayResponseHeaderTimeout caps how long a STREAMING upstream relay request may
+// wait for the response *headers* (not the body). Default 30s (env
+// RELAY_RESPONSE_HEADER_TIMEOUT; set 0 to disable / unbounded). It is the per-attempt
+// failover bound for streaming: a hung upstream (e.g. Cloudflare taking ~60s to emit
+// a 504/524) is abandoned after this many seconds so the retry loop moves on to the
+// next channel immediately. Body/stream read time stays unbounded, so it never
+// truncates a long streaming response.
+//
+// IMPORTANT: this is applied ONLY to the streaming relay client. For streaming,
+// upstreams emit 200 + headers almost immediately, so 30s is generous. NON-stream
+// requests use a SEPARATE client (see RelayNonStreamTimeout) WITHOUT this header
+// timeout, because a non-stream upstream withholds the response headers until the
+// whole completion is generated — applying a 30s header timeout there cuts every
+// legitimately slow non-stream response (large output / reasoning models) and
+// cascades it across all channels. Unit is second.
 var RelayResponseHeaderTimeout int
+
+// RelayNonStreamTimeout bounds the TOTAL duration of a single non-stream upstream
+// relay attempt (env RELAY_NONSTREAM_TIMEOUT, default 300s; set 0 to fall back to
+// RelayTimeout, or fully unbounded when that is also 0). Non-stream requests are
+// NOT subject to RelayResponseHeaderTimeout: their headers arrive only when
+// generation finishes, so the correct bound is an overall per-attempt timeout that
+// is generous enough for the slowest legitimate completion yet still abandons a
+// truly hung channel so the retry loop can fail over. Unit is second.
+var RelayNonStreamTimeout int
 
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
