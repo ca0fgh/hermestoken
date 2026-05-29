@@ -200,6 +200,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
+			// 渠道耗尽属于终态失败：此前可重试的尝试按设计未落 type=5（见 processChannelError），
+			// 这里用最后一次真实上游错误补记一条带完整 use_channel 重试链的错误日志，避免真失败漏记。
+			if relayInfo.LastError != nil {
+				setRetryAdminInfo(c, retryAdminInfo{
+					Index:     retryParam.GetRetry(),
+					Remaining: 0,
+					WillRetry: false,
+					Reason:    retryReasonSelectedChannelUnavailable,
+				})
+				processChannelError(c, c.GetInt("channel_id"), relayInfo.LastError)
+			}
 			hermesTokenError = channelErr
 			break
 		}
@@ -541,13 +552,15 @@ func appendRetryAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
 }
 
 func processChannelError(c *gin.Context, channelId int, err *types.HermesTokenError) {
-	// 单次渠道失败：若后续仍会重试，按可恢复事件记 WARN（避免和"彻底失败"混淆）；
-	// 只有重试耗尽的终态失败才记 ERROR。错误日志仍照常落库，渠道健康统计不受影响。
+	// 单次渠道失败：若后续仍会重试，按可恢复事件记 WARN 应用日志即返回，不落 type=5 错误日志——
+	// 否则一个最终成功（如 11->34->61）的请求会在后台留下多条红色"错误"，与真·终态失败混淆。
+	// 只有重试耗尽 / 不可重试的终态失败才落库（见下方 RecordErrorLog）。渠道健康可看 WARN 应用日志，
+	// 终态那条 type=5 也带完整 use_channel 重试链。终态失败的兜底落库见 Relay 循环中 getChannel 失败分支。
 	if willRetryFromAdminInfo(c) {
 		logger.LogWarn(c, fmt.Sprintf("channel error (channel #%d, status code: %d), will retry next channel: %s", channelId, err.StatusCode, err.Error()))
-	} else {
-		logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d), retries exhausted: %s", channelId, err.StatusCode, err.Error()))
+		return
 	}
+	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d), retries exhausted: %s", channelId, err.StatusCode, err.Error()))
 	modelName := c.GetString("original_model")
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		// 保存错误日志到mysql中
@@ -726,6 +739,17 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
+				// 渠道耗尽属于终态失败：此前可重试的尝试按设计未落 type=5（见 processChannelError），
+				// 这里用最后一次真实上游错误补记一条带完整 use_channel 重试链的错误日志，避免真失败漏记。
+				if taskErr != nil && !taskErr.LocalError {
+					setRetryAdminInfo(c, retryAdminInfo{
+						Index:     retryParam.GetRetry(),
+						Remaining: 0,
+						WillRetry: false,
+						Reason:    retryReasonSelectedChannelUnavailable,
+					})
+					processChannelError(c, c.GetInt("channel_id"), types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+				}
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
 			}
