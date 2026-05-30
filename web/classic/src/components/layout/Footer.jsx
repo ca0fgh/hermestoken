@@ -39,12 +39,35 @@ const FooterBar = () => {
 
   const currentYear = new Date().getFullYear();
 
+  const legalLinks = useMemo(
+    () => (
+      <div className='flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-semi-color-text-1'>
+        <Link to='/about' className='!text-semi-color-text-1'>
+          {t('关于')}
+        </Link>
+        <Link to='/user-agreement' className='!text-semi-color-text-1'>
+          {t('服务条款')}
+        </Link>
+        <Link to='/privacy-policy' className='!text-semi-color-text-1'>
+          {t('隐私政策')}
+        </Link>
+      </div>
+    ),
+    [t],
+  );
+
+  const copyrightLine = useMemo(
+    () => (
+      <span className='text-sm !text-semi-color-text-1'>
+        © {currentYear} {systemName}. {t('版权所有')}
+      </span>
+    ),
+    [currentYear, systemName, t],
+  );
+
   const customFooter = useMemo(
     () => (
-      <footer className='relative h-auto py-16 px-6 md:px-24 w-full flex flex-col items-center justify-between overflow-hidden'>
-        <div className='absolute hidden md:block top-[204px] left-[-100px] w-[151px] h-[151px] rounded-full bg-[#FFD166]'></div>
-        <div className='absolute md:hidden bottom-[20px] left-[-50px] w-[80px] h-[80px] rounded-full bg-[#FFD166] opacity-60'></div>
-
+      <footer className='relative h-auto py-8 md:py-10 px-6 md:px-24 w-full flex flex-col items-center overflow-hidden'>
         {isDemoSiteMode && (
           <div className='flex flex-col md:flex-row justify-between w-full max-w-[1110px] mb-10 gap-8'>
             <div className='flex-shrink-0'>
@@ -130,16 +153,13 @@ const FooterBar = () => {
           </div>
         )}
 
-        <div className='flex flex-col md:flex-row items-center justify-between w-full max-w-[1110px] gap-6'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <span className='text-sm text-semi-color-text-1'>
-              © {currentYear} {systemName}. {t('版权所有')}
-            </span>
-          </div>
+        <div className='flex w-full max-w-[1110px] flex-col items-center gap-3 text-center'>
+          {legalLinks}
+          {copyrightLine}
         </div>
       </footer>
     ),
-    [displayLogo, systemName, t, currentYear, isDemoSiteMode],
+    [displayLogo, systemName, t, isDemoSiteMode, legalLinks, copyrightLine],
   );
 
   useEffect(() => {
@@ -149,32 +169,19 @@ const FooterBar = () => {
   return (
     <div className='w-full'>
       {footer ? (
-        <footer className='relative h-auto py-4 px-6 md:px-24 w-full flex items-center justify-center overflow-hidden'>
-          <div className='flex items-center justify-center w-full max-w-[1110px] gap-4'>
+        <footer className='relative h-auto py-6 px-6 md:px-24 w-full flex items-center justify-center overflow-hidden'>
+          <div className='flex w-full max-w-[1110px] flex-col items-center gap-3 text-center'>
             <div
               className='custom-footer na-cb6feafeb3990c78 text-sm !text-semi-color-text-1'
               dangerouslySetInnerHTML={{ __html: footer }}
             ></div>
+            {legalLinks}
+            {copyrightLine}
           </div>
         </footer>
       ) : (
         customFooter
       )}
-      <div className='w-full px-6 md:px-24 pb-6 flex justify-center'>
-        <div className='flex flex-col items-center gap-2 w-full max-w-[1110px] text-center'>
-          <div className='flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-semi-color-text-1'>
-            <Link to='/about' className='!text-semi-color-text-1'>
-              {t('关于')}
-            </Link>
-            <Link to='/user-agreement' className='!text-semi-color-text-1'>
-              {t('服务条款')}
-            </Link>
-            <Link to='/privacy-policy' className='!text-semi-color-text-1'>
-              {t('隐私政策')}
-            </Link>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

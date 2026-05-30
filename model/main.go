@@ -268,6 +268,7 @@ func migrateDB() error {
 		&SubscriptionPreConsumeRecord{},
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
+		&PerfMetric{},
 	}, marketplaceMigrationModels()...)
 	err := DB.AutoMigrate(migrationModels...)
 	if err != nil {

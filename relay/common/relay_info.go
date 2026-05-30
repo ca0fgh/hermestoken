@@ -107,6 +107,10 @@ type RelayInfo struct {
 	RequestHeaders         map[string]string
 	ShouldIncludeUsage     bool
 	DisablePing            bool // 是否禁止向下游发送自定义 Ping
+	// FirstChunkTimeoutSeconds >0 时启用「首字超时失败转移」：流式扫描等待上游首个 data:
+	// 超过该秒数且尚未转发任何输出，则将流标记为 StreamEndReasonFirstChunkTimeout 并结束，
+	// 由控制器合成可重试错误切换渠道。0=禁用（默认）。仅由控制器对「非亲和」请求置为正值。
+	FirstChunkTimeoutSeconds int
 	ClientWs               *websocket.Conn
 	TargetWs               *websocket.Conn
 	InputAudioFormat       string

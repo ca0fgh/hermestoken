@@ -65,7 +65,7 @@ NGINX_COMPRESSIBLE_TYPES = """        text/plain
 """
 
 NGINX_SECURITY_HEADER_DIRECTIVES = """        add_header Strict-Transport-Security "max-age=31536000" always;
-        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src https: blob: data:; child-src https: blob: data:; media-src 'self' data: blob: https:; worker-src 'self' blob:; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: wss:; frame-src https: blob: data:; child-src https: blob: data:; media-src 'self' data: blob: https:; worker-src 'self' blob:; form-action 'self' https:" always;
         add_header X-Content-Type-Options "nosniff" always;
         add_header X-Frame-Options "DENY" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;

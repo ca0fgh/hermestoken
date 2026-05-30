@@ -19,6 +19,7 @@ import { buildGroupOptions } from './groupOptions';
 import { showError } from './notifications';
 import { isUnauthorizedError, redirectToLoginWhenExpired } from './authError';
 import { getUserIdFromLocalStorage } from './session';
+import { installChannelPreviewApiMock } from './channelPreviewMock';
 import axios from 'axios';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
@@ -152,6 +153,7 @@ function patchAPIInstance(instance) {
 }
 
 patchAPIInstance(API);
+installChannelPreviewApiMock(API);
 
 function formatMessageForAPI(message) {
   if (!message) {
@@ -180,6 +182,7 @@ export function updateAPI() {
   });
 
   patchAPIInstance(API);
+  installChannelPreviewApiMock(API);
 }
 
 API.interceptors.response.use(
