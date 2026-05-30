@@ -87,10 +87,11 @@ const DocumentRenderer = ({
     try {
       const res = await API.get(apiEndpoint);
       const { success, message, data } = res.data;
-      if (success && data) {
+      if (success && typeof data === 'string' && data.trim() !== '') {
         setContent(data);
         localStorage.setItem(cacheKey, data);
-      } else if (!cachedContent) {
+      } else {
+        localStorage.removeItem(cacheKey);
         // No admin-configured content: fall back to the built-in default
         // document instead of surfacing an error toast. Admin-configured
         // content (when set) still takes precedence.

@@ -166,10 +166,6 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }
 
-  const isSafari =
-    typeof navigator !== 'undefined' &&
-    /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-
   const handlePayEpay = async () => {
     if (!selectedEpayMethod) {
       toast.error(t('Please select a payment method'))
@@ -182,12 +178,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
         payment_method: selectedEpayMethod,
       })
       if (res.message === 'success' && res.url) {
+        // Same-tab submit (no target="_blank"): a programmatic new-tab form submit
+        // fired after an await is silently popup-blocked by Chrome (transient user
+        // activation is gone), so the gateway page never opens — the user sees
+        // "payment initiated" but nothing happens. Navigate the current tab; the
+        // epay gateway redirects back to the return URL after payment.
         const form = document.createElement('form')
         form.action = res.url
         form.method = 'POST'
-        if (!isSafari) {
-          form.target = '_blank'
-        }
         Object.entries(res.data || {}).forEach(([key, value]) => {
           const input = document.createElement('input')
           input.type = 'hidden'
@@ -196,10 +194,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
           form.appendChild(input)
         })
         document.body.appendChild(form)
-        form.submit()
-        document.body.removeChild(form)
-        toast.success(t('Payment initiated'))
+        toast.success(t('Redirecting to payment page...'))
         props.onOpenChange(false)
+        form.submit()
+        // Do not remove the form before navigation; the page is leaving anyway.
       } else {
         toast.error(
           res.message && res.message !== 'success'

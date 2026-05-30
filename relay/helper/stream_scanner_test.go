@@ -91,7 +91,6 @@ func (s *slowReader) Read(p []byte) (int, error) {
 // ---------- Basic correctness ----------
 
 func TestStreamScannerHandler_NilInputs(t *testing.T) {
-	t.Parallel()
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
@@ -104,7 +103,6 @@ func TestStreamScannerHandler_NilInputs(t *testing.T) {
 }
 
 func TestStreamScannerHandler_EmptyBody(t *testing.T) {
-	t.Parallel()
 
 	c, resp, info := setupStreamTest(t, strings.NewReader(""))
 
@@ -117,7 +115,6 @@ func TestStreamScannerHandler_EmptyBody(t *testing.T) {
 }
 
 func TestStreamScannerHandler_1000Chunks(t *testing.T) {
-	t.Parallel()
 
 	const numChunks = 1000
 	body := buildSSEBody(numChunks)
@@ -133,7 +130,6 @@ func TestStreamScannerHandler_1000Chunks(t *testing.T) {
 }
 
 func TestStreamScannerHandler_10000Chunks(t *testing.T) {
-	t.Parallel()
 
 	const numChunks = 10000
 	body := buildSSEBody(numChunks)
@@ -153,7 +149,6 @@ func TestStreamScannerHandler_10000Chunks(t *testing.T) {
 }
 
 func TestStreamScannerHandler_OrderPreserved(t *testing.T) {
-	t.Parallel()
 
 	const numChunks = 500
 	body := buildSSEBody(numChunks)
@@ -176,7 +171,6 @@ func TestStreamScannerHandler_OrderPreserved(t *testing.T) {
 }
 
 func TestStreamScannerHandler_DoneStopsScanner(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(50) + "data: should_not_appear\n"
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -190,7 +184,6 @@ func TestStreamScannerHandler_DoneStopsScanner(t *testing.T) {
 }
 
 func TestStreamScannerHandler_StopStopsStream(t *testing.T) {
-	t.Parallel()
 
 	const numChunks = 200
 	body := buildSSEBody(numChunks)
@@ -207,11 +200,10 @@ func TestStreamScannerHandler_StopStopsStream(t *testing.T) {
 
 	assert.Equal(t, stopAt, count.Load())
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonHandlerStop, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonHandlerStop, info.StreamStatus.EndReason())
 }
 
 func TestStreamScannerHandler_SkipsNonDataLines(t *testing.T) {
-	t.Parallel()
 
 	var b strings.Builder
 	b.WriteString(": comment line\n")
@@ -235,7 +227,6 @@ func TestStreamScannerHandler_SkipsNonDataLines(t *testing.T) {
 }
 
 func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
-	t.Parallel()
 
 	body := "data:   {\"trimmed\":true}  \ndata: [DONE]\n"
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -251,7 +242,6 @@ func TestStreamScannerHandler_DataWithExtraSpaces(t *testing.T) {
 // ---------- Decoupling ----------
 
 func TestStreamScannerHandler_ScannerDecoupledFromSlowHandler(t *testing.T) {
-	t.Parallel()
 
 	const numChunks = 50
 	const upstreamDelay = 10 * time.Millisecond
@@ -306,7 +296,6 @@ func TestStreamScannerHandler_ScannerDecoupledFromSlowHandler(t *testing.T) {
 }
 
 func TestStreamScannerHandler_SlowUpstreamFastHandler(t *testing.T) {
-	t.Parallel()
 
 	const numChunks = 50
 	body := buildSSEBody(numChunks)
@@ -338,8 +327,8 @@ func TestStreamScannerHandler_SlowUpstreamFastHandler(t *testing.T) {
 // ---------- Ping tests ----------
 
 func TestStreamScannerHandler_PingSentDuringSlowUpstream(t *testing.T) {
-	t.Parallel()
-
+	// 不可 t.Parallel()：本测试会修改全局 operation_setting，与其它同类测试并行会产生
+	// 对共享全局的竞争（-race）。改为串行以保证测试隔离。
 	setting := operation_setting.GetGeneralSetting()
 	oldEnabled := setting.PingIntervalEnabled
 	oldSeconds := setting.PingIntervalSeconds
@@ -398,8 +387,7 @@ func TestStreamScannerHandler_PingSentDuringSlowUpstream(t *testing.T) {
 }
 
 func TestStreamScannerHandler_PingDisabledByRelayInfo(t *testing.T) {
-	t.Parallel()
-
+	// 不可 t.Parallel()：修改全局 operation_setting，需串行以避免共享全局竞争。
 	setting := operation_setting.GetGeneralSetting()
 	oldEnabled := setting.PingIntervalEnabled
 	oldSeconds := setting.PingIntervalSeconds
@@ -461,7 +449,6 @@ func TestStreamScannerHandler_PingDisabledByRelayInfo(t *testing.T) {
 // ---------- StreamStatus integration ----------
 
 func TestStreamScannerHandler_StreamStatus_DoneReason(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(10)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -469,14 +456,13 @@ func TestStreamScannerHandler_StreamStatus_DoneReason(t *testing.T) {
 	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
 
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
-	assert.Nil(t, info.StreamStatus.EndError)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason())
+	assert.Nil(t, info.StreamStatus.EndError())
 	assert.True(t, info.StreamStatus.IsNormalEnd())
 	assert.False(t, info.StreamStatus.HasErrors())
 }
 
 func TestStreamScannerHandler_StreamStatus_EOFWithoutDone(t *testing.T) {
-	t.Parallel()
 
 	var b strings.Builder
 	for i := 0; i < 5; i++ {
@@ -487,12 +473,11 @@ func TestStreamScannerHandler_StreamStatus_EOFWithoutDone(t *testing.T) {
 	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
 
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonEOF, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonEOF, info.StreamStatus.EndReason())
 	assert.True(t, info.StreamStatus.IsNormalEnd())
 }
 
 func TestStreamScannerHandler_StreamStatus_HandlerStop(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(100)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -506,12 +491,11 @@ func TestStreamScannerHandler_StreamStatus_HandlerStop(t *testing.T) {
 	})
 
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonHandlerStop, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonHandlerStop, info.StreamStatus.EndReason())
 	assert.True(t, info.StreamStatus.HasErrors())
 }
 
 func TestStreamScannerHandler_StreamStatus_HandlerDone(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(20)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -526,7 +510,7 @@ func TestStreamScannerHandler_StreamStatus_HandlerDone(t *testing.T) {
 
 	assert.Equal(t, int64(5), count.Load())
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason())
 	assert.False(t, info.StreamStatus.HasErrors())
 }
 
@@ -563,12 +547,11 @@ func TestStreamScannerHandler_StreamStatus_Timeout(t *testing.T) {
 	}
 
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonTimeout, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonTimeout, info.StreamStatus.EndReason())
 	assert.False(t, info.StreamStatus.IsNormalEnd())
 }
 
 func TestStreamScannerHandler_StreamStatus_SoftErrors(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(10)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -578,13 +561,12 @@ func TestStreamScannerHandler_StreamStatus_SoftErrors(t *testing.T) {
 	})
 
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason())
 	assert.True(t, info.StreamStatus.HasErrors())
 	assert.Equal(t, 10, info.StreamStatus.TotalErrorCount())
 }
 
 func TestStreamScannerHandler_StreamStatus_MultipleErrorsPerChunk(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(5)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -595,12 +577,11 @@ func TestStreamScannerHandler_StreamStatus_MultipleErrorsPerChunk(t *testing.T) 
 	})
 
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason())
 	assert.Equal(t, 10, info.StreamStatus.TotalErrorCount())
 }
 
 func TestStreamScannerHandler_StreamStatus_ErrorThenStop(t *testing.T) {
-	t.Parallel()
 
 	// Use a large body without [DONE] to avoid race between scanner's [DONE]
 	// and handler's Stop on the sync.Once EndReason.
@@ -619,12 +600,11 @@ func TestStreamScannerHandler_StreamStatus_ErrorThenStop(t *testing.T) {
 
 	assert.Equal(t, int64(1), count.Load())
 	require.NotNil(t, info.StreamStatus)
-	assert.Equal(t, relaycommon.StreamEndReasonHandlerStop, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonHandlerStop, info.StreamStatus.EndReason())
 	assert.Equal(t, 2, info.StreamStatus.TotalErrorCount())
 }
 
 func TestStreamScannerHandler_StreamStatus_InitializedIfNil(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(1)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -637,7 +617,6 @@ func TestStreamScannerHandler_StreamStatus_InitializedIfNil(t *testing.T) {
 }
 
 func TestStreamScannerHandler_StreamStatus_PreInitialized(t *testing.T) {
-	t.Parallel()
 
 	body := buildSSEBody(5)
 	c, resp, info := setupStreamTest(t, strings.NewReader(body))
@@ -647,13 +626,12 @@ func TestStreamScannerHandler_StreamStatus_PreInitialized(t *testing.T) {
 
 	StreamScannerHandler(c, resp, info, func(data string, sr *StreamResult) {})
 
-	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason)
+	assert.Equal(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason())
 	assert.Equal(t, 1, info.StreamStatus.TotalErrorCount())
 }
 
 func TestStreamScannerHandler_PingInterleavesWithSlowUpstream(t *testing.T) {
-	t.Parallel()
-
+	// 不可 t.Parallel()：修改全局 operation_setting，需串行以避免共享全局竞争。
 	setting := operation_setting.GetGeneralSetting()
 	oldEnabled := setting.PingIntervalEnabled
 	oldSeconds := setting.PingIntervalSeconds

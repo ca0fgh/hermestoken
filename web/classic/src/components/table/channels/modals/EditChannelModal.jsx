@@ -770,26 +770,37 @@ const EditChannelModal = (props) => {
     setLoading(true);
     let res = await API.get(`/api/channel/${channelId}`);
     if (res === undefined) {
+      setLoading(false); // 修复：请求失败提前返回时也要复位 loading，否则编辑弹窗会卡在加载态
       return;
     }
     const { success, message, data } = res.data;
     if (success) {
-      if (data.models === '') {
+      if (!data.models) {
         data.models = [];
       } else {
         data.models = data.models.split(',');
       }
-      if (data.group === '') {
+      if (!data.group) {
         data.groups = [];
       } else {
         data.groups = data.group.split(',');
       }
-      if (data.model_mapping !== '') {
-        data.model_mapping = JSON.stringify(
-          JSON.parse(data.model_mapping),
-          null,
-          2,
-        );
+      // model_mapping 可能因历史/导入数据而是非法 JSON。此前这里的 JSON.parse 没有 try/catch，
+      // 单个渠道的非法 model_mapping 会让 loadChannel 抛错、编辑表单无法加载（线上「这条数据不能编辑」）。
+      // 与下方 setting / settings 的解析保持一致：解析失败时原样保留字符串，让用户仍能打开表单并手动修正。
+      if (data.model_mapping) {
+        try {
+          data.model_mapping = JSON.stringify(
+            JSON.parse(data.model_mapping),
+            null,
+            2,
+          );
+        } catch (error) {
+          console.error(
+            '解析 model_mapping 失败，保留原始值以便编辑修正:',
+            error,
+          );
+        }
       }
       const chInfo = data.channel_info || {};
       const isMulti = chInfo.is_multi_key === true;

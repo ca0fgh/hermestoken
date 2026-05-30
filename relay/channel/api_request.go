@@ -468,13 +468,25 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	var client *http.Client
 	var err error
+	// Stream and non-stream use different clients: the streaming client carries a
+	// short ResponseHeaderTimeout for fast hung-upstream failover, while the
+	// non-stream client omits it (a non-stream upstream withholds headers until the
+	// whole completion is generated) and relies on an overall per-attempt timeout.
+	// Using the streaming client for non-stream would cut every legitimately slow
+	// completion at the header timeout and cascade it across all channels.
 	if info.ChannelSetting.Proxy != "" {
-		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
+		if info.IsStream {
+			client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
+		} else {
+			client, err = service.NewNonStreamProxyHttpClient(info.ChannelSetting.Proxy)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("new proxy http client failed: %w", err)
 		}
-	} else {
+	} else if info.IsStream {
 		client = service.GetHttpClient()
+	} else {
+		client = service.GetNonStreamHttpClient()
 	}
 
 	var stopPinger context.CancelFunc
