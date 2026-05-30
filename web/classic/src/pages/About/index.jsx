@@ -61,13 +61,16 @@ const About = () => {
     try {
       const res = await API.get('/api/about');
       const { success, data } = res.data;
-      if (success && data && data.trim() !== '') {
+      if (success && typeof data === 'string' && data.trim() !== '') {
         const aboutContent = data.startsWith('https://')
           ? data
           : marked.parse(data);
         setAbout(aboutContent);
+        setUseDefault(false);
         localStorage.setItem('about', aboutContent);
-      } else if (!cached) {
+      } else {
+        localStorage.removeItem('about');
+        setAbout('');
         setUseDefault(true);
       }
     } catch (error) {

@@ -18,11 +18,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import React from 'react';
 import {
   Button,
-  Dropdown,
   InputNumber,
   Modal,
   Space,
-  SplitButtonGroup,
   Tag,
   Tooltip,
   Typography,
@@ -35,19 +33,15 @@ import {
   renderQuotaWithAmount,
   showSuccess,
   showError,
-  showInfo,
 } from '../../../helpers';
 import {
   CHANNEL_OPTIONS,
   MODEL_FETCHABLE_CHANNEL_TYPES,
 } from '../../../constants';
 import { parseUpstreamUpdateMeta } from '../../../hooks/channels/upstreamUpdateUtils';
-import {
-  IconTreeTriangleDown,
-  IconMore,
-  IconAlertTriangle,
-} from '@douyinfe/semi-icons';
+import { IconTreeTriangleDown, IconAlertTriangle } from '@douyinfe/semi-icons';
 import { FaRandom } from 'react-icons/fa';
+import ChannelOperateActions from './ChannelOperateActions';
 
 // Render functions
 const renderType = (type, record = {}, t) => {
@@ -685,220 +679,33 @@ export const getChannelsColumns = ({
       title: '',
       dataIndex: 'operate',
       fixed: 'right',
-      render: (text, record, index) => {
-        if (record.children === undefined) {
-          const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
-          const moreMenuItems = [
-            {
-              node: 'item',
-              name: t('删除'),
-              type: 'danger',
-              onClick: () => {
-                Modal.confirm({
-                  title: t('确定是否要删除此渠道？'),
-                  content: t('此修改将不可逆'),
-                  onOk: () => {
-                    (async () => {
-                      await manageChannel(record.id, 'delete', record);
-                      await refresh();
-                      setTimeout(() => {
-                        if (channels.length === 0 && activePage > 1) {
-                          refresh(activePage - 1);
-                        }
-                      }, 100);
-                    })();
-                  },
-                });
-              },
-            },
-            {
-              node: 'item',
-              name: t('复制'),
-              type: 'tertiary',
-              onClick: () => {
-                Modal.confirm({
-                  title: t('确定是否要复制此渠道？'),
-                  content: t('复制渠道的所有信息'),
-                  onOk: () => copySelectedChannel(record),
-                });
-              },
-            },
-          ];
-
-          if (upstreamUpdateMeta.supported) {
-            moreMenuItems.push({
-              node: 'item',
-              name: t('仅检测上游模型更新'),
-              type: 'tertiary',
-              onClick: () => {
-                detectChannelUpstreamUpdates(record);
-              },
-            });
-            moreMenuItems.push({
-              node: 'item',
-              name: t('处理上游模型更新'),
-              type: 'tertiary',
-              onClick: () => {
-                if (!upstreamUpdateMeta.enabled) {
-                  showInfo(t('该渠道未开启上游模型更新检测'));
-                  return;
-                }
-                if (
-                  upstreamUpdateMeta.pendingAddModels.length === 0 &&
-                  upstreamUpdateMeta.pendingRemoveModels.length === 0
-                ) {
-                  showInfo(t('该渠道暂无可处理的上游模型更新'));
-                  return;
-                }
-                openUpstreamUpdateModal(
-                  record,
-                  upstreamUpdateMeta.pendingAddModels,
-                  upstreamUpdateMeta.pendingRemoveModels,
-                  upstreamUpdateMeta.pendingAddModels.length > 0
-                    ? 'add'
-                    : 'remove',
-                );
-              },
-            });
-          }
-
-          if (record.type === 4) {
-            moreMenuItems.unshift({
-              node: 'item',
-              name: t('测活'),
-              type: 'tertiary',
-              onClick: () => checkOllamaVersion(record),
-            });
-          }
-
-          return (
-            <Space wrap>
-              <SplitButtonGroup
-                className='overflow-hidden'
-                aria-label={t('测试单个渠道操作项目组')}
-              >
-                <Button
-                  size='small'
-                  type='tertiary'
-                  onClick={() => testChannel(record, '')}
-                >
-                  {t('测试')}
-                </Button>
-                <Button
-                  size='small'
-                  type='tertiary'
-                  icon={<IconTreeTriangleDown />}
-                  onClick={() => {
-                    setCurrentTestChannel(record);
-                    setShowModelTestModal(true);
-                  }}
-                />
-              </SplitButtonGroup>
-
-              {record.status === 1 ? (
-                <Button
-                  type='danger'
-                  size='small'
-                  onClick={() => manageChannel(record.id, 'disable', record)}
-                >
-                  {t('禁用')}
-                </Button>
-              ) : (
-                <Button
-                  size='small'
-                  onClick={() => manageChannel(record.id, 'enable', record)}
-                >
-                  {t('启用')}
-                </Button>
-              )}
-
-              {record.channel_info?.is_multi_key ? (
-                <SplitButtonGroup aria-label={t('多密钥渠道操作项目组')}>
-                  <Button
-                    type='tertiary'
-                    size='small'
-                    onClick={() => {
-                      setEditingChannel(record);
-                      setShowEdit(true);
-                    }}
-                  >
-                    {t('编辑')}
-                  </Button>
-                  <Dropdown
-                    trigger='click'
-                    position='bottomRight'
-                    menu={[
-                      {
-                        node: 'item',
-                        name: t('多密钥管理'),
-                        onClick: () => {
-                          setCurrentMultiKeyChannel(record);
-                          setShowMultiKeyManageModal(true);
-                        },
-                      },
-                    ]}
-                  >
-                    <Button
-                      type='tertiary'
-                      size='small'
-                      icon={<IconTreeTriangleDown />}
-                    />
-                  </Dropdown>
-                </SplitButtonGroup>
-              ) : (
-                <Button
-                  type='tertiary'
-                  size='small'
-                  onClick={() => {
-                    setEditingChannel(record);
-                    setShowEdit(true);
-                  }}
-                >
-                  {t('编辑')}
-                </Button>
-              )}
-
-              <Dropdown
-                trigger='click'
-                position='bottomRight'
-                menu={moreMenuItems}
-              >
-                <Button icon={<IconMore />} type='tertiary' size='small' />
-              </Dropdown>
-            </Space>
-          );
-        } else {
-          // 标签操作按钮
-          return (
-            <Space wrap>
-              <Button
-                type='tertiary'
-                size='small'
-                onClick={() => manageTag(record.key, 'enable')}
-              >
-                {t('启用全部')}
-              </Button>
-              <Button
-                type='tertiary'
-                size='small'
-                onClick={() => manageTag(record.key, 'disable')}
-              >
-                {t('禁用全部')}
-              </Button>
-              <Button
-                type='tertiary'
-                size='small'
-                onClick={() => {
-                  setShowEditTag(true);
-                  setEditingTag(record.key);
-                }}
-              >
-                {t('编辑')}
-              </Button>
-            </Space>
-          );
-        }
-      },
+      width: 240,
+      className: 'channel-operate-cell',
+      render: (text, record, index) => (
+        <ChannelOperateActions
+          t={t}
+          record={record}
+          upstreamUpdateMeta={getUpstreamUpdateMeta(record)}
+          manageChannel={manageChannel}
+          manageTag={manageTag}
+          testChannel={testChannel}
+          setCurrentTestChannel={setCurrentTestChannel}
+          setShowModelTestModal={setShowModelTestModal}
+          setEditingChannel={setEditingChannel}
+          setShowEdit={setShowEdit}
+          setShowEditTag={setShowEditTag}
+          setEditingTag={setEditingTag}
+          copySelectedChannel={copySelectedChannel}
+          refresh={refresh}
+          activePage={activePage}
+          channels={channels}
+          checkOllamaVersion={checkOllamaVersion}
+          setShowMultiKeyManageModal={setShowMultiKeyManageModal}
+          setCurrentMultiKeyChannel={setCurrentMultiKeyChannel}
+          openUpstreamUpdateModal={openUpstreamUpdateModal}
+          detectChannelUpstreamUpdates={detectChannelUpstreamUpdates}
+        />
+      ),
     },
   ];
 };

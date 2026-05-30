@@ -39,6 +39,7 @@ const routerMap = {
   user: '/console/user',
   subscription: '/console/subscription',
   withdrawal: '/console/withdrawal',
+  referral: '/console/referral',
   log: '/console/log',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
@@ -205,6 +206,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         itemKey: 'user',
         to: '/user',
         className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('返佣模板设置'),
+        itemKey: 'referral',
+        to: '/referral',
+        className: isRoot() ? '' : 'tableHiddle',
       },
       {
         text: t('系统设置'),

@@ -200,6 +200,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
+			// 渠道耗尽属于终态失败：此前可重试的尝试按设计未落 type=5（见 processChannelError），
+			// 这里用最后一次真实上游错误补记一条带完整 use_channel 重试链的错误日志，避免真失败漏记。
+			if relayInfo.LastError != nil {
+				setRetryAdminInfo(c, retryAdminInfo{
+					Index:     retryParam.GetRetry(),
+					Remaining: 0,
+					WillRetry: false,
+					Reason:    retryReasonSelectedChannelUnavailable,
+				})
+				processChannelError(c, c.GetInt("channel_id"), relayInfo.LastError)
+			}
 			hermesTokenError = channelErr
 			break
 		}
@@ -217,6 +228,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		// 每次尝试前重置流式状态：relayInfo 在重试间复用，而 StreamScannerHandler 仅在
+		// StreamStatus==nil 时新建，故须在此显式重置，避免上一次尝试（尤其首字超时失败转移）的
+		// StreamStatus（已 ended，后续 SetEndReason 均无效）与已转发计数串入本次尝试，导致结束
+		// 原因 / 计费日志错乱（例如失败转移后重试成功，却仍记为 first_chunk_timeout）。
+		relayInfo.StreamStatus = nil
+		relayInfo.ReceivedResponseCount = 0
+		// 首字超时失败转移：对「非亲和」流式请求设置阈值（默认关闭→恒为 0，零行为变更）。
+		relayInfo.FirstChunkTimeoutSeconds = firstChunkTimeoutSecondsForRequest(c, relayInfo)
+
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			hermesTokenError = relay.WssHelper(c, relayInfo)
@@ -226,6 +246,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			hermesTokenError = geminiRelayHandler(c, relayInfo)
 		default:
 			hermesTokenError = relayHandler(c, relayInfo)
+		}
+
+		// 首字超时失败转移：StreamScannerHandler 在「等待首个 data: 超时且尚未转发任何输出」时
+		// 把流标记为 FirstChunkTimeout（handler 通常仍返回 nil）。此处合成可重试 504，复用既有重试
+		// 机制切换渠道。仅在 ReceivedResponseCount==0（没出过输出）时合成，满足「只重试没出过输出的」；
+		// 亲和请求因 FirstChunkTimeoutSeconds=0 永不进入此分支，codex 渠道亲和与 prompt 缓存不受影响。
+		// 用 503（在 500-503 自动重试区间内）：504/524 被显式列为「永不重试」(alwaysSkipRetryStatusCodes)，
+		// 且 channel_id 在常规文本中继路径并不置入 ctx，故必须用落在重试区间的状态码才能可靠触发重试。
+		if hermesTokenError == nil && relayInfo.IsStream && relayInfo.StreamStatus != nil &&
+			relayInfo.StreamStatus.EndReason() == relaycommon.StreamEndReasonFirstChunkTimeout &&
+			relayInfo.ReceivedResponseCount == 0 {
+			hermesTokenError = types.NewErrorWithStatusCode(
+				fmt.Errorf("first chunk timeout after %ds, failing over to another channel", relayInfo.FirstChunkTimeoutSeconds),
+				types.ErrorCodeBadResponse, http.StatusServiceUnavailable)
+			logger.LogError(c, fmt.Sprintf("first-chunk-timeout failover: channel=%d, %s", channel.Id, hermesTokenError.Error()))
 		}
 
 		if hermesTokenError == nil {
@@ -400,6 +435,32 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
+// firstChunkTimeoutSecondsForRequest 返回本次流式请求的首字超时阈值（秒）；0 表示不启用失败转移。
+// 仅当全局开关开启、且为流式、且非渠道亲和（如 codex 钉 channel 51 不转移以保护 prompt 缓存）、
+// 且未指定固定渠道时返回正值。默认关闭——开关关闭时恒返回 0，生产行为完全不变。
+func firstChunkTimeoutSecondsForRequest(c *gin.Context, info *relaycommon.RelayInfo) int {
+	if info == nil || !info.IsStream {
+		return 0
+	}
+	gs := operation_setting.GetGeneralSetting()
+	if !gs.FirstChunkTimeoutEnabled {
+		return 0
+	}
+	// 渠道亲和（prompt_cache_key 钉渠道）：超时也不得切换，否则破坏上游 prompt 缓存。
+	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
+		return 0
+	}
+	// 用户显式指定固定渠道：不转移。
+	if _, ok := c.Get("specific_channel_id"); ok {
+		return 0
+	}
+	secs := gs.FirstChunkTimeoutSeconds
+	if secs <= 0 {
+		secs = 60
+	}
+	return secs
+}
+
 func shouldRetry(c *gin.Context, openaiErr *types.HermesTokenError, retryTimes int) bool {
 	shouldRetry, _ := shouldRetryWithReason(c, openaiErr, retryTimes)
 	return shouldRetry
@@ -491,13 +552,15 @@ func appendRetryAdminInfo(c *gin.Context, adminInfo map[string]interface{}) {
 }
 
 func processChannelError(c *gin.Context, channelId int, err *types.HermesTokenError) {
-	// 单次渠道失败：若后续仍会重试，按可恢复事件记 WARN（避免和"彻底失败"混淆）；
-	// 只有重试耗尽的终态失败才记 ERROR。错误日志仍照常落库，渠道健康统计不受影响。
+	// 单次渠道失败：若后续仍会重试，按可恢复事件记 WARN 应用日志即返回，不落 type=5 错误日志——
+	// 否则一个最终成功（如 11->34->61）的请求会在后台留下多条红色"错误"，与真·终态失败混淆。
+	// 只有重试耗尽 / 不可重试的终态失败才落库（见下方 RecordErrorLog）。渠道健康可看 WARN 应用日志，
+	// 终态那条 type=5 也带完整 use_channel 重试链。终态失败的兜底落库见 Relay 循环中 getChannel 失败分支。
 	if willRetryFromAdminInfo(c) {
 		logger.LogWarn(c, fmt.Sprintf("channel error (channel #%d, status code: %d), will retry next channel: %s", channelId, err.StatusCode, err.Error()))
-	} else {
-		logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d), retries exhausted: %s", channelId, err.StatusCode, err.Error()))
+		return
 	}
+	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d), retries exhausted: %s", channelId, err.StatusCode, err.Error()))
 	modelName := c.GetString("original_model")
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		// 保存错误日志到mysql中
@@ -676,6 +739,17 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
+				// 渠道耗尽属于终态失败：此前可重试的尝试按设计未落 type=5（见 processChannelError），
+				// 这里用最后一次真实上游错误补记一条带完整 use_channel 重试链的错误日志，避免真失败漏记。
+				if taskErr != nil && !taskErr.LocalError {
+					setRetryAdminInfo(c, retryAdminInfo{
+						Index:     retryParam.GetRetry(),
+						Remaining: 0,
+						WillRetry: false,
+						Reason:    retryReasonSelectedChannelUnavailable,
+					})
+					processChannelError(c, c.GetInt("channel_id"), types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+				}
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
 				break
 			}
