@@ -84,11 +84,6 @@ const PerformanceSetting = lazyWithRetry(
   () => import('../../components/settings/PerformanceSetting'),
   'setting-performance-tab',
 );
-const ReferralSetting = lazyWithRetry(
-  () => import('../../components/settings/ReferralSetting'),
-  'setting-referral-tab',
-);
-
 const Setting = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -146,16 +141,6 @@ const Setting = () => {
       ),
       content: <PaymentSetting />,
       itemKey: 'payment',
-    });
-    panes.push({
-      tab: (
-        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <Settings size={18} />
-          {t('返佣模板设置')}
-        </span>
-      ),
-      content: <ReferralSetting />,
-      itemKey: 'referral',
     });
     panes.push({
       tab: (
