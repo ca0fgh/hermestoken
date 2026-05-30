@@ -29,16 +29,6 @@ import type { PresetAmount, TopupInfo } from '../types'
 // ============================================================================
 
 /**
- * Check if browser is Safari
- */
-function isSafariBrowser(): boolean {
-  return (
-    navigator.userAgent.indexOf('Safari') > -1 &&
-    navigator.userAgent.indexOf('Chrome') < 1
-  )
-}
-
-/**
  * Submit payment form (for non-Stripe payments)
  */
 export function submitPaymentForm(
@@ -49,12 +39,11 @@ export function submitPaymentForm(
   form.action = url
   form.method = 'POST'
 
-  // Don't open in new tab for Safari
-  if (!isSafariBrowser()) {
-    form.target = '_blank'
-  }
-
-  // Add form parameters
+  // Same-tab submit (no target="_blank"): a programmatic form submit that targets
+  // a new tab AFTER an await is silently popup-blocked by Chrome (the transient
+  // user activation from the click is already gone), so the gateway page never
+  // opens and the user is stuck on "payment initiated". Navigate the current tab
+  // instead — the epay gateway redirects back to the return URL after payment.
   Object.entries(params).forEach(([key, value]) => {
     const input = document.createElement('input')
     input.type = 'hidden'
@@ -65,7 +54,8 @@ export function submitPaymentForm(
 
   document.body.appendChild(form)
   form.submit()
-  document.body.removeChild(form)
+  // Do NOT remove the form before navigation: removing it synchronously right
+  // after submit() can abort the in-flight submission. The page is leaving anyway.
 }
 
 /**

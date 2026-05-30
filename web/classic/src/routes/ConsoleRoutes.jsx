@@ -66,6 +66,10 @@ const Withdrawal = lazyWithRetry(
   'withdrawal-route',
 );
 const User = lazyWithRetry(() => import('../pages/User'), 'user-route');
+const Referral = lazyWithRetry(
+  () => import('../pages/Referral'),
+  'referral-route',
+);
 const PersonalSetting = lazyWithRetry(
   () => import('../components/settings/PersonalSetting'),
   'personal-setting-route',
@@ -128,6 +132,10 @@ function ConsoleRoutes() {
       <Route
         path='/console/withdrawal'
         element={<AdminRoute>{renderWithSuspense(<Withdrawal />)}</AdminRoute>}
+      />
+      <Route
+        path='/console/referral'
+        element={<AdminRoute>{renderWithSuspense(<Referral />)}</AdminRoute>}
       />
       <Route
         path='/console/setting'

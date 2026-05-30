@@ -20,7 +20,11 @@ import 'react-toastify/dist/ReactToastify.css';
 import { renderConsoleApp } from './bootstrap/consoleApp';
 import { renderPublicApp } from './bootstrap/publicApp';
 import { resolveRoutePublicBootstrap } from './bootstrap/publicStartup';
-import { readClientStartupSettings, readInjectedBootstrap } from './helpers/bootstrapData';
+import {
+  readClientStartupSettings,
+  readInjectedBootstrap,
+} from './helpers/bootstrapData';
+import { installChannelPreviewMock } from './helpers/channelPreviewMock';
 import { setPublicStartupStatusData } from './helpers/data';
 import { initializeI18n } from './i18n/i18n';
 import './index.css';
@@ -35,6 +39,8 @@ if (typeof window !== 'undefined') {
 }
 
 // initialization
+
+installChannelPreviewMock();
 
 const rootElement = ReactDOM.createRoot(document.getElementById('root'));
 const injectedBootstrap = readInjectedBootstrap();

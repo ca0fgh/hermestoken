@@ -67,6 +67,7 @@ export function getSidebarIcon(key, selected = false) {
     case 'marketplace':
       return <Store {...commonProps} color={iconColor} />;
     case 'rebate':
+    case 'referral':
       return <BadgePercent {...commonProps} color={iconColor} />;
     case 'channel':
       return <Layers {...commonProps} color={iconColor} />;
