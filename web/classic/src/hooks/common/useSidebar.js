@@ -18,6 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import { useState, useEffect, useMemo, useContext, useRef } from 'react';
 import { StatusContext } from '../../context/Status';
 import { API } from '../../helpers';
+import { isRoot } from '../../helpers/utils';
 
 // 创建一个全局事件系统来同步所有useSidebar实例
 const sidebarEventTarget = new EventTarget();
@@ -265,6 +266,9 @@ export const useSidebar = () => {
 
   // 检查特定功能是否应该显示
   const isModuleVisible = (sectionKey, moduleKey = null) => {
+    // 超级管理员(root)权限默认全开,不受「侧边栏管理(全局控制)」显隐配置约束;
+    // 只有普通管理员及以下角色才受该配置控制,以此区分超级管理员与管理员
+    if (isRoot()) return true;
     if (moduleKey) {
       return finalConfig[sectionKey]?.[moduleKey] === true;
     } else {
@@ -274,6 +278,8 @@ export const useSidebar = () => {
 
   // 检查区域是否有任何可见的功能
   const hasSectionVisibleModules = (sectionKey) => {
+    // 超级管理员全开,所有区域恒显示
+    if (isRoot()) return true;
     const section = finalConfig[sectionKey];
     if (!section?.enabled) return false;
 
@@ -284,6 +290,11 @@ export const useSidebar = () => {
 
   // 获取区域的可见功能列表
   const getVisibleModules = (sectionKey) => {
+    // 超级管理员全开,返回该区域所有已知功能
+    if (isRoot()) {
+      const adminSection = adminConfig[sectionKey] || {};
+      return Object.keys(adminSection).filter((key) => key !== 'enabled');
+    }
     const section = finalConfig[sectionKey];
     if (!section?.enabled) return [];
 

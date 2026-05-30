@@ -230,6 +230,19 @@ export default function SettingsSidebarModulesAdmin(props) {
           '全局控制侧边栏区域和功能显示，管理员隐藏的功能用户无法启用',
         )}
       >
+        <div
+          style={{
+            marginBottom: '20px',
+            padding: '10px 14px',
+            backgroundColor: 'var(--semi-color-primary-light-default)',
+            borderRadius: '8px',
+            border: '1px solid var(--semi-color-primary-light-active)',
+          }}
+        >
+          <Text size='small' style={{ color: 'var(--semi-color-text-1)' }}>
+            {t('此配置不限制超级管理员，超级管理员始终可见全部功能。')}
+          </Text>
+        </div>
         {sectionConfigs.map((section) => (
           <div key={section.key} style={{ marginBottom: '32px' }}>
             {/* 区域标题和总开关 */}
