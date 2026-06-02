@@ -198,6 +198,18 @@ var RelayNonStreamTimeout int
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 
+// ResponsesEmptyStreamFailover controls whether a /v1/responses streaming attempt
+// that ends cleanly (eof / done) but yields ZERO billable usage AND zero output text
+// — i.e. the upstream accepted the request, emitted only leading metadata events
+// (e.g. response.created) and then closed without producing any answer — is surfaced
+// as a retryable channel error so the relay fails over to a healthy channel instead
+// of recording a fake 0-token "success" with no failover. Default true (env
+// RELAY_RESPONSES_EMPTY_FAILOVER=false to disable as an ops kill-switch). It triggers
+// ONLY on the genuinely-empty case (never on a response that produced usage or text)
+// and never on client_gone, so it cannot affect a successful response. See
+// relay/channel/openai/relay_responses.go.
+var ResponsesEmptyStreamFailover bool
+
 var GeminiSafetySetting string
 
 // https://docs.cohere.com/docs/safety-modes Type; NONE/CONTEXTUAL/STRICT
