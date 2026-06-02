@@ -308,7 +308,7 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
 		referralRoute := apiRouter.Group("/referral")
-		referralRoute.Use(middleware.RootAuth())
+		referralRoute.Use(middleware.AdminAuth())
 		{
 			referralRoute.GET("/settings/subscription", controller.AdminGetSubscriptionReferralGlobalSetting)
 			referralRoute.PUT("/settings/subscription", controller.AdminUpdateSubscriptionReferralGlobalSetting)
