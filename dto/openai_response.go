@@ -401,6 +401,32 @@ type ResponsesStreamResponse struct {
 	SummaryIndex *int                           `json:"summary_index,omitempty"`
 	ItemID       string                         `json:"item_id,omitempty"`
 	Part         *ResponsesReasoningSummaryPart `json:"part,omitempty"`
+	// 顶层错误字段：裸 error 事件（type=="error"）的 message/code/param 位于事件顶层，
+	// 而非嵌套在 response 之下。用于在上游显式失败时捕获真实错误原因，便于诊断。
+	Message string `json:"message,omitempty"`
+	Code    any    `json:"code,omitempty"`
+	Param   string `json:"param,omitempty"`
+}
+
+// ErrorDetail 从流事件中提取人类可读的错误描述，优先取嵌套在 response 下的错误
+// （response.failed / response.error），再退回事件顶层的错误字段（裸 error 事件）。
+// 无任何错误信息时返回空串，调用方据此回退到事件类型名。
+func (r *ResponsesStreamResponse) ErrorDetail() string {
+	if r.Response != nil {
+		if oaiErr := r.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Message != "" {
+			if oaiErr.Code != nil {
+				return fmt.Sprintf("%v: %s", oaiErr.Code, oaiErr.Message)
+			}
+			return oaiErr.Message
+		}
+	}
+	if r.Message != "" {
+		if r.Code != nil {
+			return fmt.Sprintf("%v: %s", r.Code, r.Message)
+		}
+		return r.Message
+	}
+	return ""
 }
 
 // GetOpenAIError 从动态错误类型中提取OpenAIError结构

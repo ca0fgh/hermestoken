@@ -94,6 +94,19 @@ func TestResponsesStream_ExplicitFailure_Fires(t *testing.T) {
 	assert.Contains(t, herr.Error(), "boom", "应携带上游错误信息")
 }
 
+// 裸 error 事件（message/code 在事件顶层，不在 response 下）→ 抛可重试渠道错误，
+// 且日志携带上游真实错误原因（不再退化成无信息的 "(error)"）。
+func TestResponsesStream_BareErrorEvent_CapturesDetail(t *testing.T) {
+	body := "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n" +
+		"data: {\"type\":\"error\",\"code\":\"context_length_exceeded\",\"message\":\"input is too long\"}\n\n"
+	_, herr := driveResponsesStream(t, body, true)
+	assert.NotNil(t, herr, "裸 error 事件应抛错")
+	assert.True(t, types.IsChannelError(herr))
+	assert.Equal(t, http.StatusServiceUnavailable, herr.StatusCode)
+	assert.Contains(t, herr.Error(), "input is too long", "应携带上游顶层错误 message")
+	assert.Contains(t, herr.Error(), "context_length_exceeded", "应携带上游顶层错误 code")
+}
+
 // 正常 completed 带 usage → 不抛错，usage 正确，绝不误触发。
 func TestResponsesStream_CompletedWithUsage_NoFailover(t *testing.T) {
 	body := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n" +

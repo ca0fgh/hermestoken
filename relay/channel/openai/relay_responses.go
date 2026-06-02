@@ -98,10 +98,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			// （channel: 前缀 → IsChannelError，绕过亲和跳过重试），扫描结束后抛出以切换渠道。
 			if upstreamStreamErr == nil {
 				detail := streamResponse.Type
-				if streamResponse.Response != nil {
-					if oaiErr := streamResponse.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Message != "" {
-						detail = fmt.Sprintf("%s: %s", streamResponse.Type, oaiErr.Message)
-					}
+				// 优先取上游真实错误原因（嵌套 response.error 或裸 error 事件顶层 message/code），
+				// 取不到才退回事件类型名，避免日志退化成无信息的 "(error)"。
+				if reason := streamResponse.ErrorDetail(); reason != "" {
+					detail = fmt.Sprintf("%s: %s", streamResponse.Type, reason)
 				}
 				upstreamStreamErr = types.NewErrorWithStatusCode(
 					fmt.Errorf("upstream responses stream failed (%s)", detail),
