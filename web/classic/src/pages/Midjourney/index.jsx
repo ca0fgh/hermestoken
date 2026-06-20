@@ -18,10 +18,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 import React from 'react';
 import MjLogsTable from '../../components/table/mj-logs';
 
-const Midjourney = () => (
+const MjProxy = () => (
   <div className='mt-[60px] px-2'>
     <MjLogsTable />
   </div>
 );
 
-export default Midjourney;
+export default MjProxy;

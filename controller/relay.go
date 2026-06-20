@@ -93,7 +93,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	defer func() {
 		if hermesTokenError != nil {
-			logger.LogError(c, fmt.Sprintf("relay error: %s", hermesTokenError.Error()))
+			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(hermesTokenError.Error())))
 			hermesTokenError.SetMessage(common.MessageWithRequestId(hermesTokenError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
@@ -184,10 +184,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:        c,
-		TokenGroup: relayInfo.TokenGroup,
-		ModelName:  relayInfo.OriginModelName,
-		Retry:      common.GetPointer(0),
+		Ctx:         c,
+		TokenGroup:  relayInfo.TokenGroup,
+		ModelName:   relayInfo.OriginModelName,
+		RequestPath: c.Request.URL.Path,
+		Retry:       common.GetPointer(0),
 	}
 	if err := retryParam.SeedSelectedChannel(retrySeedGroup(c, relayInfo), c.GetInt("channel_id")); err != nil {
 		logger.LogError(c, fmt.Sprintf("seed retry channel state failed: %v", err))
@@ -712,10 +713,11 @@ func RelayTask(c *gin.Context) {
 	}()
 
 	retryParam := &service.RetryParam{
-		Ctx:        c,
-		TokenGroup: relayInfo.TokenGroup,
-		ModelName:  relayInfo.OriginModelName,
-		Retry:      common.GetPointer(0),
+		Ctx:         c,
+		TokenGroup:  relayInfo.TokenGroup,
+		ModelName:   relayInfo.OriginModelName,
+		RequestPath: c.Request.URL.Path,
+		Retry:       common.GetPointer(0),
 	}
 	if err := retryParam.SeedSelectedChannel(retrySeedGroup(c, relayInfo), c.GetInt("channel_id")); err != nil {
 		logger.LogError(c, fmt.Sprintf("seed retry channel state failed: %v", err))

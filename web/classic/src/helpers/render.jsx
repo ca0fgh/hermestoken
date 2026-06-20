@@ -27,38 +27,40 @@ import {
   BILLING_VAR_KEY_TO_FIELD,
   BILLING_VAR_REGEX,
 } from '../constants';
-import Ai360 from '@lobehub/icons/es/Ai360';
-import Claude from '@lobehub/icons/es/Claude';
-import Cloudflare from '@lobehub/icons/es/Cloudflare';
-import Cohere from '@lobehub/icons/es/Cohere';
-import Coze from '@lobehub/icons/es/Coze';
-import DeepSeek from '@lobehub/icons/es/DeepSeek';
-import Dify from '@lobehub/icons/es/Dify';
-import Doubao from '@lobehub/icons/es/Doubao';
-import FastGPT from '@lobehub/icons/es/FastGPT';
-import Gemini from '@lobehub/icons/es/Gemini';
-import Hunyuan from '@lobehub/icons/es/Hunyuan';
-import Jina from '@lobehub/icons/es/Jina';
-import Jimeng from '@lobehub/icons/es/Jimeng';
-import Kling from '@lobehub/icons/es/Kling';
-import Midjourney from '@lobehub/icons/es/Midjourney';
-import Minimax from '@lobehub/icons/es/Minimax';
-import Mistral from '@lobehub/icons/es/Mistral';
-import Moonshot from '@lobehub/icons/es/Moonshot';
-import Ollama from '@lobehub/icons/es/Ollama';
-import OpenAI from '@lobehub/icons/es/OpenAI';
-import OpenRouter from '@lobehub/icons/es/OpenRouter';
-import Perplexity from '@lobehub/icons/es/Perplexity';
-import Qwen from '@lobehub/icons/es/Qwen';
-import Replicate from '@lobehub/icons/es/Replicate';
-import SiliconCloud from '@lobehub/icons/es/SiliconCloud';
-import Spark from '@lobehub/icons/es/Spark';
-import Suno from '@lobehub/icons/es/Suno';
-import Wenxin from '@lobehub/icons/es/Wenxin';
-import XAI from '@lobehub/icons/es/XAI';
-import Xinference from '@lobehub/icons/es/Xinference';
-import Yi from '@lobehub/icons/es/Yi';
-import Zhipu from '@lobehub/icons/es/Zhipu';
+import {
+  OpenAI,
+  Claude,
+  Gemini,
+  Moonshot,
+  Zhipu,
+  Qwen,
+  DeepSeek,
+  Minimax,
+  Wenxin,
+  Spark,
+  Midjourney as MjProxyIcon,
+  Hunyuan,
+  Cohere,
+  Cloudflare,
+  Ai360,
+  Yi,
+  Jina,
+  Mistral,
+  XAI,
+  Ollama,
+  Doubao,
+  Suno,
+  Xinference,
+  OpenRouter,
+  Dify,
+  Coze,
+  SiliconCloud,
+  FastGPT,
+  Kling,
+  Jimeng,
+  Perplexity,
+  Replicate,
+} from '@lobehub/icons';
 
 import { Layers } from 'lucide-react';
 import {
@@ -74,7 +76,6 @@ import {
   SiGitlab,
   SiGoogle,
   SiKeycloak,
-  SiLinkedin,
   SiNextcloud,
   SiNotion,
   SiOkta,
@@ -86,6 +87,7 @@ import {
   SiWechat,
   SiX,
 } from 'react-icons/si';
+import { FaLinkedin } from 'react-icons/fa';
 
 const lobeIconModuleLoaders = import.meta.glob([
   '../../../node_modules/@lobehub/icons/es/*/index.js',
@@ -266,8 +268,8 @@ export const getModelCategories = (() => {
         filter: (model) => model.model_name.toLowerCase().includes('spark'),
       },
       midjourney: {
-        label: 'Midjourney',
-        icon: <Midjourney />,
+        label: 'MjProxy',
+        icon: <MjProxyIcon />,
         filter: (model) => model.model_name.toLowerCase().includes('mj_'),
       },
       tencent: {
@@ -348,9 +350,9 @@ export function getChannelIcon(channelType) {
     case 3: // Azure OpenAI
     case 57: // Codex
       return <OpenAI size={iconSize} />;
-    case 2: // Midjourney Proxy
-    case 5: // Midjourney Proxy Plus
-      return <Midjourney size={iconSize} />;
+    case 2: // MjProxy
+    case 5: // MjProxyPlus
+      return <MjProxyIcon size={iconSize} />;
     case 36: // Suno API
       return <Suno size={iconSize} />;
     case 4: // Ollama
@@ -595,7 +597,7 @@ const oauthProviderIconMap = {
   google: SiGoogle,
   discord: SiDiscord,
   facebook: SiFacebook,
-  linkedin: SiLinkedin,
+  linkedin: FaLinkedin,
   x: SiX,
   twitter: SiX,
   slack: SiSlack,
@@ -1132,31 +1134,17 @@ export function getQuotaWithUnit(quota, digits = 6) {
   return (quota / quotaPerUnit).toFixed(digits);
 }
 
+// amount 为系统内部的美元值
 export function renderQuotaWithAmount(amount) {
-  const quotaDisplayType = localStorage.getItem('quota_display_type') || 'USD';
-  if (quotaDisplayType === 'TOKENS') {
+  const { symbol, rate, type } = getCurrencyConfig();
+  if (type === 'TOKENS') {
     return renderNumber(renderUnitWithQuota(amount));
   }
-
   const numericAmount = Number(amount);
-  const formattedAmount = Number.isFinite(numericAmount)
-    ? numericAmount.toFixed(2)
-    : amount;
-
-  if (quotaDisplayType === 'CNY') {
-    return '¥' + formattedAmount;
-  } else if (quotaDisplayType === 'CUSTOM') {
-    const statusStr = localStorage.getItem('status');
-    let symbol = '¤';
-    try {
-      if (statusStr) {
-        const s = JSON.parse(statusStr);
-        symbol = s?.custom_currency_symbol || symbol;
-      }
-    } catch (e) {}
-    return symbol + formattedAmount;
+  if (!Number.isFinite(numericAmount)) {
+    return symbol + amount;
   }
-  return '$' + formattedAmount;
+  return symbol + (numericAmount * rate).toFixed(2);
 }
 
 /**

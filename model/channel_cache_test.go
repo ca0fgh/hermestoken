@@ -82,12 +82,12 @@ func TestInitChannelCacheUsesEnabledAbilities(t *testing.T) {
 
 	InitChannelCache()
 
-	enabled, err := GetRandomSatisfiedChannel("default", "enabled-model", 0)
+	enabled, err := GetRandomSatisfiedChannel("default", "enabled-model", 0, "")
 	require.NoError(t, err)
 	require.NotNil(t, enabled)
 	require.Equal(t, channel.Id, enabled.Id)
 
-	disabled, err := GetRandomSatisfiedChannel("default", "disabled-model", 0)
+	disabled, err := GetRandomSatisfiedChannel("default", "disabled-model", 0, "")
 	require.NoError(t, err)
 	require.Nil(t, disabled)
 }

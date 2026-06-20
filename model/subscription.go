@@ -189,6 +189,11 @@ type SubscriptionPlan struct {
 	Enabled   bool `json:"enabled" gorm:"default:true"`
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
 
+	AllowBalancePay *bool `json:"allow_balance_pay"`
+
+	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
+	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
+
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
 	CreemProductId        string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
 	WaffoPancakeProductId string `json:"waffo_pancake_product_id" gorm:"type:varchar(128);default:''"`
@@ -210,6 +215,9 @@ type SubscriptionPlan struct {
 
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+
+	// Downgrade user group on expiry (empty = revert to the group held before purchase)
+	DowngradeGroup string `json:"downgrade_group" gorm:"type:varchar(64);default:''"`
 
 	// Total quota (amount in quota units, 0 = unlimited)
 	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
@@ -233,6 +241,15 @@ func (p *SubscriptionPlan) BeforeCreate(tx *gorm.DB) error {
 func (p *SubscriptionPlan) BeforeUpdate(tx *gorm.DB) error {
 	p.UpdatedAt = common.GetTimestamp()
 	return nil
+}
+
+func (p *SubscriptionPlan) NormalizeDefaults() {
+	if p.AllowBalancePay == nil {
+		p.AllowBalancePay = common.GetPointer(true)
+	}
+	if p.AllowWalletOverflow == nil {
+		p.AllowWalletOverflow = common.GetPointer(true)
+	}
 }
 
 // Subscription order (payment -> webhook -> create UserSubscription)
@@ -478,6 +495,12 @@ type UserSubscription struct {
 	UpgradeGroup  string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 	PrevUserGroup string `json:"prev_user_group" gorm:"type:varchar(64);default:''"`
 
+	// Downgrade target group on expiry (snapshot from plan; empty = revert to PrevUserGroup)
+	DowngradeGroup string `json:"downgrade_group" gorm:"type:varchar(64);default:''"`
+
+	// Whether wallet fallback is allowed after this subscription's quota is exhausted (snapshot from plan)
+	AllowWalletOverflow bool `json:"allow_wallet_overflow"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
@@ -595,6 +618,7 @@ func getSubscriptionPlanByIdTx(tx *gorm.DB, id int, includeDeleted bool) (*Subsc
 	key := subscriptionPlanCacheKey(id)
 	if !includeDeleted && key != "" {
 		if cached, found, err := getSubscriptionPlanCache().Get(key); err == nil && found {
+			cached.NormalizeDefaults()
 			return &cached, nil
 		}
 	}
@@ -609,6 +633,7 @@ func getSubscriptionPlanByIdTx(tx *gorm.DB, id int, includeDeleted bool) (*Subsc
 	if err := query.Where("id = ?", id).First(&plan).Error; err != nil {
 		return nil, err
 	}
+	plan.NormalizeDefaults()
 	if !includeDeleted {
 		_ = getSubscriptionPlanCache().SetWithTTL(key, plan, subscriptionPlanCacheTTL())
 	}
@@ -958,21 +983,27 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			}
 		}
 	}
+	allowWalletOverflow := true
+	if plan.AllowWalletOverflow != nil {
+		allowWalletOverflow = *plan.AllowWalletOverflow
+	}
 	sub := &UserSubscription{
-		UserId:        userId,
-		PlanId:        plan.Id,
-		AmountTotal:   plan.TotalAmount,
-		AmountUsed:    0,
-		StartTime:     now.Unix(),
-		EndTime:       endUnix,
-		Status:        "active",
-		Source:        source,
-		LastResetTime: lastReset,
-		NextResetTime: nextReset,
-		UpgradeGroup:  upgradeGroup,
-		PrevUserGroup: prevGroup,
-		CreatedAt:     common.GetTimestamp(),
-		UpdatedAt:     common.GetTimestamp(),
+		UserId:              userId,
+		PlanId:              plan.Id,
+		AmountTotal:         plan.TotalAmount,
+		AmountUsed:          0,
+		StartTime:           now.Unix(),
+		EndTime:             endUnix,
+		Status:              "active",
+		Source:              source,
+		LastResetTime:       lastReset,
+		NextResetTime:       nextReset,
+		UpgradeGroup:        upgradeGroup,
+		PrevUserGroup:       prevGroup,
+		DowngradeGroup:      strings.TrimSpace(plan.DowngradeGroup),
+		AllowWalletOverflow: allowWalletOverflow,
+		CreatedAt:           common.GetTimestamp(),
+		UpdatedAt:           common.GetTimestamp(),
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err
@@ -1447,6 +1478,109 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 		return fmt.Sprintf("用户分组将升级到 %s", plan.UpgradeGroup), nil
 	}
 	return "", nil
+}
+
+func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
+	if priceAmount <= 0 {
+		return 0, nil
+	}
+	if common.QuotaPerUnit <= 0 {
+		return 0, errors.New("额度单位配置错误")
+	}
+	quota := decimal.NewFromFloat(priceAmount).
+		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
+		Ceil().
+		IntPart()
+	return int(quota), nil
+}
+
+// PurchaseSubscriptionWithBalance creates a subscription by deducting the user's wallet quota.
+func PurchaseSubscriptionWithBalance(userId int, planId int) error {
+	if userId <= 0 || planId <= 0 {
+		return errors.New("invalid userId or planId")
+	}
+
+	var logPlanTitle string
+	var logMoney float64
+	var chargedQuota int
+	var upgradeGroup string
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		plan, err := getSubscriptionPlanByIdTx(tx, planId, false)
+		if err != nil {
+			return err
+		}
+		if !plan.Enabled {
+			return errors.New("套餐未启用")
+		}
+		if plan.PriceAmount < 0 {
+			return errors.New("套餐价格不能为负数")
+		}
+		if plan.AllowBalancePay != nil && !*plan.AllowBalancePay {
+			return errors.New("该套餐不允许使用余额兑换")
+		}
+
+		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
+		if err != nil {
+			return err
+		}
+
+		var user User
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", userId).First(&user).Error; err != nil {
+			return err
+		}
+		if requiredQuota > 0 && user.Quota < requiredQuota {
+			return errors.New("余额不足")
+		}
+		if requiredQuota > 0 {
+			if err := tx.Model(&User{}).Where("id = ?", userId).
+				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
+				return err
+			}
+		}
+
+		if _, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, PaymentMethodBalance); err != nil {
+			return err
+		}
+
+		now := common.GetTimestamp()
+		tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
+		order := &SubscriptionOrder{
+			UserId:          userId,
+			PlanId:          plan.Id,
+			Money:           plan.PriceAmount,
+			TradeNo:         tradeNo,
+			PaymentMethod:   PaymentMethodBalance,
+			PaymentProvider: PaymentProviderBalance,
+			Status:          common.TopUpStatusSuccess,
+			CreateTime:      now,
+			CompleteTime:    now,
+			ProviderPayload: fmt.Sprintf("charged_quota=%d", requiredQuota),
+		}
+		if err := tx.Create(order).Error; err != nil {
+			return err
+		}
+
+		logPlanTitle = plan.Title
+		logMoney = plan.PriceAmount
+		chargedQuota = requiredQuota
+		upgradeGroup = strings.TrimSpace(plan.UpgradeGroup)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if chargedQuota > 0 {
+		if err := cacheDecrUserQuota(userId, int64(chargedQuota)); err != nil {
+			common.SysLog("failed to decrease user quota cache after subscription balance purchase: " + err.Error())
+		}
+	}
+	if upgradeGroup != "" {
+		_ = UpdateUserGroupCache(userId, upgradeGroup)
+	}
+	msg := fmt.Sprintf("使用余额购买订阅成功，套餐: %s，支付金额: %.2f，扣除额度: %d", logPlanTitle, logMoney, chargedQuota)
+	RecordLog(userId, LogTypeTopup, msg)
+	return nil
 }
 
 // GetAllActiveUserSubscriptions returns all active subscriptions for a user.

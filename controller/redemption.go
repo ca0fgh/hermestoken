@@ -7,6 +7,7 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/i18n"
+	"github.com/ca0fgh/hermestoken/logger"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 
@@ -110,6 +111,11 @@ func AddRedemption(c *gin.Context) {
 		}
 		keys = append(keys, key)
 	}
+	recordManageAudit(c, "redemption.create", map[string]interface{}{
+		"name":  redemption.Name,
+		"count": redemption.Count,
+		"quota": logger.LogQuota(redemption.Quota),
+	})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

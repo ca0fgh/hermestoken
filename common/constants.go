@@ -195,6 +195,7 @@ var RelayResponseHeaderTimeout int
 // truly hung channel so the retry loop can fail over. Unit is second.
 var RelayNonStreamTimeout int
 
+var RelayIdleConnTimeout int // unit is second
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 

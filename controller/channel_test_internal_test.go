@@ -87,3 +87,14 @@ func TestResolveChannelTestModelUsesFirstConfiguredModel(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "claude-opus-4-7", modelName)
 }
+
+func TestResolveChannelTestUserIDUsesRequestUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("id", 2)
+
+	userID, err := resolveChannelTestUserID(ctx)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, userID)
+}

@@ -1,7 +1,6 @@
 package ollama
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/dto"
 	relaycommon "github.com/ca0fgh/hermestoken/relay/common"
+	"github.com/ca0fgh/hermestoken/relay/helper"
 	"github.com/ca0fgh/hermestoken/service"
 	"github.com/ca0fgh/hermestoken/types"
 
@@ -397,7 +397,7 @@ func PullOllamaModelStream(baseURL, apiKey, modelName string, progressCallback f
 	}
 
 	// 读取流式响应
-	scanner := bufio.NewScanner(response.Body)
+	scanner := helper.NewStreamScanner(response.Body)
 	successful := false
 	for scanner.Scan() {
 		line := scanner.Text()

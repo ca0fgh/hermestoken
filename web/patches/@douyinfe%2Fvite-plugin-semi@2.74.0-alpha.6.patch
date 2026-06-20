@@ -1,0 +1,32 @@
+diff --git a/lib/vite-plugin-semi.js b/lib/vite-plugin-semi.js
+index 9be4ec2b5d498c4b0012da5d8abd46fdfa669634..b319a2f2cf490f4a26465d044363e988518137d4 100644
+--- a/lib/vite-plugin-semi.js
++++ b/lib/vite-plugin-semi.js
+@@ -52,9 +52,25 @@ function semiVitePlugin(options = {}) {
+                     importers: [
+                         {
+                             findFileUrl(url) {
+-                                var _a, _b;
+                                 if (url.startsWith('~')) {
+-                                    return new URL(url.substring(1), (0, url_1.pathToFileURL)((_b = (_a = scssFilePath.match(/^(\S*\/node_modules\/)/)) === null || _a === void 0 ? void 0 : _a[0]) !== null && _b !== void 0 ? _b : ''));
++                                    // Resolve "~pkg/sub/path" by walking node_modules
++                                    // upward from the importing file. The upstream
++                                    // implementation only checked the first
++                                    // node_modules segment, which breaks under bun's
++                                    // isolated ".bun/" layout where the referenced
++                                    // package is hoisted higher up the tree.
++                                    const spec = url.substring(1);
++                                    let dir = Path.dirname(scssFilePath);
++                                    let prev = null;
++                                    while (dir && dir !== prev) {
++                                        const candidate = Path.join(dir, 'node_modules', spec);
++                                        if (FS.existsSync(candidate)) {
++                                            return (0, url_1.pathToFileURL)(candidate);
++                                        }
++                                        prev = dir;
++                                        dir = Path.dirname(dir);
++                                    }
++                                    return null;
+                                 }
+                                 const filePath = Path.resolve(Path.dirname(scssFilePath), url);
+                                 if (FS.existsSync(filePath)) {

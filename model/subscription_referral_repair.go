@@ -9,17 +9,17 @@ import (
 )
 
 type SubscriptionReferralSettlementBatchRepairResult struct {
-	BatchID                    int   `json:"batch_id"`
+	BatchID                    int    `json:"batch_id"`
 	SourceTradeNo              string `json:"source_trade_no"`
-	ImmediateRecordID          int   `json:"immediate_record_id"`
-	InviteeRecordID            int   `json:"invitee_record_id"`
-	ImmediateBeneficiaryUserID int   `json:"immediate_beneficiary_user_id"`
-	InviteeBeneficiaryUserID   int   `json:"invitee_beneficiary_user_id"`
-	ImmediateOldQuota          int64 `json:"immediate_old_quota"`
-	ImmediateNewQuota          int64 `json:"immediate_new_quota"`
-	InviteeOldQuota            int64 `json:"invitee_old_quota"`
-	InviteeNewQuota            int64 `json:"invitee_new_quota"`
-	Changed                    bool  `json:"changed"`
+	ImmediateRecordID          int    `json:"immediate_record_id"`
+	InviteeRecordID            int    `json:"invitee_record_id"`
+	ImmediateBeneficiaryUserID int    `json:"immediate_beneficiary_user_id"`
+	InviteeBeneficiaryUserID   int    `json:"invitee_beneficiary_user_id"`
+	ImmediateOldQuota          int64  `json:"immediate_old_quota"`
+	ImmediateNewQuota          int64  `json:"immediate_new_quota"`
+	InviteeOldQuota            int64  `json:"invitee_old_quota"`
+	InviteeNewQuota            int64  `json:"invitee_new_quota"`
+	Changed                    bool   `json:"changed"`
 }
 
 func RepairSubscriptionReferralSettlementBatchByID(batchID int) (*SubscriptionReferralSettlementBatchRepairResult, error) {
