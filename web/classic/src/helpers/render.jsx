@@ -111,7 +111,7 @@ const staticLobeIconRegistry = {
   Jina,
   Jimeng,
   Kling,
-  Midjourney,
+  Midjourney: MjProxyIcon,
   Minimax,
   Mistral,
   Moonshot,
