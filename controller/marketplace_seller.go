@@ -303,7 +303,7 @@ func SellerTestMarketplaceCredential(c *gin.Context) {
 	endpointType := c.Query("endpoint_type")
 	isStream, _ := strconv.ParseBool(c.Query("stream"))
 	start := time.Now()
-	result := testChannel(channel, testModel, endpointType, isStream)
+	result := testChannel(channel, userID, testModel, endpointType, isStream)
 	responseTimeMS := time.Since(start).Milliseconds()
 	if responseTimeMS <= 0 {
 		responseTimeMS = 1

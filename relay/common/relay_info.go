@@ -111,21 +111,21 @@ type RelayInfo struct {
 	// 超过该秒数且尚未转发任何输出，则将流标记为 StreamEndReasonFirstChunkTimeout 并结束，
 	// 由控制器合成可重试错误切换渠道。0=禁用（默认）。仅由控制器对「非亲和」请求置为正值。
 	FirstChunkTimeoutSeconds int
-	ClientWs               *websocket.Conn
-	TargetWs               *websocket.Conn
-	InputAudioFormat       string
-	OutputAudioFormat      string
-	RealtimeTools          []dto.RealTimeTool
-	IsFirstRequest         bool
-	AudioUsage             bool
-	ReasoningEffort        string
-	UserSetting            dto.UserSetting
-	UserEmail              string
-	UserQuota              int
-	RelayFormat            types.RelayFormat
-	SendResponseCount      int
-	ReceivedResponseCount  int
-	FinalPreConsumedQuota  int // 最终预消耗的配额
+	ClientWs                 *websocket.Conn
+	TargetWs                 *websocket.Conn
+	InputAudioFormat         string
+	OutputAudioFormat        string
+	RealtimeTools            []dto.RealTimeTool
+	IsFirstRequest           bool
+	AudioUsage               bool
+	ReasoningEffort          string
+	UserSetting              dto.UserSetting
+	UserEmail                string
+	UserQuota                int
+	RelayFormat              types.RelayFormat
+	SendResponseCount        int
+	ReceivedResponseCount    int
+	FinalPreConsumedQuota    int // 最终预消耗的配额
 	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
 	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
 	// 必须在提交前锁定全额。
@@ -157,6 +157,13 @@ type RelayInfo struct {
 	RuntimeHeadersOverride                map[string]interface{}
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
+
+	// UpstreamRequestBodySize is the byte size of the marshaled upstream request
+	// body. It is set when the body is wrapped in a BodyStorage (see
+	// relay/common/outbound_body.go), so that DoApiRequest can populate
+	// http.Request.ContentLength manually (net/http only auto-detects it for
+	// *bytes.Reader/Buffer/strings.Reader). 0 means "let net/http decide".
+	UpstreamRequestBodySize int64
 
 	PriceData types.PriceData
 
@@ -315,24 +322,25 @@ func (info *RelayInfo) ToString() string {
 
 // 定义支持流式选项的通道类型
 var streamSupportedChannels = map[int]bool{
-	constant.ChannelTypeOpenAI:      true,
-	constant.ChannelTypeAnthropic:   true,
-	constant.ChannelTypeAws:         true,
-	constant.ChannelTypeGemini:      true,
-	constant.ChannelCloudflare:      true,
-	constant.ChannelTypeAzure:       true,
-	constant.ChannelTypeVolcEngine:  true,
-	constant.ChannelTypeOllama:      true,
-	constant.ChannelTypeXai:         true,
-	constant.ChannelTypeDeepSeek:    true,
-	constant.ChannelTypeBaiduV2:     true,
-	constant.ChannelTypeZhipu_v4:    true,
-	constant.ChannelTypeAli:         true,
-	constant.ChannelTypeSubmodel:    true,
-	constant.ChannelTypeCodex:       true,
-	constant.ChannelTypeMoonshot:    true,
-	constant.ChannelTypeMiniMax:     true,
-	constant.ChannelTypeSiliconFlow: true,
+	constant.ChannelTypeOpenAI:         true,
+	constant.ChannelTypeAnthropic:      true,
+	constant.ChannelTypeAws:            true,
+	constant.ChannelTypeGemini:         true,
+	constant.ChannelCloudflare:         true,
+	constant.ChannelTypeAzure:          true,
+	constant.ChannelTypeVolcEngine:     true,
+	constant.ChannelTypeOllama:         true,
+	constant.ChannelTypeXai:            true,
+	constant.ChannelTypeDeepSeek:       true,
+	constant.ChannelTypeBaiduV2:        true,
+	constant.ChannelTypeZhipu_v4:       true,
+	constant.ChannelTypeAli:            true,
+	constant.ChannelTypeSubmodel:       true,
+	constant.ChannelTypeCodex:          true,
+	constant.ChannelTypeMoonshot:       true,
+	constant.ChannelTypeMiniMax:        true,
+	constant.ChannelTypeSiliconFlow:    true,
+	constant.ChannelTypeAdvancedCustom: true,
 }
 
 func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {

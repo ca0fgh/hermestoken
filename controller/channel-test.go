@@ -229,7 +229,24 @@ func setChannelTestLogContext(c *gin.Context, testGroups []string, logGroup stri
 	c.Set(contextKeyChannelTestLogGroup, logGroup)
 }
 
-func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
+func resolveChannelTestUserID(c *gin.Context) (int, error) {
+	if c != nil {
+		if userID := c.GetInt("id"); userID > 0 {
+			return userID, nil
+		}
+	}
+
+	var rootUser model.User
+	if err := model.DB.Select("id").Where("role = ?", common.RoleRootUser).First(&rootUser).Error; err != nil {
+		return 0, fmt.Errorf("failed to resolve channel test user: %w", err)
+	}
+	if rootUser.Id == 0 {
+		return 0, errors.New("failed to resolve channel test user")
+	}
+	return rootUser.Id, nil
+}
+
+func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
 	tik := time.Now()
 	var resolveErr error
 	testModel, resolveErr = resolveChannelTestModel(channel, testModel)
@@ -323,7 +340,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Header: make(http.Header),
 	}
 
-	cache, err := model.GetUserCache(1)
+	cache, err := model.GetUserCache(testUserID)
 	if err != nil {
 		return testResult{
 			localErr:         err,
@@ -331,6 +348,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 	cache.WriteContext(c)
+	c.Set("id", testUserID)
 
 	//c.Request.Header.Set("Authorization", "Bearer "+channel.Key)
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -348,7 +366,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	userGroup, _ := model.GetUserGroup(1, false)
+	userGroup, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", selectChannelTestUsingGroup(channelTestGroups, userGroup))
 
 	hermesTokenError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
@@ -685,7 +703,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if channelTestLogGroup == "" {
 		channelTestLogGroup = c.GetString("group")
 	}
-	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
+	model.RecordConsumeLog(c, testUserID, model.RecordConsumeLogParams{
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
@@ -1146,7 +1164,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		testRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 	}
 
-	if strings.HasPrefix(model, "o") {
+	if dto.IsOpenAIReasoningOModel(model) {
 		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
 	} else if strings.Contains(model, "thinking") {
 		if !strings.Contains(model, "claude") {
@@ -1183,8 +1201,13 @@ func TestChannel(c *gin.Context) {
 	testModel := c.Query("model")
 	endpointType := c.Query("endpoint_type")
 	isStream, _ := strconv.ParseBool(c.Query("stream"))
+	testUserID, err := resolveChannelTestUserID(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	tik := time.Now()
-	result := testChannel(channel, testModel, endpointType, isStream)
+	result := testChannel(channel, testUserID, testModel, endpointType, isStream)
 	if result.localErr != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -1216,6 +1239,10 @@ var testAllChannelsLock sync.Mutex
 var testAllChannelsRunning bool = false
 
 func testAllChannels(notify bool) error {
+	testUserID, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		return err
+	}
 
 	testAllChannelsLock.Lock()
 	if testAllChannelsRunning {
@@ -1241,7 +1268,7 @@ func testAllChannels(notify bool) error {
 				continue
 			}
 			tik := time.Now()
-			result := testChannel(channel, "", "", false)
+			result := testChannel(channel, testUserID, "", "", false)
 			tok := time.Now()
 			milliseconds := tok.Sub(tik).Milliseconds()
 			if result.skipped {

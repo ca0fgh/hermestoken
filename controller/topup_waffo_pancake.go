@@ -106,11 +106,6 @@ func getWaffoPancakeBuyerEmail(user *model.User) string {
 // the body and fall back to persisted creds when the body is blank (see
 // resolveWaffoPancakeAdminCreds). Only SaveWaffoPancake writes to OptionMap.
 
-type waffoPancakeCredsRequest struct {
-	MerchantID string `json:"merchant_id"`
-	PrivateKey string `json:"private_key"`
-}
-
 type saveWaffoPancakeRequest struct {
 	MerchantID string `json:"merchant_id"`
 	PrivateKey string `json:"private_key"`
@@ -224,15 +219,11 @@ func CreateWaffoPancakePair(c *gin.Context) {
 // Doubles as a credential probe (a successful 200 proves the resolved creds
 // authenticate). See resolveWaffoPancakeAdminCreds for credential resolution.
 func ListWaffoPancakeCatalog(c *gin.Context) {
-	var req waffoPancakeCredsRequest
-	// An empty body means "use persisted creds"; only fail on malformed JSON.
-	if c.Request.ContentLength > 0 {
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
-			return
-		}
-	}
-	merchantID, privateKey := resolveWaffoPancakeAdminCreds(req.MerchantID, req.PrivateKey)
+	// Missing query creds mean "use persisted creds".
+	merchantID, privateKey := resolveWaffoPancakeAdminCreds(
+		strings.TrimSpace(c.Query("merchant_id")),
+		strings.TrimSpace(c.Query("private_key")),
+	)
 	if merchantID == "" || privateKey == "" {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Waffo Pancake 凭证未配置"})
 		return
@@ -405,15 +396,14 @@ func RequestWaffoPancakePay(c *gin.Context) {
 	expiresInSeconds := 45 * 60
 	session, err := service.CreateWaffoPancakeCheckoutSession(c.Request.Context(), &service.WaffoPancakeCreateSessionParams{
 		ProductID:     setting.WaffoPancakeProductID,
-		LocalTradeNo:  tradeNo,
-		OrderType:     service.WaffoPancakeOrderTypeTopUp,
 		BuyerIdentity: getWaffoPancakeBuyerIdentity(user),
 		PriceSnapshot: &service.WaffoPancakePriceSnapshot{
 			Amount:      formatWaffoPancakeAmount(payMoney),
 			TaxCategory: "saas",
 		},
-		BuyerEmail:       getWaffoPancakeBuyerEmail(user),
-		ExpiresInSeconds: &expiresInSeconds,
+		BuyerEmail:              getWaffoPancakeBuyerEmail(user),
+		ExpiresInSeconds:        &expiresInSeconds,
+		OrderMerchantExternalID: tradeNo,
 	})
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Waffo Pancake 创建结账会话失败 user_id=%d trade_no=%s error=%q", id, tradeNo, err.Error()))
@@ -489,13 +479,10 @@ func WaffoPancakeWebhook(c *gin.Context) {
 		return
 	}
 
-	// Subscription vs top-up dispatch uses merchant-controlled metadata written
-	// at checkout creation. Waffo's own orderId is an ORD_... value and must not
-	// be treated as a local trade_no.
-	orderType := strings.TrimSpace(event.Data.OrderMetadata[service.WaffoPancakeMetadataOrderType])
-	rawTradeNo := strings.TrimSpace(event.Data.OrderMetadata[service.WaffoPancakeMetadataLocalTradeNo])
-	isSubscription := orderType == service.WaffoPancakeOrderTypeSubscription ||
-		strings.HasPrefix(rawTradeNo, "WAFFO_PANCAKE_SUB-")
+	// Dispatch by trade_no prefix. OrderMerchantExternalID = our trade_no;
+	// OrderID is Pancake's internal ORD_* (logs only).
+	rawTradeNo := strings.TrimSpace(event.Data.OrderMerchantExternalID)
+	isSubscription := strings.HasPrefix(rawTradeNo, "WAFFO_PANCAKE_SUB-")
 
 	if isSubscription {
 		tradeNo, err := service.ResolveWaffoPancakeSubscriptionTradeNo(event)

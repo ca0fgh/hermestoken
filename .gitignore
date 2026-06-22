@@ -129,6 +129,7 @@ appendonlydir/
 .test
 token_estimator_test.go
 skills-lock.json
+.playwright-mcp
 
 # Generated media outputs
 scripts/tool/gpt_image2_output_*.png

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { type Row } from '@tanstack/react-table'
 import {
   Trash2,
@@ -64,11 +64,35 @@ export function DataTableRowActions<TData>({
 }: DataTableRowActionsProps<TData>) {
   const { t } = useTranslation()
   const apiKey = apiKeySchema.parse(row.original)
-  const { setOpen, setCurrentRow, triggerRefresh, resolveRealKey } =
-    useApiKeys()
+  const {
+    setOpen,
+    setCurrentRow,
+    triggerRefresh,
+    resolveRealKey,
+    resolvedKeys,
+    loadingKeys,
+  } = useApiKeys()
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const { status } = useStatus()
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
+  const resolvedRealKey = resolvedKeys[apiKey.id]
+  const isRealKeyLoading = Boolean(loadingKeys[apiKey.id])
+
+  const handleMenuOpenChange = useCallback(
+    (open: boolean) => {
+      if (open && !resolvedRealKey && !isRealKeyLoading) {
+        void resolveRealKey(apiKey.id)
+      }
+    },
+    [apiKey.id, isRealKeyLoading, resolvedRealKey, resolveRealKey]
+  )
+
+  const getCachedRealKey = useCallback(() => {
+    if (resolvedRealKey) return resolvedRealKey
+    void resolveRealKey(apiKey.id)
+    toast.info(t('API key is loading, please try again in a moment'))
+    return null
+  }, [apiKey.id, resolvedRealKey, resolveRealKey, t])
 
   const handleToggleStatus = async (e?: React.MouseEvent<HTMLElement>) => {
     e?.stopPropagation()
@@ -96,7 +120,7 @@ export function DataTableRowActions<TData>({
   }
 
   return (
-    <div className='flex items-center justify-end gap-1'>
+    <div className='-ml-1.5 flex items-center gap-1'>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -127,7 +151,7 @@ export function DataTableRowActions<TData>({
         </TooltipContent>
       </Tooltip>
 
-      <DropdownMenu modal={false}>
+      <DropdownMenu modal={false} onOpenChange={handleMenuOpenChange}>
         <DropdownMenuTrigger
           render={
             <Button
@@ -142,7 +166,7 @@ export function DataTableRowActions<TData>({
         <DropdownMenuContent align='end' className='w-[200px]'>
           <DropdownMenuItem
             onClick={async () => {
-              const realKey = await resolveRealKey(apiKey.id)
+              const realKey = getCachedRealKey()
               if (!realKey) return
               const ok = await copyToClipboard(realKey)
               if (ok) toast.success(t('Copied'))
@@ -155,7 +179,7 @@ export function DataTableRowActions<TData>({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
-              const realKey = await resolveRealKey(apiKey.id)
+              const realKey = getCachedRealKey()
               if (!realKey) return
               const connStr = encodeConnectionString(
                 realKey,
