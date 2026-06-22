@@ -10,7 +10,6 @@ web/default/dist
 web/classic/dist
 web/node_modules
 web/dist
-web/bun.lock
 .env
 one-api
 hermestoken

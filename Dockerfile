@@ -42,7 +42,7 @@ RUN set -eux; \
       out_dir="$2"; \
       version="$(resolve_version)"; \
       cd "/build/$app_dir"; \
-      bun install --registry "${NPM_REGISTRY}"; \
+      bun install --frozen-lockfile --registry "${NPM_REGISTRY}"; \
       DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$version" bun run build; \
       mkdir -p "$out_dir"; \
       cp -R dist/. "$out_dir/"; \
