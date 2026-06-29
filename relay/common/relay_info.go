@@ -463,7 +463,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	reqId := common.GetContextKeyString(c, common.RequestIdKey)
 	if reqId == "" {
-		reqId = common.GetTimeString() + common.GetRandomString(8)
+		reqId = common.NewRequestId()
 	}
 	requestURLPath := c.Request.URL.String()
 	if canonicalPath, ok := relayconstant.CanonicalOpenAIPath(c.Request.URL.Path); ok {

@@ -1236,7 +1236,7 @@ func completeSubscriptionOrderWithValidation(tradeNo string, verification *Subsc
 		return errors.New("tradeNo is empty")
 	}
 	refCol := "`trade_no`"
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
 	var logUserId int
@@ -1372,7 +1372,7 @@ func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string, expectedPaymentProvi
 		return false, errors.New("tradeNo is empty")
 	}
 	refCol := "`trade_no`"
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
 	var order SubscriptionOrder

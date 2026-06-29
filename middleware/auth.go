@@ -15,6 +15,7 @@ import (
 	"github.com/ca0fgh/hermestoken/model"
 	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
 	"github.com/ca0fgh/hermestoken/service"
+	"github.com/ca0fgh/hermestoken/service/authz"
 	"github.com/ca0fgh/hermestoken/types"
 
 	"github.com/gin-contrib/sessions"
@@ -184,6 +185,22 @@ func AdminAuth() func(c *gin.Context) {
 func RootAuth() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		authHelper(c, common.RoleRootUser)
+	}
+}
+
+func RequirePermission(permission authz.Permission) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		role := c.GetInt("role")
+		userID := c.GetInt("id")
+		if authz.Can(userID, role, permission) {
+			c.Next()
+			return
+		}
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"message": common.TranslateMessage(c, i18n.MsgAuthInsufficientPrivilege),
+		})
+		c.Abort()
 	}
 }
 

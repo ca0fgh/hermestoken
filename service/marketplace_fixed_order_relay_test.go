@@ -36,9 +36,9 @@ func setupMarketplaceFixedOrderRelayTestDB(t *testing.T) *gorm.DB {
 	for key, value := range common.OptionMap {
 		originalOptionMap[key] = value
 	}
-	originalSQLite := common.UsingSQLite
-	originalMySQL := common.UsingMySQL
-	originalPostgres := common.UsingPostgreSQL
+	originalSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalPostgres := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 	originalRedis := common.RedisEnabled
 	originalBatchUpdate := common.BatchUpdateEnabled
 	originalMarketplaceEnabled := setting.MarketplaceEnabled
@@ -51,9 +51,7 @@ func setupMarketplaceFixedOrderRelayTestDB(t *testing.T) *gorm.DB {
 	originalMaxMultiplier := setting.MarketplaceMaxSellerMultiplier
 	originalMaxConcurrency := setting.MarketplaceMaxCredentialConcurrency
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	model.InitColumnMetadata()
@@ -96,9 +94,15 @@ func setupMarketplaceFixedOrderRelayTestDB(t *testing.T) *gorm.DB {
 		model.DB = originalDB
 		model.LOG_DB = originalLogDB
 		common.OptionMap = originalOptionMap
-		common.UsingSQLite = originalSQLite
-		common.UsingMySQL = originalMySQL
-		common.UsingPostgreSQL = originalPostgres
+		if originalSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalPostgres {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 		common.RedisEnabled = originalRedis
 		common.BatchUpdateEnabled = originalBatchUpdate
 		setting.MarketplaceEnabled = originalMarketplaceEnabled

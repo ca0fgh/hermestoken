@@ -261,15 +261,9 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 			claudeRequest.Temperature = common.GetPointer[float64](1.0)
 		}
 
-		// BudgetTokens 为 max_tokens 的 80%
-		claudeRequest.Thinking = &dto.Thinking{
-			Type:         "enabled",
-			BudgetTokens: common.GetPointer[int](int(float64(*claudeRequest.MaxTokens) * model_setting.GetClaudeSettings().ThinkingAdapterBudgetTokensPercentage)),
-		}
-		// TODO: 临时处理
-		// https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking#important-considerations-when-using-extended-thinking
-		claudeRequest.TopP = nil
-		claudeRequest.Temperature = common.GetPointer[float64](1.0)
+		// thinking 的具体配置(opus-4.7/4.8 用 adaptive、其余用 enabled+budget)已在
+		// 上面的 if/else 内按模型分别设置;这里只做模型名去后缀,不可再无条件覆盖
+		// Thinking,否则会把 opus-4.7/4.8 的 adaptive 改回 enabled 触发上游 400。
 		if !model_setting.ShouldPreserveThinkingSuffix(textRequest.Model) {
 			claudeRequest.Model = strings.TrimSuffix(textRequest.Model, "-thinking")
 		}

@@ -23,14 +23,12 @@ func setupChannelControllerTestDB(t *testing.T) *gorm.DB {
 
 	originalDB := model.DB
 	originalLogDB := model.LOG_DB
-	originalSQLite := common.UsingSQLite
-	originalMySQL := common.UsingMySQL
-	originalPostgres := common.UsingPostgreSQL
+	originalSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalPostgres := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 	originalRedis := common.RedisEnabled
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	model.InitColumnMetadata()
 	model.DB = db
@@ -43,9 +41,15 @@ func setupChannelControllerTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() {
 		model.DB = originalDB
 		model.LOG_DB = originalLogDB
-		common.UsingSQLite = originalSQLite
-		common.UsingMySQL = originalMySQL
-		common.UsingPostgreSQL = originalPostgres
+		if originalSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalPostgres {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 		common.RedisEnabled = originalRedis
 
 		sqlDB, err := db.DB()

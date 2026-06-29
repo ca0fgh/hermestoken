@@ -120,6 +120,8 @@ var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}
 var SMTPServer = ""
 var SMTPPort = 587
 var SMTPSSLEnabled = false
+var SMTPStartTLSEnabled = false
+var SMTPInsecureSkipVerify = false
 var SMTPForceAuthLogin = false
 var SMTPAccount = ""
 var SMTPFrom = ""
@@ -155,9 +157,20 @@ var RetryTimes = 0
 
 var IsMasterNode bool
 
-// NodeName 节点名称，从 NODE_NAME 环境变量读取；
-// 用于审计日志中标识节点身份，在容器/K8s 部署时比自动探测到的容器内网 IP 更具可读性。
+const (
+	NodeNameSourceManual   = "manual"
+	NodeNameSourceHostname = "hostname"
+)
+
+// NodeName 节点名称，优先从 NODE_NAME 环境变量读取，未配置时回退主机名。
+// 用于审计日志和后台任务中标识节点身份；多实例部署时建议显式配置稳定 NODE_NAME。
 var NodeName = ""
+
+// NodeNameSource records how NodeName was chosen so future instance-management
+// reporting can distinguish operator-configured names from automatic fallback.
+var NodeNameSource = NodeNameSourceHostname
+
+var NodeNameManuallyConfigured bool
 
 var requestInterval int
 var RequestInterval time.Duration
@@ -291,6 +304,7 @@ const (
 	ChannelStatusEnabled          = 1 // don't use 0, 0 is the default value!
 	ChannelStatusManuallyDisabled = 2 // also don't use 0
 	ChannelStatusDisabled         = 3 // legacy disabled status retained for historical data
+	ChannelStatusAutoDisabled     = 3 // alias of ChannelStatusDisabled; fork never auto-disables, kept for upstream code/tests
 )
 
 const (

@@ -139,6 +139,36 @@ export async function updateChannel(
 }
 
 /**
+ * Update channel enabled/disabled status.
+ */
+export async function updateChannelStatus(
+  id: number,
+  status: number
+): Promise<{ success: boolean; message?: string; data?: boolean }> {
+  const res = await api.post(
+    `/api/channel/${id}/status`,
+    { status },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+/**
+ * Batch update channel enabled/disabled status.
+ */
+export async function batchUpdateChannelStatus(
+  ids: number[],
+  status: number
+): Promise<{ success: boolean; message?: string; data?: number }> {
+  const res = await api.post(
+    '/api/channel/status/batch',
+    { ids, status },
+    channelActionConfig()
+  )
+  return res.data
+}
+
+/**
  * Delete single channel
  */
 export async function deleteChannel(
@@ -555,18 +585,6 @@ export async function getAllModels(): Promise<{
   data?: Array<{ id: string; [key: string]: unknown }>
 }> {
   const res = await api.get('/api/channel/models')
-  return res.data
-}
-
-/**
- * Get models configured in model pricing settings
- */
-export async function getPricedModels(): Promise<{
-  success: boolean
-  message?: string
-  data?: Array<{ id: string; [key: string]: unknown }>
-}> {
-  const res = await api.get('/api/channel/models_priced')
   return res.data
 }
 

@@ -25,3 +25,5 @@ dist-ssr
 *.sln
 *.sw?
 .tanstack/*
+# i18n sync 生成的逐语言未翻译转储(只跟踪 _sync-report.json 汇总)
+src/i18n/locales/_reports/*.untranslated.json
