@@ -16,16 +16,14 @@ func setupChannelCacheTestDB(t *testing.T) *gorm.DB {
 
 	originalDB := DB
 	originalLogDB := LOG_DB
-	originalSQLite := common.UsingSQLite
-	originalMySQL := common.UsingMySQL
-	originalPostgres := common.UsingPostgreSQL
+	originalSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalPostgres := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	originalGroup2Model2Channels := group2model2channels
 	originalChannelsIDM := channelsIDM
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.MemoryCacheEnabled = true
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
@@ -41,9 +39,15 @@ func setupChannelCacheTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() {
 		DB = originalDB
 		LOG_DB = originalLogDB
-		common.UsingSQLite = originalSQLite
-		common.UsingMySQL = originalMySQL
-		common.UsingPostgreSQL = originalPostgres
+		if originalSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalPostgres {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 		common.MemoryCacheEnabled = originalMemoryCacheEnabled
 		group2model2channels = originalGroup2Model2Channels
 		channelsIDM = originalChannelsIDM
@@ -82,12 +86,12 @@ func TestInitChannelCacheUsesEnabledAbilities(t *testing.T) {
 
 	InitChannelCache()
 
-	enabled, err := GetRandomSatisfiedChannel("default", "enabled-model", 0)
+	enabled, err := GetRandomSatisfiedChannel("default", "enabled-model", 0, "")
 	require.NoError(t, err)
 	require.NotNil(t, enabled)
 	require.Equal(t, channel.Id, enabled.Id)
 
-	disabled, err := GetRandomSatisfiedChannel("default", "disabled-model", 0)
+	disabled, err := GetRandomSatisfiedChannel("default", "disabled-model", 0, "")
 	require.NoError(t, err)
 	require.Nil(t, disabled)
 }

@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 	model.DB = db
 	model.LOG_DB = db
 
-	common.UsingSQLite = true
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
@@ -47,6 +47,8 @@ func TestMain(m *testing.M) {
 		&model.Channel{},
 		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
+		&model.SystemTask{},
+		&model.SystemTaskLock{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -68,6 +70,8 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM channels")
 		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
+		model.DB.Exec("DELETE FROM system_task_locks")
+		model.DB.Exec("DELETE FROM system_tasks")
 	})
 }
 
@@ -748,7 +752,7 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	assert.Equal(t, int64(0), countLogs(t))
 }
 
-func TestSettle_NonPerCall_AdaptorAdjustWorks(t *testing.T) {
+func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {
 	truncate(t)
 	ctx := context.Background()
 

@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bytes"
 	"io"
 	"net/http"
 	"strings"
@@ -125,7 +124,14 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	var requestBody io.Reader = bytes.NewBuffer(jsonData)
+	body, size, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
+	if err != nil {
+		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	defer closer.Close()
+	jsonData = nil
+	info.UpstreamRequestBodySize = size
+	var requestBody io.Reader = body
 
 	var httpResp *http.Response
 	resp, err := adaptor.DoRequest(c, info, requestBody)
@@ -139,15 +145,26 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
 	httpResp = resp.(*http.Response)
-	info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
+	clientStream := info.IsStream
+	upstreamStream := isResponsesEventStreamContentType(httpResp.Header.Get("Content-Type"))
+	info.IsStream = clientStream || upstreamStream
 	if httpResp.StatusCode != http.StatusOK {
 		hermesTokenErr := service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 		service.ResetStatusCode(hermesTokenErr, statusCodeMappingStr)
 		return nil, hermesTokenErr
 	}
 
-	if info.IsStream {
+	if upstreamStream && clientStream {
 		usage, hermesTokenErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
+		if hermesTokenErr != nil {
+			service.ResetStatusCode(hermesTokenErr, statusCodeMappingStr)
+			return nil, hermesTokenErr
+		}
+		return usage, nil
+	}
+	if upstreamStream {
+		info.IsStream = false
+		usage, hermesTokenErr := openaichannel.OaiResponsesToChatBufferedStreamHandler(c, info, httpResp)
 		if hermesTokenErr != nil {
 			service.ResetStatusCode(hermesTokenErr, statusCodeMappingStr)
 			return nil, hermesTokenErr
@@ -161,4 +178,8 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 		return nil, hermesTokenErr
 	}
 	return usage, nil
+}
+
+func isResponsesEventStreamContentType(contentType string) bool {
+	return strings.Contains(strings.ToLower(contentType), "text/event-stream")
 }

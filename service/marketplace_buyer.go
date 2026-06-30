@@ -1267,7 +1267,7 @@ func expireDueBuyerMarketplaceFixedOrders(buyerUserID int, now int64) error {
 }
 
 func marketplaceForUpdate(tx *gorm.DB) *gorm.DB {
-	if common.UsingMySQL || common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypeMySQL) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		return tx.Clauses(clause.Locking{Strength: "UPDATE"})
 	}
 	return tx

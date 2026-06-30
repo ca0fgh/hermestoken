@@ -96,9 +96,7 @@ func setupMarketplaceSellerControllerTestDB(t *testing.T) *gorm.DB {
 	originalAudioRatio := ratio_setting.AudioRatio2JSONString()
 	originalAudioCompletionRatio := ratio_setting.AudioCompletionRatio2JSONString()
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	ratio_setting.InitRatioSettings()
 	service.InitHttpClient()
@@ -797,7 +795,7 @@ func TestSellerProbeMarketplaceCredentialRejectsOtherSeller(t *testing.T) {
 func TestSellerTestMarketplaceCredentialDoesNotExposeSecret(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	testUser := &model.User{
-		Id:       1,
+		Id:       10,
 		Username: "marketplace_test_root",
 		Password: "password123",
 		Role:     common.RoleRootUser,
@@ -840,7 +838,7 @@ func TestSellerTestMarketplaceCredentialDoesNotExposeSecret(t *testing.T) {
 func TestSellerTestMarketplaceCredentialAcceptsOpenAICompatibleV1BaseURL(t *testing.T) {
 	db := setupMarketplaceSellerControllerTestDB(t)
 	testUser := &model.User{
-		Id:       1,
+		Id:       10,
 		Username: "marketplace_test_v1_base",
 		Password: "password123",
 		Role:     common.RoleRootUser,

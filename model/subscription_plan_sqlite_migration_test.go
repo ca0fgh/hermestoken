@@ -14,9 +14,9 @@ func setupSubscriptionPlanSQLiteMigrationTestDB(t *testing.T) *gorm.DB {
 
 	originalDB := DB
 	originalLogDB := LOG_DB
-	originalUsingSQLite := common.UsingSQLite
-	originalUsingMySQL := common.UsingMySQL
-	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalUsingSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalUsingMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalUsingPostgreSQL := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -26,9 +26,7 @@ func setupSubscriptionPlanSQLiteMigrationTestDB(t *testing.T) *gorm.DB {
 
 	DB = db
 	LOG_DB = db
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -37,9 +35,15 @@ func setupSubscriptionPlanSQLiteMigrationTestDB(t *testing.T) *gorm.DB {
 		}
 		DB = originalDB
 		LOG_DB = originalLogDB
-		common.UsingSQLite = originalUsingSQLite
-		common.UsingMySQL = originalUsingMySQL
-		common.UsingPostgreSQL = originalUsingPostgreSQL
+		if originalUsingSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalUsingMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalUsingPostgreSQL {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 	})
 
 	return db
