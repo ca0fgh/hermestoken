@@ -8,16 +8,10 @@ import (
 	"github.com/ca0fgh/hermestoken/dto"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/relay"
-	"github.com/ca0fgh/hermestoken/service"
 	"github.com/ca0fgh/hermestoken/types"
 
 	"github.com/gin-gonic/gin"
 )
-
-// UpdateTaskBulk 薄入口，实际轮询逻辑在 service 层
-func UpdateTaskBulk() {
-	service.TaskPollingLoop()
-}
 
 func GetAllTask(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)

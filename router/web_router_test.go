@@ -295,14 +295,12 @@ func setupWebRouterTokenAuthTestDB(t *testing.T) {
 	originalDB := model.DB
 	originalLogDB := model.LOG_DB
 	originalRedis := common.RedisEnabled
-	originalSQLite := common.UsingSQLite
-	originalMySQL := common.UsingMySQL
-	originalPostgres := common.UsingPostgreSQL
+	originalSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalPostgres := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 
 	common.RedisEnabled = false
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	model.InitColumnMetadata()
 
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -322,8 +320,14 @@ func setupWebRouterTokenAuthTestDB(t *testing.T) {
 		model.DB = originalDB
 		model.LOG_DB = originalLogDB
 		common.RedisEnabled = originalRedis
-		common.UsingSQLite = originalSQLite
-		common.UsingMySQL = originalMySQL
-		common.UsingPostgreSQL = originalPostgres
+		if originalSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalPostgres {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 	})
 }

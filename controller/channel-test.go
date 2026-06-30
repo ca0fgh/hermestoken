@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/ca0fgh/hermestoken/common"
@@ -27,10 +27,10 @@ import (
 	relayconstant "github.com/ca0fgh/hermestoken/relay/constant"
 	"github.com/ca0fgh/hermestoken/relay/helper"
 	"github.com/ca0fgh/hermestoken/service"
+	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
 	"github.com/ca0fgh/hermestoken/types"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 
@@ -229,7 +229,24 @@ func setChannelTestLogContext(c *gin.Context, testGroups []string, logGroup stri
 	c.Set(contextKeyChannelTestLogGroup, logGroup)
 }
 
-func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
+func resolveChannelTestUserID(c *gin.Context) (int, error) {
+	if c != nil {
+		if userID := c.GetInt("id"); userID > 0 {
+			return userID, nil
+		}
+	}
+
+	var rootUser model.User
+	if err := model.DB.Select("id").Where("role = ?", common.RoleRootUser).First(&rootUser).Error; err != nil {
+		return 0, fmt.Errorf("failed to resolve channel test user: %w", err)
+	}
+	if rootUser.Id == 0 {
+		return 0, errors.New("failed to resolve channel test user")
+	}
+	return rootUser.Id, nil
+}
+
+func testChannel(channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
 	tik := time.Now()
 	var resolveErr error
 	testModel, resolveErr = resolveChannelTestModel(channel, testModel)
@@ -323,7 +340,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Header: make(http.Header),
 	}
 
-	cache, err := model.GetUserCache(1)
+	cache, err := model.GetUserCache(testUserID)
 	if err != nil {
 		return testResult{
 			localErr:         err,
@@ -331,6 +348,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 	cache.WriteContext(c)
+	c.Set("id", testUserID)
 
 	//c.Request.Header.Set("Authorization", "Bearer "+channel.Key)
 	c.Request.Header.Set("Content-Type", "application/json")
@@ -348,7 +366,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 	c.Set("channel", channel.Type)
 	c.Set("base_url", channel.GetBaseURL())
-	userGroup, _ := model.GetUserGroup(1, false)
+	userGroup, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", selectChannelTestUsingGroup(channelTestGroups, userGroup))
 
 	hermesTokenError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
@@ -685,7 +703,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if channelTestLogGroup == "" {
 		channelTestLogGroup = c.GetString("group")
 	}
-	model.RecordConsumeLog(c, 1, model.RecordConsumeLogParams{
+	model.RecordConsumeLog(c, testUserID, model.RecordConsumeLogParams{
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
@@ -1146,7 +1164,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		testRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
 	}
 
-	if strings.HasPrefix(model, "o") {
+	if dto.IsOpenAIReasoningOModel(model) {
 		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
 	} else if strings.Contains(model, "thinking") {
 		if !strings.Contains(model, "claude") {
@@ -1183,8 +1201,13 @@ func TestChannel(c *gin.Context) {
 	testModel := c.Query("model")
 	endpointType := c.Query("endpoint_type")
 	isStream, _ := strconv.ParseBool(c.Query("stream"))
+	testUserID, err := resolveChannelTestUserID(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	tik := time.Now()
-	result := testChannel(channel, testModel, endpointType, isStream)
+	result := testChannel(channel, testUserID, testModel, endpointType, isStream)
 	if result.localErr != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -1212,62 +1235,146 @@ func TestChannel(c *gin.Context) {
 	})
 }
 
-var testAllChannelsLock sync.Mutex
-var testAllChannelsRunning bool = false
-
-func testAllChannels(notify bool) error {
-
-	testAllChannelsLock.Lock()
-	if testAllChannelsRunning {
-		testAllChannelsLock.Unlock()
-		return errors.New("测试已在运行中")
-	}
-	testAllChannelsRunning = true
-	testAllChannelsLock.Unlock()
-	channels, getChannelErr := model.GetAllChannels(0, 0, true, false)
-	if getChannelErr != nil {
-		return getChannelErr
-	}
-	gopool.Go(func() {
-		// 使用 defer 确保无论如何都会重置运行状态，防止死锁
-		defer func() {
-			testAllChannelsLock.Lock()
-			testAllChannelsRunning = false
-			testAllChannelsLock.Unlock()
-		}()
-
-		for _, channel := range channels {
-			if channel.Status == common.ChannelStatusManuallyDisabled {
-				continue
-			}
-			tik := time.Now()
-			result := testChannel(channel, "", "", false)
-			tok := time.Now()
-			milliseconds := tok.Sub(tik).Milliseconds()
-			if result.skipped {
-				time.Sleep(common.RequestInterval)
-				continue
-			}
-
-			channel.UpdateResponseTime(milliseconds)
-			time.Sleep(common.RequestInterval)
-		}
-
-		if notify {
-			service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
-		}
-	})
-	return nil
-}
-
+// TestAllChannels 手动「测试所有渠道」改为入队 system-task,与定时/被动监控走同一
+// 执行路径(runChannelTestTask),避免多副本重复跑;已有同类任务在跑则返回 409。
 func TestAllChannels(c *gin.Context) {
-	err := testAllChannels(true)
+	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeChannelTest, channelTestTaskPayload{
+		Mode:   operation_setting.ChannelTestModeScheduledAll,
+		Notify: true,
+	})
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if !created {
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": "已有通道测试任务正在运行或等待中，不能启动本次手动任务",
+			"data": gin.H{
+				"task_id": task.TaskID,
+				"status":  task.Status,
+				"type":    task.Type,
+			},
+		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
+		"data": gin.H{
+			"task_id": task.TaskID,
+			"status":  task.Status,
+		},
 	})
+}
+
+// ===== 系统任务驱动的渠道测试编排(对接上游 system-task 框架)=====
+// 注意:fork 已移除「自动封禁/启用渠道」设计,以下编排仅执行测试与统计,
+// 不会根据结果改变渠道状态;allowDisable 参数仅为与上游 system-task 接口
+// 保持签名兼容而保留,本实现刻意忽略它。手动「测试所有渠道」、定时任务、被动监控
+// 现已统一入队同一个 channel_test system-task,均经 runChannelTestTask 进入。
+
+type channelTestSummary struct {
+	Tested    int `json:"tested"`
+	Succeeded int `json:"succeeded"`
+	Failed    int `json:"failed"`
+	// fork 不自动启停渠道,以下两项恒为 0,仅为兼容上游 system-task 结果结构而保留。
+	Disabled int `json:"disabled"`
+	Enabled  int `json:"enabled"`
+}
+
+// performChannelTests 同步遍历渠道执行测试,支持 ctx 取消(system-task 失租即停)
+// 与进度回报 report(processed,total)。fork 设计:不自动封禁/启用渠道。
+func performChannelTests(ctx context.Context, channels []*model.Channel, testUserID int, allowDisable bool, report func(processed, total int)) channelTestSummary {
+	_ = allowDisable // fork 不做自动启停,占位以兼容上游接口
+	summary := channelTestSummary{}
+	total := len(channels)
+	for index, channel := range channels {
+		if ctx != nil && ctx.Err() != nil {
+			break
+		}
+		if report != nil {
+			report(index, total)
+		}
+		if channel.Status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+		tik := time.Now()
+		result := testChannel(channel, testUserID, "", "", false)
+		tok := time.Now()
+		milliseconds := tok.Sub(tik).Milliseconds()
+		if ctx != nil && ctx.Err() != nil {
+			break
+		}
+		if result.skipped {
+			channelTestSleep(ctx)
+			continue
+		}
+		summary.Tested++
+		if result.hermesTokenError == nil {
+			summary.Succeeded++
+		} else {
+			summary.Failed++
+		}
+		channel.UpdateResponseTime(milliseconds)
+		channelTestSleep(ctx)
+	}
+	if report != nil && (ctx == nil || ctx.Err() == nil) {
+		report(total, total)
+	}
+	return summary
+}
+
+// channelTestSleep 在两次渠道测试之间按 RequestInterval 等待,尊重 ctx 取消。
+func channelTestSleep(ctx context.Context) {
+	if common.RequestInterval <= 0 {
+		return
+	}
+	if ctx == nil {
+		time.Sleep(common.RequestInterval)
+		return
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(common.RequestInterval):
+	}
+}
+
+// selectChannelsForAutomaticTest 按 monitor 模式挑选要测试的渠道集合。
+// 被动恢复模式只挑被自动停用的渠道(fork 不会自动停用,故该模式实际无对象,但保留
+// 与上游一致的语义)。
+func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*model.Channel {
+	selected := make([]*model.Channel, 0, len(channels))
+	for _, channel := range channels {
+		if channel.Status == common.ChannelStatusManuallyDisabled {
+			continue
+		}
+		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
+			continue
+		}
+		selected = append(selected, channel)
+	}
+	return selected
+}
+
+// runChannelTestTask 为 system-task 运行器执行一轮同步渠道测试。空 mode 回落到
+// monitor 配置的 ChannelTestMode。fork 不自动封禁,故 allowDisable 恒传 false。
+func runChannelTestTask(ctx context.Context, mode string, notify bool, report func(processed, total int)) (channelTestSummary, error) {
+	testUserID, err := resolveChannelTestUserID(nil)
+	if err != nil {
+		return channelTestSummary{}, err
+	}
+	channels, err := model.GetAllChannels(0, 0, true, false)
+	if err != nil {
+		return channelTestSummary{}, err
+	}
+	if strings.TrimSpace(mode) == "" {
+		mode = operation_setting.GetMonitorSetting().ChannelTestMode
+	}
+	selected := selectChannelsForAutomaticTest(channels, mode)
+	summary := performChannelTests(ctx, selected, testUserID, false, report)
+	if notify && (ctx == nil || ctx.Err() == nil) {
+		service.NotifyRootUser(dto.NotifyTypeChannelTest, "通道测试完成", "所有通道测试已完成")
+	}
+	return summary, nil
 }

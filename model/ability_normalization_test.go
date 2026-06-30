@@ -10,14 +10,20 @@ import (
 
 func TestUpdateAbilitiesNormalizesModelsAndGroups(t *testing.T) {
 	originalDB := DB
-	originalSQLite := common.UsingSQLite
-	originalMySQL := common.UsingMySQL
-	originalPostgres := common.UsingPostgreSQL
+	originalSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalPostgres := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 	defer func() {
 		DB = originalDB
-		common.UsingSQLite = originalSQLite
-		common.UsingMySQL = originalMySQL
-		common.UsingPostgreSQL = originalPostgres
+		if originalSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalPostgres {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 	}()
 
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
@@ -29,9 +35,7 @@ func TestUpdateAbilitiesNormalizesModelsAndGroups(t *testing.T) {
 	}
 
 	DB = db
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	InitColumnMetadata()
 
 	priority := int64(0)

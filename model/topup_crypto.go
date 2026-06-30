@@ -146,7 +146,7 @@ func cryptoNow() int64 {
 }
 
 func cryptoRefCol(column string) string {
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		return fmt.Sprintf("\"%s\"", column)
 	}
 	return fmt.Sprintf("`%s`", column)

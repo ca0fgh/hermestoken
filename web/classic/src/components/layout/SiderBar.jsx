@@ -211,7 +211,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('返佣模板设置'),
         itemKey: 'referral',
         to: '/referral',
-        className: isRoot() ? '' : 'tableHiddle',
+        className: isAdmin() ? '' : 'tableHiddle',
       },
       {
         text: t('系统设置'),

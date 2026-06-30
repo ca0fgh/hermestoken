@@ -21,6 +21,7 @@ import {
   SITE_DEFAULT_SECTION,
   getSiteSectionContent,
   type SitePageSettings,
+  getSiteSectionMeta,
 } from './section-registry.tsx'
 
 const defaultSiteSettings: SitePageSettings = {
@@ -45,6 +46,7 @@ export function SiteSettings() {
       defaultSettings={defaultSiteSettings}
       defaultSection={SITE_DEFAULT_SECTION}
       getSectionContent={getSiteSectionContent}
+      getSectionMeta={getSiteSectionMeta}
     />
   )
 }

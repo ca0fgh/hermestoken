@@ -84,6 +84,7 @@ func newRelayTransport(stream bool) *http.Transport {
 	transport := &http.Transport{
 		MaxIdleConns:        common.RelayMaxIdleConns,
 		MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
+		IdleConnTimeout:     time.Duration(common.RelayIdleConnTimeout) * time.Second,
 		ForceAttemptHTTP2:   true,
 		Proxy:               http.ProxyFromEnvironment, // Support HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
 	}
@@ -198,6 +199,7 @@ func newProxyHttpClient(proxyURL string, stream bool) (*http.Client, error) {
 		transport := &http.Transport{
 			MaxIdleConns:        common.RelayMaxIdleConns,
 			MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
+			IdleConnTimeout:     time.Duration(common.RelayIdleConnTimeout) * time.Second,
 			ForceAttemptHTTP2:   true,
 			Proxy:               http.ProxyURL(parsedURL),
 		}
@@ -240,6 +242,7 @@ func newProxyHttpClient(proxyURL string, stream bool) (*http.Client, error) {
 		transport := &http.Transport{
 			MaxIdleConns:        common.RelayMaxIdleConns,
 			MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
+			IdleConnTimeout:     time.Duration(common.RelayIdleConnTimeout) * time.Second,
 			ForceAttemptHTTP2:   true,
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)

@@ -78,7 +78,7 @@ func TestChannelTestRecordsConsumeLog(t *testing.T) {
 		t.Fatalf("failed to add channel abilities: %v", err)
 	}
 
-	result := testChannel(channel, "claude-opus-4-6", "", false)
+	result := testChannel(channel, 1, "claude-opus-4-6", "", false)
 	if result.localErr != nil {
 		t.Fatalf("testChannel returned local error: %v", result.localErr)
 	}
@@ -180,7 +180,7 @@ func TestChannelTestSupportsOpenAIVideoEndpoint(t *testing.T) {
 		t.Fatalf("failed to add channel abilities: %v", err)
 	}
 
-	result := testChannel(channel, "sora-2", "", false)
+	result := testChannel(channel, 1, "sora-2", "", false)
 	if result.localErr != nil {
 		t.Fatalf("testChannel returned local error: %v", result.localErr)
 	}
@@ -277,7 +277,7 @@ func TestChannelTestErrorLogUsesTestTokenAndGroups(t *testing.T) {
 		t.Fatalf("failed to add channel abilities: %v", err)
 	}
 
-	result := testChannel(channel, "claude-opus-4-6", "", false)
+	result := testChannel(channel, 1, "claude-opus-4-6", "", false)
 	if result.localErr != nil {
 		t.Fatalf("testChannel returned local error: %v", result.localErr)
 	}

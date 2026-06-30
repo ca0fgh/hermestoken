@@ -1,13 +1,60 @@
 package claude
 
 import (
-	"encoding/base64"
 	"strings"
 	"testing"
 
 	"github.com/ca0fgh/hermestoken/dto"
+	"github.com/ca0fgh/hermestoken/service"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func commonPointer[T any](value T) *T {
+	return &value
+}
+
+func TestResponseOpenAI2ClaudeToolUseInputIsObject(t *testing.T) {
+	tests := []struct {
+		name string
+		args string
+		want map[string]interface{}
+	}{
+		{name: "object", args: `{"q":"x"}`, want: map[string]interface{}{"q": "x"}},
+		{name: "empty", args: "", want: map[string]interface{}{}},
+		{name: "invalid", args: "{", want: map[string]interface{}{}},
+		{name: "null", args: "null", want: map[string]interface{}{}},
+		{name: "array", args: `["x"]`, want: map[string]interface{}{}},
+		{name: "string", args: `"x"`, want: map[string]interface{}{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := dto.Message{Role: "assistant"}
+			msg.SetToolCalls([]dto.ToolCallRequest{
+				{
+					ID:   "call_1",
+					Type: "function",
+					Function: dto.FunctionRequest{
+						Name:      "lookup",
+						Arguments: tt.args,
+					},
+				},
+			})
+			resp := service.ResponseOpenAI2Claude(&dto.OpenAITextResponse{
+				Id:    "chatcmpl_1",
+				Model: "gpt-test",
+				Choices: []dto.OpenAITextResponseChoice{
+					{Message: msg, FinishReason: "tool_calls"},
+				},
+			}, nil)
+
+			require.Len(t, resp.Content, 1)
+			assert.Equal(t, "tool_use", resp.Content[0].Type)
+			assert.Equal(t, tt.want, resp.Content[0].Input)
+		})
+	}
+}
 
 func TestFormatClaudeResponseInfo_MessageStart(t *testing.T) {
 	claudeInfo := &ClaudeResponseInfo{
@@ -275,108 +322,103 @@ func TestBuildOpenAIStyleUsageFromClaudeUsageDefaultsAggregateCacheCreationTo5m(
 	require.Equal(t, 0, openAIUsage.ClaudeCacheCreation1hTokens)
 }
 
-func TestRequestOpenAI2ClaudeMessage_IgnoresUnsupportedFileContent(t *testing.T) {
+func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48HighUsesAdaptiveThinking(t *testing.T) {
 	request := dto.GeneralOpenAIRequest{
-		Model: "claude-3-5-sonnet",
+		Model:       "claude-opus-4-8-high",
+		Temperature: commonPointer(0.7),
+		TopP:        commonPointer(0.9),
+		TopK:        commonPointer(40),
 		Messages: []dto.Message{
 			{
-				Role: "user",
-				Content: []any{
-					dto.MediaContent{
-						Type: dto.ContentTypeText,
-						Text: "see attachment",
-					},
-					dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "blob.bin",
-							FileData: "JVBERi0xLjQK",
-						},
-					},
-				},
+				Role:    "user",
+				Content: "hello",
 			},
 		},
 	}
 
 	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
 	require.NoError(t, err)
-	require.Len(t, claudeRequest.Messages, 1)
-
-	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
-	require.True(t, ok)
-	require.Len(t, content, 1)
-	require.Equal(t, "text", content[0].Type)
-	require.NotNil(t, content[0].Text)
-	require.Equal(t, "see attachment", *content[0].Text)
+	require.Equal(t, "claude-opus-4-8", claudeRequest.Model)
+	require.NotNil(t, claudeRequest.Thinking)
+	require.Equal(t, "adaptive", claudeRequest.Thinking.Type)
+	require.Equal(t, "summarized", claudeRequest.Thinking.Display)
+	require.JSONEq(t, `{"effort":"high"}`, string(claudeRequest.OutputConfig))
+	require.Nil(t, claudeRequest.Temperature)
+	require.Nil(t, claudeRequest.TopP)
+	require.Nil(t, claudeRequest.TopK)
 }
 
-func TestRequestOpenAI2ClaudeMessage_SupportsPDFFileContent(t *testing.T) {
+func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(t *testing.T) {
 	request := dto.GeneralOpenAIRequest{
-		Model: "claude-3-5-sonnet",
+		Model:       "claude-opus-4-8-thinking",
+		Temperature: commonPointer(0.7),
+		TopP:        commonPointer(0.9),
+		TopK:        commonPointer(40),
 		Messages: []dto.Message{
 			{
-				Role: "user",
-				Content: []any{
-					dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "spec.pdf",
-							FileData: "JVBERi0xLjQK",
-						},
-					},
-					dto.MediaContent{
-						Type: dto.ContentTypeText,
-						Text: "summarize it",
-					},
-				},
+				Role:    "user",
+				Content: "hello",
 			},
 		},
 	}
 
 	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
 	require.NoError(t, err)
-	require.Len(t, claudeRequest.Messages, 1)
-
-	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
-	require.True(t, ok)
-	require.Len(t, content, 2)
-	require.Equal(t, "document", content[0].Type)
-	require.NotNil(t, content[0].Source)
-	require.Equal(t, "base64", content[0].Source.Type)
-	require.Equal(t, "application/pdf", content[0].Source.MediaType)
-	require.Equal(t, "JVBERi0xLjQK", content[0].Source.Data)
-	require.Equal(t, "text", content[1].Type)
-	require.NotNil(t, content[1].Text)
-	require.Equal(t, "summarize it", *content[1].Text)
+	require.Equal(t, "claude-opus-4-8", claudeRequest.Model)
+	require.NotNil(t, claudeRequest.Thinking)
+	require.Equal(t, "adaptive", claudeRequest.Thinking.Type)
+	require.Equal(t, "summarized", claudeRequest.Thinking.Display)
+	require.JSONEq(t, `{"effort":"high"}`, string(claudeRequest.OutputConfig))
+	require.Nil(t, claudeRequest.Temperature)
+	require.Nil(t, claudeRequest.TopP)
+	require.Nil(t, claudeRequest.TopK)
 }
 
-func TestRequestOpenAI2ClaudeMessage_ConvertsTextFileContentToText(t *testing.T) {
+func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ReasoningEffortBodyStaysAdaptive(t *testing.T) {
+	// reasoning_effort supplied in the request body (not via a model suffix) must NOT
+	// downgrade Opus 4.7/4.8 to thinking.type="enabled" — upstream rejects that with 400.
 	request := dto.GeneralOpenAIRequest{
-		Model: "claude-3-5-sonnet",
+		Model:           "claude-opus-4-8",
+		ReasoningEffort: "high",
+		Temperature:     commonPointer(0.7),
+		TopP:            commonPointer(0.9),
+		TopK:            commonPointer(40),
 		Messages: []dto.Message{
 			{
-				Role: "user",
-				Content: []any{
-					dto.MediaContent{
-						Type: dto.ContentTypeFile,
-						File: &dto.MessageFile{
-							FileName: "notes.txt",
-							FileData: base64.StdEncoding.EncodeToString([]byte("alpha\nbeta")),
-						},
-					},
-				},
+				Role:    "user",
+				Content: "hello",
 			},
 		},
 	}
 
 	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
 	require.NoError(t, err)
-	require.Len(t, claudeRequest.Messages, 1)
+	require.NotNil(t, claudeRequest.Thinking)
+	require.Equal(t, "adaptive", claudeRequest.Thinking.Type)
+	require.Equal(t, "summarized", claudeRequest.Thinking.Display)
+	require.JSONEq(t, `{"effort":"high"}`, string(claudeRequest.OutputConfig))
+	require.Nil(t, claudeRequest.Temperature)
+	require.Nil(t, claudeRequest.TopP)
+	require.Nil(t, claudeRequest.TopK)
+}
 
-	content, ok := claudeRequest.Messages[0].Content.([]dto.ClaudeMediaMessage)
-	require.True(t, ok)
-	require.Len(t, content, 1)
-	require.Equal(t, "text", content[0].Type)
-	require.NotNil(t, content[0].Text)
-	require.Equal(t, "alpha\nbeta", *content[0].Text)
+func TestRequestOpenAI2ClaudeMessage_NonOpusReasoningEffortBodyStaysEnabled(t *testing.T) {
+	// Non-adaptive models keep the existing reasoning_effort → enabled+budget mapping.
+	request := dto.GeneralOpenAIRequest{
+		Model:           "claude-3-5-sonnet",
+		ReasoningEffort: "low",
+		Messages: []dto.Message{
+			{
+				Role:    "user",
+				Content: "hello",
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.NotNil(t, claudeRequest.Thinking)
+	require.Equal(t, "enabled", claudeRequest.Thinking.Type)
+	require.NotNil(t, claudeRequest.Thinking.BudgetTokens)
+	require.Equal(t, 1280, *claudeRequest.Thinking.BudgetTokens)
 }

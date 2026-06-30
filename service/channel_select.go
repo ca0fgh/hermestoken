@@ -15,6 +15,7 @@ type RetryParam struct {
 	Ctx           *gin.Context
 	TokenGroup    string
 	ModelName     string
+	RequestPath   string
 	Retry         *int
 	resetNextTry  bool
 	priorityIndex int

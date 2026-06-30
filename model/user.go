@@ -23,44 +23,45 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id                         int            `json:"id"`
-	Username                   string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password                   string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword           string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName                string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role                       int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status                     int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email                      string         `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId                   string         `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId                  string         `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId                     string         `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId                   string         `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId                 string         `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode           string         `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
-	InviteeRateBps             int            `json:"invitee_rate_bps,omitempty" gorm:"-:all"`                           // request-only: signed invitee referral share from invite links
-	InviteeRateSig             string         `json:"invitee_rate_sig,omitempty" gorm:"-:all"`                           // request-only: signature for InviteeRateBps
-	AccessToken                *string        `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota                      int            `json:"quota" gorm:"type:int;default:0"`
-	WithdrawFrozenQuota        int            `json:"withdraw_frozen_quota" gorm:"type:int;default:0;column:withdraw_frozen_quota"`
-	UsedQuota                  int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount               int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group                      string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode                    string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount                   int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota                   int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota            int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId                  int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	WalletAmountUsed           int64          `json:"wallet_amount_used" gorm:"-"`
-	SubscriptionAmountTotal    int64          `json:"subscription_amount_total" gorm:"-"`
-	SubscriptionAmountUsed     int64          `json:"subscription_amount_used" gorm:"-"`
-	SubscriptionQuotaUnlimited bool           `json:"subscription_quota_unlimited" gorm:"-"`
-	DeletedAt                  gorm.DeletedAt `gorm:"index"`
-	LinuxDOId                  string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting                    string         `json:"setting" gorm:"type:text;column:setting"`
-	Remark                     string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer             string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt                  int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt                int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	Id                         int                        `json:"id"`
+	Username                   string                     `json:"username" gorm:"unique;index" validate:"max=20"`
+	Password                   string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword           string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName                string                     `json:"display_name" gorm:"index" validate:"max=20"`
+	Role                       int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status                     int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email                      string                     `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId                   string                     `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId                  string                     `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId                     string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId                   string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId                 string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode           string                     `json:"verification_code" gorm:"-:all"`                                    // this field is only for Email verification, don't save it to database!
+	InviteeRateBps             int                        `json:"invitee_rate_bps,omitempty" gorm:"-:all"`                           // request-only: signed invitee referral share from invite links
+	InviteeRateSig             string                     `json:"invitee_rate_sig,omitempty" gorm:"-:all"`                           // request-only: signature for InviteeRateBps
+	AccessToken                *string                    `json:"access_token" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota                      int                        `json:"quota" gorm:"type:int;default:0"`
+	WithdrawFrozenQuota        int                        `json:"withdraw_frozen_quota" gorm:"type:int;default:0;column:withdraw_frozen_quota"`
+	UsedQuota                  int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount               int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Group                      string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode                    string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount                   int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota                   int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota            int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId                  int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	WalletAmountUsed           int64                      `json:"wallet_amount_used" gorm:"-"`
+	SubscriptionAmountTotal    int64                      `json:"subscription_amount_total" gorm:"-"`
+	SubscriptionAmountUsed     int64                      `json:"subscription_amount_used" gorm:"-"`
+	SubscriptionQuotaUnlimited bool                       `json:"subscription_quota_unlimited" gorm:"-"`
+	DeletedAt                  gorm.DeletedAt             `gorm:"index"`
+	LinuxDOId                  string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting                    string                     `json:"setting" gorm:"type:text;column:setting"`
+	Remark                     string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer             string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt                  int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt                int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AdminPermissions           map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -241,7 +242,7 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
+func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -262,27 +263,28 @@ func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, 
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
+	likeArgs := []interface{}{"%" + keyword + "%", "%" + keyword + "%", "%" + keyword + "%"}
 
 	// 尝试将关键字转换为整数ID
 	keywordInt, err := strconv.Atoi(keyword)
 	if err == nil {
 		// 如果是数字，同时搜索ID和其他字段
 		likeCondition = "id = ? OR " + likeCondition
-		if group != "" {
-			query = query.Where("("+likeCondition+") AND "+commonGroupCol+" = ?",
-				keywordInt, "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", group)
+		likeArgs = append([]interface{}{keywordInt}, likeArgs...)
+	}
+
+	query = query.Where("("+likeCondition+")", likeArgs...)
+	if group != "" {
+		query = query.Where(commonGroupCol+" = ?", group)
+	}
+	if role != nil {
+		query = query.Where("role = ?", *role)
+	}
+	if status != nil {
+		if *status == -1 {
+			query = query.Where("deleted_at IS NOT NULL")
 		} else {
-			query = query.Where(likeCondition,
-				keywordInt, "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
-		}
-	} else {
-		// 非数字关键字，只搜索字符串字段
-		if group != "" {
-			query = query.Where("("+likeCondition+") AND "+commonGroupCol+" = ?",
-				"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", group)
-		} else {
-			query = query.Where(likeCondition,
-				"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+			query = query.Where("deleted_at IS NULL").Where("status = ?", *status)
 		}
 	}
 
@@ -543,8 +545,12 @@ func HardDeleteUserById(id int) error {
 	if id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(&User{}, "id = ?", id).Error
-	return err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := deleteUserOAuthBindingsByUserId(tx, id); err != nil {
+			return err
+		}
+		return tx.Unscoped().Delete(&User{}, "id = ?", id).Error
+	})
 }
 
 func inviteUser(inviterId int) (err error) {
@@ -632,6 +638,11 @@ func (user *User) InsertWithOptions(inviterId int, options UserInsertOptions) er
 		return err
 	}
 
+	user.finishInsert(inviterId)
+	return nil
+}
+
+func (user *User) finishInsert(inviterId int) {
 	// 用户创建成功后，根据角色初始化边栏配置
 	// 需要重新获取用户以确保有正确的ID和Role
 	var createdUser User
@@ -663,7 +674,10 @@ func (user *User) InsertWithOptions(inviterId int, options UserInsertOptions) er
 		}
 		_ = inviteUser(inviterId)
 	}
-	return nil
+}
+
+func (user *User) FinishInsert(inviterId int) {
+	user.finishInsert(inviterId)
 }
 
 // InsertWithTx inserts a new user within an existing transaction.
@@ -745,6 +759,13 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 }
 
 func (user *User) Update(updatePassword bool) error {
+	if err := user.UpdateWithTx(DB, updatePassword); err != nil {
+		return err
+	}
+	return updateUserCache(*user)
+}
+
+func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -753,16 +774,21 @@ func (user *User) Update(updatePassword bool) error {
 		}
 	}
 	newUser := *user
-	DB.First(&user, user.Id)
-	if err = DB.Model(user).Updates(newUser).Error; err != nil {
+	tx.First(&user, user.Id)
+	if err = tx.Model(user).Updates(newUser).Error; err != nil {
 		return err
 	}
-
-	// Update cache
-	return updateUserCache(*user)
+	return nil
 }
 
 func (user *User) Edit(updatePassword bool) error {
+	if err := user.EditWithTx(DB, updatePassword); err != nil {
+		return err
+	}
+	return updateUserCache(*user)
+}
+
+func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -783,13 +809,11 @@ func (user *User) Edit(updatePassword bool) error {
 		updates["password"] = newUser.Password
 	}
 
-	DB.First(&user, user.Id)
-	if err = DB.Model(user).Updates(updates).Error; err != nil {
+	tx.First(&user, user.Id)
+	if err = tx.Model(user).Updates(updates).Error; err != nil {
 		return err
 	}
-
-	// Update cache
-	return updateUserCache(*user)
+	return nil
 }
 
 func ValidateInviterAssignment(userID int, inviterID int) error {
@@ -868,8 +892,12 @@ func (user *User) HardDelete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	err := DB.Unscoped().Delete(user).Error
-	return err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := deleteUserOAuthBindingsByUserId(tx, user.Id); err != nil {
+			return err
+		}
+		return tx.Unscoped().Delete(user).Error
+	})
 }
 
 // ValidateAndFill check password & user status
@@ -1259,6 +1287,23 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//if err := invalidateUserCache(id); err != nil {
 	//	common.SysError("failed to invalidate user cache: " + err.Error())
 	//}
+}
+
+func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
+	if quota == 0 && usedQuota == 0 && requestCount == 0 {
+		return
+	}
+
+	err := DB.Model(&User{}).Where("id = ?", id).Updates(
+		map[string]interface{}{
+			"quota":         gorm.Expr("quota + ?", quota),
+			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
+			"request_count": gorm.Expr("request_count + ?", requestCount),
+		},
+	).Error
+	if err != nil {
+		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
+	}
 }
 
 func updateUserUsedQuota(id int, quota int) {
