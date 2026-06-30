@@ -15,16 +15,14 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 
 	originalDB := DB
 	originalLogDB := LOG_DB
-	originalUsingSQLite := common.UsingSQLite
-	originalUsingMySQL := common.UsingMySQL
-	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalUsingSQLite := common.UsingMainDatabase(common.DatabaseTypeSQLite)
+	originalUsingMySQL := common.UsingMainDatabase(common.DatabaseTypeMySQL)
+	originalUsingPostgreSQL := common.UsingMainDatabase(common.DatabaseTypePostgreSQL)
 	originalRedisEnabled := common.RedisEnabled
 	originalBatchUpdateEnabled := common.BatchUpdateEnabled
 	originalCommonGroupCol := commonGroupCol
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	commonGroupCol = "`group`"
@@ -65,9 +63,15 @@ func setupSubscriptionReferralSettlementDB(t *testing.T) *gorm.DB {
 		}
 		DB = originalDB
 		LOG_DB = originalLogDB
-		common.UsingSQLite = originalUsingSQLite
-		common.UsingMySQL = originalUsingMySQL
-		common.UsingPostgreSQL = originalUsingPostgreSQL
+		if originalUsingSQLite {
+			common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+		}
+		if originalUsingMySQL {
+			common.SetMainDatabaseType(common.DatabaseTypeMySQL)
+		}
+		if originalUsingPostgreSQL {
+			common.SetMainDatabaseType(common.DatabaseTypePostgreSQL)
+		}
 		common.RedisEnabled = originalRedisEnabled
 		common.BatchUpdateEnabled = originalBatchUpdateEnabled
 		commonGroupCol = originalCommonGroupCol

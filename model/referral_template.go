@@ -581,7 +581,7 @@ func ensureReferralTemplateSchema() error {
 			return err
 		}
 	}
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		for _, legacyConstraintName := range legacyGlobalNameArtifacts {
 			if DB.Migrator().HasConstraint(&ReferralTemplate{}, legacyConstraintName) {
 				if err := DB.Migrator().DropConstraint(&ReferralTemplate{}, legacyConstraintName); err != nil {

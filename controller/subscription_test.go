@@ -10,6 +10,7 @@ import (
 
 	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/model"
+	"github.com/ca0fgh/hermestoken/service/authz"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -23,9 +24,7 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 	for key, value := range common.OptionMap {
 		originalOptionMap[key] = value
 	}
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	model.InitColumnMetadata()
 
@@ -51,10 +50,15 @@ func setupSubscriptionControllerTestDB(t *testing.T) *gorm.DB {
 		&model.ReferralSettlementRecord{},
 		&model.TopUp{},
 		&model.Log{},
+		&model.CasbinRule{},
+		&model.AuthzRole{},
 	); err != nil {
 		t.Fatalf("failed to migrate subscription tables: %v", err)
 	}
 	model.InitOptionMap()
+	if err := authz.Init(db); err != nil {
+		t.Fatalf("failed to init authz enforcer: %v", err)
+	}
 	confirmPaymentComplianceForTest(t)
 
 	t.Cleanup(func() {

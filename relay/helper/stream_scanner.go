@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	InitialScannerBufferSize    = 64 << 10 // 64KB (64*1024)
-	DefaultMaxScannerBufferSize = 64 << 20 // 64MB (64*1024*1024) default SSE buffer size
+	InitialScannerBufferSize    = 64 << 10  // 64KB (64*1024)
+	DefaultMaxScannerBufferSize = 128 << 20 // 64MB (64*1024*1024) default SSE buffer size
 	DefaultPingInterval         = 10 * time.Second
 	DefaultStreamingTimeout     = 300 * time.Second
 )
@@ -42,6 +42,12 @@ func getStreamingTimeout() time.Duration {
 		return DefaultStreamingTimeout
 	}
 	return streamingTimeout
+}
+
+func NewStreamScanner(reader io.Reader) *bufio.Scanner {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, InitialScannerBufferSize), getScannerBufferSize())
+	return scanner
 }
 
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
@@ -67,15 +73,15 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		// stopChan：只关闭、不发送的广播停止信号（配合 stopOnce 幂等、无竞争），
 		// 取代原「bool 缓冲通道 + SafeSendBool + close」写法，消除 close 与并发
 		// send/recv 的数据竞争（既有 -race 问题）。
-		stopChan = make(chan struct{})
-		stopOnce sync.Once
-		scanner    = bufio.NewScanner(resp.Body)
+		stopChan   = make(chan struct{})
+		stopOnce   sync.Once
+		scanner    = NewStreamScanner(resp.Body)
 		ticker     = time.NewTicker(streamingTimeout)
 		pingTicker *time.Ticker
 		// firstChunkTimer：首字超时失败转移定时器（仅 info.FirstChunkTimeoutSeconds>0 时创建）。
 		firstChunkTimer *time.Timer
-		writeMutex      sync.Mutex // Mutex to protect concurrent writes
-		wg         sync.WaitGroup // 用于等待所有 goroutine 退出
+		writeMutex      sync.Mutex     // Mutex to protect concurrent writes
+		wg              sync.WaitGroup // 用于等待所有 goroutine 退出
 		// firstTokenSeen：首字是否已到。供「首字保活」判断使用，用原子量避免与
 		// 扫描 goroutine 写 info.FirstResponseTime 产生数据竞争。
 		firstTokenSeen atomic.Bool
@@ -150,7 +156,6 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		}
 	}()
 
-	scanner.Buffer(make([]byte, InitialScannerBufferSize), getScannerBufferSize())
 	scanner.Split(bufio.ScanLines)
 	SetEventStreamHeaders(c)
 

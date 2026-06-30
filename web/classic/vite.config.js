@@ -24,7 +24,7 @@ const { vitePluginSemi } = pkg;
 const LOTTIE_EVAL_WARNING_PATH = 'lottie-web/build/player/lottie.js';
 const HOME_DEFERRED_PRELOAD_PATTERN = /(?:semi-core|semi-icons|visactor|data-viz)-/;
 const PUBLIC_STARTUP_DEFERRED_PRELOAD_PATTERN =
-  /(?:semi-runtime|chart-runtime|diagram-runtime|math-runtime|markdown-runtime|seasonal-effects)-/;
+  /(?:semi-runtime|chart-runtime|diagram-runtime|markdown-runtime|seasonal-effects)-/;
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3000';
 const DEFAULT_ASSET_BASE_URL = '/';
 const STARTUP_STYLE_FILE_PREFIX = 'assets/index-';
@@ -148,6 +148,75 @@ function detachChartInteropFromReactCore() {
   };
 }
 
+// The remark / rehype / unified / hast / mdast / micromark / unist ecosystem
+// (plus KaTeX, highlight.js and the style-attribute helpers) is a tightly
+// circular dependency cluster. Splitting it across several manual chunks lets
+// Rollup place shared low-level modules (e.g. property-information) into a
+// sibling chunk such as semi-runtime, producing cross-chunk circular imports
+// that crash at runtime with "Cannot access 'X' before initialization" (a TDZ
+// error) when a binding is read during top-level evaluation before its owning
+// chunk has finished initializing. Keep the whole cluster in one deferred
+// chunk so its evaluation order stays internally consistent.
+const MARKDOWN_RUNTIME_PACKAGES = [
+  'react-markdown',
+  '/marked/',
+  'remark-',
+  'rehype-',
+  '/katex/',
+  '/unified/',
+  '/vfile',
+  '/mdast/',
+  'mdast-util',
+  'micromark',
+  'hast-util',
+  'hastscript',
+  'unist-util',
+  'property-information',
+  'web-namespaces',
+  'space-separated-tokens',
+  'comma-separated-tokens',
+  'html-void-elements',
+  'zwitch',
+  'character-entities',
+  'character-reference-invalid',
+  'decode-named-character-reference',
+  'parse-entities',
+  'stringify-entities',
+  'longest-streak',
+  'markdown-table',
+  'trim-lines',
+  '/mdurl/',
+  'is-decimal',
+  'is-hexadecimal',
+  'is-alphabetical',
+  'is-alphanumerical',
+  'lowlight',
+  'highlight.js',
+  '/fault/',
+  'style-to-object',
+  'style-to-js',
+  'inline-style-parser',
+  // @douyinfe/semi-foundation's MarkdownRender imports the @mdx-js/mdx compiler
+  // (evaluate/compile), which drags in the recma / estree / acorn cluster. These
+  // packages do not contain any of the substrings above, so without explicit
+  // markers Rollup splits the single logical MDX compiler across markdown-runtime
+  // and semi-runtime (duplicating acorn) — the same unpinned-shared-module hazard
+  // that produced the property-information TDZ. Anchor the whole compiler here.
+  '@mdx-js',
+  'markdown-extensions',
+  'recma-',
+  'estree-util-',
+  '/estree-walker/',
+  'esast-util',
+  'hermes-estree',
+  '/acorn',
+  'collapse-white-space',
+  'html-url-attributes',
+  '/devlop/',
+  '/bail/',
+  '/trough/',
+];
+
 function buildManualChunkName(id) {
   if (
     id.includes('vite/preload-helper') ||
@@ -210,14 +279,6 @@ function buildManualChunkName(id) {
     return 'diagram-runtime';
   }
 
-  if (
-    id.includes('/katex/') ||
-    id.includes('remark-math') ||
-    id.includes('rehype-katex')
-  ) {
-    return 'math-runtime';
-  }
-
   if (id.includes('axios')) {
     return 'api-client';
   }
@@ -226,14 +287,7 @@ function buildManualChunkName(id) {
     return 'startup-runtime';
   }
 
-  if (
-    id.includes('/marked/') ||
-    id.includes('react-markdown') ||
-    id.includes('remark-breaks') ||
-    id.includes('remark-gfm') ||
-    id.includes('rehype-highlight') ||
-    id.includes('unist-util-visit')
-  ) {
+  if (MARKDOWN_RUNTIME_PACKAGES.some((marker) => id.includes(marker))) {
     return 'markdown-runtime';
   }
 
