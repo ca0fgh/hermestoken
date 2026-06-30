@@ -29,7 +29,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { BadgeCell, TruncatedCell } from '@/components/data-table'
+import {
+  BadgeCell,
+  DataTableColumnHeader,
+  TruncatedCell,
+} from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { marketplaceTokenFixedOrderIds } from '@/features/marketplace/lib'

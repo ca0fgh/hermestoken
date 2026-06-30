@@ -373,3 +373,52 @@ func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ThinkingUsesAdaptiveHighEffort(
 	require.Nil(t, claudeRequest.TopP)
 	require.Nil(t, claudeRequest.TopK)
 }
+
+func TestRequestOpenAI2ClaudeMessage_ClaudeOpus48ReasoningEffortBodyStaysAdaptive(t *testing.T) {
+	// reasoning_effort supplied in the request body (not via a model suffix) must NOT
+	// downgrade Opus 4.7/4.8 to thinking.type="enabled" — upstream rejects that with 400.
+	request := dto.GeneralOpenAIRequest{
+		Model:           "claude-opus-4-8",
+		ReasoningEffort: "high",
+		Temperature:     commonPointer(0.7),
+		TopP:            commonPointer(0.9),
+		TopK:            commonPointer(40),
+		Messages: []dto.Message{
+			{
+				Role:    "user",
+				Content: "hello",
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.NotNil(t, claudeRequest.Thinking)
+	require.Equal(t, "adaptive", claudeRequest.Thinking.Type)
+	require.Equal(t, "summarized", claudeRequest.Thinking.Display)
+	require.JSONEq(t, `{"effort":"high"}`, string(claudeRequest.OutputConfig))
+	require.Nil(t, claudeRequest.Temperature)
+	require.Nil(t, claudeRequest.TopP)
+	require.Nil(t, claudeRequest.TopK)
+}
+
+func TestRequestOpenAI2ClaudeMessage_NonOpusReasoningEffortBodyStaysEnabled(t *testing.T) {
+	// Non-adaptive models keep the existing reasoning_effort → enabled+budget mapping.
+	request := dto.GeneralOpenAIRequest{
+		Model:           "claude-3-5-sonnet",
+		ReasoningEffort: "low",
+		Messages: []dto.Message{
+			{
+				Role:    "user",
+				Content: "hello",
+			},
+		},
+	}
+
+	claudeRequest, err := RequestOpenAI2ClaudeMessage(nil, request)
+	require.NoError(t, err)
+	require.NotNil(t, claudeRequest.Thinking)
+	require.Equal(t, "enabled", claudeRequest.Thinking.Type)
+	require.NotNil(t, claudeRequest.Thinking.BudgetTokens)
+	require.Equal(t, 1280, *claudeRequest.Thinking.BudgetTokens)
+}

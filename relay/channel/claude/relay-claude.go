@@ -269,22 +269,40 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 		}
 	}
 
+	// Opus 4.7/4.8 reject thinking.type="enabled" with 400, so the reasoning_effort and
+	// reasoning overrides below must stay adaptive for them (mirrors the suffix paths
+	// above). claudeRequest.Model is the base model name here; the prefix match ignores
+	// any trailing suffix.
+	isAdaptiveOnlyOpus := strings.HasPrefix(claudeRequest.Model, "claude-opus-4-7") ||
+		strings.HasPrefix(claudeRequest.Model, "claude-opus-4-8")
+
 	if textRequest.ReasoningEffort != "" {
-		switch textRequest.ReasoningEffort {
-		case "low":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](1280),
+		if isAdaptiveOnlyOpus {
+			switch textRequest.ReasoningEffort {
+			case "low", "medium", "high":
+				claudeRequest.Thinking = &dto.Thinking{Type: "adaptive", Display: "summarized"}
+				claudeRequest.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, textRequest.ReasoningEffort))
+				claudeRequest.Temperature = nil
+				claudeRequest.TopP = nil
+				claudeRequest.TopK = nil
 			}
-		case "medium":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](2048),
-			}
-		case "high":
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: common.GetPointer[int](4096),
+		} else {
+			switch textRequest.ReasoningEffort {
+			case "low":
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](1280),
+				}
+			case "medium":
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](2048),
+				}
+			case "high":
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: common.GetPointer[int](4096),
+				}
 			}
 		}
 	}
@@ -298,9 +316,19 @@ func RequestOpenAI2ClaudeMessage(c *gin.Context, textRequest dto.GeneralOpenAIRe
 
 		budgetTokens := reasoning.MaxTokens
 		if budgetTokens > 0 {
-			claudeRequest.Thinking = &dto.Thinking{
-				Type:         "enabled",
-				BudgetTokens: &budgetTokens,
+			if isAdaptiveOnlyOpus {
+				// Opus 4.7/4.8 don't accept enabled+budget; honor the request as
+				// adaptive thinking (budget tokens are not supported for these models).
+				claudeRequest.Thinking = &dto.Thinking{Type: "adaptive", Display: "summarized"}
+				claudeRequest.OutputConfig = json.RawMessage(`{"effort":"high"}`)
+				claudeRequest.Temperature = nil
+				claudeRequest.TopP = nil
+				claudeRequest.TopK = nil
+			} else {
+				claudeRequest.Thinking = &dto.Thinking{
+					Type:         "enabled",
+					BudgetTokens: &budgetTokens,
+				}
 			}
 		}
 	}
