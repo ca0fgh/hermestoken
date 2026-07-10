@@ -157,9 +157,15 @@ export function MultiSelect(props: MultiSelectProps) {
 
   // We expose all known option values + every currently selected value to Base
   // UI's items list. This way Base UI filters them by the search query and the
-  // user can still see the chip labels mapped correctly.
+  // user can still see the chip labels mapped correctly. A disabled option is
+  // kept out of the pool so it cannot be picked, but a value that is already
+  // selected stays in the list so its chip keeps a readable label.
   const items = React.useMemo(() => {
-    const set = new Set<string>(props.options.map((option) => option.value))
+    const set = new Set<string>(
+      props.options
+        .filter((option) => !option.disabled)
+        .map((option) => option.value)
+    )
     for (const value of props.selected) {
       set.add(value)
     }

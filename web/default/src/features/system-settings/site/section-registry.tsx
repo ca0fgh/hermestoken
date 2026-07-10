@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { MarketplaceSettingsSection } from '../general/marketplace-settings-section'
 import { SystemInfoSection } from '../general/system-info-section'
 import {
   parseHeaderNavModules,
@@ -43,6 +44,15 @@ export type SitePageSettings = Pick<
   | 'legal.privacy_policy'
   | 'HeaderNavModules'
   | 'SidebarModulesAdmin'
+  | 'MarketplaceEnabled'
+  | 'MarketplaceEnabledVendorTypes'
+  | 'MarketplaceFeeRate'
+  | 'MarketplaceSellerIncomeHoldSeconds'
+  | 'MarketplaceMinFixedOrderQuota'
+  | 'MarketplaceMaxFixedOrderQuota'
+  | 'MarketplaceFixedOrderDefaultExpirySeconds'
+  | 'MarketplaceMaxSellerMultiplier'
+  | 'MarketplaceMaxCredentialConcurrency'
 >
 
 const SITE_SECTIONS = [
@@ -109,6 +119,30 @@ const SITE_SECTIONS = [
         />
       )
     },
+  },
+  {
+    id: 'marketplace',
+    titleKey: 'Marketplace',
+    descriptionKey: 'Configure marketplace availability and trade limits',
+    build: (settings: SitePageSettings) => (
+      <MarketplaceSettingsSection
+        defaultValues={{
+          MarketplaceEnabled: settings.MarketplaceEnabled,
+          MarketplaceEnabledVendorTypes: settings.MarketplaceEnabledVendorTypes,
+          MarketplaceFeeRate: settings.MarketplaceFeeRate,
+          MarketplaceSellerIncomeHoldSeconds:
+            settings.MarketplaceSellerIncomeHoldSeconds,
+          MarketplaceMinFixedOrderQuota: settings.MarketplaceMinFixedOrderQuota,
+          MarketplaceMaxFixedOrderQuota: settings.MarketplaceMaxFixedOrderQuota,
+          MarketplaceFixedOrderDefaultExpirySeconds:
+            settings.MarketplaceFixedOrderDefaultExpirySeconds,
+          MarketplaceMaxSellerMultiplier:
+            settings.MarketplaceMaxSellerMultiplier,
+          MarketplaceMaxCredentialConcurrency:
+            settings.MarketplaceMaxCredentialConcurrency,
+        }}
+      />
+    ),
   },
 ] as const
 

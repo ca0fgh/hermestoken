@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-import {
-  getFooterSectionVisibility,
-  normalizeHeaderNavModules,
-} from "../classic/src/helpers/headerNavModules.js";
+import { normalizeHeaderNavModules } from "../classic/src/helpers/headerNavModules.js";
 
 const footerPath = new URL(
   "../classic/src/components/layout/Footer.jsx",
@@ -135,35 +132,16 @@ test("classic token verification route is gated by the header module and login",
   assert.doesNotMatch(pageSource, /\/api\/token\//);
 });
 
-test("getFooterSectionVisibility hides docs and about sections with the same switches as the header", () => {
-  const modules = normalizeHeaderNavModules(
-    JSON.stringify({
-      home: true,
-      console: true,
-      pricing: {
-        enabled: true,
-        requireAuth: false,
-      },
-      docs: false,
-      about: false,
-    }),
-  );
-
-  assert.deepEqual(
-    getFooterSectionVisibility(modules, "https://docs.example.com"),
-    {
-      showDocsSection: false,
-      showAboutSection: false,
-    },
-  );
-});
-
-test("footer uses shared header-nav visibility instead of hard-coded docs/about sections", async () => {
+// The footer no longer gates its links on the header-nav module switches: the
+// compliance rework made 关于 / 服务条款 / 隐私政策 unconditional, because an
+// admin must not be able to hide the legal pages by toggling navigation.
+test("footer always exposes the compliance links regardless of header-nav modules", async () => {
   const source = await readFile(footerPath, "utf8");
 
-  assert.match(source, /getFooterSectionVisibility/);
-  assert.match(source, /showDocsSection/);
-  assert.match(source, /showAboutSection/);
+  assert.match(source, /to='\/about'/);
+  assert.match(source, /to='\/user-agreement'/);
+  assert.match(source, /to='\/privacy-policy'/);
+  assert.doesNotMatch(source, /showAboutSection\s*&&/);
 });
 
 test("settings header nav source separates marketplace entry visibility from guest access copy", async () => {

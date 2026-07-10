@@ -37,6 +37,16 @@ const defaultSiteSettings: SitePageSettings = {
   'legal.privacy_policy': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
+  // Mirrors setting/marketplace.go; only used until the options request lands.
+  MarketplaceEnabled: true,
+  MarketplaceEnabledVendorTypes: '',
+  MarketplaceFeeRate: 0,
+  MarketplaceSellerIncomeHoldSeconds: 7 * 24 * 60 * 60,
+  MarketplaceMinFixedOrderQuota: 0,
+  MarketplaceMaxFixedOrderQuota: 0,
+  MarketplaceFixedOrderDefaultExpirySeconds: 30 * 24 * 60 * 60,
+  MarketplaceMaxSellerMultiplier: 10,
+  MarketplaceMaxCredentialConcurrency: 5,
 }
 
 export function SiteSettings() {

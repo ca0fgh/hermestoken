@@ -36,7 +36,7 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
     sharedSource,
     maintenanceConfigSource,
     headerNavigationSource,
-    generalRegistrySource,
+    siteRegistrySource,
     marketplaceSettingsSource,
     buyerTokenPanelSource,
     callSnippetSource,
@@ -68,7 +68,7 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
     readDefaultSource(
       "features/system-settings/maintenance/header-navigation-section.tsx",
     ),
-    readDefaultSource("features/system-settings/general/section-registry.tsx"),
+    readDefaultSource("features/system-settings/site/section-registry.tsx"),
     readDefaultSource(
       "features/system-settings/general/marketplace-settings-section.tsx",
     ),
@@ -337,7 +337,7 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.match(multiSelectSource, /disabled\?: boolean/);
   assert.match(
     multiSelectSource,
-    /!option\.disabled && !selected\.includes\(option\.value\)/,
+    /\.filter\(\(option\) => !option\.disabled\)/,
   );
   assert.match(keyDrawerSource, /Token route priority/);
   assert.match(keyDrawerSource, /marketplace_route_order/);
@@ -392,9 +392,9 @@ test("default frontend wires marketplace route, top navigation, and API endpoint
   assert.doesNotMatch(poolTabSource, /MARKETPLACE_POOL_RELAY_ENDPOINT/);
   assert.match(`${pageSource}\n${libSource}`, /\/v1\/chat\/completions/);
   assert.match(libSource, /min_concurrency_limit/);
-  assert.match(generalRegistrySource, /id:\s*'marketplace'/);
+  assert.match(siteRegistrySource, /id:\s*'marketplace'/);
   assert.match(
-    generalRegistrySource,
+    siteRegistrySource,
     /MarketplaceFeeRate:\s*settings\.MarketplaceFeeRate/,
   );
   assert.match(marketplaceSettingsSource, /MarketplaceFeeRate/);

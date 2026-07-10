@@ -15,7 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { Toast, Pagination } from '@douyinfe/semi-ui';
+import { Toast } from '@douyinfe/semi-ui';
 import {
   toastConstants,
   BILLING_PRICING_VARS,

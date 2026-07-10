@@ -27,40 +27,41 @@ import {
   BILLING_VAR_KEY_TO_FIELD,
   BILLING_VAR_REGEX,
 } from '../constants';
-import {
-  OpenAI,
-  Claude,
-  Gemini,
-  Moonshot,
-  Zhipu,
-  Qwen,
-  DeepSeek,
-  Minimax,
-  Wenxin,
-  Spark,
-  Midjourney as MjProxyIcon,
-  Hunyuan,
-  Cohere,
-  Cloudflare,
-  Ai360,
-  Yi,
-  Jina,
-  Mistral,
-  XAI,
-  Ollama,
-  Doubao,
-  Suno,
-  Xinference,
-  OpenRouter,
-  Dify,
-  Coze,
-  SiliconCloud,
-  FastGPT,
-  Kling,
-  Jimeng,
-  Perplexity,
-  Replicate,
-} from '@lobehub/icons';
+// Import each statically-used icon from its own entry point. Importing them
+// from the '@lobehub/icons' barrel pulls the whole registry into the bundle
+// and defeats the lazy glob below.
+import Ai360 from '@lobehub/icons/es/Ai360';
+import Claude from '@lobehub/icons/es/Claude';
+import Cloudflare from '@lobehub/icons/es/Cloudflare';
+import Cohere from '@lobehub/icons/es/Cohere';
+import Coze from '@lobehub/icons/es/Coze';
+import DeepSeek from '@lobehub/icons/es/DeepSeek';
+import Dify from '@lobehub/icons/es/Dify';
+import Doubao from '@lobehub/icons/es/Doubao';
+import FastGPT from '@lobehub/icons/es/FastGPT';
+import Gemini from '@lobehub/icons/es/Gemini';
+import Hunyuan from '@lobehub/icons/es/Hunyuan';
+import Jimeng from '@lobehub/icons/es/Jimeng';
+import Jina from '@lobehub/icons/es/Jina';
+import Kling from '@lobehub/icons/es/Kling';
+import MjProxyIcon from '@lobehub/icons/es/Midjourney';
+import Minimax from '@lobehub/icons/es/Minimax';
+import Mistral from '@lobehub/icons/es/Mistral';
+import Moonshot from '@lobehub/icons/es/Moonshot';
+import Ollama from '@lobehub/icons/es/Ollama';
+import OpenAI from '@lobehub/icons/es/OpenAI';
+import OpenRouter from '@lobehub/icons/es/OpenRouter';
+import Perplexity from '@lobehub/icons/es/Perplexity';
+import Qwen from '@lobehub/icons/es/Qwen';
+import Replicate from '@lobehub/icons/es/Replicate';
+import SiliconCloud from '@lobehub/icons/es/SiliconCloud';
+import Spark from '@lobehub/icons/es/Spark';
+import Suno from '@lobehub/icons/es/Suno';
+import Wenxin from '@lobehub/icons/es/Wenxin';
+import XAI from '@lobehub/icons/es/XAI';
+import Xinference from '@lobehub/icons/es/Xinference';
+import Yi from '@lobehub/icons/es/Yi';
+import Zhipu from '@lobehub/icons/es/Zhipu';
 
 import { Layers } from 'lucide-react';
 import {

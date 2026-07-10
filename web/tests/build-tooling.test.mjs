@@ -350,7 +350,16 @@ test('vite build keeps axios isolated without forcing history into its own start
 
   assert.match(source, /id\.includes\('axios'\)[\s\S]*return 'api-client';/);
   assert.doesNotMatch(source, /id\.includes\('\/history\/'\)[\s\S]*return 'history';/);
-  assert.match(source, /id\.includes\('\/marked\/'\)[\s\S]*return 'markdown-runtime';/);
+  // marked must land in the markdown cluster rather than a chunk of its own;
+  // the cluster is matched from a package list instead of an inline id check.
+  assert.match(
+    source,
+    /const MARKDOWN_RUNTIME_PACKAGES = \[[\s\S]*?'\/marked\/'[\s\S]*?\];/,
+  );
+  assert.match(
+    source,
+    /MARKDOWN_RUNTIME_PACKAGES\.some\([\s\S]*?return 'markdown-runtime';/,
+  );
 });
 
 test('i18n lazy loads zh-CN while keeping the locale loader map explicit', async () => {

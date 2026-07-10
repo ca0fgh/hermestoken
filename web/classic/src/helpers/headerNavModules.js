@@ -94,13 +94,4 @@ export function getPricingRequireAuth(modules) {
   return getPricingModuleConfig(modules).requireAuth === true;
 }
 
-export function getFooterSectionVisibility(modules, docsLink) {
-  const normalizedModules = normalizeHeaderNavModules(modules);
-
-  return {
-    showDocsSection: Boolean(docsLink) && normalizedModules.docs,
-    showAboutSection: normalizedModules.about,
-  };
-}
-
 export { DEFAULT_HEADER_NAV_MODULES };
