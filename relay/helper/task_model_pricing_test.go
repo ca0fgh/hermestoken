@@ -33,11 +33,11 @@ func TestApplyTaskModelPricingCombinesPerRequestAndPerSecond(t *testing.T) {
 		GroupRatioInfo: types.GroupRatioInfo{
 			GroupRatio: 2,
 		},
-		OtherRatios: map[string]float64{
-			"seconds":    8,
-			"resolution": 1.5,
-		},
 	}
+	priceData.ReplaceOtherRatios(map[string]float64{
+		"seconds":    8,
+		"resolution": 1.5,
+	})
 
 	applied := ApplyTaskModelPricing("veo_3_1", &priceData)
 
@@ -66,11 +66,11 @@ func TestApplyTaskModelPricingCanIgnoreNonTimeRatios(t *testing.T) {
 		GroupRatioInfo: types.GroupRatioInfo{
 			GroupRatio: 2,
 		},
-		OtherRatios: map[string]float64{
-			"seconds":    8,
-			"resolution": 1.5,
-		},
 	}
+	priceData.ReplaceOtherRatios(map[string]float64{
+		"seconds":    8,
+		"resolution": 1.5,
+	})
 
 	applied := ApplyTaskModelPricing("veo_3_1", &priceData)
 
@@ -86,10 +86,8 @@ func TestApplyTaskModelPricingLeavesLegacyPricingUntouched(t *testing.T) {
 		ModelPrice: 0.6,
 		UsePrice:   true,
 		Quota:      600,
-		OtherRatios: map[string]float64{
-			"seconds": 8,
-		},
 	}
+	priceData.ReplaceOtherRatios(map[string]float64{"seconds": 8})
 
 	applied := ApplyTaskModelPricing("veo_3_1", &priceData)
 

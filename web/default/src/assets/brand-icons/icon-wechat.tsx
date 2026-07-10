@@ -15,6 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 import { type SVGProps } from 'react'
+
 import { cn } from '@/lib/utils'
 
 export function IconWeChat({ className, ...props }: SVGProps<SVGSVGElement>) {

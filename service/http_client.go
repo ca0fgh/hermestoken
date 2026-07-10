@@ -25,20 +25,41 @@ var (
 	// completion is generated) and is instead bounded by an overall per-attempt
 	// Timeout (RelayNonStreamTimeout) so a truly hung channel still fails over.
 	nonStreamHTTPClient *http.Client
-	proxyClientLock     sync.Mutex
-	proxyClients        = make(map[string]*http.Client)
+	// ssrfProtectedHTTPClient guards fetches of arbitrary user-controlled URLs.
+	ssrfProtectedHTTPClient *http.Client
+	proxyClientLock         sync.Mutex
+	proxyClients            = make(map[string]*http.Client)
 )
 
 func checkRedirect(req *http.Request, via []*http.Request) error {
-	fetchSetting := system_setting.GetFetchSetting()
 	urlStr := req.URL.String()
-	if err := common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+	if err := validateURLWithCurrentFetchSetting(urlStr, true); err != nil {
 		return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
 	}
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
 	}
 	return nil
+}
+
+func checkProtectedFetchRedirect(req *http.Request, via []*http.Request) error {
+	urlStr := req.URL.String()
+	if err := ValidateSSRFProtectedFetchURL(urlStr); err != nil {
+		return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
+	}
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	return nil
+}
+
+func validateURLWithCurrentFetchSetting(urlStr string, applyDomainIPFilter bool) error {
+	fetchSetting := system_setting.GetFetchSetting()
+	return common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, applyDomainIPFilter && fetchSetting.ApplyIPFilterForDomain)
+}
+
+func ValidateSSRFProtectedFetchURL(urlStr string) error {
+	return validateURLWithCurrentFetchSetting(urlStr, true)
 }
 
 // applyRelayTransportTimeouts sets the per-attempt response-header timeout on a
@@ -108,10 +129,18 @@ func InitHttpClient() {
 		Timeout:       nonStreamClientTimeout(),
 		CheckRedirect: checkRedirect,
 	}
+	ssrfProtectedHTTPClient = newProtectedFetchHTTPClient()
 }
 
 // GetHttpClient returns the streaming relay client (carries the response-header
 // timeout). Existing non-relay callers keep their current behavior.
+//
+// Do not attach the SSRF-protected dialer here: provider base URLs are
+// root/operator-managed deployment targets, not arbitrary user-controlled input,
+// and may legitimately point at private networks, private-link endpoints,
+// self-hosted services, or local proxies. Code paths that fetch arbitrary
+// user-controlled URLs must use GetSSRFProtectedHTTPClient or
+// ValidateSSRFProtectedFetchURL instead.
 func GetHttpClient() *http.Client {
 	return httpClient
 }
@@ -123,6 +152,15 @@ func GetHttpClient() *http.Client {
 // to non-stream traffic and reintroduce the cascade bug.
 func GetNonStreamHttpClient() *http.Client {
 	return nonStreamHTTPClient
+}
+
+// GetSSRFProtectedHTTPClient 返回带拨号时 SSRF 校验的客户端。
+// ssrfProtectedHTTPClient 由 InitHttpClient 在启动时初始化，运行期只读。
+func GetSSRFProtectedHTTPClient() *http.Client {
+	if fetchSetting := system_setting.GetFetchSetting(); fetchSetting != nil && !fetchSetting.EnableSSRFProtection {
+		return GetHttpClient()
+	}
+	return ssrfProtectedHTTPClient
 }
 
 // GetHttpClientWithProxy returns the default streaming client or a proxy-enabled one.

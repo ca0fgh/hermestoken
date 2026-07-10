@@ -16,8 +16,11 @@ import (
 	"github.com/ca0fgh/hermestoken/setting/config"
 	"github.com/ca0fgh/hermestoken/setting/operation_setting"
 	"github.com/ca0fgh/hermestoken/setting/ratio_setting"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -548,4 +551,82 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 	GetUserModels(vipContext)
 
 	require.Empty(t, decodeUserModelsResponse(t, vipRecorder))
+}
+
+func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	hashedPassword, err := common.Password2Hash("CurrentPassword123")
+	require.NoError(t, err)
+	user := &model.User{
+		Username: "password-user",
+		Password: hashedPassword,
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, db.Create(user).Error)
+
+	updatePassword, err := checkUpdatePassword("", "", user.Id)
+	require.NoError(t, err)
+	assert.False(t, updatePassword)
+
+	updatePassword, err = checkUpdatePassword("", "NewPassword123", user.Id)
+	require.Error(t, err)
+	assert.False(t, updatePassword)
+	assert.ErrorIs(t, err, errOriginalPasswordFail)
+
+	updatePassword, err = checkUpdatePassword("CurrentPassword123", "NewPassword123", user.Id)
+	require.NoError(t, err)
+	assert.True(t, updatePassword)
+}
+
+func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	user := &model.User{
+		Username: "legacy-passwordless-user",
+		Password: "",
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, db.Create(user).Error)
+
+	updatePassword, err := checkUpdatePassword("", "NewPassword123", user.Id)
+	require.Error(t, err)
+	assert.False(t, updatePassword)
+	assert.ErrorIs(t, err, errUserPasswordUnset)
+}
+
+func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+
+	hashedPassword, err := common.Password2Hash("CurrentPassword123")
+	require.NoError(t, err)
+	user := &model.User{
+		Username: "twofa-user",
+		Password: hashedPassword,
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+	}
+	require.NoError(t, db.Create(user).Error)
+
+	router := gin.New()
+	store := cookie.NewStore([]byte("test-session-secret"))
+	router.Use(sessions.Sessions("session", store))
+	router.GET("/", func(c *gin.Context) {
+		setupLogin(&model.User{
+			Id:       user.Id,
+			Username: user.Username,
+			Role:     user.Role,
+			Status:   user.Status,
+			Group:    user.Group,
+		}, c)
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	router.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var stored model.User
+	require.NoError(t, db.First(&stored, user.Id).Error)
+	assert.Equal(t, hashedPassword, stored.Password)
 }

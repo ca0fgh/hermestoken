@@ -15,10 +15,8 @@ You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
 
-import { defineConfig } from 'i18next-cli';
-
 /** @type {import('i18next-cli').I18nextToolkitConfig} */
-export default defineConfig({
+export default {
   locales: ['zh-CN', 'zh-TW', 'en', 'fr', 'ru', 'ja', 'vi'],
   extract: {
     input: ['src/**/*.{js,jsx,ts,tsx}'],
@@ -81,4 +79,4 @@ export default defineConfig({
     keySeparator: false,
     mergeNamespaces: true,
   },
-});
+};

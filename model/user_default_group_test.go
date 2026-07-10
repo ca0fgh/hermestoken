@@ -70,10 +70,15 @@ func setupUserDefaultGroupModelTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to migrate model test schema: %v", err)
 	}
 
+	originalDB, originalLogDB := DB, LOG_DB
 	DB = db
 	LOG_DB = db
 
 	t.Cleanup(func() {
+		// Restore before closing: leaving the globals on the closed handle makes
+		// every later test in the package fail with "sql: database is closed".
+		DB = originalDB
+		LOG_DB = originalLogDB
 		sqlDB, err := db.DB()
 		if err == nil {
 			_ = sqlDB.Close()

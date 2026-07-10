@@ -1,3 +1,5 @@
+import { CHANNEL_CONNECTION_INFO_TYPE } from '@/lib/channel-connection-info'
+
 type ApiInfoLike = {
   url?: unknown
 }
@@ -57,7 +59,7 @@ export function getConfiguredConnectionURL(status?: StatusLike | null): string {
 
 export function encodeConnectionString(key: string, url: string): string {
   return JSON.stringify({
-    _type: 'hermestoken_channel_conn',
+    _type: CHANNEL_CONNECTION_INFO_TYPE,
     key,
     url,
   })

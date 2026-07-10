@@ -159,7 +159,8 @@ func getAuthenticatedRateLimitSubject(c *gin.Context) string {
 		return fmt.Sprintf("user:%d", userID)
 	}
 	if accessToken := c.GetHeader("Authorization"); accessToken != "" {
-		if user := model.ValidateAccessToken(accessToken); user != nil && user.Id > 0 {
+		// A database error just falls through to IP-based limiting.
+		if user, err := model.ValidateAccessToken(accessToken); err == nil && user != nil && user.Id > 0 {
 			return fmt.Sprintf("user:%d", user.Id)
 		}
 	}

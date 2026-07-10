@@ -807,11 +807,7 @@ func testVideoTaskChannel(c *gin.Context, channel *model.Channel, testModel stri
 	if helper.ApplyTaskModelPricing(info.OriginModelName, &info.PriceData) {
 		// Quota is calculated by the task-specific formula.
 	} else if !common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
-		for _, ratio := range info.PriceData.OtherRatios {
-			if ratio != 1.0 {
-				info.PriceData.Quota = int(float64(info.PriceData.Quota) * ratio)
-			}
-		}
+		info.PriceData.Quota = common.QuotaFromFloat(info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota)))
 	}
 
 	requestBody, err := adaptor.BuildRequestBody(c, info)

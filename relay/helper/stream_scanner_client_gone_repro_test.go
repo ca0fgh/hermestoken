@@ -30,6 +30,10 @@ import (
 // 迟迟不吐数据，客户端先到达自身超时而断开 → StreamScannerHandler 走
 // StreamEndReasonClientGone 分支，ReceivedResponseCount=0（没有任何 usage
 // 事件）→ 计费 0 token。use_time≈130s 是客户端超时，不是服务端超时。
+//
+// 其中的 5s 空档已被上游 #5710 修复：cleanup 现在会关闭 resp.Body，扫描
+// goroutine 的 Read 立即返回，wg.Wait 不再空等到 5s 上限。下方第二个用例
+// 由「复现该空档」改为「守住修复」。
 
 // newClientGoneScannerCtx 构造一个 request context 可被取消（模拟客户端断开）
 // 的 gin.Context，以及一个阻塞的上游响应体（模拟慢/挂起的上游）。
@@ -85,11 +89,13 @@ func TestStreamScannerHandler_ClientGoneRecordsZeroUsage(t *testing.T) {
 		"首字前断开，未收到任何上游事件 → 0 token，复现线上 0 输入 0 输出")
 }
 
-// 现象二：客户端断开但上游仍阻塞在 Read（慢上游）→ 扫描 goroutine 无法及时退出，
-// handler 直到 5s drain 超时才返回（对应线上 "timeout waiting for goroutines to exit"）。
-func TestStreamScannerHandler_ClientGoneHungUpstreamHitsDrainTimeout(t *testing.T) {
+// 现象二（已修复，此用例守住修复）：客户端断开但上游仍阻塞在 Read（慢上游）时，
+// cleanup 关闭 resp.Body 会立即解开扫描 goroutine 的 Read，handler 迅速返回，
+// 不再空等到 5s drain 上限（线上那条 "timeout waiting for goroutines to exit"）。
+func TestStreamScannerHandler_ClientGoneHungUpstreamReturnsWithoutDrainTimeout(t *testing.T) {
 	c, cancel, _, resp, info := newClientGoneScannerCtx(t)
-	// 注意：本用例不主动关闭 pw（由 t.Cleanup 兜底），让上游保持阻塞以触发 5s drain。
+	// 注意：本用例不主动关闭 pw（由 t.Cleanup 兜底）——上游始终不吐数据也不关闭，
+	// 唯一能解开扫描 goroutine 的就是 cleanup 里的 resp.Body.Close()。
 
 	done := make(chan struct{})
 	start := time.Now()
@@ -104,14 +110,12 @@ func TestStreamScannerHandler_ClientGoneHungUpstreamHitsDrainTimeout(t *testing.
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("handler hung > 10s (drain timeout 应在 ~5s 触发)")
+		t.Fatal("handler hung > 10s: cleanup 未关闭 resp.Body?")
 	}
 	elapsed := time.Since(start)
 
 	require.NotNil(t, info.StreamStatus)
 	assert.Equal(t, relaycommon.StreamEndReasonClientGone, info.StreamStatus.EndReason())
-	// 扫描 goroutine 卡在上游 Read，wg.Wait 命中 5s 上限 → 打印 "timeout waiting for goroutines to exit"
-	assert.GreaterOrEqual(t, elapsed, 5*time.Second,
-		"应命中 5s goroutine drain 超时，复现线上两条日志间的 5s 间隔")
-	assert.Less(t, elapsed, 9*time.Second)
+	assert.Less(t, elapsed, 2*time.Second,
+		"客户端断开后应立即返回，不得再命中 5s goroutine drain 超时")
 }

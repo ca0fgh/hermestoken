@@ -109,6 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
 
+    permissions:
+      id-token: write
+
     steps:
       - name: Set version
         run: echo "TAG=${{ needs.build_single_arch.outputs.tag }}" >> $GITHUB_ENV
@@ -132,6 +135,14 @@ jobs:
             -t ca0fgh/hermestoken:latest \
             ca0fgh/hermestoken:latest-amd64 \
             ca0fgh/hermestoken:latest-arm64
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign manifests with cosign
+        run: |
+          cosign sign --yes ca0fgh/hermestoken:${TAG}
+          cosign sign --yes ca0fgh/hermestoken:latest
 
       - name: Manifest summary
         run: |
