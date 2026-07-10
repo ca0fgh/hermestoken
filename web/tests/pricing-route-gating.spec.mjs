@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   afterAll,
   afterEach,
@@ -9,9 +8,23 @@ import {
   mock,
   test,
 } from 'bun:test';
-import { act, create } from 'react-test-renderer';
-import { MemoryRouter } from 'react-router-dom';
+import { createRequire } from 'node:module';
 import { StatusContext } from '../classic/src/context/Status/index.jsx';
+
+// This directory is not a bun workspace, so bare specifiers resolve to the
+// hoisted React 19 that web/default uses, while the classic components under
+// test resolve classic's React 18. Rendering a React 19 element with React 18's
+// reconciler fails with "Objects are not valid as a React child". Anchor the
+// renderer and the router to classic's React instead.
+const requireFromClassic = createRequire(new URL('../classic/package.json', import.meta.url));
+const React = requireFromClassic('react');
+const { act, create } = requireFromClassic('react-test-renderer');
+const { MemoryRouter } = requireFromClassic('react-router-dom');
+
+// mock.module() resolves a bare specifier from this file, which lands on the
+// root react-i18next that web/default uses. Classic's hooks import their own
+// copy, so mock that exact module id or the stub never takes effect.
+const classicReactI18next = Bun.resolveSync('react-i18next', new URL('../classic/', import.meta.url).pathname);
 
 let importCounter = 0;
 const h = React.createElement;
@@ -86,7 +99,16 @@ function installBrowserShims() {
     addEventListener() {},
     body: {},
     createElement() {
-      return {};
+      // react-dom probes support for an event by setting an attribute on a
+      // throwaway element while its module initializes, so the stub element
+      // needs the attribute API even though nothing reads it back.
+      return {
+        setAttribute() {},
+        removeAttribute() {},
+        addEventListener() {},
+        removeEventListener() {},
+        style: {},
+      };
     },
     defaultView: null,
     documentElement: {},
@@ -259,7 +281,7 @@ describe('marketing header pricing visibility', () => {
     const actualUseIsMobile = await import('../classic/src/hooks/common/useIsMobile.js');
     const actualLanguage = await import('../classic/src/i18n/language.js');
 
-    mock.module('react-i18next', () => ({
+    mock.module(classicReactI18next, () => ({
       useTranslation: () => ({
         t: (value) => value,
         i18n: {

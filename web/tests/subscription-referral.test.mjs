@@ -164,16 +164,27 @@ test('InvitationCard does not reference removed referralSavingGroup state', () =
   assert.equal(invitationCardSource.includes('referralSavingGroup'), false);
 });
 
+// The single invitee-rate slider still needs rateBpsToPercentNumber; what must
+// stay out of the wallet card are the per-group helpers behind the removed
+// grouped referral management UI.
 test('InvitationCard no longer imports grouped subscription referral helpers', () => {
   const invitationCardSource = readFileSync(
     new URL('../classic/src/components/topup/InvitationCard.jsx', import.meta.url),
     'utf8',
   );
 
-  assert.doesNotMatch(
-    invitationCardSource,
-    /import\s*{[\s\S]*\brateBpsToPercentNumber\b[\s\S]*}\s*from\s*['"]\.\.\/\.\.\/helpers\/subscriptionReferral['"]/,
-  );
+  for (const groupedHelper of [
+    'normalizeGroupRateMap',
+    'normalizeGroupNames',
+    'buildGroupedReferralSummaries',
+    'buildInvitationDraftPercentInputs',
+  ]) {
+    assert.equal(
+      invitationCardSource.includes(groupedHelper),
+      false,
+      `${groupedHelper} must not be used by the wallet invitation card`,
+    );
+  }
 });
 
 test('InvitationCard no longer renders grouped subscription referral controls in wallet view', () => {
@@ -207,9 +218,15 @@ test('TopUp no longer fetches or wires wallet subscription referral management s
     'utf8',
   );
 
-  assert.doesNotMatch(
+  // The GET stays: TopUp reads it to learn whether referral is enabled and what
+  // the invitee-rate ceiling is. What was removed is writing self overrides.
+  assert.match(
     topUpSource,
     /API\.get\('\/api\/user\/referral\/subscription'\)/,
+  );
+  assert.doesNotMatch(
+    topUpSource,
+    /API\.(put|delete)\('\/api\/user\/referral\/subscription'/,
   );
   assert.doesNotMatch(topUpSource, /const \[referralGroups, setReferralGroups\]/);
   assert.doesNotMatch(

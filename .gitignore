@@ -137,3 +137,6 @@ scripts/tool/gpt_image2_output_*.png
 .local-tests/
 service/relayconvert/chat_responses_live_local_test.go
 service/openaicompat/chat_responses_live_local_test.go
+
+# transient fixtures written by web/tests/pricing-marketplace-display.spec.mjs
+web/classic/.tmp-fixtures/

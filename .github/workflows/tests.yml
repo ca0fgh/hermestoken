@@ -1,0 +1,66 @@
+name: Tests
+
+on:
+  push:
+    branches: [Money, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '>=1.25.1'
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "these files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+      # main.go embeds web/default/dist and web/classic/dist, which are gitignored
+      # build outputs. Nothing under test reads those assets, so a placeholder
+      # satisfies the embed patterns without building both frontends here.
+      - name: Stub embedded frontend assets
+        run: |
+          mkdir -p web/default/dist web/classic/dist
+          printf '<!doctype html>\n' > web/default/dist/index.html
+          printf '<!doctype html>\n' > web/classic/dist/index.html
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test ./...
+
+  frontend:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+      # The suite only exercises classic, so install just that workspace. A plain
+      # `bun install` hoists web/default's React 19 and date-fns 4, which breaks
+      # two things: date-fns-tz@1 deep-imports date-fns/_lib/cloneObject (gone in
+      # 4.x) so the real classic build in invite-management-build.test.mjs fails,
+      # and react-test-renderer gets a nested React 18 that is a second module
+      # instance from the one the components load, leaving the hook dispatcher
+      # null. Running both installs does not help: the filter pass rewrites the
+      # hoisted root but leaves the nested copy behind.
+      - name: Install classic workspace
+        working-directory: web
+        run: bun install --filter ./classic --frozen-lockfile
+      # tests/*.test.mjs run on node; tests/*.spec.mjs import bun:test and need bun.
+      - name: Test
+        working-directory: web
+        run: bun run test

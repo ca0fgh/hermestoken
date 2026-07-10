@@ -72,16 +72,23 @@ test("fixed-order buyer views show refundable remaining amount", async () => {
     readDefaultSource("features/marketplace/components/fixed-orders-tab.tsx"),
   ]);
 
-  assert.match(classicSource, /title:\s*t\('已买断金额'\)/);
-  assert.match(classicSource, /title:\s*t\('已消耗金额'\)/);
-  assert.match(classicSource, /title:\s*t\('可退金额'\)/);
-  assert.match(classicSource, /t\('检测'\)/);
-  assert.match(classicSource, /t\('解除订单'\)/);
-  assert.doesNotMatch(classicSource, /title:\s*t\('剩余金额'\)/);
+  // Classic collapsed the three amount columns into one cell rendered by
+  // renderFixedOrderAmounts; the buyer must still see all three figures.
+  assert.match(classicSource, /function renderFixedOrderAmounts\(record, t\)/);
   assert.match(
     classicSource,
-    /formatMarketplaceQuotaUSD\(record\.remaining_quota\)/,
+    /label: t\('买断'\),\s*value: formatMarketplaceQuotaUSD\(record\.purchased_quota\)/,
   );
+  assert.match(
+    classicSource,
+    /label: t\('消耗'\),\s*value: formatMarketplaceQuotaUSD\(record\.spent_quota\)/,
+  );
+  assert.match(
+    classicSource,
+    /label: t\('剩余'\),\s*value: formatMarketplaceQuotaUSD\(record\.remaining_quota\)/,
+  );
+  assert.match(classicSource, /t\('检测'\)/);
+  assert.match(classicSource, /t\('解除订单'\)/);
 
   assert.match(defaultSource, /label=\{t\('Purchased amount'\)\}/);
   assert.match(defaultSource, /label=\{t\('Spent amount'\)\}/);
@@ -108,7 +115,7 @@ test("fixed-order buyer views show time limit status", async () => {
   assert.doesNotMatch(classicSource, /title:\s*t\('限时状态'\)/);
   assert.match(
     classicSource,
-    /title:\s*t\('状态'\),\s*render:\s*\(_,\s*record\)\s*=>\s*renderFixedOrderCombinedStatus\(record,\s*t\)/,
+    /title: t\('状态'\),[\s\S]{0,80}?render: \(_, record\) => renderFixedOrderCombinedStatus\(record, t\)/,
   );
   assert.match(classicSource, /renderFixedOrderTimeStatus\(record,\s*t\)/);
   assert.match(defaultSource, /function formatFixedOrderTimeLimit\(/);

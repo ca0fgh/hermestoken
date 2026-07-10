@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 function readSource(relativePath) {
-  return readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+  return readFileSync(new URL(`../classic/${relativePath}`, import.meta.url), 'utf8');
 }
 
 test('InviteRebate route renders the dedicated page shell', () => {

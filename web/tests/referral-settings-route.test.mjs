@@ -1,24 +1,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+
+const repoRoot = new URL('../../', import.meta.url);
+const fromRepoRoot = (relativePath) => new URL(relativePath, repoRoot);
 import { normalizeReferralTemplateItems } from "../classic/src/helpers/referralTemplate.js";
 
-test("settings page exposes a referral tab and settings surface", () => {
-  const source = fs.readFileSync(
-    "web/classic/src/pages/Setting/index.jsx",
+test("referral settings live behind an admin-only console route", () => {
+  const routesSource = fs.readFileSync(
+    fromRepoRoot("web/classic/src/routes/ConsoleRoutes.jsx"),
     "utf8",
   );
-  assert.match(source, /ReferralSetting/);
-  assert.match(source, /itemKey:\s*['"]referral['"]/);
+  const pageSource = fs.readFileSync(
+    fromRepoRoot("web/classic/src/pages/Referral/index.jsx"),
+    "utf8",
+  );
+
+  assert.match(routesSource, /path='\/console\/referral'/);
+  assert.match(
+    routesSource,
+    /path='\/console\/referral'[\s\S]*?<AdminRoute>[\s\S]*?<Referral \/>/,
+  );
+  assert.match(pageSource, /<ReferralSetting \/>/);
 });
 
 test("referral settings pages expose creation actions instead of read-only tables only", () => {
   const templateSource = fs.readFileSync(
-    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    fromRepoRoot("web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx"),
     "utf8",
   );
   const referralSettingSource = fs.readFileSync(
-    "web/classic/src/components/settings/ReferralSetting.jsx",
+    fromRepoRoot("web/classic/src/components/settings/ReferralSetting.jsx"),
     "utf8",
   );
 
@@ -30,11 +42,11 @@ test("referral settings pages expose creation actions instead of read-only table
 
 test("referral settings page explains the meaning of template fields without engine route surface", () => {
   const templateSource = fs.readFileSync(
-    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    fromRepoRoot("web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx"),
     "utf8",
   );
   const referralSettingSource = fs.readFileSync(
-    "web/classic/src/components/settings/ReferralSetting.jsx",
+    fromRepoRoot("web/classic/src/components/settings/ReferralSetting.jsx"),
     "utf8",
   );
 
@@ -100,7 +112,7 @@ test("referral settings page explains the meaning of template fields without eng
 
 test("referral settings page requests bundle view and edits bundle groups", () => {
   const templateSource = fs.readFileSync(
-    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    fromRepoRoot("web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx"),
     "utf8",
   );
 
@@ -116,7 +128,7 @@ test("referral settings page requests bundle view and edits bundle groups", () =
 
 test("referral settings page saves bundle group arrays instead of a single group", () => {
   const templateSource = fs.readFileSync(
-    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    fromRepoRoot("web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx"),
     "utf8",
   );
 
@@ -130,7 +142,7 @@ test("referral settings page saves bundle group arrays instead of a single group
 
 test("referral settings page merges invitee and identity rate editors by group", () => {
   const templateSource = fs.readFileSync(
-    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    fromRepoRoot("web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx"),
     "utf8",
   );
 
@@ -155,7 +167,7 @@ test("referral settings page merges invitee and identity rate editors by group",
 
 test("referral settings page copy describes multi-group bundles and scoped uniqueness", () => {
   const templateSource = fs.readFileSync(
-    "web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx",
+    fromRepoRoot("web/classic/src/pages/Setting/Referral/SettingsReferralTemplates.jsx"),
     "utf8",
   );
 

@@ -2,18 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+const repoRoot = new URL('../../', import.meta.url);
+const fromRepoRoot = (relativePath) => new URL(relativePath, repoRoot);
+
 test('invite rebate page still talks to the subscription facade endpoints', () => {
   const source = fs.readFileSync(
-    'web/src/components/invite-rebate/InviteRebatePage.jsx',
+    fromRepoRoot('web/classic/src/components/invite-rebate/InviteRebatePage.jsx'),
     'utf8',
   );
   assert.match(source, /\/api\/user\/referral\/subscription/);
 });
 
 test('legacy self override endpoints are removed from router and controller surface', () => {
-  const routerSource = fs.readFileSync('router/api-router.go', 'utf8');
+  const routerSource = fs.readFileSync(fromRepoRoot('router/api-router.go'), 'utf8');
   const controllerSource = fs.readFileSync(
-    'controller/subscription_referral.go',
+    fromRepoRoot('controller/subscription_referral.go'),
     'utf8',
   );
 

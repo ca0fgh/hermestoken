@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
+const repoRoot = new URL('../../', import.meta.url);
+const fromRepoRoot = (relativePath) => new URL(relativePath, repoRoot);
+
 test('edit user modal mounts referral template binding section', () => {
   const source = fs.readFileSync(
-    'web/src/components/table/users/modals/EditUserModal.jsx',
+    fromRepoRoot('web/classic/src/components/table/users/modals/EditUserModal.jsx'),
     'utf8',
   );
   assert.match(source, /ReferralTemplateBindingSection/);
@@ -13,7 +16,7 @@ test('edit user modal mounts referral template binding section', () => {
 
 test('referral template binding section uses explicit state updates instead of mutating response objects', () => {
   const source = fs.readFileSync(
-    'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
+    fromRepoRoot('web/classic/src/components/table/users/modals/ReferralTemplateBindingSection.jsx'),
     'utf8',
   );
   assert.match(source, /updateRow/);
@@ -27,7 +30,7 @@ test('referral template binding section uses explicit state updates instead of m
 
 test('referral template binding section requests bundle views for templates and user bindings', () => {
   const source = fs.readFileSync(
-    'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
+    fromRepoRoot('web/classic/src/components/table/users/modals/ReferralTemplateBindingSection.jsx'),
     'utf8',
   );
   assert.match(
@@ -42,7 +45,7 @@ test('referral template binding section requests bundle views for templates and 
 
 test('referral template binding section saves the selected bundle and replaces the current bundle bindings', () => {
   const source = fs.readFileSync(
-    'web/src/components/table/users/modals/ReferralTemplateBindingSection.jsx',
+    fromRepoRoot('web/classic/src/components/table/users/modals/ReferralTemplateBindingSection.jsx'),
     'utf8',
   );
   assert.match(source, /replace_binding_ids:\s*row\.bindingIds/);

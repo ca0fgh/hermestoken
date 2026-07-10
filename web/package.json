@@ -26,5 +26,11 @@
   },
   "patchedDependencies": {
     "@douyinfe/vite-plugin-semi@2.74.0-alpha.6": "patches/@douyinfe%2Fvite-plugin-semi@2.74.0-alpha.6.patch"
+  },
+  "scripts": {
+    "test": "bun run test:node && bun run test:bun",
+    "//": "tests/*.test.mjs run on node; tests/*.spec.mjs need bun (they import bun:test)",
+    "test:node": "node --test tests/*.test.mjs",
+    "test:bun": "bun test tests/*.spec.mjs"
   }
 }

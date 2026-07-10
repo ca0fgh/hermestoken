@@ -1,16 +1,24 @@
-import React from 'react';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { act, create } from 'react-test-renderer';
+import { createRequire } from 'node:module';
 import {
-  existsSync,
   mkdirSync,
   readFileSync,
-  symlinkSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// This directory is not a bun workspace, so bare specifiers resolve to the
+// hoisted React 19 that web/default uses, while the classic components under
+// test resolve classic's React 18. Rendering a React 19 element with React 18's
+// reconciler fails with "Objects are not valid as a React child". Anchor the
+// renderer and the router to classic's React instead.
+const requireFromClassic = createRequire(new URL('../classic/package.json', import.meta.url));
+const React = requireFromClassic('react');
+const { act, create } = requireFromClassic('react-test-renderer');
 
 let importCounter = 0;
 const h = React.createElement;
@@ -100,15 +108,14 @@ async function importModelsColumnDefsSubset() {
       "const renderLimitedItems = ({ items, renderItem }) => React.createElement('div', null, items.map((item, index) => renderItem(item, index)));\nconst renderDescription = (text) => text;\n",
     );
 
-  const fixtureDir = path.join(
-    tmpdir(),
-    'pricing-marketplace-display-test-fixtures',
-  );
-  const fixtureNodeModulesPath = path.join(fixtureDir, 'node_modules');
+  // The fixture imports react, and bun's JSX transform adds an implicit
+  // react/jsx-dev-runtime import on top of that. Both must resolve to the copy
+  // the renderer already loaded, so keep the file under web/classic: its module
+  // lookup then walks exactly the same directories as requireFromClassic. A
+  // fixture in tmpdir or under web/tests resolves whatever bun hoisted instead,
+  // which is React 19 after a workspace-root install.
+  const fixtureDir = fileURLToPath(new URL('../classic/.tmp-fixtures/', import.meta.url));
   mkdirSync(fixtureDir, { recursive: true });
-  if (!existsSync(fixtureNodeModulesPath)) {
-    symlinkSync(path.join(process.cwd(), 'node_modules'), fixtureNodeModulesPath);
-  }
 
   const tempPath = path.join(
     fixtureDir,
@@ -119,6 +126,7 @@ async function importModelsColumnDefsSubset() {
     return await import(`file://${tempPath}`);
   } finally {
     unlinkSync(tempPath);
+    rmSync(fixtureDir, { recursive: true, force: true });
   }
 }
 

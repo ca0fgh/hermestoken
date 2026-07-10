@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import test from 'node:test';
 
-import React, { useContext } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+// This directory is not a workspace, so a bare `react` import here resolves to
+// the hoisted React 19 that web/default uses, while the classic component under
+// test resolves classic's React 18. Rendering across those two copies leaves the
+// hook dispatcher null. Anchor the renderer to classic's React instead.
+const requireFromClassic = createRequire(new URL('../classic/package.json', import.meta.url));
+const React = requireFromClassic('react');
+const { useContext } = React;
+const { renderToStaticMarkup } = requireFromClassic('react-dom/server');
 
 const providerModulePath = new URL(
   '../classic/src/context/Status/provider.js',

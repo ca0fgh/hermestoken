@@ -2,16 +2,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const settingPageSource = readFileSync('web/src/pages/Setting/index.jsx', 'utf8');
+const repoRoot = new URL('../../', import.meta.url);
+const fromRepoRoot = (relativePath) => new URL(relativePath, repoRoot);
+
+const settingPageSource = readFileSync(fromRepoRoot('web/classic/src/pages/Setting/index.jsx'), 'utf8');
 const operationSettingSource = readFileSync(
-  'web/src/components/settings/OperationSetting.jsx',
+  fromRepoRoot('web/classic/src/components/settings/OperationSetting.jsx'),
   'utf8',
 );
 const paymentSettingSource = readFileSync(
-  'web/src/components/settings/PaymentSetting.jsx',
+  fromRepoRoot('web/classic/src/components/settings/PaymentSetting.jsx'),
   'utf8',
 );
-const apiHelperSource = readFileSync('web/src/helpers/api.js', 'utf8');
+const apiHelperSource = readFileSync(fromRepoRoot('web/classic/src/helpers/api.js'), 'utf8');
 
 test('settings page lazy loads heavyweight tab surfaces instead of importing every tab into one chunk', () => {
   assert.match(settingPageSource, /import \{ lazyWithRetry \} from '\.\.\/\.\.\/helpers\/lazyWithRetry';/);
