@@ -23,3 +23,10 @@ func lockForUpdate(tx *gorm.DB) *gorm.DB {
 	}
 	return tx.Clauses(clause.Locking{Strength: "UPDATE"})
 }
+
+// LockForUpdate exposes lockForUpdate to packages that open their own
+// transaction against model.DB, such as controller handlers that lock a row
+// before updating it.
+func LockForUpdate(tx *gorm.DB) *gorm.DB {
+	return lockForUpdate(tx)
+}

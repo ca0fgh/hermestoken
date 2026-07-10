@@ -336,7 +336,7 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 	var created UserWithdrawal
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, params.UserID).Error; err != nil {
+		if err := lockForUpdate(tx).First(&user, params.UserID).Error; err != nil {
 			return err
 		}
 
@@ -417,7 +417,7 @@ func CreateUserWithdrawal(params *CreateUserWithdrawalParams) (*UserWithdrawal, 
 func ApproveUserWithdrawal(id int, adminID int, note string) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var withdrawal UserWithdrawal
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&withdrawal, id).Error; err != nil {
+		if err := lockForUpdate(tx).First(&withdrawal, id).Error; err != nil {
 			return err
 		}
 		if withdrawal.Status != UserWithdrawalStatusPending {
@@ -442,7 +442,7 @@ func RejectUserWithdrawal(id int, adminID int, note string) error {
 	var applyQuota int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var withdrawal UserWithdrawal
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&withdrawal, id).Error; err != nil {
+		if err := lockForUpdate(tx).First(&withdrawal, id).Error; err != nil {
 			return err
 		}
 		if withdrawal.Status != UserWithdrawalStatusPending && withdrawal.Status != UserWithdrawalStatusApproved {
@@ -450,7 +450,7 @@ func RejectUserWithdrawal(id int, adminID int, note string) error {
 		}
 
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, withdrawal.UserId).Error; err != nil {
+		if err := lockForUpdate(tx).First(&user, withdrawal.UserId).Error; err != nil {
 			return err
 		}
 
@@ -494,7 +494,7 @@ func MarkUserWithdrawalPaid(id int, adminID int, params MarkUserWithdrawalPaidPa
 	var applyQuota int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var withdrawal UserWithdrawal
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&withdrawal, id).Error; err != nil {
+		if err := lockForUpdate(tx).First(&withdrawal, id).Error; err != nil {
 			return err
 		}
 		if withdrawal.Status != UserWithdrawalStatusApproved {
@@ -502,7 +502,7 @@ func MarkUserWithdrawalPaid(id int, adminID int, params MarkUserWithdrawalPaidPa
 		}
 
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, withdrawal.UserId).Error; err != nil {
+		if err := lockForUpdate(tx).First(&user, withdrawal.UserId).Error; err != nil {
 			return err
 		}
 

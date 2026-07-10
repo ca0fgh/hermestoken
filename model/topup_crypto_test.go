@@ -441,3 +441,82 @@ func TestRecordCryptoTransferDoesNotReassignMatchedTransaction(t *testing.T) {
 	assert.Equal(t, firstOrder.Id, tx.MatchedOrderId)
 	assert.Equal(t, CryptoPaymentStatusPending, GetCryptoPaymentOrderByTradeNo(secondOrder.TradeNo).Status)
 }
+
+// Two live orders can share an amount once one of them has expired and been
+// re-issued. The transfer must not be attributed to either, and it must still be
+// stored — RecordCryptoTransfer writes the transfer row after it locks the order
+// rows, so this is the branch where that write is easiest to lose.
+func TestRecordCryptoTransferMarksBothOrdersAmbiguousAndStillStoresTransfer(t *testing.T) {
+	truncateTables(t)
+	insertUserForPaymentGuardTest(t, 1301, 0)
+	insertUserForPaymentGuardTest(t, 1302, 0)
+	first := seedCryptoOrderForCompletion(t, 1301, 10, "10003721")
+	second := seedCryptoOrderForCompletion(t, 1302, 10, "10003721")
+	for _, order := range []*CryptoPaymentOrder{first, second} {
+		order.Status = CryptoPaymentStatusPending
+		require.NoError(t, DB.Save(order).Error)
+	}
+
+	saved, matched, err := RecordCryptoTransfer(CryptoObservedTransfer{
+		Network:         first.Network,
+		TxHash:          "0xambiguous",
+		LogIndex:        0,
+		BlockNumber:     126,
+		ToAddress:       first.ReceiveAddress,
+		TokenContract:   first.TokenContract,
+		TokenDecimals:   first.TokenDecimals,
+		Amount:          first.PayAmount,
+		AmountBaseUnits: first.PayAmountBaseUnits,
+		Confirmations:   1,
+		ObservedAt:      time.Now(),
+	})
+	require.NoError(t, err)
+	assert.Nil(t, matched, "an ambiguous transfer must not credit either order")
+	require.NotNil(t, saved)
+	assert.Zero(t, saved.MatchedOrderId)
+
+	assert.Equal(t, CryptoPaymentStatusAmbiguous, GetCryptoPaymentOrderByTradeNo(first.TradeNo).Status)
+	assert.Equal(t, CryptoPaymentStatusAmbiguous, GetCryptoPaymentOrderByTradeNo(second.TradeNo).Status)
+
+	var stored CryptoPaymentTransaction
+	require.NoError(t, DB.Where("tx_hash = ?", "0xambiguous").First(&stored).Error)
+	assert.Zero(t, stored.MatchedOrderId)
+}
+
+// The scanner re-reports a transfer on every pass until it is finalized. An
+// unmatched transfer must be updated in place, never inserted twice.
+func TestRecordCryptoTransferRefreshesUnmatchedTransferOnRescan(t *testing.T) {
+	truncateTables(t)
+	transfer := CryptoObservedTransfer{
+		Network:         CryptoNetworkTronTRC20,
+		TxHash:          "0xunmatched",
+		LogIndex:        0,
+		BlockNumber:     127,
+		ToAddress:       "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z",
+		TokenContract:   "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+		TokenDecimals:   6,
+		Amount:          "10.003721",
+		AmountBaseUnits: "10003721",
+		Confirmations:   1,
+		ObservedAt:      time.Now(),
+	}
+
+	firstSeen, matched, err := RecordCryptoTransfer(transfer)
+	require.NoError(t, err)
+	assert.Nil(t, matched)
+	require.NotNil(t, firstSeen)
+	assert.Zero(t, firstSeen.MatchedOrderId)
+	assert.EqualValues(t, 1, firstSeen.Confirmations)
+
+	transfer.Confirmations = 12
+	rescanned, matched, err := RecordCryptoTransfer(transfer)
+	require.NoError(t, err)
+	assert.Nil(t, matched)
+	require.NotNil(t, rescanned)
+	assert.Equal(t, firstSeen.Id, rescanned.Id, "a re-scan must update the stored transfer, not insert a second row")
+	assert.EqualValues(t, 12, rescanned.Confirmations)
+
+	var stored int64
+	require.NoError(t, DB.Model(&CryptoPaymentTransaction{}).Where("tx_hash = ?", "0xunmatched").Count(&stored).Error)
+	assert.EqualValues(t, 1, stored)
+}

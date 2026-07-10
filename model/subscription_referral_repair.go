@@ -3,10 +3,16 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"gorm.io/gorm"
 )
+
+type referralRepairQuotaAdjustment struct {
+	userID int
+	delta  int64
+}
 
 type SubscriptionReferralSettlementBatchRepairResult struct {
 	BatchID                    int    `json:"batch_id"`
@@ -47,13 +53,21 @@ func RepairSubscriptionReferralSettlementBatchByID(batchID int) (*SubscriptionRe
 			return nil
 		}
 
-		immediateDelta := preview.ImmediateNewQuota - preview.ImmediateOldQuota
-		if err := adjustReferralRepairUserQuotaTx(tx, preview.ImmediateBeneficiaryUserID, immediateDelta); err != nil {
-			return err
+		adjustments := []referralRepairQuotaAdjustment{
+			{userID: preview.ImmediateBeneficiaryUserID, delta: preview.ImmediateNewQuota - preview.ImmediateOldQuota},
 		}
 		if preview.InviteeRecordID > 0 {
-			inviteeDelta := preview.InviteeNewQuota - preview.InviteeOldQuota
-			if err := adjustReferralRepairUserQuotaTx(tx, preview.InviteeBeneficiaryUserID, inviteeDelta); err != nil {
+			adjustments = append(adjustments, referralRepairQuotaAdjustment{
+				userID: preview.InviteeBeneficiaryUserID,
+				delta:  preview.InviteeNewQuota - preview.InviteeOldQuota,
+			})
+		}
+		// Lock beneficiaries in ascending user id, not in inviter-then-invitee order:
+		// two repairs touching the same pair would otherwise take the rows in
+		// opposite orders and deadlock.
+		sort.Slice(adjustments, func(a, b int) bool { return adjustments[a].userID < adjustments[b].userID })
+		for _, adjustment := range adjustments {
+			if err := adjustReferralRepairUserQuotaTx(tx, adjustment.userID, adjustment.delta); err != nil {
 				return err
 			}
 		}
@@ -107,7 +121,7 @@ func PreviewSubscriptionReferralSettlementBatchRepair(batchID int) (*Subscriptio
 
 func loadRepairableSubscriptionReferralBatchTx(tx *gorm.DB, batchID int) (*ReferralSettlementBatch, []ReferralSettlementRecord, error) {
 	var batch ReferralSettlementBatch
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&batch, batchID).Error; err != nil {
+	if err := lockForUpdate(tx).First(&batch, batchID).Error; err != nil {
 		return nil, nil, err
 	}
 	if batch.ReferralType != ReferralTypeSubscription {
@@ -118,7 +132,7 @@ func loadRepairableSubscriptionReferralBatchTx(tx *gorm.DB, batchID int) (*Refer
 	}
 
 	records := make([]ReferralSettlementRecord, 0)
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+	if err := lockForUpdate(tx).
 		Where("batch_id = ?", batch.Id).
 		Order("id ASC").
 		Find(&records).Error; err != nil {
@@ -224,7 +238,7 @@ func adjustReferralRepairUserQuotaTx(tx *gorm.DB, userID int, delta int64) error
 	}
 
 	var user User
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, userID).Error; err != nil {
+	if err := lockForUpdate(tx).First(&user, userID).Error; err != nil {
 		return err
 	}
 

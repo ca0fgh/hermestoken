@@ -110,15 +110,20 @@ func reverseReferralSettlementBatch(batchID int) error {
 
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var batch ReferralSettlementBatch
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&batch, batchID).Error; err != nil {
+		if err := lockForUpdate(tx).First(&batch, batchID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrSubscriptionReferralRecordNotFound
 			}
 			return err
 		}
 
+		// Ordering by beneficiary makes the per-record user locks below acquire in
+		// ascending user id, so two reversals of batches that share a beneficiary
+		// cannot deadlock against each other.
 		var records []ReferralSettlementRecord
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("batch_id = ?", batchID).Find(&records).Error; err != nil {
+		if err := lockForUpdate(tx).Where("batch_id = ?", batchID).
+			Order("beneficiary_user_id ASC, id ASC").
+			Find(&records).Error; err != nil {
 			return err
 		}
 		if len(records) == 0 {
@@ -133,7 +138,7 @@ func reverseReferralSettlementBatch(batchID int) error {
 			}
 
 			var user User
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, record.BeneficiaryUserId).Error; err != nil {
+			if err := lockForUpdate(tx).First(&user, record.BeneficiaryUserId).Error; err != nil {
 				return err
 			}
 

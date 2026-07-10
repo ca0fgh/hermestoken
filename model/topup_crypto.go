@@ -315,9 +315,13 @@ func CompleteCryptoTopUp(tradeNo string, evidence CryptoTxEvidence) error {
 	var completedTopUp TopUp
 	now := cryptoNow()
 
+	// Rows are locked in the order CryptoPaymentOrder -> TopUp ->
+	// CryptoPaymentTransaction -> User. RecordCryptoTransfer takes the same order,
+	// which is what keeps a manual completion and a concurrent chain scan of the
+	// same tx hash from deadlocking.
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var order CryptoPaymentOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(cryptoRefCol("trade_no")+" = ?", tradeNo).First(&order).Error; err != nil {
+		if err := lockForUpdate(tx).Where(cryptoRefCol("trade_no")+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrCryptoOrderNotFound
 		}
 		if order.Status == CryptoPaymentStatusSuccess {
@@ -332,7 +336,7 @@ func CompleteCryptoTopUp(tradeNo string, evidence CryptoTxEvidence) error {
 		}
 
 		var topUp TopUp
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", order.TopUpId).First(&topUp).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ?", order.TopUpId).First(&topUp).Error; err != nil {
 			return err
 		}
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -480,23 +484,27 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 			CreateTime:      transfer.ObservedAt.Unix(),
 			UpdateTime:      transfer.ObservedAt.Unix(),
 		}
+		// Read the transfer row without locking it, and write it back only once
+		// every order row this transfer can touch is locked. CompleteCryptoTopUp
+		// locks the order first and upserts the transfer row afterwards, so
+		// persisting the transfer up front would take the two rows in the opposite
+		// order and deadlock against an admin completing the same hash by hand.
+		transferSeen := true
 		if err := tx.Where("network = ? AND tx_hash = ? AND log_index = ?", txRecord.Network, txRecord.TxHash, txRecord.LogIndex).First(&savedTx).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				savedTx = txRecord
-				if err := tx.Create(&savedTx).Error; err != nil {
-					return err
-				}
-			} else {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
+			transferSeen = false
+			savedTx = txRecord
 		} else {
 			savedTx.Confirmations = transfer.Confirmations
 			savedTx.UpdateTime = transfer.ObservedAt.Unix()
+		}
+
+		if savedTx.MatchedOrderId != 0 {
 			if err := tx.Save(&savedTx).Error; err != nil {
 				return err
 			}
-		}
-		if savedTx.MatchedOrderId != 0 {
 			var order CryptoPaymentOrder
 			if err := tx.Where("id = ?", savedTx.MatchedOrderId).First(&order).Error; err == nil {
 				matchedOrder = &order
@@ -505,13 +513,15 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 		}
 
 		var orders []CryptoPaymentOrder
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(
+		if err := lockForUpdate(tx).Where(
 			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at >= ? AND status IN ?",
 			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, paidAtUnix, []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
 		).Find(&orders).Error; err != nil {
 			return err
 		}
-		if len(orders) == 1 {
+
+		switch {
+		case len(orders) == 1:
 			order := orders[0]
 			order.Status = CryptoPaymentStatusDetected
 			order.MatchedTxHash = txRecord.TxHash
@@ -522,43 +532,38 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 				return err
 			}
 			savedTx.MatchedOrderId = order.Id
-			if err := tx.Save(&savedTx).Error; err != nil {
-				return err
-			}
 			matchedOrder = &order
-			return nil
-		}
-		if len(orders) > 1 {
+		case len(orders) > 1:
 			for _, order := range orders {
 				if err := tx.Model(&CryptoPaymentOrder{}).Where("id = ?", order.Id).Updates(map[string]any{"status": CryptoPaymentStatusAmbiguous, "update_time": transfer.ObservedAt.Unix()}).Error; err != nil {
 					return err
 				}
 			}
-			return nil
+		default:
+			var expired CryptoPaymentOrder
+			err := lockForUpdate(tx).Where(
+				"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at < ? AND status IN ?",
+				txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, paidAtUnix, []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
+			).Order("expires_at desc").First(&expired).Error
+			if err == nil {
+				expired.Status = CryptoPaymentStatusLatePaid
+				expired.MatchedTxHash = txRecord.TxHash
+				expired.MatchedLogIndex = txRecord.LogIndex
+				expired.UpdateTime = transfer.ObservedAt.Unix()
+				if err := tx.Save(&expired).Error; err != nil {
+					return err
+				}
+				savedTx.MatchedOrderId = expired.Id
+				matchedOrder = &expired
+			} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 		}
 
-		var expired CryptoPaymentOrder
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(
-			"network = ? AND receive_address = ? AND token_contract = ? AND pay_amount_base_units = ? AND expires_at < ? AND status IN ?",
-			txRecord.Network, txRecord.ToAddress, txRecord.TokenContract, txRecord.AmountBaseUnits, paidAtUnix, []string{CryptoPaymentStatusPending, CryptoPaymentStatusExpired},
-		).Order("expires_at desc").First(&expired).Error
-		if err == nil {
-			expired.Status = CryptoPaymentStatusLatePaid
-			expired.MatchedTxHash = txRecord.TxHash
-			expired.MatchedLogIndex = txRecord.LogIndex
-			expired.UpdateTime = transfer.ObservedAt.Unix()
-			if err := tx.Save(&expired).Error; err != nil {
-				return err
-			}
-			savedTx.MatchedOrderId = expired.Id
-			if err := tx.Save(&savedTx).Error; err != nil {
-				return err
-			}
-			matchedOrder = &expired
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
+		if transferSeen {
+			return tx.Save(&savedTx).Error
 		}
-		return nil
+		return tx.Create(&savedTx).Error
 	})
 	if err != nil {
 		return nil, nil, err

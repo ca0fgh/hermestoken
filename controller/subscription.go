@@ -320,7 +320,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		var current model.SubscriptionPlan
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", id).First(&current).Error; err != nil {
+		if err := model.LockForUpdate(tx).Where("id = ?", id).First(&current).Error; err != nil {
 			return err
 		}
 		nextLocked, nextSold, err := model.PrepareSubscriptionPlanStockUpdateTx(tx, &current, req.Plan.StockTotal)

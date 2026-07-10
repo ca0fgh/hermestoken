@@ -391,14 +391,14 @@ func applyMarketplaceMultiplier(priceData *types.PriceData, relayInfo *relaycomm
 		return
 	}
 	if priceData.UsePrice {
-		priceData.QuotaToPreConsume = int(priceData.ModelPrice * common.QuotaPerUnit * multiplier)
+		priceData.QuotaToPreConsume = common.QuotaFromFloat(priceData.ModelPrice * common.QuotaPerUnit * multiplier)
 		return
 	}
 	preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
 	if meta != nil && meta.MaxTokens != 0 {
 		preConsumedTokens += meta.MaxTokens
 	}
-	priceData.QuotaToPreConsume = int(float64(preConsumedTokens) * priceData.ModelRatio * multiplier)
+	priceData.QuotaToPreConsume = common.QuotaFromFloat(float64(preConsumedTokens) * priceData.ModelRatio * multiplier)
 }
 
 func setupMarketplaceFixedOrderRelayChannelContext(c *gin.Context, preparation *service.MarketplaceFixedOrderRelayPreparation) {

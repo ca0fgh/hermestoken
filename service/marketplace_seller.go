@@ -9,7 +9,6 @@ import (
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type MarketplaceCredentialCreateInput struct {
@@ -408,7 +407,7 @@ func DeleteSellerMarketplaceCredential(sellerUserID int, credentialID int) error
 
 	return model.DB.Transaction(func(tx *gorm.DB) error {
 		var credential model.MarketplaceCredential
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		err := model.LockForUpdate(tx).
 			Where("id = ? AND seller_user_id = ?", credentialID, sellerUserID).
 			First(&credential).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {

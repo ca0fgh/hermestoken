@@ -13,7 +13,6 @@ import (
 	tokenverifier "github.com/ca0fgh/hermestoken/service/token_verifier"
 	"github.com/ca0fgh/hermestoken/setting"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 const marketplaceFixedOrderProbeRefundScoreDrop = 5
@@ -1267,10 +1266,7 @@ func expireDueBuyerMarketplaceFixedOrders(buyerUserID int, now int64) error {
 }
 
 func marketplaceForUpdate(tx *gorm.DB) *gorm.DB {
-	if common.UsingMainDatabase(common.DatabaseTypeMySQL) || common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
-		return tx.Clauses(clause.Locking{Strength: "UPDATE"})
-	}
-	return tx
+	return model.LockForUpdate(tx)
 }
 
 func escapeMarketplaceLikePattern(value string) string {

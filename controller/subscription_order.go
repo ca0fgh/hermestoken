@@ -27,7 +27,7 @@ func createPendingSubscriptionOrder(
 	var lockedPlan model.SubscriptionPlan
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := model.LockForUpdate(tx).
 			Where("id = ?", planId).
 			First(&lockedPlan).Error; err != nil {
 			return err

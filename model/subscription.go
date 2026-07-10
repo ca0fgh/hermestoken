@@ -363,7 +363,7 @@ func lockSubscriptionPlanForStockTx(tx *gorm.DB, planID int, includeDeleted bool
 	if planID <= 0 {
 		return nil, errors.New("invalid plan id")
 	}
-	query := tx.Set("gorm:query_option", "FOR UPDATE")
+	query := lockForUpdate(tx)
 	if includeDeleted {
 		query = query.Unscoped()
 	}
@@ -1090,7 +1090,7 @@ func PurchaseSubscriptionWithWallet(userId int, planId int, quantity int, tradeN
 		}
 
 		var user User
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", userId).First(&user).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
 		}
 		if user.Quota < requiredQuota {
@@ -1386,7 +1386,7 @@ func expireSubscriptionOrderTx(tx *gorm.DB, tradeNo string, expectedPaymentProvi
 		refCol = `"trade_no"`
 	}
 	var order SubscriptionOrder
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
+	if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 		return false, ErrSubscriptionOrderNotFound
 	}
 	if expectedPaymentProvider != "" && order.PaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
@@ -1470,7 +1470,7 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		var lockedPlan SubscriptionPlan
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where("id = ?", plan.Id).First(&lockedPlan).Error; err != nil {
+		if err := lockForUpdate(tx).Where("id = ?", plan.Id).First(&lockedPlan).Error; err != nil {
 			return err
 		}
 		if err := consumeSubscriptionPlanStockDirectTx(tx, &lockedPlan, 1); err != nil {
@@ -1820,7 +1820,7 @@ func AdminDeleteSubscriptionPlan(planId int) (string, error) {
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var plan SubscriptionPlan
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+		if err := lockForUpdate(tx).
 			Where("id = ?", planId).First(&plan).Error; err != nil {
 			return err
 		}
@@ -1994,7 +1994,7 @@ func ExpireDueSubscriptions(limit int) (int, error) {
 		cacheGroup := ""
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			var dueSubs []UserSubscription
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := lockForUpdate(tx).
 				Where("user_id = ? AND status = ? AND end_time > 0 AND end_time <= ?", userId, "active", now).
 				Order("end_time desc, id desc").
 				Find(&dueSubs).Error; err != nil {
