@@ -42,10 +42,11 @@ func (s *PolygonScanner) ScanOnce(ctx context.Context) error {
 		return err
 	}
 	state, err := model.GetCryptoScannerState(s.Network())
-	fromBlock := currentBlock - int64(s.config.Confirmations) - 60
-	if err == nil && state.LastScannedBlock > 0 {
-		fromBlock = state.LastScannedBlock + 1
+	lastScanned := int64(0)
+	if err == nil {
+		lastScanned = state.LastScannedBlock
 	}
+	fromBlock := resumeFromBlock(s.Network(), lastScanned, currentBlock, currentBlock-int64(s.config.Confirmations)-60)
 	if fromBlock < 0 {
 		fromBlock = 0
 	}

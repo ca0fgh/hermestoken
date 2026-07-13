@@ -43,10 +43,11 @@ func (s *SolanaScanner) ScanOnce(ctx context.Context) error {
 		return err
 	}
 	state, err := model.GetCryptoScannerState(s.Network())
-	fromSlot := currentSlot - int64(s.config.Confirmations) - 500
-	if err == nil && state.LastScannedBlock > 0 {
-		fromSlot = state.LastScannedBlock + 1
+	lastScanned := int64(0)
+	if err == nil {
+		lastScanned = state.LastScannedBlock
 	}
+	fromSlot := resumeFromBlock(s.Network(), lastScanned, currentSlot, currentSlot-int64(s.config.Confirmations)-500)
 	if fromSlot < 0 {
 		fromSlot = 0
 	}

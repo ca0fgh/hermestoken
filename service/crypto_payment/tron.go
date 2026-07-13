@@ -76,10 +76,11 @@ func (s *TronScanner) ScanOnce(ctx context.Context) error {
 		return err
 	}
 	state, err := model.GetCryptoScannerState(s.Network())
-	fromBlock := currentBlock - int64(s.config.Confirmations) - 40
-	if err == nil && state.LastScannedBlock > 0 {
-		fromBlock = state.LastScannedBlock + 1
+	lastScanned := int64(0)
+	if err == nil {
+		lastScanned = state.LastScannedBlock
 	}
+	fromBlock := resumeFromBlock(s.Network(), lastScanned, currentBlock, currentBlock-int64(s.config.Confirmations)-40)
 	if fromBlock < 1 {
 		fromBlock = 1
 	}
