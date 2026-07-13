@@ -18,7 +18,7 @@ type cryptoTopUpOrderRequest struct {
 }
 
 func GetCryptoTopUpConfig(c *gin.Context) {
-	networks := setting.GetEnabledCryptoPaymentNetworks()
+	networks := setting.GetPayableCryptoPaymentNetworks()
 	common.ApiSuccess(c, gin.H{
 		"enabled":        setting.CryptoPaymentEnabled && len(networks) > 0,
 		"networks":       networks,
@@ -85,8 +85,12 @@ func GetCryptoTopUpOrder(c *gin.Context) {
 	common.ApiSuccess(c, cryptoOrderResponse(order))
 }
 
+// resolveCryptoNetworkConfig deliberately consults the payable networks rather than
+// the enabled ones. A network whose preflight proved it cannot collect money — a
+// contract that exists on no chain, an RPC on the wrong cluster — must not be handed
+// out as a deposit address, however enabled it is in the settings.
 func resolveCryptoNetworkConfig(network string) (setting.CryptoPaymentNetworkConfig, bool) {
-	for _, cfg := range setting.GetEnabledCryptoPaymentNetworks() {
+	for _, cfg := range setting.GetPayableCryptoPaymentNetworks() {
 		if cfg.Network == model.NormalizeCryptoNetwork(network) {
 			return cfg, true
 		}

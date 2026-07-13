@@ -35,6 +35,7 @@ const (
 type TronScanner struct {
 	config setting.CryptoPaymentNetworkConfig
 	client *http.Client
+	pool   *endpointPool
 	// The configured base58 addresses, pre-decoded to the bare hex a node reports.
 	// Comparing hex to hex keeps base58's case-sensitivity out of the hot path.
 	contractHex string
@@ -46,6 +47,7 @@ func NewTronScanner(config setting.CryptoPaymentNetworkConfig) *TronScanner {
 	scanner := &TronScanner{
 		config: config,
 		client: &http.Client{Timeout: 20 * time.Second},
+		pool:   newEndpointPool(model.CryptoNetworkTronTRC20, setting.CryptoRPCEndpoints(model.CryptoNetworkTronTRC20)),
 	}
 	contractHex, err := tronHexFromAddress(config.Contract)
 	if err != nil {
@@ -68,7 +70,7 @@ func (s *TronScanner) ScanOnce(ctx context.Context) error {
 	if s.configErr != nil {
 		return s.configErr
 	}
-	if strings.TrimSpace(setting.CryptoTronRPCURL) == "" {
+	if s.pool.size() == 0 {
 		return fmt.Errorf("TRON RPC URL is not configured")
 	}
 	currentBlock, err := s.currentBlock(ctx)
@@ -115,6 +117,7 @@ func (s *TronScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
+	reportScannerProgress(s.Network(), lastScanned, maxSafe, currentBlock)
 	return scanErr
 }
 
@@ -195,11 +198,8 @@ func (s *TronScanner) decodeIncomingTransfers(txID string, info tronTransactionI
 // existence that page is truncated at its limit, and the cursor advanced past the
 // dropped remainder anyway.
 func (s *TronScanner) discoverIncomingTransfers(ctx context.Context, fromTimestamp int64, toTimestamp int64) ([]string, error) {
-	endpoint, err := url.Parse(s.apiBase() + "/v1/accounts/" + url.PathEscape(s.config.ReceiveAddress) + "/transactions/trc20")
-	if err != nil {
-		return nil, err
-	}
-	query := endpoint.Query()
+	path := "/v1/accounts/" + url.PathEscape(s.config.ReceiveAddress) + "/transactions/trc20"
+	query := url.Values{}
 	query.Set("contract_address", s.config.Contract)
 	query.Set("only_confirmed", "true")
 	query.Set("limit", strconv.Itoa(tronPageLimit))
@@ -214,10 +214,9 @@ func (s *TronScanner) discoverIncomingTransfers(ctx context.Context, fromTimesta
 		if fingerprint != "" {
 			query.Set("fingerprint", fingerprint)
 		}
-		endpoint.RawQuery = query.Encode()
 
 		var payload tronTRC20Response
-		if err := s.getJSON(ctx, endpoint.String(), &payload); err != nil {
+		if err := s.getJSON(ctx, path, query, &payload); err != nil {
 			return nil, err
 		}
 		for _, row := range payload.Data {
@@ -278,8 +277,75 @@ type tronContractLog struct {
 	Data    string   `json:"data"`
 }
 
-func (s *TronScanner) apiBase() string {
-	return strings.TrimRight(strings.TrimSpace(setting.CryptoTronRPCURL), "/")
+// Verify asks TRON whether the configured token contract is actually deployed.
+//
+// On TRON that single question also settles which chain the endpoint is on: mainnet
+// USDT does not exist on Nile or Shasta, so a testnet endpoint fails this check for
+// the same reason a nonexistent contract does. Production shipped exactly that —
+// a contract address deployed on no TRON chain at all — and the scanner's only
+// symptom was finding nothing, forever.
+func (s *TronScanner) Verify(ctx context.Context) setting.CryptoNetworkHealth {
+	network := s.Network()
+	if s.configErr != nil {
+		return healthMismatch(network, s.configErr.Error())
+	}
+	if s.pool.size() == 0 {
+		return healthUnknown(network, "no RPC endpoint is configured")
+	}
+
+	var contract struct {
+		ContractAddress string `json:"contract_address"`
+		Bytecode        string `json:"bytecode"`
+	}
+	err := s.postJSON(ctx, "/wallet/getcontract", map[string]interface{}{
+		"value":   s.config.Contract,
+		"visible": true,
+	}, &contract)
+	if err != nil {
+		return healthUnknown(network, "could not read the token contract: "+err.Error())
+	}
+	// A TRON node answers 200 with an empty object for an address that holds no
+	// contract, so "no error" is not the same as "it is there".
+	if strings.TrimSpace(contract.Bytecode) == "" && strings.TrimSpace(contract.ContractAddress) == "" {
+		return healthMismatch(network, fmt.Sprintf(
+			"no contract is deployed at %s on this TRON chain, so it can never emit the transfer a deposit is matched by", s.config.Contract))
+	}
+
+	decimals, err := s.tokenDecimals(ctx)
+	if err != nil {
+		// Only a contradiction disqualifies a network. An unanswered question is not one.
+		common.SysLog(fmt.Sprintf("crypto payment network %s: could not read token decimals (%s), continuing", network, err.Error()))
+		return healthOK(network)
+	}
+	if decimals != s.config.Decimals {
+		return healthMismatch(network, decimalsMismatchDetail(s.config.Contract, decimals, s.config.Decimals))
+	}
+	return healthOK(network)
+}
+
+// tokenDecimals calls decimals() on the TRC-20 contract. triggerconstantcontract
+// runs it read-only, so this needs no key and costs no energy.
+func (s *TronScanner) tokenDecimals(ctx context.Context) (int, error) {
+	var result struct {
+		ConstantResult []string `json:"constant_result"`
+	}
+	err := s.postJSON(ctx, "/wallet/triggerconstantcontract", map[string]interface{}{
+		"owner_address":     s.config.ReceiveAddress,
+		"contract_address":  s.config.Contract,
+		"function_selector": "decimals()",
+		"visible":           true,
+	}, &result)
+	if err != nil {
+		return 0, err
+	}
+	if len(result.ConstantResult) == 0 || strings.TrimSpace(result.ConstantResult[0]) == "" {
+		return 0, fmt.Errorf("TRON contract %s returned no decimals", s.config.Contract)
+	}
+	decimals, ok := new(big.Int).SetString(strings.TrimSpace(result.ConstantResult[0]), 16)
+	if !ok || !decimals.IsInt64() {
+		return 0, fmt.Errorf("TRON contract %s returned an unreadable decimals value %q", s.config.Contract, result.ConstantResult[0])
+	}
+	return int(decimals.Int64()), nil
 }
 
 func (s *TronScanner) currentBlock(ctx context.Context) (int64, error) {
@@ -332,20 +398,28 @@ func (s *TronScanner) postJSON(ctx context.Context, path string, body map[string
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBase()+path, bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	return s.do(req, out)
+	return s.pool.do(func(endpoint string) error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+path, bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return s.do(req, out)
+	})
 }
 
-func (s *TronScanner) getJSON(ctx context.Context, endpoint string, out interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return err
-	}
-	return s.do(req, out)
+func (s *TronScanner) getJSON(ctx context.Context, path string, query url.Values, out interface{}) error {
+	return s.pool.do(func(endpoint string) error {
+		target := endpoint + path
+		if len(query) > 0 {
+			target += "?" + query.Encode()
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+		if err != nil {
+			return err
+		}
+		return s.do(req, out)
+	})
 }
 
 func (s *TronScanner) do(req *http.Request, out interface{}) error {
@@ -354,11 +428,11 @@ func (s *TronScanner) do(req *http.Request, out interface{}) error {
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return endpointUnavailable(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("TRON API HTTP status %d for %s", resp.StatusCode, req.URL.Path)
+		return endpointUnavailable(fmt.Errorf("TRON API HTTP status %d for %s", resp.StatusCode, req.URL.Path))
 	}
 	return common.DecodeJson(resp.Body, out)
 }

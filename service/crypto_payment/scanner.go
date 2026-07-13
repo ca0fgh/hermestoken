@@ -161,6 +161,12 @@ func scannerSignature(scanner NetworkScanner) string {
 	}
 }
 
+// networkConfigSignature decides when a running scanner is stale.
+//
+// The RPC endpoints are part of it: a scanner's endpoint pool, its evictions and its
+// negotiated block span all describe the endpoints it was built with, and a pool
+// that has evicted its only endpoint could otherwise never come back — not even
+// after an operator fixed the URL in the admin UI.
 func networkConfigSignature(config setting.CryptoPaymentNetworkConfig) string {
 	parts := []string{
 		config.Network,
@@ -168,6 +174,7 @@ func networkConfigSignature(config setting.CryptoPaymentNetworkConfig) string {
 		strings.ToLower(strings.TrimSpace(config.ReceiveAddress)),
 		fmt.Sprintf("%d", config.Decimals),
 		fmt.Sprintf("%d", config.Confirmations),
+		strings.TrimSpace(setting.CryptoRPCEndpoints(config.Network)),
 	}
 	return strings.Join(parts, "|")
 }
@@ -198,11 +205,23 @@ func runScannerLoop(ctx context.Context, scanner NetworkScanner, owner string) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	ownsLock := false
+	// Verify before the first scan, not after. A network whose configuration cannot
+	// collect money must stop being offered at checkout immediately, rather than
+	// after however long it takes someone to notice the scanner finding nothing.
+	runPreflight(ctx, scanner)
+	nextPreflight := time.Now().Add(preflightInterval)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// Deliberately outside the lock: only one process scans, but every process
+			// serves the checkout page, so every process needs its own verdict on
+			// whether this network can still take money.
+			if time.Now().After(nextPreflight) {
+				runPreflight(ctx, scanner)
+				nextPreflight = time.Now().Add(preflightInterval)
+			}
 			var err error
 			if ownsLock {
 				ownsLock, err = lock.Renew(ctx)

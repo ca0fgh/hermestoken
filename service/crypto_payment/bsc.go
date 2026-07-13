@@ -1,25 +1,25 @@
 package crypto_payment
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/big"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/ca0fgh/hermestoken/common"
 	"github.com/ca0fgh/hermestoken/model"
 	"github.com/ca0fgh/hermestoken/setting"
 )
 
-const bscTransferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+const (
+	bscTransferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	bscChainID       = 56
+)
 
 type BSCScanner struct {
 	config setting.CryptoPaymentNetworkConfig
-	client *http.Client
+	rpc    *evmRPCClient
 	// See PolygonScanner.blockSpan. BSC's RPC currently serves the full opening
 	// span, so this never shrinks in practice — but it is the same code shape
 	// that silently killed Polygon, and a provider's cap is not ours to assume.
@@ -29,18 +29,22 @@ type BSCScanner struct {
 func NewBSCScanner(config setting.CryptoPaymentNetworkConfig) *BSCScanner {
 	return &BSCScanner{
 		config:    config,
-		client:    &http.Client{Timeout: 15 * time.Second},
+		rpc:       newEVMRPCClient(model.CryptoNetworkBSCERC20, setting.CryptoRPCEndpoints(model.CryptoNetworkBSCERC20)),
 		blockSpan: evmMaxBlockSpan,
 	}
 }
 
 func (s *BSCScanner) Network() string { return model.CryptoNetworkBSCERC20 }
 
+func (s *BSCScanner) Verify(ctx context.Context) setting.CryptoNetworkHealth {
+	return verifyEVMNetwork(ctx, s.Network(), s.rpc, bscChainID, s.config)
+}
+
 func (s *BSCScanner) ScanOnce(ctx context.Context) error {
-	if strings.TrimSpace(setting.CryptoBSCRPCURL) == "" {
+	if s.rpc.pool.size() == 0 {
 		return fmt.Errorf("BSC RPC URL is not configured")
 	}
-	currentBlock, err := s.currentBlock(ctx)
+	currentBlock, err := s.rpc.currentBlock(ctx)
 	if err != nil {
 		return err
 	}
@@ -57,9 +61,12 @@ func (s *BSCScanner) ScanOnce(ctx context.Context) error {
 	if maxSafe < fromBlock {
 		return nil
 	}
-	lastScanned, scanErr := scanEVMRange(ctx, &s.blockSpan, fromBlock, maxSafe, s.getLogs,
+	lastScanned, scanErr := scanEVMRange(ctx, &s.blockSpan, fromBlock, maxSafe,
+		func(ctx context.Context, from int64, to int64) ([]bscRPCLog, error) {
+			return s.rpc.transferLogs(ctx, s.config.Contract, s.config.ReceiveAddress, from, to)
+		},
 		func(logs []bscRPCLog) error {
-			return s.handleLogs(ctx, logs, currentBlock)
+			return recordEVMTransferLogs(ctx, s.Network(), s.config, s.rpc, logs, currentBlock)
 		},
 	)
 	if lastScanned >= fromBlock {
@@ -67,29 +74,44 @@ func (s *BSCScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
+	reportScannerProgress(s.Network(), lastScanned, maxSafe, currentBlock)
 	return scanErr
 }
 
-func (s *BSCScanner) handleLogs(ctx context.Context, logs []bscRPCLog, currentBlock int64) error {
+func (s *BSCScanner) blockTimestamp(ctx context.Context, blockNumber int64) (int64, error) {
+	return s.rpc.blockTimestamp(ctx, blockNumber)
+}
+
+// recordEVMTransferLogs turns the Transfer logs of one chunk into observed transfers.
+// BSC and Polygon differ only in which chain they ask; what an incoming USDT
+// transfer means is the same on both.
+func recordEVMTransferLogs(
+	ctx context.Context,
+	network string,
+	config setting.CryptoPaymentNetworkConfig,
+	rpc *evmRPCClient,
+	logs []bscRPCLog,
+	currentBlock int64,
+) error {
 	blockTimestamps := make(map[int64]int64)
 	for _, item := range logs {
-		transfer, err := decodeBSCTransferLog(item, s.config.Decimals)
+		transfer, err := decodeBSCTransferLog(item, config.Decimals)
 		if err != nil {
 			return err
 		}
-		if !strings.EqualFold(transfer.ToAddress, s.config.ReceiveAddress) {
+		if !strings.EqualFold(transfer.ToAddress, config.ReceiveAddress) {
 			continue
 		}
 		blockTimestamp, ok := blockTimestamps[transfer.BlockNumber]
 		if !ok {
-			blockTimestamp, err = s.blockTimestamp(ctx, transfer.BlockNumber)
+			blockTimestamp, err = rpc.blockTimestamp(ctx, transfer.BlockNumber)
 			if err != nil {
 				return err
 			}
 			blockTimestamps[transfer.BlockNumber] = blockTimestamp
 		}
-		transfer.Network = s.Network()
-		transfer.TokenContract = s.config.Contract
+		transfer.Network = network
+		transfer.TokenContract = config.Contract
 		transfer.BlockTimestamp = blockTimestamp
 		transfer.Confirmations = currentBlock - transfer.BlockNumber + 1
 		transfer.ObservedAt = time.Now()
@@ -152,95 +174,4 @@ func parseHexInt64(value string) (int64, error) {
 		return 0, err
 	}
 	return parsed, nil
-}
-
-type bscRPCRequest struct {
-	JSONRPC string        `json:"jsonrpc"`
-	ID      int           `json:"id"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
-}
-
-type bscRPCResponse struct {
-	Result interface{} `json:"result"`
-	Error  *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-type evmRPCBlock struct {
-	Timestamp string `json:"timestamp"`
-}
-
-func (s *BSCScanner) currentBlock(ctx context.Context) (int64, error) {
-	var result string
-	if err := s.rpc(ctx, "eth_blockNumber", nil, &result); err != nil {
-		return 0, err
-	}
-	return parseHexInt64(result)
-}
-
-func (s *BSCScanner) blockTimestamp(ctx context.Context, blockNumber int64) (int64, error) {
-	var block evmRPCBlock
-	if err := s.rpc(ctx, "eth_getBlockByNumber", []interface{}{fmt.Sprintf("0x%x", blockNumber), false}, &block); err != nil {
-		return 0, err
-	}
-	if strings.TrimSpace(block.Timestamp) == "" {
-		return 0, fmt.Errorf("BSC block %d response missing timestamp", blockNumber)
-	}
-	return parseHexInt64(block.Timestamp)
-}
-
-func (s *BSCScanner) getLogs(ctx context.Context, fromBlock int64, toBlock int64) ([]bscRPCLog, error) {
-	filter := map[string]interface{}{
-		"fromBlock": fmt.Sprintf("0x%x", fromBlock),
-		"toBlock":   fmt.Sprintf("0x%x", toBlock),
-		"address":   s.config.Contract,
-		"topics": []interface{}{
-			bscTransferTopic,
-			nil,
-			"0x000000000000000000000000" + strings.TrimPrefix(strings.ToLower(s.config.ReceiveAddress), "0x"),
-		},
-	}
-	var logs []bscRPCLog
-	if err := s.rpc(ctx, "eth_getLogs", []interface{}{filter}, &logs); err != nil {
-		return nil, err
-	}
-	return logs, nil
-}
-
-func (s *BSCScanner) rpc(ctx context.Context, method string, params []interface{}, out interface{}) error {
-	if params == nil {
-		params = []interface{}{}
-	}
-	payload, err := common.Marshal(bscRPCRequest{JSONRPC: "2.0", ID: 1, Method: method, Params: params})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, setting.CryptoBSCRPCURL, bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("BSC RPC HTTP status %d", resp.StatusCode)
-	}
-	var envelope bscRPCResponse
-	if err := common.DecodeJson(resp.Body, &envelope); err != nil {
-		return err
-	}
-	if envelope.Error != nil {
-		return fmt.Errorf("BSC RPC error %d: %s", envelope.Error.Code, envelope.Error.Message)
-	}
-	encoded, err := common.Marshal(envelope.Result)
-	if err != nil {
-		return err
-	}
-	return common.Unmarshal(encoded, out)
 }

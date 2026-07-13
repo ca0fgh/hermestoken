@@ -23,19 +23,30 @@ const (
 	solanaMaxSignaturePages = 20
 )
 
+// solanaMainnetGenesisHash identifies mainnet-beta. A cluster's genesis hash is the
+// only thing that tells the clusters apart from the outside — slot numbers do not,
+// and devnet's run tens of millions ahead of mainnet's, which is exactly how a
+// devnet endpoint sat in production unnoticed.
+const solanaMainnetGenesisHash = "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d"
+
 type SolanaScanner struct {
 	config setting.CryptoPaymentNetworkConfig
 	client *http.Client
+	pool   *endpointPool
 }
 
 func NewSolanaScanner(config setting.CryptoPaymentNetworkConfig) *SolanaScanner {
-	return &SolanaScanner{config: config, client: &http.Client{Timeout: 20 * time.Second}}
+	return &SolanaScanner{
+		config: config,
+		client: &http.Client{Timeout: 20 * time.Second},
+		pool:   newEndpointPool(model.CryptoNetworkSolana, setting.CryptoRPCEndpoints(model.CryptoNetworkSolana)),
+	}
 }
 
 func (s *SolanaScanner) Network() string { return model.CryptoNetworkSolana }
 
 func (s *SolanaScanner) ScanOnce(ctx context.Context) error {
-	if strings.TrimSpace(setting.CryptoSolanaRPCURL) == "" {
+	if s.pool.size() == 0 {
 		return fmt.Errorf("Solana RPC URL is not configured")
 	}
 	currentSlot, err := s.currentSlot(ctx)
@@ -74,7 +85,64 @@ func (s *SolanaScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
+	reportScannerProgress(s.Network(), lastScanned, maxSafe, currentSlot)
 	return scanErr
+}
+
+// Verify asks the endpoints which cluster they are on, and the chain whether the
+// configured mint is the token we think it is.
+func (s *SolanaScanner) Verify(ctx context.Context) setting.CryptoNetworkHealth {
+	network := s.Network()
+	endpoints := s.pool.all()
+	if len(endpoints) == 0 {
+		return healthUnknown(network, "no RPC endpoint is configured")
+	}
+
+	answered := 0
+	for _, endpoint := range endpoints {
+		var genesis string
+		if err := s.rpcAt(ctx, endpoint, "getGenesisHash", nil, &genesis); err != nil {
+			// Silence proves nothing; only an answer can disqualify an endpoint.
+			continue
+		}
+		answered++
+		if strings.TrimSpace(genesis) != solanaMainnetGenesisHash {
+			s.pool.evict(endpoint, fmt.Sprintf("its genesis hash is %s, which is not Solana mainnet-beta", strings.TrimSpace(genesis)))
+		}
+	}
+	if answered == 0 {
+		return healthUnknown(network, "no RPC endpoint answered")
+	}
+	if s.pool.size() == 0 {
+		return healthMismatch(network, "every configured RPC endpoint is on a Solana cluster other than mainnet-beta")
+	}
+
+	var account struct {
+		Value *struct {
+			Data struct {
+				Parsed struct {
+					Info struct {
+						Decimals int `json:"decimals"`
+					} `json:"info"`
+				} `json:"parsed"`
+			} `json:"data"`
+		} `json:"value"`
+	}
+	err := s.rpc(ctx, "getAccountInfo", []interface{}{
+		s.config.Contract,
+		map[string]interface{}{"encoding": "jsonParsed", "commitment": "confirmed"},
+	}, &account)
+	if err != nil {
+		return healthUnknown(network, "could not read the token mint: "+err.Error())
+	}
+	if account.Value == nil {
+		return healthMismatch(network, fmt.Sprintf(
+			"no token mint exists at %s, so no deposit on this network can ever be matched", s.config.Contract))
+	}
+	if decimals := account.Value.Data.Parsed.Info.Decimals; decimals != s.config.Decimals {
+		return healthMismatch(network, decimalsMismatchDetail(s.config.Contract, decimals, s.config.Decimals))
+	}
+	return healthOK(network)
 }
 
 // signatureAddresses returns every address whose signature history can contain an
@@ -404,6 +472,15 @@ func (s *SolanaScanner) getTransaction(ctx context.Context, signature string) (s
 }
 
 func (s *SolanaScanner) rpc(ctx context.Context, method string, params []interface{}, out interface{}) error {
+	return s.pool.do(func(endpoint string) error {
+		return s.rpcAt(ctx, endpoint, method, params, out)
+	})
+}
+
+// rpcAt pins the request to one endpoint. Preflight needs this: "which cluster is
+// this endpoint on" is a question about a specific provider, and failing over
+// mid-question would answer it about a different one.
+func (s *SolanaScanner) rpcAt(ctx context.Context, endpoint string, method string, params []interface{}, out interface{}) error {
 	if params == nil {
 		params = []interface{}{}
 	}
@@ -411,18 +488,18 @@ func (s *SolanaScanner) rpc(ctx context.Context, method string, params []interfa
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, setting.CryptoSolanaRPCURL, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return endpointUnavailable(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Solana RPC HTTP status %d", resp.StatusCode)
+		return endpointUnavailable(fmt.Errorf("Solana RPC HTTP status %d", resp.StatusCode))
 	}
 	var envelope solanaRPCResponse
 	if err := common.DecodeJson(resp.Body, &envelope); err != nil {

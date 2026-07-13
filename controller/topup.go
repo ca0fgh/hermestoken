@@ -110,12 +110,12 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_topup":                  enableWaffo,
 		"enable_waffo_pancake_topup":          enableWaffoPancake,
 		"enable_waffo_pancake_subscription":   enableWaffoPancakeSubscription,
-		"enable_crypto_usdt_topup":            setting.CryptoPaymentEnabled && len(setting.GetEnabledCryptoPaymentNetworks()) > 0,
+		"enable_crypto_usdt_topup":            setting.CryptoPaymentEnabled && len(setting.GetPayableCryptoPaymentNetworks()) > 0,
 		"enable_redemption":                   complianceConfirmed,
 		"payment_compliance_confirmed":        complianceConfirmed,
 		"payment_compliance_terms_version":    operation_setting.CurrentComplianceTermsVersion,
 		"subscription_plan_open_to_all_users": model.IsSubscriptionPlanOpenToAllUsersEnabled(),
-		"crypto_networks":                     setting.GetEnabledCryptoPaymentNetworks(),
+		"crypto_networks":                     setting.GetPayableCryptoPaymentNetworks(),
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
