@@ -28,8 +28,8 @@ type ChainVerifier interface {
 // cluster without anything here restarting.
 const preflightInterval = 5 * time.Minute
 
-func healthOK(network string) setting.CryptoNetworkHealth {
-	return setting.CryptoNetworkHealth{Network: network, Verdict: setting.CryptoNetworkHealthOK, CheckedAt: time.Now()}
+func healthOK(network string, detail string) setting.CryptoNetworkHealth {
+	return setting.CryptoNetworkHealth{Network: network, Verdict: setting.CryptoNetworkHealthOK, Detail: detail, CheckedAt: time.Now()}
 }
 
 func healthMismatch(network string, detail string) setting.CryptoNetworkHealth {
@@ -42,30 +42,36 @@ func healthUnknown(network string, detail string) setting.CryptoNetworkHealth {
 
 // runPreflight checks one network and publishes the verdict, which is what decides
 // whether users are still offered this network to pay on.
+//
+// Every verdict is logged the first time it is reached, including a clean one, and
+// then not repeated until it changes. A passing check that says nothing is the very
+// failure mode this whole file exists to end: it leaves "all four chains verified"
+// and "the check never ran" looking exactly alike.
 func runPreflight(ctx context.Context, scanner NetworkScanner) {
 	verifier, ok := scanner.(ChainVerifier)
 	if !ok {
 		return
 	}
 	network := scanner.Network()
-	previous := setting.CryptoNetworkIsPayable(network)
+	previous := setting.GetCryptoNetworkHealthOf(network)
 	health := verifier.Verify(ctx)
 	setting.SetCryptoNetworkHealth(health)
+	if health.Verdict == previous.Verdict && health.Detail == previous.Detail {
+		return
+	}
 
 	switch health.Verdict {
 	case setting.CryptoNetworkHealthMismatch:
 		message := fmt.Sprintf("crypto payment network %s is misconfigured and has been withdrawn from checkout: %s", network, health.Detail)
 		common.SysLog(message)
-		if previous {
-			// The admin log is the only channel an operator actually reads. A network
-			// that stops being able to take money must not be discoverable only by
-			// grepping the container's stdout.
-			model.RecordLog(0, model.LogTypeSystem, message)
-		}
+		// The admin log is the only channel an operator actually reads. A network that
+		// can no longer take money must not be discoverable only by grepping stdout.
+		model.RecordLog(0, model.LogTypeSystem, message)
 	case setting.CryptoNetworkHealthUnknown:
-		common.SysLog(fmt.Sprintf("crypto payment network %s could not be verified, leaving it open: %s", network, health.Detail))
+		common.SysLog(fmt.Sprintf("crypto payment network %s could not be verified, leaving it open for payment: %s", network, health.Detail))
 	default:
-		if !previous {
+		common.SysLog(fmt.Sprintf("crypto payment network %s verified: %s", network, health.Detail))
+		if previous.Verdict == setting.CryptoNetworkHealthMismatch {
 			message := fmt.Sprintf("crypto payment network %s passed verification and is available for checkout again", network)
 			common.SysLog(message)
 			model.RecordLog(0, model.LogTypeSystem, message)
@@ -122,12 +128,12 @@ func verifyEVMNetwork(
 	if err != nil {
 		// Only a contradiction disqualifies a network. An unanswered question is not one.
 		common.SysLog(fmt.Sprintf("crypto payment network %s: could not read token decimals (%s), continuing", network, err.Error()))
-		return healthOK(network)
+		return healthOK(network, fmt.Sprintf("chain id %d, contract %s is deployed (its decimals could not be read)", expectedChainID, config.Contract))
 	}
 	if decimals != config.Decimals {
 		return healthMismatch(network, decimalsMismatchDetail(config.Contract, decimals, config.Decimals))
 	}
-	return healthOK(network)
+	return healthOK(network, fmt.Sprintf("chain id %d, token %s carries the configured %d decimals", expectedChainID, config.Contract, decimals))
 }
 
 // decimalsMismatchDetail spells out the consequence, because the number itself does

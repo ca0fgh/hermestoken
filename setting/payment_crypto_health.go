@@ -46,6 +46,14 @@ func SetCryptoNetworkHealth(health CryptoNetworkHealth) {
 	cryptoNetworkHealth[health.Network] = health
 }
 
+// GetCryptoNetworkHealthOf returns the last verdict for one network, or the zero
+// value when it has never been checked.
+func GetCryptoNetworkHealthOf(network string) CryptoNetworkHealth {
+	cryptoNetworkHealthMutex.RLock()
+	defer cryptoNetworkHealthMutex.RUnlock()
+	return cryptoNetworkHealth[network]
+}
+
 func GetCryptoNetworkHealth() []CryptoNetworkHealth {
 	cryptoNetworkHealthMutex.RLock()
 	defer cryptoNetworkHealthMutex.RUnlock()

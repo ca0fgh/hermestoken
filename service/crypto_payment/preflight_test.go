@@ -69,6 +69,13 @@ func TestPreflightAcceptsAChainThatMatchesItsConfiguration(t *testing.T) {
 
 	assert.Equal(t, setting.CryptoNetworkHealthOK, health.Verdict)
 	assert.Equal(t, 1, rpc.pool.size())
+	// A passing verdict has to say what it proved, because runPreflight logs it. A
+	// silent pass would leave "all four chains verified" and "the check never ran"
+	// looking identical in the logs, which is the exact failure this file exists to
+	// end — and I shipped it that way once before catching it in production.
+	assert.Contains(t, health.Detail, "chain id 56")
+	assert.Contains(t, health.Detail, bscTestConfig(18).Contract)
+	assert.Contains(t, health.Detail, "18 decimals")
 }
 
 // The TRON contract shipped to production was deployed on no chain at all. A

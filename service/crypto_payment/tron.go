@@ -315,12 +315,12 @@ func (s *TronScanner) Verify(ctx context.Context) setting.CryptoNetworkHealth {
 	if err != nil {
 		// Only a contradiction disqualifies a network. An unanswered question is not one.
 		common.SysLog(fmt.Sprintf("crypto payment network %s: could not read token decimals (%s), continuing", network, err.Error()))
-		return healthOK(network)
+		return healthOK(network, fmt.Sprintf("contract %s is deployed (its decimals could not be read)", s.config.Contract))
 	}
 	if decimals != s.config.Decimals {
 		return healthMismatch(network, decimalsMismatchDetail(s.config.Contract, decimals, s.config.Decimals))
 	}
-	return healthOK(network)
+	return healthOK(network, fmt.Sprintf("contract %s is deployed and carries the configured %d decimals", s.config.Contract, decimals))
 }
 
 // tokenDecimals calls decimals() on the TRC-20 contract. triggerconstantcontract

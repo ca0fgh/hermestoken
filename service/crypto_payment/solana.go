@@ -142,7 +142,7 @@ func (s *SolanaScanner) Verify(ctx context.Context) setting.CryptoNetworkHealth 
 	if decimals := account.Value.Data.Parsed.Info.Decimals; decimals != s.config.Decimals {
 		return healthMismatch(network, decimalsMismatchDetail(s.config.Contract, decimals, s.config.Decimals))
 	}
-	return healthOK(network)
+	return healthOK(network, fmt.Sprintf("mainnet-beta, mint %s carries the configured %d decimals", s.config.Contract, s.config.Decimals))
 }
 
 // signatureAddresses returns every address whose signature history can contain an
