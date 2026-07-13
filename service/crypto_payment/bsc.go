@@ -20,10 +20,18 @@ const bscTransferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f5
 type BSCScanner struct {
 	config setting.CryptoPaymentNetworkConfig
 	client *http.Client
+	// See PolygonScanner.blockSpan. BSC's RPC currently serves the full opening
+	// span, so this never shrinks in practice — but it is the same code shape
+	// that silently killed Polygon, and a provider's cap is not ours to assume.
+	blockSpan int64
 }
 
 func NewBSCScanner(config setting.CryptoPaymentNetworkConfig) *BSCScanner {
-	return &BSCScanner{config: config, client: &http.Client{Timeout: 15 * time.Second}}
+	return &BSCScanner{
+		config:    config,
+		client:    &http.Client{Timeout: 15 * time.Second},
+		blockSpan: evmMaxBlockSpan,
+	}
 }
 
 func (s *BSCScanner) Network() string { return model.CryptoNetworkBSCERC20 }
@@ -44,18 +52,24 @@ func (s *BSCScanner) ScanOnce(ctx context.Context) error {
 	if fromBlock < 0 {
 		fromBlock = 0
 	}
-	toBlock := fromBlock + 500
 	maxSafe := currentBlock - int64(s.config.Confirmations) + 1
-	if toBlock > maxSafe {
-		toBlock = maxSafe
-	}
-	if toBlock < fromBlock {
+	if maxSafe < fromBlock {
 		return nil
 	}
-	logs, err := s.getLogs(ctx, fromBlock, toBlock)
-	if err != nil {
-		return err
+	lastScanned, scanErr := scanEVMRange(ctx, &s.blockSpan, fromBlock, maxSafe, s.getLogs,
+		func(logs []bscRPCLog) error {
+			return s.handleLogs(ctx, logs, currentBlock)
+		},
+	)
+	if lastScanned >= fromBlock {
+		if err := model.UpsertCryptoScannerState(s.Network(), lastScanned, maxSafe); err != nil {
+			return err
+		}
 	}
+	return scanErr
+}
+
+func (s *BSCScanner) handleLogs(ctx context.Context, logs []bscRPCLog, currentBlock int64) error {
 	blockTimestamps := make(map[int64]int64)
 	for _, item := range logs {
 		transfer, err := decodeBSCTransferLog(item, s.config.Decimals)
@@ -82,7 +96,7 @@ func (s *BSCScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
-	return model.UpsertCryptoScannerState(s.Network(), toBlock, maxSafe)
+	return nil
 }
 
 type bscRPCLog struct {

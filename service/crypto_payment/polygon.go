@@ -16,10 +16,19 @@ import (
 type PolygonScanner struct {
 	config setting.CryptoPaymentNetworkConfig
 	client *http.Client
+	// Negotiated down against the RPC provider on the first "range too large"
+	// rejection and reused from then on. Ankr's Polygon endpoint serves at most
+	// 100 blocks per eth_getLogs, while its BSC endpoint — same key, same vendor
+	// — happily serves 500, so this cannot be a shared constant.
+	blockSpan int64
 }
 
 func NewPolygonScanner(config setting.CryptoPaymentNetworkConfig) *PolygonScanner {
-	return &PolygonScanner{config: config, client: &http.Client{Timeout: 15 * time.Second}}
+	return &PolygonScanner{
+		config:    config,
+		client:    &http.Client{Timeout: 15 * time.Second},
+		blockSpan: evmMaxBlockSpan,
+	}
 }
 
 func (s *PolygonScanner) Network() string { return model.CryptoNetworkPolygonPOS }
@@ -40,18 +49,27 @@ func (s *PolygonScanner) ScanOnce(ctx context.Context) error {
 	if fromBlock < 0 {
 		fromBlock = 0
 	}
-	toBlock := fromBlock + 500
 	maxSafe := currentBlock - int64(s.config.Confirmations) + 1
-	if toBlock > maxSafe {
-		toBlock = maxSafe
-	}
-	if toBlock < fromBlock {
+	if maxSafe < fromBlock {
 		return nil
 	}
-	logs, err := s.getLogs(ctx, fromBlock, toBlock)
-	if err != nil {
-		return err
+	lastScanned, scanErr := scanEVMRange(ctx, &s.blockSpan, fromBlock, maxSafe, s.getLogs,
+		func(logs []bscRPCLog) error {
+			return s.handleLogs(ctx, logs, currentBlock)
+		},
+	)
+	// Persist before surfacing scanErr: progress made ahead of a failing chunk is
+	// still progress, and dropping it is what turned one bad request into a
+	// two-month stall.
+	if lastScanned >= fromBlock {
+		if err := model.UpsertCryptoScannerState(s.Network(), lastScanned, maxSafe); err != nil {
+			return err
+		}
 	}
+	return scanErr
+}
+
+func (s *PolygonScanner) handleLogs(ctx context.Context, logs []bscRPCLog, currentBlock int64) error {
 	blockTimestamps := make(map[int64]int64)
 	for _, item := range logs {
 		transfer, err := decodeBSCTransferLog(item, s.config.Decimals)
@@ -78,7 +96,7 @@ func (s *PolygonScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
-	return model.UpsertCryptoScannerState(s.Network(), toBlock, maxSafe)
+	return nil
 }
 
 func (s *PolygonScanner) currentBlock(ctx context.Context) (int64, error) {
