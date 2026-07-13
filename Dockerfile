@@ -41,8 +41,11 @@ RUN set -eux; \
       app_dir="$1"; \
       out_dir="$2"; \
       version="$(resolve_version)"; \
+      app_name="${app_dir#web/}"; \
+      cd /build/web; \
+      rm -rf node_modules default/node_modules classic/node_modules "$app_name/dist"; \
+      bun install --filter "./$app_name" --frozen-lockfile --registry "${NPM_REGISTRY}"; \
       cd "/build/$app_dir"; \
-      bun install --frozen-lockfile --registry "${NPM_REGISTRY}"; \
       DISABLE_ESLINT_PLUGIN='true' NODE_OPTIONS="${WEB_BUILD_NODE_OPTIONS}" VITE_REACT_APP_VERSION="$version" bun run build; \
       mkdir -p "$out_dir"; \
       cp -R dist/. "$out_dir/"; \

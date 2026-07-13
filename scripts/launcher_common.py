@@ -431,11 +431,23 @@ def prepare_frontend_dist_for_docker_packaging(
 
     for app_dir in frontend_app_dirs:
         output.write(f"[info] Building frontend app: {app_dir.relative_to(repo_root).as_posix()}\n")
+        # web/ is a Bun workspace whose two apps cannot share one hoisted tree: installing
+        # web/default lifts date-fns 4 and React 19 to the workspace root, which breaks
+        # web/classic, because date-fns-tz@1 deep-imports date-fns 2 internals and the second
+        # React instance leaves the hook dispatcher null. Install one app at a time with
+        # --filter, and wipe the tree in between, because a filter pass only rewrites the
+        # hoisted root and leaves the previous app's nested copies behind.
+        for stale_dir in (
+            web_dir / "node_modules",
+            *(other_app_dir / "node_modules" for other_app_dir in frontend_app_dirs),
+            app_dir / "dist",
+        ):
+            shutil.rmtree(stale_dir, ignore_errors=True)
         run_command(
-            ["bun", "install"],
+            ["bun", "install", "--filter", f"./{app_dir.name}", "--frozen-lockfile"],
             check=True,
             stream_output=True,
-            cwd=app_dir,
+            cwd=web_dir,
             stdout_stream=output,
         )
         run_command(
