@@ -1,8 +1,10 @@
 package crypto_payment
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -14,18 +16,58 @@ import (
 	"github.com/ca0fgh/hermestoken/setting"
 )
 
+const (
+	// TRON reports log topics without the 0x prefix; normalizeTronHex strips it
+	// either way so this constant compares against both shapes.
+	tronTransferTopic = "ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+	// A scanner that is days behind must not ask TronGrid for a months-wide
+	// timestamp window in a single request; it walks forward in bounded steps
+	// instead, resuming from the cursor on the next tick.
+	tronMaxBlockSpan = 3000
+	tronPageLimit    = 200
+	// Deposits to one receive address inside a tronMaxBlockSpan window (~2.5h)
+	// cannot plausibly fill this many pages. Hitting the cap means the window was
+	// truncated, which must surface as an error rather than silently drop the
+	// remainder — silent truncation past a cursor is an unrecoverable lost deposit.
+	tronMaxPages = 25
+)
+
 type TronScanner struct {
 	config setting.CryptoPaymentNetworkConfig
 	client *http.Client
+	// The configured base58 addresses, pre-decoded to the bare hex a node reports.
+	// Comparing hex to hex keeps base58's case-sensitivity out of the hot path.
+	contractHex string
+	receiveHex  string
+	configErr   error
 }
 
 func NewTronScanner(config setting.CryptoPaymentNetworkConfig) *TronScanner {
-	return &TronScanner{config: config, client: &http.Client{Timeout: 15 * time.Second}}
+	scanner := &TronScanner{
+		config: config,
+		client: &http.Client{Timeout: 20 * time.Second},
+	}
+	contractHex, err := tronHexFromAddress(config.Contract)
+	if err != nil {
+		scanner.configErr = fmt.Errorf("invalid TRON token contract %q: %w", config.Contract, err)
+		return scanner
+	}
+	receiveHex, err := tronHexFromAddress(config.ReceiveAddress)
+	if err != nil {
+		scanner.configErr = fmt.Errorf("invalid TRON receive address %q: %w", config.ReceiveAddress, err)
+		return scanner
+	}
+	scanner.contractHex = contractHex
+	scanner.receiveHex = receiveHex
+	return scanner
 }
 
 func (s *TronScanner) Network() string { return model.CryptoNetworkTronTRC20 }
 
 func (s *TronScanner) ScanOnce(ctx context.Context) error {
+	if s.configErr != nil {
+		return s.configErr
+	}
 	if strings.TrimSpace(setting.CryptoTronRPCURL) == "" {
 		return fmt.Errorf("TRON RPC URL is not configured")
 	}
@@ -38,87 +80,208 @@ func (s *TronScanner) ScanOnce(ctx context.Context) error {
 	if err == nil && state.LastScannedBlock > 0 {
 		fromBlock = state.LastScannedBlock + 1
 	}
-	if fromBlock < 0 {
-		fromBlock = 0
+	if fromBlock < 1 {
+		fromBlock = 1
 	}
-	toBlock := fromBlock + 200
 	maxSafe := currentBlock - int64(s.config.Confirmations) + 1
-	if toBlock > maxSafe {
-		toBlock = maxSafe
-	}
-	if toBlock < fromBlock {
+	if maxSafe < fromBlock {
 		return nil
 	}
-	events, err := s.getTransferEvents(ctx, fromBlock, toBlock)
+	if maxSafe-fromBlock+1 > tronMaxBlockSpan {
+		maxSafe = fromBlock + tronMaxBlockSpan - 1
+	}
+
+	fromTimestamp, err := s.blockTimestamp(ctx, fromBlock)
 	if err != nil {
 		return err
 	}
-	for _, event := range events {
-		transfer, err := decodeTronTransferEvent(event, s.config.Decimals)
-		if err != nil {
+	toTimestamp, err := s.blockTimestamp(ctx, maxSafe)
+	if err != nil {
+		return err
+	}
+
+	txIDs, err := s.discoverIncomingTransfers(ctx, fromTimestamp, toTimestamp)
+	if err != nil {
+		return err
+	}
+
+	lastScanned, scanErr := s.recordTransactions(ctx, txIDs, fromBlock, maxSafe, currentBlock)
+	// Persist before surfacing scanErr. Progress made ahead of a failing request is
+	// still progress, and discarding it is what pinned the Polygon scanner to one
+	// doomed request for two months.
+	if lastScanned >= fromBlock {
+		if err := model.UpsertCryptoScannerState(s.Network(), lastScanned, maxSafe); err != nil {
 			return err
 		}
-		if !strings.EqualFold(transfer.ToAddress, s.config.ReceiveAddress) {
+	}
+	return scanErr
+}
+
+// recordTransactions walks the candidate transactions in chronological order and
+// returns the highest block it fully covered. Because discovery queried the whole
+// window by address, a block with no candidate has no transfer in it — so every
+// block below the transaction being worked on is genuinely done.
+func (s *TronScanner) recordTransactions(ctx context.Context, txIDs []string, fromBlock int64, maxSafe int64, currentBlock int64) (int64, error) {
+	lastScanned := fromBlock - 1
+	for _, txID := range txIDs {
+		info, err := s.transactionInfo(ctx, txID)
+		if err != nil {
+			return lastScanned, err
+		}
+		if info.BlockNumber < fromBlock || info.BlockNumber > maxSafe {
 			continue
 		}
-		transfer.Network = s.Network()
-		transfer.TokenContract = s.config.Contract
-		transfer.Confirmations = currentBlock - transfer.BlockNumber + 1
-		transfer.ObservedAt = time.Now()
-		if _, _, err := model.RecordCryptoTransfer(transfer); err != nil {
-			return err
+		for _, transfer := range s.decodeIncomingTransfers(txID, info, currentBlock) {
+			if _, _, err := model.RecordCryptoTransfer(transfer); err != nil {
+				return lastScanned, err
+			}
+		}
+		// Only blocks strictly below this one are provably complete: another
+		// candidate may share this block. Re-scanning a block is free — the
+		// transfer table is keyed on (network, tx_hash, log_index).
+		if info.BlockNumber-1 > lastScanned {
+			lastScanned = info.BlockNumber - 1
 		}
 	}
-	return model.UpsertCryptoScannerState(s.Network(), toBlock, maxSafe)
+	return maxSafe, nil
 }
 
-type tronGridEventResponse struct {
-	Data []tronGridEvent `json:"data"`
-}
-
-type tronGridEvent struct {
-	TransactionID  string            `json:"transaction_id"`
-	BlockNumber    int64             `json:"block_number"`
-	BlockTimestamp int64             `json:"block_timestamp"`
-	EventIndex     int               `json:"event_index"`
-	Result         map[string]string `json:"result"`
-}
-
-func decodeTronTransferEvent(event tronGridEvent, decimals int) (model.CryptoObservedTransfer, error) {
-	value := strings.TrimSpace(event.Result["value"])
-	if value == "" {
-		return model.CryptoObservedTransfer{}, fmt.Errorf("missing TRON transfer value")
+func (s *TronScanner) decodeIncomingTransfers(txID string, info tronTransactionInfo, currentBlock int64) []model.CryptoObservedTransfer {
+	transfers := make([]model.CryptoObservedTransfer, 0, 1)
+	for index, entry := range info.Log {
+		if normalizeTronHex(entry.Address) != s.contractHex {
+			continue
+		}
+		if len(entry.Topics) < 3 || normalizeTronHex(entry.Topics[0]) != tronTransferTopic {
+			continue
+		}
+		if tronTopicToHex(entry.Topics[2]) != s.receiveHex {
+			continue
+		}
+		amount := new(big.Int)
+		if _, ok := amount.SetString(normalizeTronHex(entry.Data), 16); !ok {
+			// A real Transfer always carries a parseable amount. Skipping a log we
+			// cannot read keeps one malformed event from wedging the cursor forever,
+			// but it must never be silent — a dropped deposit has to be findable.
+			common.SysLog(fmt.Sprintf("crypto scanner skipped unreadable TRON transfer log: tx=%s index=%d data=%q", txID, index, entry.Data))
+			continue
+		}
+		fromAddress, err := tronAddressFromHex(tronTopicToHex(entry.Topics[1]))
+		if err != nil {
+			fromAddress = ""
+		}
+		transfers = append(transfers, model.CryptoObservedTransfer{
+			Network:         s.Network(),
+			TxHash:          txID,
+			LogIndex:        index,
+			BlockNumber:     info.BlockNumber,
+			BlockTimestamp:  info.BlockTimeStamp / 1000,
+			FromAddress:     fromAddress,
+			ToAddress:       s.config.ReceiveAddress,
+			TokenContract:   s.config.Contract,
+			TokenDecimals:   s.config.Decimals,
+			AmountBaseUnits: amount.String(),
+			Confirmations:   currentBlock - info.BlockNumber + 1,
+			ObservedAt:      time.Now(),
+		})
 	}
-	return model.CryptoObservedTransfer{
-		TxHash:          event.TransactionID,
-		LogIndex:        event.EventIndex,
-		BlockNumber:     event.BlockNumber,
-		BlockTimestamp:  event.BlockTimestamp / 1000,
-		FromAddress:     strings.TrimSpace(event.Result["from"]),
-		ToAddress:       strings.TrimSpace(event.Result["to"]),
-		TokenDecimals:   decimals,
-		AmountBaseUnits: value,
-	}, nil
+	return transfers
+}
+
+// discoverIncomingTransfers asks TronGrid for the transfers of one token to one
+// address. The previous implementation asked for every Transfer event emitted by
+// the USDT contract and filtered client-side — on the busiest token contract in
+// existence that page is truncated at its limit, and the cursor advanced past the
+// dropped remainder anyway.
+func (s *TronScanner) discoverIncomingTransfers(ctx context.Context, fromTimestamp int64, toTimestamp int64) ([]string, error) {
+	endpoint, err := url.Parse(s.apiBase() + "/v1/accounts/" + url.PathEscape(s.config.ReceiveAddress) + "/transactions/trc20")
+	if err != nil {
+		return nil, err
+	}
+	query := endpoint.Query()
+	query.Set("contract_address", s.config.Contract)
+	query.Set("only_confirmed", "true")
+	query.Set("limit", strconv.Itoa(tronPageLimit))
+	query.Set("order_by", "block_timestamp,asc")
+	query.Set("min_timestamp", strconv.FormatInt(fromTimestamp, 10))
+	query.Set("max_timestamp", strconv.FormatInt(toTimestamp, 10))
+
+	seen := make(map[string]bool)
+	txIDs := make([]string, 0, 8)
+	fingerprint := ""
+	for page := 0; page < tronMaxPages; page++ {
+		if fingerprint != "" {
+			query.Set("fingerprint", fingerprint)
+		}
+		endpoint.RawQuery = query.Encode()
+
+		var payload tronTRC20Response
+		if err := s.getJSON(ctx, endpoint.String(), &payload); err != nil {
+			return nil, err
+		}
+		for _, row := range payload.Data {
+			// base58 is case-sensitive; an EqualFold here would accept a different
+			// address entirely.
+			if strings.TrimSpace(row.To) != strings.TrimSpace(s.config.ReceiveAddress) {
+				continue
+			}
+			if !strings.EqualFold(strings.TrimSpace(row.TokenInfo.Address), strings.TrimSpace(s.config.Contract)) {
+				continue
+			}
+			txID := strings.TrimSpace(row.TransactionID)
+			if txID == "" || seen[txID] {
+				continue
+			}
+			seen[txID] = true
+			txIDs = append(txIDs, txID)
+		}
+		fingerprint = strings.TrimSpace(payload.Meta.Fingerprint)
+		if fingerprint == "" || len(payload.Data) == 0 {
+			return txIDs, nil
+		}
+	}
+	return nil, fmt.Errorf("TRON transfer discovery exceeded %d pages for blocks in [%d, %d]", tronMaxPages, fromTimestamp, toTimestamp)
+}
+
+type tronTRC20Response struct {
+	Data []tronTRC20Transfer `json:"data"`
+	Meta struct {
+		Fingerprint string `json:"fingerprint"`
+	} `json:"meta"`
+}
+
+type tronTRC20Transfer struct {
+	TransactionID  string `json:"transaction_id"`
+	BlockTimestamp int64  `json:"block_timestamp"`
+	From           string `json:"from"`
+	To             string `json:"to"`
+	Type           string `json:"type"`
+	Value          string `json:"value"`
+	TokenInfo      struct {
+		Address  string `json:"address"`
+		Decimals int    `json:"decimals"`
+		Symbol   string `json:"symbol"`
+	} `json:"token_info"`
+}
+
+type tronTransactionInfo struct {
+	ID             string            `json:"id"`
+	BlockNumber    int64             `json:"blockNumber"`
+	BlockTimeStamp int64             `json:"blockTimeStamp"`
+	Log            []tronContractLog `json:"log"`
+}
+
+type tronContractLog struct {
+	Address string   `json:"address"`
+	Topics  []string `json:"topics"`
+	Data    string   `json:"data"`
+}
+
+func (s *TronScanner) apiBase() string {
+	return strings.TrimRight(strings.TrimSpace(setting.CryptoTronRPCURL), "/")
 }
 
 func (s *TronScanner) currentBlock(ctx context.Context) (int64, error) {
-	endpoint := strings.TrimRight(setting.CryptoTronRPCURL, "/") + "/wallet/getnowblock"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader("{}"))
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if setting.CryptoTronAPIKey != "" {
-		req.Header.Set("TRON-PRO-API-KEY", setting.CryptoTronAPIKey)
-	}
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return 0, fmt.Errorf("TRON RPC HTTP status %d", resp.StatusCode)
-	}
 	var payload struct {
 		BlockHeader struct {
 			RawData struct {
@@ -126,7 +289,7 @@ func (s *TronScanner) currentBlock(ctx context.Context) (int64, error) {
 			} `json:"raw_data"`
 		} `json:"block_header"`
 	}
-	if err := common.DecodeJson(resp.Body, &payload); err != nil {
+	if err := s.postJSON(ctx, "/wallet/getnowblock", map[string]interface{}{}, &payload); err != nil {
 		return 0, err
 	}
 	if payload.BlockHeader.RawData.Number <= 0 {
@@ -135,47 +298,66 @@ func (s *TronScanner) currentBlock(ctx context.Context) (int64, error) {
 	return payload.BlockHeader.RawData.Number, nil
 }
 
-func (s *TronScanner) getTransferEvents(ctx context.Context, fromBlock int64, toBlock int64) ([]tronGridEvent, error) {
-	base := strings.TrimRight(setting.CryptoTronRPCURL, "/")
-	if !strings.Contains(base, "/v1/") {
-		base = "https://api.trongrid.io"
+func (s *TronScanner) blockTimestamp(ctx context.Context, blockNumber int64) (int64, error) {
+	var payload struct {
+		BlockHeader struct {
+			RawData struct {
+				Timestamp int64 `json:"timestamp"`
+			} `json:"raw_data"`
+		} `json:"block_header"`
 	}
-	endpoint, err := url.Parse(base + "/v1/contracts/" + url.PathEscape(s.config.Contract) + "/events")
+	if err := s.postJSON(ctx, "/wallet/getblockbynum", map[string]interface{}{"num": blockNumber}, &payload); err != nil {
+		return 0, err
+	}
+	if payload.BlockHeader.RawData.Timestamp <= 0 {
+		return 0, fmt.Errorf("TRON block %d response missing timestamp", blockNumber)
+	}
+	return payload.BlockHeader.RawData.Timestamp, nil
+}
+
+func (s *TronScanner) transactionInfo(ctx context.Context, txID string) (tronTransactionInfo, error) {
+	var info tronTransactionInfo
+	if err := s.postJSON(ctx, "/wallet/gettransactioninfobyid", map[string]interface{}{"value": txID}, &info); err != nil {
+		return tronTransactionInfo{}, err
+	}
+	if info.BlockNumber <= 0 {
+		return tronTransactionInfo{}, fmt.Errorf("TRON transaction %s has no block number", txID)
+	}
+	return info, nil
+}
+
+func (s *TronScanner) postJSON(ctx context.Context, path string, body map[string]interface{}, out interface{}) error {
+	payload, err := common.Marshal(body)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	query := endpoint.Query()
-	query.Set("event_name", "Transfer")
-	query.Set("only_confirmed", "false")
-	query.Set("limit", "200")
-	query.Set("order_by", "block_timestamp,asc")
-	query.Set("min_block_number", strconv.FormatInt(fromBlock, 10))
-	query.Set("max_block_number", strconv.FormatInt(toBlock, 10))
-	endpoint.RawQuery = query.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.apiBase()+path, bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
+	return s.do(req, out)
+}
+
+func (s *TronScanner) getJSON(ctx context.Context, endpoint string, out interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	return s.do(req, out)
+}
+
+func (s *TronScanner) do(req *http.Request, out interface{}) error {
 	if setting.CryptoTronAPIKey != "" {
 		req.Header.Set("TRON-PRO-API-KEY", setting.CryptoTronAPIKey)
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("TRON event HTTP status %d", resp.StatusCode)
+		return fmt.Errorf("TRON API HTTP status %d for %s", resp.StatusCode, req.URL.Path)
 	}
-	var payload tronGridEventResponse
-	if err := common.DecodeJson(resp.Body, &payload); err != nil {
-		return nil, err
-	}
-	filtered := make([]tronGridEvent, 0, len(payload.Data))
-	for _, event := range payload.Data {
-		if event.BlockNumber >= fromBlock && event.BlockNumber <= toBlock {
-			filtered = append(filtered, event)
-		}
-	}
-	return filtered, nil
+	return common.DecodeJson(resp.Body, out)
 }

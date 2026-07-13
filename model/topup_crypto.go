@@ -280,6 +280,25 @@ func GetCryptoOrderConfirmations(orderID int) int64 {
 	return tx.Confirmations
 }
 
+// ExpireStaleCryptoPaymentOrders closes the window on orders nobody came back to.
+//
+// Expiry used to happen only when the payer themselves reopened the order, so an
+// order they abandoned stayed "pending" forever: 20 of the 21 orders ever created
+// were still pending months after their ten-minute window closed, which hides the
+// real state of the payment queue from whoever is watching it.
+//
+// This does not change what a late payment matches: RecordCryptoTransfer already
+// considers both pending and expired orders, and matches on the block timestamp,
+// so a payment made inside the window still settles even if the row was swept
+// before the chain confirmed it.
+func ExpireStaleCryptoPaymentOrders(network string, now time.Time) (int64, error) {
+	result := DB.Model(&CryptoPaymentOrder{}).
+		Where("network = ? AND status = ? AND expires_at > 0 AND expires_at < ?",
+			NormalizeCryptoNetwork(network), CryptoPaymentStatusPending, now.Unix()).
+		Updates(map[string]any{"status": CryptoPaymentStatusExpired, "update_time": now.Unix()})
+	return result.RowsAffected, result.Error
+}
+
 func ExpireCryptoPaymentOrderIfNeeded(order *CryptoPaymentOrder, now time.Time) (*CryptoPaymentOrder, error) {
 	if order == nil || order.Status != CryptoPaymentStatusPending || !order.IsExpired(now) {
 		return order, nil
@@ -464,6 +483,7 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 	}
 	var savedTx CryptoPaymentTransaction
 	var matchedOrder *CryptoPaymentOrder
+	var ambiguousOrderIDs []int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		txRecord := CryptoPaymentTransaction{
 			Network:         NormalizeCryptoNetwork(transfer.Network),
@@ -534,10 +554,12 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 			savedTx.MatchedOrderId = order.Id
 			matchedOrder = &order
 		case len(orders) > 1:
+			ambiguousOrderIDs = nil
 			for _, order := range orders {
 				if err := tx.Model(&CryptoPaymentOrder{}).Where("id = ?", order.Id).Updates(map[string]any{"status": CryptoPaymentStatusAmbiguous, "update_time": transfer.ObservedAt.Unix()}).Error; err != nil {
 					return err
 				}
+				ambiguousOrderIDs = append(ambiguousOrderIDs, order.Id)
 			}
 		default:
 			var expired CryptoPaymentOrder
@@ -567,6 +589,23 @@ func RecordCryptoTransfer(transfer CryptoObservedTransfer) (*CryptoPaymentTransa
 	})
 	if err != nil {
 		return nil, nil, err
+	}
+	// Money has landed on-chain in both of these states and nothing will credit it:
+	// CompleteReadyCryptoOrders only settles "detected" and "confirmed" orders, so a
+	// late or ambiguous payment sits there until a human settles it by hand via
+	// AdminCompleteCryptoTopUp. Neither used to leave any trace at all, which is the
+	// worst possible way to lose a user's deposit — silently.
+	if matchedOrder != nil && matchedOrder.Status == CryptoPaymentStatusLatePaid {
+		common.SysLog(fmt.Sprintf(
+			"crypto payment needs manual settlement: order %s was paid after it expired (network=%s tx=%s amount=%s)",
+			matchedOrder.TradeNo, matchedOrder.Network, savedTx.TxHash, matchedOrder.PayAmount))
+		RecordLog(matchedOrder.UserId, LogTypeSystem, fmt.Sprintf(
+			"USDT充值到账但订单已超时，需要人工补单，订单: %s，交易: %s", matchedOrder.TradeNo, savedTx.TxHash))
+	}
+	if len(ambiguousOrderIDs) > 0 {
+		common.SysLog(fmt.Sprintf(
+			"crypto payment needs manual settlement: transfer %s on %s matches %d open orders at the same amount %s",
+			savedTx.TxHash, savedTx.Network, len(ambiguousOrderIDs), savedTx.AmountBaseUnits))
 	}
 	return &savedTx, matchedOrder, nil
 }

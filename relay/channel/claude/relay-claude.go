@@ -735,6 +735,14 @@ func shouldContinuePseudoClaudeErrorProbe(text string) bool {
 	return utf8.RuneCountInString(trimmed) < pseudoClaudeErrorBufferLimit
 }
 
+func truncateForLog(text string) string {
+	runes := []rune(text)
+	if len(runes) <= 120 {
+		return text
+	}
+	return string(runes[:120]) + "…"
+}
+
 func normalizePseudoClaudeErrorMessage(text string) string {
 	trimmed := strings.TrimSpace(text)
 	trimmed = strings.TrimPrefix(trimmed, "[")
@@ -742,7 +750,32 @@ func normalizePseudoClaudeErrorMessage(text string) string {
 	return strings.TrimSpace(trimmed)
 }
 
-func detectPseudoClaudeTextError(text string) *types.HermesTokenError {
+// pseudoClaudeErrorSpeaksForUpstream reports whether the buffered text is the
+// upstream's own error marker rather than an assistant that merely opens its
+// answer with the same words.
+//
+// Every pseudo-error a real upstream emits closes with "]" — for example
+// "[Error: claude-opus-4.6-thinking 所有账号均已达速率限制，请 140 秒后重试]" — so the
+// bracket is the upstream's own terminator and is decisive even mid-stream. The
+// bare rate-limit sentence carries no marker at all, so it only speaks for the
+// upstream when it is the entire reply, on one short line.
+//
+// Judging a half-arrived buffer is what made this dangerous: an assistant asked
+// what a stack trace means opens with "Error: unauthorized ..." and keeps writing,
+// and classifying its first chunk turned that answer into our own HTTP 401 — which
+// sits inside AutomaticRetryStatusCodeRanges, so a request that had already
+// succeeded was re-run against every other channel and billed each time.
+func pseudoClaudeErrorSpeaksForUpstream(trimmed string, hasPrefix bool, replyFinished bool) bool {
+	if hasPrefix {
+		return strings.Contains(trimmed, "]")
+	}
+	if !replyFinished {
+		return false
+	}
+	return !strings.ContainsAny(trimmed, "\n\r") && utf8.RuneCountInString(trimmed) < pseudoClaudeErrorBufferLimit
+}
+
+func detectPseudoClaudeTextError(text string, replyFinished bool) *types.HermesTokenError {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return nil
@@ -751,6 +784,16 @@ func detectPseudoClaudeTextError(text string) *types.HermesTokenError {
 	hasPlainRateLimitLead := hasPlainPseudoClaudeRateLimitLead(trimmed)
 	lower := strings.ToLower(trimmed)
 	if !hasPrefix && !hasPlainRateLimitLead {
+		return nil
+	}
+	if !pseudoClaudeErrorSpeaksForUpstream(trimmed, hasPrefix, replyFinished) {
+		// An unterminated marker on a finished reply is the one genuinely ambiguous
+		// case. It is treated as model output, but it is logged: if some upstream
+		// really does emit an unclosed marker, that has to be discoverable rather
+		// than silently mistaken for an answer.
+		if hasPrefix && replyFinished {
+			common.SysLog("claude pseudo-error prefix never closed, passing through as model output: " + truncateForLog(trimmed))
+		}
 		return nil
 	}
 	switch {
@@ -940,7 +983,9 @@ func handlePseudoClaudeStreamChunk(c *gin.Context, info *relaycommon.RelayInfo, 
 		claudeInfo.PseudoErrorLeadingText.WriteString(segment)
 	}
 	text := claudeInfo.PseudoErrorLeadingText.String()
-	if pseudoErr := detectPseudoClaudeTextError(text); pseudoErr != nil {
+	// A message_stop / stop_reason frame is the upstream telling us the reply is
+	// over, which is the only point at which an unbracketed lead can be judged.
+	if pseudoErr := detectPseudoClaudeTextError(text, shouldFlushPseudoClaudeProbeWithoutVisibleText(claudeResponse)); pseudoErr != nil {
 		return pseudoErr
 	}
 	if shouldContinuePseudoClaudeErrorProbe(text) {
@@ -1197,11 +1242,13 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 }
 
 func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) *types.HermesTokenError {
-	text := claudeInfo.PseudoErrorLeadingText.String()
-	if pseudoErr := detectPseudoClaudeTextError(text); pseudoErr != nil {
-		return pseudoErr
-	}
+	// Only judge a probe that is still open. Once the buffer has been flushed the
+	// text is already on its way to the client, and calling it an error after the
+	// fact would report a failure for a response the caller has partly received.
 	if !claudeInfo.PseudoErrorChecked {
+		if pseudoErr := detectPseudoClaudeTextError(claudeInfo.PseudoErrorLeadingText.String(), true); pseudoErr != nil {
+			return pseudoErr
+		}
 		claudeInfo.PseudoErrorChecked = true
 		flushPseudoClaudeStreamBuffer(c, info, claudeInfo)
 	}
@@ -1283,7 +1330,7 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	if claudeError := claudeResponse.GetClaudeError(); claudeError != nil && claudeError.Type != "" {
 		return types.WithClaudeError(*claudeError, http.StatusInternalServerError)
 	}
-	if pseudoErr := detectPseudoClaudeTextError(extractClaudeResponseVisibleText(&claudeResponse)); pseudoErr != nil {
+	if pseudoErr := detectPseudoClaudeTextError(extractClaudeResponseVisibleText(&claudeResponse), true); pseudoErr != nil {
 		return pseudoErr
 	}
 	maybeMarkClaudeRefusal(c, claudeResponse.StopReason)

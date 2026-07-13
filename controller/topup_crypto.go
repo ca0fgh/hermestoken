@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -39,6 +40,13 @@ func CreateCryptoTopUpOrder(c *gin.Context) {
 	config, ok := resolveCryptoNetworkConfig(req.Network)
 	if !ok {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "USDT 网络不可用"})
+		return
+	}
+	// min_topup is advertised to the client but was never checked here, so an order
+	// for a hundredth of a dollar was accepted — and each one still occupies a
+	// unique pay amount in the matching window.
+	if config.MinTopUp > 0 && req.Amount < float64(config.MinTopUp) {
+		common.ApiErrorMsg(c, fmt.Sprintf("充值数量不能小于 %d", config.MinTopUp))
 		return
 	}
 

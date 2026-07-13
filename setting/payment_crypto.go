@@ -9,10 +9,14 @@ import (
 )
 
 var (
-	CryptoPaymentEnabled        = false
-	CryptoTronEnabled           = false
-	CryptoTronReceiveAddress    = ""
-	CryptoTronUSDTContract      = "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj"
+	CryptoPaymentEnabled     = false
+	CryptoTronEnabled        = false
+	CryptoTronReceiveAddress = ""
+	// TRON mainnet USDT (TetherToken). The previous default was
+	// TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj, which does not exist on mainnet — the
+	// scanner watched a contract that emits nothing, and orders recorded that
+	// address as their token_contract, so a real deposit could never match one.
+	CryptoTronUSDTContract      = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 	CryptoTronRPCURL            = ""
 	CryptoTronAPIKey            = ""
 	CryptoTronConfirmations     = 20
@@ -31,9 +35,13 @@ var (
 	CryptoSolanaUSDTMint        = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 	CryptoSolanaRPCURL          = ""
 	CryptoSolanaConfirmations   = 32
-	CryptoOrderExpireMinutes    = 10
-	CryptoUniqueSuffixMax       = 9999
-	CryptoScannerEnabled        = true
+	// Ten minutes was the window to open a wallet, copy an address and an exact
+	// amount, and get the transaction into a block. Missing it does not just void
+	// the order — a payment that lands late is recorded as late_paid and nothing
+	// credits it without an operator settling it by hand.
+	CryptoOrderExpireMinutes = 30
+	CryptoUniqueSuffixMax    = 9999
+	CryptoScannerEnabled     = true
 )
 
 type CryptoPaymentNetworkConfig struct {
@@ -125,7 +133,7 @@ func LoadCryptoPaymentSettingsFromOptionMap() {
 	CryptoPaymentEnabled = optionBool("CryptoPaymentEnabled", false)
 	CryptoTronEnabled = optionBool("CryptoTronEnabled", false)
 	CryptoTronReceiveAddress = strings.TrimSpace(common.OptionMap["CryptoTronReceiveAddress"])
-	CryptoTronUSDTContract = optionString("CryptoTronUSDTContract", "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj")
+	CryptoTronUSDTContract = optionString("CryptoTronUSDTContract", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
 	CryptoTronRPCURL = strings.TrimSpace(common.OptionMap["CryptoTronRPCURL"])
 	CryptoTronAPIKey = strings.TrimSpace(common.OptionMap["CryptoTronAPIKey"])
 	CryptoTronConfirmations = optionInt("CryptoTronConfirmations", 20)
@@ -144,7 +152,7 @@ func LoadCryptoPaymentSettingsFromOptionMap() {
 	CryptoSolanaUSDTMint = optionString("CryptoSolanaUSDTMint", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB")
 	CryptoSolanaRPCURL = strings.TrimSpace(common.OptionMap["CryptoSolanaRPCURL"])
 	CryptoSolanaConfirmations = optionInt("CryptoSolanaConfirmations", 32)
-	CryptoOrderExpireMinutes = optionInt("CryptoOrderExpireMinutes", 10)
+	CryptoOrderExpireMinutes = optionInt("CryptoOrderExpireMinutes", 30)
 	CryptoUniqueSuffixMax = optionInt("CryptoUniqueSuffixMax", 9999)
 	CryptoScannerEnabled = optionBool("CryptoScannerEnabled", true)
 }

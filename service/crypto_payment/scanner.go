@@ -218,6 +218,12 @@ func runScannerLoop(ctx context.Context, scanner NetworkScanner, owner string) {
 			if _, err := model.CompleteReadyCryptoOrders(scanner.Network()); err != nil {
 				common.SysLog("crypto completion error: " + err.Error())
 			}
+			// Orders used to expire only when the payer reopened them, so abandoned
+			// ones sat "pending" forever and the operator could not tell an open
+			// payment from a dead one.
+			if _, err := model.ExpireStaleCryptoPaymentOrders(scanner.Network(), time.Now()); err != nil {
+				common.SysLog("crypto expiry error: " + err.Error())
+			}
 			_, _ = lock.Renew(ctx)
 		}
 	}

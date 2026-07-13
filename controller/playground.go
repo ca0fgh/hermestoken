@@ -19,6 +19,13 @@ func Playground(c *gin.Context) {
 		if hermesTokenError != nil {
 			c.JSON(hermesTokenError.StatusCode, gin.H{
 				"error": hermesTokenError.ToOpenAIError(),
+				// This route is authenticated with the operator's session cookie and
+				// then relays an upstream's status verbatim, so a channel whose key was
+				// revoked answers 401 on a perfectly valid session. Reaching this
+				// handler at all means UserAuth already passed, so nothing it returns is
+				// ever a statement about the caller's session — and the browser needs to
+				// be told that, or it logs the operator out of a session that is fine.
+				"error_source": "upstream",
 			})
 		}
 	}()

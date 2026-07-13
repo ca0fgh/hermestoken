@@ -77,6 +77,25 @@ api.get = ((url: string, config: ApiRequestConfig = {}) => {
 // Response Interceptor
 // ============================================================================
 
+/**
+ * True when a status came from an upstream provider rather than from us.
+ *
+ * The playground (`/pg/chat/completions`) authenticates with the operator's
+ * session cookie and then relays the upstream's HTTP status verbatim, so a channel
+ * whose provider key was revoked or ran out of credit answers 401 on a session
+ * that is perfectly valid. Treating that as "session expired" logged the operator
+ * out mid-request — silently, because the playground passes `skipErrorHandler`,
+ * which suppressed the toast but not the auth reset.
+ *
+ * The backend marks these bodies `error_source: 'upstream'`; our own auth failures
+ * never carry it.
+ */
+export function isRelayedUpstreamError(error: unknown): boolean {
+  const body = (error as { response?: { data?: { error_source?: string } } })
+    ?.response?.data
+  return body?.error_source === 'upstream'
+}
+
 // Handle business logic errors and HTTP errors globally
 api.interceptors.response.use(
   (response) => {
@@ -101,7 +120,7 @@ api.interceptors.response.use(
     const skip = error?.config?.skipErrorHandler
     const status = error?.response?.status
 
-    if (status === 401) {
+    if (status === 401 && !isRelayedUpstreamError(error)) {
       try {
         useAuthStore.getState().auth.reset()
       } catch {

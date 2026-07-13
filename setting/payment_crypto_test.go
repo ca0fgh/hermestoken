@@ -13,7 +13,7 @@ func TestGetCryptoPaymentNetworksHidesIncompleteNetworks(t *testing.T) {
 		"CryptoPaymentEnabled":     "true",
 		"CryptoTronEnabled":        "true",
 		"CryptoTronReceiveAddress": "TQ4mVnPz4jG4n4hD9QJf9U9gKfZVfUiH9z",
-		"CryptoTronUSDTContract":   "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+		"CryptoTronUSDTContract":   "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
 		"CryptoBSCEnabled":         "true",
 		"CryptoBSCReceiveAddress":  "",
 		"CryptoBSCUSDTContract":    "0x55d398326f99059fF775485246999027B3197955",
@@ -28,7 +28,10 @@ func TestGetCryptoPaymentNetworksHidesIncompleteNetworks(t *testing.T) {
 	assert.Len(t, networks, 1)
 	assert.Equal(t, "tron_trc20", networks[0].Network)
 	assert.Equal(t, 20, networks[0].Confirmations)
-	assert.Equal(t, 10, CryptoOrderExpireMinutes)
+	// Ten minutes was not enough to open a wallet, copy an exact amount, and get the
+	// transaction into a block; a payment that lands late is never credited without
+	// an operator settling it by hand.
+	assert.Equal(t, 30, CryptoOrderExpireMinutes)
 }
 
 func TestGetCryptoPaymentNetworksIncludesPolygonAndSolana(t *testing.T) {

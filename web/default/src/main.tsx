@@ -28,7 +28,7 @@ import { StrictMode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
-import { getStatus } from '@/lib/api'
+import { getStatus, isRelayedUpstreamError } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
@@ -85,7 +85,7 @@ const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (error) => {
       if (error instanceof AxiosError) {
-        if (error.response?.status === 401) {
+        if (error.response?.status === 401 && !isRelayedUpstreamError(error)) {
           toast.error(i18next.t('Session expired!'))
           useAuthStore.getState().auth.reset()
           const redirect = `${router.history.location.href}`

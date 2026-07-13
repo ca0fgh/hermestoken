@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,13 +14,22 @@ import (
 	"github.com/ca0fgh/hermestoken/setting"
 )
 
+const (
+	solanaSignaturePageLimit = 1000
+	// A receive address accumulates signatures slowly, so reaching the cursor
+	// always takes a page or two. Blowing through this many means the history is
+	// deeper than we can prove we covered, which must surface rather than let the
+	// cursor jump a gap.
+	solanaMaxSignaturePages = 20
+)
+
 type SolanaScanner struct {
 	config setting.CryptoPaymentNetworkConfig
 	client *http.Client
 }
 
 func NewSolanaScanner(config setting.CryptoPaymentNetworkConfig) *SolanaScanner {
-	return &SolanaScanner{config: config, client: &http.Client{Timeout: 15 * time.Second}}
+	return &SolanaScanner{config: config, client: &http.Client{Timeout: 20 * time.Second}}
 }
 
 func (s *SolanaScanner) Network() string { return model.CryptoNetworkSolana }
@@ -44,31 +54,154 @@ func (s *SolanaScanner) ScanOnce(ctx context.Context) error {
 	if maxSafe < fromSlot {
 		return nil
 	}
-	signatures, err := s.getSignatures(ctx)
+
+	addresses, err := s.signatureAddresses(ctx)
 	if err != nil {
 		return err
 	}
-	for _, sig := range signatures {
-		if sig.Err != nil || sig.Slot < fromSlot || sig.Slot > maxSafe {
+	signatures, err := s.collectSignatures(ctx, addresses, fromSlot, maxSafe)
+	if err != nil {
+		return err
+	}
+
+	lastScanned, scanErr := s.recordSignatures(ctx, signatures, fromSlot, maxSafe, currentSlot)
+	// Persist before surfacing scanErr: the signatures are walked oldest-first, so
+	// everything below the failing slot is genuinely done, and throwing that away
+	// is what turns one bad response into a permanent stall.
+	if lastScanned >= fromSlot {
+		if err := model.UpsertCryptoScannerState(s.Network(), lastScanned, maxSafe); err != nil {
+			return err
+		}
+	}
+	return scanErr
+}
+
+// signatureAddresses returns every address whose signature history can contain an
+// incoming deposit.
+//
+// An SPL transfer credits the receiver's associated token account, and the owner
+// wallet is not among the transaction's account keys — so asking for the wallet's
+// signatures, as this scanner used to, returns nothing at all for a deposit. The
+// token accounts are the real subject. The wallet is still included because the
+// transfer that first *creates* the token account does list the owner, and that
+// one deposit would otherwise be missed.
+func (s *SolanaScanner) signatureAddresses(ctx context.Context) ([]string, error) {
+	var result struct {
+		Value []struct {
+			Pubkey string `json:"pubkey"`
+		} `json:"value"`
+	}
+	err := s.rpc(ctx, "getTokenAccountsByOwner", []interface{}{
+		s.config.ReceiveAddress,
+		map[string]interface{}{"mint": s.config.Contract},
+		map[string]interface{}{"encoding": "jsonParsed", "commitment": "confirmed"},
+	}, &result)
+	if err != nil {
+		return nil, err
+	}
+	addresses := make([]string, 0, len(result.Value)+1)
+	addresses = append(addresses, s.config.ReceiveAddress)
+	for _, account := range result.Value {
+		if pubkey := strings.TrimSpace(account.Pubkey); pubkey != "" {
+			addresses = append(addresses, pubkey)
+		}
+	}
+	return addresses, nil
+}
+
+func (s *SolanaScanner) collectSignatures(ctx context.Context, addresses []string, fromSlot int64, maxSafe int64) ([]solanaSignatureInfo, error) {
+	seen := make(map[string]bool)
+	collected := make([]solanaSignatureInfo, 0, 8)
+	for _, address := range addresses {
+		found, err := s.signaturesForAddress(ctx, address, fromSlot, maxSafe)
+		if err != nil {
+			return nil, err
+		}
+		for _, signature := range found {
+			if seen[signature.Signature] {
+				continue
+			}
+			seen[signature.Signature] = true
+			collected = append(collected, signature)
+		}
+	}
+	// Oldest first, so a failure part-way through leaves a contiguous scanned
+	// prefix that the cursor can safely record.
+	sort.Slice(collected, func(i, j int) bool { return collected[i].Slot < collected[j].Slot })
+	return collected, nil
+}
+
+// signaturesForAddress pages backwards from the tip until it reaches the cursor.
+// getSignaturesForAddress returns newest-first and cannot be given a slot range,
+// so the only way to prove full coverage of [fromSlot, maxSafe] is to walk back
+// past fromSlot. The old code took a single unpaged page of 100 and then advanced
+// the cursor to the chain tip regardless — anything beyond that page was skipped
+// permanently, with no path to ever revisit it.
+func (s *SolanaScanner) signaturesForAddress(ctx context.Context, address string, fromSlot int64, maxSafe int64) ([]solanaSignatureInfo, error) {
+	collected := make([]solanaSignatureInfo, 0, 8)
+	before := ""
+	for page := 0; page < solanaMaxSignaturePages; page++ {
+		options := map[string]interface{}{"limit": solanaSignaturePageLimit, "commitment": "confirmed"}
+		if before != "" {
+			options["before"] = before
+		}
+		var signatures []solanaSignatureInfo
+		if err := s.rpc(ctx, "getSignaturesForAddress", []interface{}{address, options}, &signatures); err != nil {
+			return nil, err
+		}
+		if len(signatures) == 0 {
+			return collected, nil
+		}
+		reachedCursor := false
+		for _, signature := range signatures {
+			if signature.Slot < fromSlot {
+				reachedCursor = true
+				continue
+			}
+			if signature.Err != nil || signature.Slot > maxSafe {
+				continue
+			}
+			collected = append(collected, signature)
+		}
+		if reachedCursor || len(signatures) < solanaSignaturePageLimit {
+			return collected, nil
+		}
+		before = signatures[len(signatures)-1].Signature
+	}
+	return nil, fmt.Errorf("Solana signature history for %s is deeper than %d pages above slot %d", address, solanaMaxSignaturePages, fromSlot)
+}
+
+func (s *SolanaScanner) recordSignatures(ctx context.Context, signatures []solanaSignatureInfo, fromSlot int64, maxSafe int64, currentSlot int64) (int64, error) {
+	lastScanned := fromSlot - 1
+	for _, signature := range signatures {
+		tx, found, err := s.getTransaction(ctx, signature.Signature)
+		if err != nil {
+			return lastScanned, err
+		}
+		if !found {
+			// A pruned or unavailable transaction must not wedge the cursor on a
+			// request that can never succeed, but it also must not vanish quietly.
+			common.SysLog("crypto scanner could not load Solana transaction: " + signature.Signature)
 			continue
 		}
-		tx, err := s.getTransaction(ctx, sig.Signature)
+		transfers, err := decodeSolanaTokenTransfers(signature.Signature, tx, s.config.ReceiveAddress, s.config.Contract, s.config.Decimals, currentSlot)
 		if err != nil {
-			return err
-		}
-		transfers, err := decodeSolanaTokenTransfers(sig.Signature, tx, s.config.ReceiveAddress, s.config.Contract, s.config.Decimals, currentSlot)
-		if err != nil {
-			return err
+			return lastScanned, err
 		}
 		for _, transfer := range transfers {
 			transfer.Network = s.Network()
 			transfer.ObservedAt = time.Now()
 			if _, _, err := model.RecordCryptoTransfer(transfer); err != nil {
-				return err
+				return lastScanned, err
 			}
 		}
+		// Only slots strictly below this one are provably complete: another
+		// signature may share this slot.
+		if signature.Slot-1 > lastScanned {
+			lastScanned = signature.Slot - 1
+		}
 	}
-	return model.UpsertCryptoScannerState(s.Network(), maxSafe, maxSafe)
+	return maxSafe, nil
 }
 
 type solanaRPCRequest struct {
@@ -255,22 +388,18 @@ func (s *SolanaScanner) currentSlot(ctx context.Context) (int64, error) {
 	return slot, err
 }
 
-func (s *SolanaScanner) getSignatures(ctx context.Context) ([]solanaSignatureInfo, error) {
-	var signatures []solanaSignatureInfo
-	err := s.rpc(ctx, "getSignaturesForAddress", []interface{}{
-		s.config.ReceiveAddress,
-		map[string]interface{}{"limit": 100, "commitment": "confirmed"},
-	}, &signatures)
-	return signatures, err
-}
-
-func (s *SolanaScanner) getTransaction(ctx context.Context, signature string) (solanaTransactionResult, error) {
+// getTransaction reports found=false for a slot the node will not serve (pruned,
+// or beyond its history), which is a skip rather than a failure.
+func (s *SolanaScanner) getTransaction(ctx context.Context, signature string) (solanaTransactionResult, bool, error) {
 	var tx solanaTransactionResult
 	err := s.rpc(ctx, "getTransaction", []interface{}{
 		signature,
 		map[string]interface{}{"encoding": "jsonParsed", "commitment": "confirmed", "maxSupportedTransactionVersion": 0},
 	}, &tx)
-	return tx, err
+	if err != nil {
+		return solanaTransactionResult{}, false, err
+	}
+	return tx, tx.Slot > 0, nil
 }
 
 func (s *SolanaScanner) rpc(ctx context.Context, method string, params []interface{}, out interface{}) error {
