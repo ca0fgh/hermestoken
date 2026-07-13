@@ -17,6 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 export const AUTH_EXPIRED_REDIRECT_PATH = '/login?expired=true';
 
+// Only axios' own transport-level message is parsed for a status code. A backend
+// business message must never be pattern-matched, because it legitimately quotes
+// an *upstream's* HTTP status: a failing channel test returns HTTP 200 carrying
+// "bad response status code 401, message: 额度不足", and matching a bare
+// "status code 401" there logged the operator out of their own valid session.
+const AXIOS_STATUS_MESSAGE_PATTERN =
+  /request failed with status code\s+(?<status>\d{3})\b/i;
+
 export function getHttpStatusFromError(error) {
   const directStatus = Number(error?.response?.status ?? error?.status);
   if (Number.isInteger(directStatus)) {
@@ -24,9 +32,7 @@ export function getHttpStatusFromError(error) {
   }
 
   const message = typeof error === 'string' ? error : error?.message;
-  const statusMatch = String(message || '').match(
-    /status code\s+(?<status>\d{3})\b/i,
-  );
+  const statusMatch = String(message || '').match(AXIOS_STATUS_MESSAGE_PATTERN);
   if (statusMatch?.groups?.status) {
     return Number(statusMatch.groups.status);
   }
