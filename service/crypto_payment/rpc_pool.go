@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ca0fgh/hermestoken/common"
 )
@@ -43,11 +44,21 @@ func isEndpointUnavailable(err error) bool {
 // replacement the key could reach was a public node with no SLA. A list means a
 // provider can rate-limit, 403, or disappear without the chain going blind, and it
 // means an endpoint caught serving the wrong chain can simply be dropped.
+// reauditionInterval bounds how long a fallback may hold "current" before the
+// operator's first-listed endpoint is tried again. Without it, one transient blip
+// on the paid provider demotes the pool onto a free fallback permanently — BSC ran
+// five days on bsc-dataseed, whose eth_getLogs always answers "limit exceeded",
+// because nothing ever went back to ask the recovered primary.
+const reauditionInterval = 10 * time.Minute
+
 type endpointPool struct {
 	mu        sync.Mutex
 	network   string
 	endpoints []string
 	current   int
+	// demotedAt is when current last moved off the primary. Zero while the pool is
+	// on the primary.
+	demotedAt time.Time
 }
 
 func newEndpointPool(network string, raw string) *endpointPool {
@@ -96,6 +107,7 @@ func (p *endpointPool) do(attempt func(endpoint string) error) error {
 		return fmt.Errorf("%s has no usable RPC endpoint configured", p.network)
 	}
 	var lastErr error
+	var lastEndpoint string
 	for offset := 0; offset < len(endpoints); offset++ {
 		endpoint := endpoints[(start+offset)%len(endpoints)]
 		err := attempt(endpoint)
@@ -106,12 +118,14 @@ func (p *endpointPool) do(attempt func(endpoint string) error) error {
 			return err
 		}
 		lastErr = err
+		lastEndpoint = endpoint
 		if offset+1 < len(endpoints) {
 			common.SysLog(fmt.Sprintf("crypto scanner %s RPC endpoint %s is unavailable (%s), trying the next one",
-				p.network, redactEndpoint(endpoint), err.Error()))
+				p.network, redactEndpoint(endpoint), redactEndpointInText(err.Error(), endpoint)))
 		}
 	}
-	return fmt.Errorf("every %s RPC endpoint failed, last error: %w", p.network, lastErr)
+	return fmt.Errorf("every %s RPC endpoint failed, last error: %s",
+		p.network, redactEndpointInText(lastErr.Error(), lastEndpoint))
 }
 
 // evict drops an endpoint that proved it is not serving the chain we configured.
@@ -145,6 +159,10 @@ func (p *endpointPool) evict(endpoint string, reason string) {
 func (p *endpointPool) snapshot() ([]string, int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.current != 0 && time.Since(p.demotedAt) >= reauditionInterval {
+		p.current = 0
+		p.demotedAt = time.Time{}
+	}
 	return append([]string(nil), p.endpoints...), p.current
 }
 
@@ -153,10 +171,37 @@ func (p *endpointPool) promote(endpoint string) {
 	defer p.mu.Unlock()
 	for index, candidate := range p.endpoints {
 		if candidate == endpoint {
+			if index != 0 && p.current == 0 {
+				p.demotedAt = time.Now()
+			}
 			p.current = index
 			return
 		}
 	}
+}
+
+// resetToPrimary forgets which endpoint was current and starts the next call from
+// the operator's first choice. A scanner whose cursor has stopped moving calls
+// this: whatever pinned it — a fallback that answers everything except the one
+// request that matters, an error phrased in words no classifier lists — starting
+// over from the top is the reset that cannot be argued with.
+func (p *endpointPool) resetToPrimary() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.current = 0
+	p.demotedAt = time.Time{}
+}
+
+// redactEndpointInText scrubs the endpoint URL out of an error message. Go's HTTP
+// client quotes the full request URL in its errors ("Post \"https://...\": ..."),
+// so redacting only the label while printing err.Error() verbatim still leaked the
+// Ankr API key into the system log — which is exactly how it was found leaked in
+// production on 2026-07-28.
+func redactEndpointInText(text string, endpoint string) string {
+	if endpoint == "" {
+		return text
+	}
+	return strings.ReplaceAll(text, endpoint, redactEndpoint(endpoint))
 }
 
 // redactEndpoint keeps the provider recognizable in logs without printing the API

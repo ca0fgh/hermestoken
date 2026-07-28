@@ -121,6 +121,10 @@ func TestIsBlockRangeTooLarge(t *testing.T) {
 		"eth_getLogs is limited to 0 - 50 blocks",
 		"ranges over 10000 blocks are not supported on freetier",
 		"query returned more than 10000 results",
+		// Verbatim from blastapi and 1rpc, 2026-07-28. Neither matched the older
+		// hints, and an unmatched range cap is a permanently stuck scanner.
+		"You can make eth_getLogs requests with up to a 10 block range. Based on your parameters, this block range should work: [0x6a49262, 0x6a4926b]",
+		"BSC RPC error -32602: eth_getLogs is limited to 0 - 50 blocks range",
 	}
 	for _, message := range tooLarge {
 		if !isBlockRangeTooLarge(errors.New(message)) {
@@ -142,5 +146,34 @@ func TestIsBlockRangeTooLarge(t *testing.T) {
 	}
 	if isBlockRangeTooLarge(nil) {
 		t.Error("expected nil not to be an oversized span")
+	}
+}
+
+func TestIsProviderRefusal(t *testing.T) {
+	// Each phrase verbatim from a live provider, 2026-07-28. Every one of these is
+	// the provider declining to serve, which only another provider can fix.
+	refusals := []string{
+		"limit exceeded", // bsc-dataseed -32005, its answer to every getLogs
+		"Archive requests require a personal token. Get one at: https://www.allnodes.com/publicnode",
+		"You reached Public endpoint rate limit, please upgrade to paid plan",
+		"The method eth_getLogs is not supported.",
+		"no available upstreams to process a request",
+		"header not found",
+	}
+	for _, message := range refusals {
+		if !isProviderRefusal(message) {
+			t.Errorf("expected %q to be recognized as the provider refusing to serve", message)
+		}
+	}
+
+	// Real answers and range negotiation must not be mistaken for refusal.
+	notRefusals := []string{
+		"execution reverted",
+		"invalid argument 0: json: cannot unmarshal",
+	}
+	for _, message := range notRefusals {
+		if isProviderRefusal(message) {
+			t.Errorf("expected %q not to be treated as a refusal", message)
+		}
 	}
 }

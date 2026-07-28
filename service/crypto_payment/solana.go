@@ -85,7 +85,9 @@ func (s *SolanaScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
-	reportScannerProgress(s.Network(), lastScanned, maxSafe, currentSlot)
+	if reportScannerProgress(s.Network(), lastScanned, maxSafe, currentSlot) {
+		s.pool.resetToPrimary()
+	}
 	return scanErr
 }
 

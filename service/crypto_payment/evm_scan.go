@@ -33,6 +33,10 @@ var blockRangeTooLargeHints = []string{
 	"log response size exceeded",
 	"too many blocks",
 	"is limited to",
+	// blastapi: "You can make eth_getLogs requests with up to a 10 block range".
+	"block range",
+	// 1rpc: "eth_getLogs is limited to 0 - 50 blocks range".
+	"blocks range",
 }
 
 func isBlockRangeTooLarge(err error) bool {
@@ -42,6 +46,42 @@ func isBlockRangeTooLarge(err error) bool {
 	message := strings.ToLower(err.Error())
 	for _, hint := range blockRangeTooLargeHints {
 		if strings.Contains(message, hint) {
+			return true
+		}
+	}
+	return false
+}
+
+// A provider refusing to serve — rate limits, quotas, paywalled methods, pruned
+// history — is an endpoint problem, not feedback about the request, and the only
+// correct response is to ask a different provider. Treating these as ordinary
+// JSON-RPC answers is what blinded the BSC scanner for five days: bsc-dataseed
+// answers every eth_getLogs with -32005 "limit exceeded" (verified even for a
+// 10-block range at head), so the pool kept re-asking it forever. Every phrase
+// here was seen live from a real provider.
+var providerRefusalHints = []string{
+	"limit exceeded", // bsc-dataseed's blanket getLogs refusal
+	"rate limit",     // 1rpc: "You reached Public endpoint rate limit"
+	"too many requests",
+	"capacity", // Ankr: compute units per second capacity
+	"quota",
+	"personal token", // publicnode: getLogs is paywalled
+	"api key",
+	"upgrade to", // "please upgrade to paid plan"
+	"unauthorized",
+	"access denied",
+	"forbidden",
+	"payment required",
+	"not supported",          // meowrpc: "The method eth_getLogs is not supported."
+	"no available upstreams", // dRPC with no free upstream at the asked height
+	"header not found",       // a pruned node asked below its retained window
+	"archive",                // "Archive requests require a personal token"
+}
+
+func isProviderRefusal(message string) bool {
+	lowered := strings.ToLower(message)
+	for _, hint := range providerRefusalHints {
+		if strings.Contains(lowered, hint) {
 			return true
 		}
 	}
@@ -58,7 +98,9 @@ func isBlockRangeTooLarge(err error) bool {
 //
 // span is owned by the caller (it lives on the scanner) so a span negotiated down
 // against the provider survives across ticks instead of being re-learned every 10
-// seconds. It never grows back; a restart is what re-opens the bidding.
+// seconds. It never grows back on its own; a restart re-opens the bidding, and so
+// does the stall reset in reportScannerProgress, because a span negotiated against
+// one endpoint is meaningless against the endpoint the pool fails over to next.
 func scanEVMRange(
 	ctx context.Context,
 	span *int64,

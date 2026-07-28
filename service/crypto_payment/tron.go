@@ -117,7 +117,9 @@ func (s *TronScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
-	reportScannerProgress(s.Network(), lastScanned, maxSafe, currentBlock)
+	if reportScannerProgress(s.Network(), lastScanned, maxSafe, currentBlock) {
+		s.pool.resetToPrimary()
+	}
 	return scanErr
 }
 

@@ -74,7 +74,10 @@ func (s *BSCScanner) ScanOnce(ctx context.Context) error {
 			return err
 		}
 	}
-	reportScannerProgress(s.Network(), lastScanned, maxSafe, currentBlock)
+	if reportScannerProgress(s.Network(), lastScanned, maxSafe, currentBlock) {
+		s.rpc.pool.resetToPrimary()
+		s.blockSpan = evmMaxBlockSpan
+	}
 	return scanErr
 }
 

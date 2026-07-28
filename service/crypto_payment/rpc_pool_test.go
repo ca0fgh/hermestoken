@@ -75,3 +75,60 @@ func TestRedactEndpointKeepsTheHostAndDropsTheKey(t *testing.T) {
 	assert.Equal(t, "https://rpc.ankr.com/***", redactEndpoint("https://rpc.ankr.com/solana/2f9a...secret"))
 	assert.Equal(t, "https://solana-rpc.publicnode.com", redactEndpoint("https://solana-rpc.publicnode.com"))
 }
+
+// One transient blip on the paid primary must not demote the pool onto a free
+// fallback forever. After reauditionInterval the primary gets asked again.
+func TestEndpointPoolReauditionsThePrimaryAfterAWhile(t *testing.T) {
+	pool := newEndpointPool("bsc_erc20", "https://primary.example https://fallback.example")
+	pool.promote("https://fallback.example")
+
+	tried := []string{}
+	require.NoError(t, pool.do(func(endpoint string) error {
+		tried = append(tried, endpoint)
+		return nil
+	}))
+	require.Equal(t, []string{"https://fallback.example"}, tried, "the fallback holds current before the interval passes")
+
+	pool.mu.Lock()
+	pool.demotedAt = pool.demotedAt.Add(-reauditionInterval)
+	pool.mu.Unlock()
+
+	tried = tried[:0]
+	require.NoError(t, pool.do(func(endpoint string) error {
+		tried = append(tried, endpoint)
+		return nil
+	}))
+	assert.Equal(t, []string{"https://primary.example"}, tried)
+}
+
+// The stall reset must start the next call from the operator's first choice, no
+// matter which endpoint talked its way into being current.
+func TestResetToPrimaryStartsOverFromTheConfiguredEndpoint(t *testing.T) {
+	pool := newEndpointPool("bsc_erc20", "https://primary.example https://fallback.example")
+	pool.promote("https://fallback.example")
+
+	pool.resetToPrimary()
+
+	tried := []string{}
+	require.NoError(t, pool.do(func(endpoint string) error {
+		tried = append(tried, endpoint)
+		return nil
+	}))
+	assert.Equal(t, []string{"https://primary.example"}, tried)
+}
+
+// Go's HTTP client quotes the full request URL in its errors, and provider URLs
+// carry API keys in the path. Production leaked the Ankr key into the system log
+// this way: the endpoint label was redacted, the error text was not.
+func TestFailoverLogAndSweepErrorDoNotLeakTheAPIKey(t *testing.T) {
+	keyed := "https://rpc.ankr.com/bsc/deadbeefsecret"
+	pool := newEndpointPool("bsc_erc20", keyed+" https://fallback.example")
+
+	err := pool.do(func(endpoint string) error {
+		return endpointUnavailable(fmt.Errorf("Post %q: connection reset by peer", endpoint))
+	})
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "deadbeefsecret")
+	assert.Contains(t, err.Error(), "https://fallback.example")
+}

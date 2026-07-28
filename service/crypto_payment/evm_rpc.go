@@ -86,7 +86,19 @@ func (c *evmRPCClient) callAt(ctx context.Context, endpoint string, method strin
 		return err
 	}
 	if envelope.Error != nil {
-		return fmt.Errorf("%s RPC error %d: %s", c.network, envelope.Error.Code, envelope.Error.Message)
+		err := fmt.Errorf("%s RPC error %d: %s", c.network, envelope.Error.Code, envelope.Error.Message)
+		// Range feedback must stay on this endpoint: scanEVMRange answers it by
+		// shrinking the span, and failing over would hide the negotiation. Checked
+		// first because providers mix vocabularies — dRPC phrases its keyless
+		// getLogs refusal as a range complaint ("ranges over 10000 blocks are not
+		// supported on free plan") even for a 500-block ask.
+		if isBlockRangeTooLarge(err) {
+			return err
+		}
+		if isProviderRefusal(envelope.Error.Message) {
+			return endpointUnavailable(err)
+		}
+		return err
 	}
 	encoded, err := common.Marshal(envelope.Result)
 	if err != nil {

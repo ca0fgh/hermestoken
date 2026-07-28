@@ -86,11 +86,35 @@ func CryptoNetworkIsPayable(network string) bool {
 // Each of these was checked to answer on the right chain. polygon-rpc.com is
 // deliberately absent: it now replies 401 "tenant disabled" to keyless callers,
 // which is what a fallback list rots into if nobody ever looks at it.
+//
+// getLogs capability was re-verified 2026-07-28, and it is the axis that matters:
+// an endpoint that serves eth_blockNumber but refuses eth_getLogs keeps the chain
+// head looking fresh while every deposit goes unseen. bsc-dataseed (-32005 "limit
+// exceeded" even for 10 blocks at head) and publicnode ("Archive requests require
+// a personal token" even at head) both refuse getLogs outright now; they stay
+// listed last because their head reads are still useful and the refusal
+// classification in the scanner rotates past them. blastapi.io was dropped: it
+// answers every request with "Blast API is no longer available".
 var cryptoPublicRPCFallbacks = map[string][]string{
-	"bsc_erc20":   {"https://bsc-dataseed.bnbchain.org", "https://bsc-rpc.publicnode.com"},
-	"polygon_pos": {"https://polygon-bor-rpc.publicnode.com", "https://polygon.drpc.org"},
-	"tron_trc20":  {"https://api.trongrid.io"},
-	"solana":      {"https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"},
+	// bsc.drpc.org served a 500-block getLogs at head (retains ~6 days of
+	// history); rpc-bsc.48.club the same; 1rpc.io/bnb caps getLogs at 50 blocks
+	// but reaches arbitrarily old history.
+	"bsc_erc20": {
+		"https://bsc.drpc.org",
+		"https://rpc-bsc.48.club",
+		"https://1rpc.io/bnb",
+		"https://bsc-dataseed.bnbchain.org",
+		"https://bsc-rpc.publicnode.com",
+	},
+	// polygon.drpc.org refuses keyless getLogs with a lying range complaint;
+	// 1rpc.io/matic caps at 50 blocks but serves them.
+	"polygon_pos": {
+		"https://1rpc.io/matic",
+		"https://polygon.drpc.org",
+		"https://polygon-bor-rpc.publicnode.com",
+	},
+	"tron_trc20": {"https://api.trongrid.io"},
+	"solana":     {"https://solana-rpc.publicnode.com", "https://api.mainnet-beta.solana.com"},
 }
 
 // CryptoRPCEndpoints returns the endpoints for a network, most preferred first: the
