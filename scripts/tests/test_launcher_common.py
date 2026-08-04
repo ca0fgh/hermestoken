@@ -761,15 +761,15 @@ class LauncherCommonTests(unittest.TestCase):
         repo_root = Path("/repo")
         output = io.StringIO()
 
-        launcher_common.ensure_named_docker_volume("hermestoken_pg_data", output=output, repo_root=repo_root)
+        launcher_common.ensure_named_docker_volume("hermestoken_postgres_data", output=output, repo_root=repo_root)
 
         run_command.assert_called_once_with(
-            ["docker", "volume", "create", "hermestoken_pg_data"],
+            ["docker", "volume", "create", "hermestoken_postgres_data"],
             check=True,
             stream_output=False,
             cwd=repo_root,
         )
-        self.assertIn("Docker volume ready: hermestoken_pg_data", output.getvalue())
+        self.assertIn("Docker volume ready: hermestoken_postgres_data", output.getvalue())
 
     @mock.patch("launcher_common.subprocess.Popen")
     def test_run_command_streamed(self, popen_mock):

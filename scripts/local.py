@@ -22,7 +22,7 @@ from launcher_common import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LOCAL_CONTAINER_NAMES = ("hermestoken", "postgres", "redis")
-LOCAL_NAMED_VOLUMES = {"pg_data": "hermestoken_pg_data"}
+LOCAL_NAMED_VOLUMES = {"pg_data": "hermestoken_postgres_data"}
 
 
 def _compose_file_path(compose_file: str, *, repo_root: Path) -> Path:

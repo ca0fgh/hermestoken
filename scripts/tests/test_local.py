@@ -30,7 +30,7 @@ class LocalLauncherTests(unittest.TestCase):
         compose_text = (repo_root / "docker-compose.yml").read_text(encoding="utf-8")
 
         self.assertRegex(compose_text, r"(?m)^name:\s+hermestoken-local$")
-        self.assertIn("name: hermestoken_pg_data", compose_text)
+        self.assertIn("name: hermestoken_postgres_data", compose_text)
         self.assertIn("external: true", compose_text)
         self.assertIn("WEB_DIST_STRATEGY: ${WEB_DIST_STRATEGY:-prebuilt}", compose_text)
         self.assertIn("APP_VERSION: ${APP_VERSION:-}", compose_text)
@@ -69,7 +69,7 @@ class LocalLauncherTests(unittest.TestCase):
             repo_root=repo_root,
         )
         ensure_named_docker_volume.assert_called_once_with(
-            "hermestoken_pg_data",
+            "hermestoken_postgres_data",
             output=stdout,
             repo_root=repo_root,
         )

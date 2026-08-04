@@ -2,7 +2,7 @@
 #
 # Quick Start:
 #   1. Build the frontend on the host, or run `python3 scripts/local.py` to automate it
-#   2. Ensure the PostgreSQL volume exists: `docker volume create hermestoken_pg_data`
+#   2. Ensure the PostgreSQL volume exists: `docker volume create hermestoken_postgres_data`
 #   3. docker compose up --build -d
 #   4. Access at http://localhost:3000
 #   5. `web/dist` is required because Docker now packages prebuilt frontend assets by default
@@ -141,7 +141,8 @@ services:
 volumes:
   pg_data:
     external: true
-    name: hermestoken_pg_data
+    # 2026-08 卷名统一（原 hermestoken_pg_data，本机数据已迁移；scripts/local.py 会自动创建缺失卷）
+    name: hermestoken_postgres_data
 #  mysql_data:
 #  clickhouse_data:
 
