@@ -210,6 +210,11 @@ func GetRandomSatisfiedChannel(group string, model string, retry int, requestPat
 	return nil, errors.New("channel not found")
 }
 
+// GetNextSatisfiedChannel 从 priorityIndex 所在优先级桶开始选一个未被排除的渠道；本桶与更低
+// 优先级都没有候选时，回卷到更高优先级的桶继续找（excludedChannelIDs 保证同一渠道不会被选第二次）。
+// 必须回卷：渠道亲和会把会话钉在任意档位——若钉在最低档且该渠道故障，单向降级会在更高优先级
+// 渠道全都健康的情况下直接判「无可用渠道」终止重试（2026-08-07 渠道 37 事故即此）。
+// 分组内所有渠道都被排除时才返回 nil，此时 auto 分组据此切换到下一分组，语义不变。
 func GetNextSatisfiedChannel(group string, model string, priorityIndex int, excludedChannelIDs map[int]struct{}) (*Channel, int, bool, error) {
 	buckets, err := getSatisfiedChannelBuckets(group, model)
 	if err != nil {
@@ -226,7 +231,8 @@ func GetNextSatisfiedChannel(group string, model string, priorityIndex int, excl
 		return nil, priorityIndex, false, nil
 	}
 
-	for idx := priorityIndex; idx < len(buckets); idx++ {
+	for step := 0; step < len(buckets); step++ {
+		idx := (priorityIndex + step) % len(buckets)
 		candidates := filterExcludedChannels(buckets[idx].channels, excludedChannelIDs)
 		if len(candidates) == 0 {
 			continue
@@ -237,7 +243,7 @@ func GetNextSatisfiedChannel(group string, model string, priorityIndex int, excl
 			return nil, idx, false, err
 		}
 
-		hasMore := hasRemainingChannelCandidates(buckets, idx, excludedChannelIDs, channel.Id)
+		hasMore := hasRemainingChannelCandidates(buckets, excludedChannelIDs, channel.Id)
 		return channel, idx, hasMore, nil
 	}
 
@@ -465,9 +471,10 @@ func pickWeightedChannel(channels []*Channel) (*Channel, error) {
 	return nil, errors.New("channel not found")
 }
 
-func hasRemainingChannelCandidates(buckets []channelPriorityBucket, startIndex int, excludedChannelIDs map[int]struct{}, selectedChannelID int) bool {
-	for idx := startIndex; idx < len(buckets); idx++ {
-		for _, channel := range buckets[idx].channels {
+// hasRemainingChannelCandidates 检查全部桶：选择已支持回卷，剩余候选可能位于任何优先级。
+func hasRemainingChannelCandidates(buckets []channelPriorityBucket, excludedChannelIDs map[int]struct{}, selectedChannelID int) bool {
+	for _, bucket := range buckets {
+		for _, channel := range bucket.channels {
 			if channel.Id == selectedChannelID {
 				continue
 			}
