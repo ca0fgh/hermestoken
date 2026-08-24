@@ -79,8 +79,8 @@ RUN set -eux; \
 
 FROM mirror.gcr.io/library/golang:1.26.1-alpine AS builder2
 ENV GO111MODULE=on CGO_ENABLED=0
-ARG GOPROXY_URL=https://goproxy.cn,direct
-ARG GOSUMDB_URL=sum.golang.google.cn
+ARG GOPROXY_URL=https://proxy.golang.org|https://goproxy.cn|direct
+ARG GOSUMDB_URL=sum.golang.org
 ARG APP_VERSION=
 ENV GOPROXY=${GOPROXY_URL} GOSUMDB=${GOSUMDB_URL}
 

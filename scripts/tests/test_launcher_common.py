@@ -319,10 +319,10 @@ class LauncherCommonTests(unittest.TestCase):
         run_command.assert_has_calls(
             [
                 mock.call(
-                    ["bun", "install"],
+                    ["bun", "install", "--filter", "./default", "--frozen-lockfile"],
                     check=True,
                     stream_output=True,
-                    cwd=default_dir,
+                    cwd=web_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
@@ -338,10 +338,10 @@ class LauncherCommonTests(unittest.TestCase):
                     stdout_stream=stdout,
                 ),
                 mock.call(
-                    ["bun", "install"],
+                    ["bun", "install", "--filter", "./classic", "--frozen-lockfile"],
                     check=True,
                     stream_output=True,
-                    cwd=classic_dir,
+                    cwd=web_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
@@ -399,10 +399,10 @@ class LauncherCommonTests(unittest.TestCase):
         run_command.assert_has_calls(
             [
                 mock.call(
-                    ["bun", "install"],
+                    ["bun", "install", "--filter", "./default", "--frozen-lockfile"],
                     check=True,
                     stream_output=True,
-                    cwd=default_dir,
+                    cwd=web_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
@@ -419,10 +419,10 @@ class LauncherCommonTests(unittest.TestCase):
                     stdout_stream=stdout,
                 ),
                 mock.call(
-                    ["bun", "install"],
+                    ["bun", "install", "--filter", "./classic", "--frozen-lockfile"],
                     check=True,
                     stream_output=True,
-                    cwd=classic_dir,
+                    cwd=web_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
@@ -495,10 +495,10 @@ class LauncherCommonTests(unittest.TestCase):
                     cwd=repo_root,
                 ),
                 mock.call(
-                    ["bun", "install"],
+                    ["bun", "install", "--filter", "./default", "--frozen-lockfile"],
                     check=True,
                     stream_output=True,
-                    cwd=default_dir,
+                    cwd=web_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(
@@ -514,10 +514,10 @@ class LauncherCommonTests(unittest.TestCase):
                     stdout_stream=stdout,
                 ),
                 mock.call(
-                    ["bun", "install"],
+                    ["bun", "install", "--filter", "./classic", "--frozen-lockfile"],
                     check=True,
                     stream_output=True,
-                    cwd=classic_dir,
+                    cwd=web_dir,
                     stdout_stream=stdout,
                 ),
                 mock.call(

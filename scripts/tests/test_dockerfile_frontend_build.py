@@ -20,6 +20,15 @@ class DockerfileFrontendBuildTests(unittest.TestCase):
         self.assertIn('ARG WEB_BUILD_NODE_OPTIONS=--max-old-space-size=4096', dockerfile)
         self.assertIn('version="${APP_VERSION:-dev}"', dockerfile)
 
+    def test_go_module_download_has_cross_region_fallbacks(self):
+        dockerfile = (Path(__file__).resolve().parents[2] / 'Dockerfile').read_text(encoding='utf-8')
+
+        self.assertIn(
+            'ARG GOPROXY_URL=https://proxy.golang.org|https://goproxy.cn|direct',
+            dockerfile,
+        )
+        self.assertIn('ARG GOSUMDB_URL=sum.golang.org', dockerfile)
+
 
 if __name__ == '__main__':
     unittest.main()
