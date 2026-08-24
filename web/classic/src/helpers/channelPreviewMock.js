@@ -666,6 +666,13 @@ function getChannelById(channelId) {
 }
 
 function updateChannel(payload = {}) {
+  if (Object.prototype.hasOwnProperty.call(payload, 'status')) {
+    return {
+      success: false,
+      message: 'invalid parameters',
+    };
+  }
+
   const channelId = String(payload.id);
   const existing = getChannelById(channelId);
   if (!existing) {
@@ -690,6 +697,35 @@ function updateChannel(payload = {}) {
   return {
     success: true,
     data: getChannelById(channelId),
+  };
+}
+
+function updateChannelStatus(channelId, status) {
+  if (!/^\d+$/.test(channelId) || (status !== 1 && status !== 2)) {
+    return {
+      success: false,
+      message: 'invalid parameters',
+    };
+  }
+
+  const existing = getChannelById(channelId);
+  if (!existing) {
+    return {
+      success: true,
+      data: false,
+    };
+  }
+
+  const changed = existing.status !== status;
+  if (changed) {
+    previewChannels = previewChannels.map((channel) =>
+      String(channel.id) === channelId ? { ...channel, status } : channel,
+    );
+  }
+
+  return {
+    success: true,
+    data: changed,
   };
 }
 
@@ -940,6 +976,11 @@ function getPreviewPayload(method, url, body) {
 
   if (normalizedMethod === 'put' && pathname === '/api/channel/') {
     return updateChannel(body);
+  }
+
+  const statusMatch = pathname.match(/^\/api\/channel\/([^/]+)\/status$/);
+  if (normalizedMethod === 'post' && statusMatch) {
+    return updateChannelStatus(statusMatch[1], body?.status);
   }
 
   if (

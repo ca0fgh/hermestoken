@@ -35,6 +35,7 @@ import { useIsMobile } from '../common/useIsMobile';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useChannelUpstreamUpdates } from './useChannelUpstreamUpdates';
 import { parseUpstreamUpdateMeta } from './upstreamUpdateUtils';
+import { updateChannelStatus } from '../../services/channelStatus';
 import { Modal, Button } from '@douyinfe/semi-ui';
 import { openCodexUsageModal } from '../../components/table/channels/modals/CodexUsageModal';
 
@@ -453,11 +454,11 @@ export const useChannelsData = () => {
         break;
       case 'enable':
         data.status = 1;
-        res = await API.put('/api/channel/', data);
+        res = await updateChannelStatus(API, id, data.status, refresh);
         break;
       case 'disable':
         data.status = 2;
-        res = await API.put('/api/channel/', data);
+        res = await updateChannelStatus(API, id, data.status, refresh);
         break;
       case 'priority':
         if (value === '') return;
@@ -479,6 +480,9 @@ export const useChannelsData = () => {
     const { success, message } = res.data;
     if (success) {
       showSuccess(t('操作成功完成！'));
+      if (action === 'enable' || action === 'disable') {
+        return;
+      }
       let channel = res.data.data;
       let newChannels = [...channels];
       if (action !== 'delete') {
