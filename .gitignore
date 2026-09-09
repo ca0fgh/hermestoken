@@ -5,7 +5,7 @@ upload
 *.exe
 *.db
 *.db-journal
-logs*
+/logs*
 web/default/dist
 web/classic/dist
 web/node_modules
@@ -18,11 +18,11 @@ tiktoken_cache
 .gocache
 .gomodcache/
 .cache
-plans
+/plans/
 .claude
 .cursor
 
-data/
+/data/
 .gocache-temp
 .gopath
 # Workspace-local files
@@ -32,6 +32,8 @@ data/
 /refs/
 /.codex/
 /.wrangler/
+# Local infrastructure access notes must stay private on every clone.
+/SERVER_ACCESS.local.md
 
 # Secrets and local environment
 .env
@@ -114,10 +116,10 @@ target/
 a.out
 
 # Runtime and local data
-runtime/
+/runtime/
 scripts/.runtime/
-playground/
-tmp/
+/playground/
+/tmp/
 dump.rdb
 appendonly.aof
 appendonly.aof.*
