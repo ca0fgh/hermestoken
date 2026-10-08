@@ -2,7 +2,7 @@
 
 本文说明 `http://localhost:3000/console/setting?tab=payment` 对应的管理员支付配置页面如何工作、每个字段保存到哪里，以及最终如何影响用户侧充值和订阅支付。
 
-适用项目：`subproject/hermestoken`
+适用项目：`submodule/hermestoken`
 
 ## 1. 页面入口
 

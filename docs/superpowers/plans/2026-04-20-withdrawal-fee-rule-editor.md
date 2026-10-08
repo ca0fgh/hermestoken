@@ -75,7 +75,7 @@ import path from 'node:path';
 
 const readSource = (relativePath) =>
   fs.readFileSync(
-    path.join('/Users/money/project/subproject/hermestoken/web', relativePath),
+    path.join('/Users/money/workflow/submodule/hermestoken/web', relativePath),
     'utf8',
   );
 
@@ -92,7 +92,7 @@ test('withdrawal helper exposes rule editor primitives', () => {
 
 - [ ] **Step 2: Run the helper test to verify it fails**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-fee-rule-editor.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-fee-rule-editor.test.mjs`
 Expected: FAIL with undefined exports such as `normalizeWithdrawalFeeEditorRules` and absent range-copy assertions.
 
 - [ ] **Step 3: Implement the helper functions and updated preview semantics**
@@ -209,13 +209,13 @@ export const buildWithdrawalFeeSamples = (rules = []) =>
 
 - [ ] **Step 4: Run the helper test to verify it passes**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-fee-rule-editor.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-fee-rule-editor.test.mjs`
 Expected: PASS with `ok 1 - withdrawal helper exposes rule editor primitives`.
 
 - [ ] **Step 5: Commit the helper layer**
 
 ```bash
-cd /Users/money/project/subproject/hermestoken
+cd /Users/money/workflow/submodule/hermestoken
 git add web/src/helpers/withdrawal.js web/tests/withdrawal-fee-rule-editor.test.mjs
 git commit -m "feat: add withdrawal fee rule editor helpers"
 ```
@@ -254,7 +254,7 @@ test('payment settings render the inline withdrawal fee rule editor', () => {
 
 - [ ] **Step 2: Run the settings test to verify it fails**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-settings.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-settings.test.mjs`
 Expected: FAIL because `WithdrawalFeeRulesEditor` does not exist and the old long JSON hint text is still present.
 
 - [ ] **Step 3: Build the inline editor components and wire them into settings**
@@ -482,13 +482,13 @@ const submit = async () => {
 
 - [ ] **Step 4: Run the settings tests to verify they pass**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-settings.test.mjs tests/withdrawal-fee-rule-editor.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-settings.test.mjs tests/withdrawal-fee-rule-editor.test.mjs`
 Expected: PASS with both tests green and no assertion for the removed JSON help block.
 
 - [ ] **Step 5: Commit the settings editor UI**
 
 ```bash
-cd /Users/money/project/subproject/hermestoken
+cd /Users/money/workflow/submodule/hermestoken
 git add \
   web/src/components/settings/withdrawal/WithdrawalFeeRulesEditor.jsx \
   web/src/components/settings/withdrawal/WithdrawalFeeRuleInlineForm.jsx \
@@ -535,7 +535,7 @@ func TestParseWithdrawalFeeRulesRejectsEmptyRanges(t *testing.T) {
 
 - [ ] **Step 2: Run the focused Go tests to verify they fail**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges|ParseWithdrawalFeeRulesRejectsEmptyRanges)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges|ParseWithdrawalFeeRulesRejectsEmptyRanges)'`
 Expected: FAIL because amount `100` still matches the second rule under the old `[min, max)` logic and `min_amount == max_amount` is currently accepted.
 
 - [ ] **Step 3: Update model validation and matching helpers**
@@ -628,13 +628,13 @@ func calculateWithdrawalFeeAmount(amount decimal.Decimal, rules []WithdrawalFeeR
 
 - [ ] **Step 4: Run the targeted Go tests to verify they pass**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges|ParseWithdrawalFeeRulesRejectsEmptyRanges|ParseWithdrawalFeeRulesRejectsOverlappingRanges)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges|ParseWithdrawalFeeRulesRejectsEmptyRanges|ParseWithdrawalFeeRulesRejectsOverlappingRanges)'`
 Expected: PASS with all three tests green.
 
 - [ ] **Step 5: Commit the backend rule-engine changes**
 
 ```bash
-cd /Users/money/project/subproject/hermestoken
+cd /Users/money/workflow/submodule/hermestoken
 git add model/user_withdrawal_setting.go model/user_withdrawal.go model/user_withdrawal_test.go
 git commit -m "feat: align withdrawal fee rules with inline editor semantics"
 ```
@@ -680,7 +680,7 @@ test('withdrawal locales include fee editor and unmatched rule copy', () => {
 
 - [ ] **Step 2: Run the wallet/locales tests to verify they fail**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs`
 Expected: FAIL because the unmatched-rule message and rule-summary copy do not exist yet.
 
 - [ ] **Step 3: Update the modal, submission guard, and locale copy**
@@ -775,13 +775,13 @@ const submitWithdrawal = async () => {
 
 - [ ] **Step 4: Run the wallet/locales tests to verify they pass**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs tests/withdrawal-settings.test.mjs tests/withdrawal-fee-rule-editor.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs tests/withdrawal-settings.test.mjs tests/withdrawal-fee-rule-editor.test.mjs`
 Expected: PASS with all four tests green; the wallet test should now find the unmatched-rule guard and readable rule section.
 
 - [ ] **Step 5: Commit the user-facing fee-preview updates**
 
 ```bash
-cd /Users/money/project/subproject/hermestoken
+cd /Users/money/workflow/submodule/hermestoken
 git add \
   web/src/components/topup/modals/WithdrawalApplyModal.jsx \
   web/src/components/topup/index.jsx \
@@ -838,7 +838,7 @@ func TestCreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule(t *testing.T) {
 
 - [ ] **Step 2: Run the combined regression suite and verify the new test fails first**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule|CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges)' && cd web && node --test tests/withdrawal-fee-rule-editor.test.mjs tests/withdrawal-settings.test.mjs tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule|CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges)' && cd web && node --test tests/withdrawal-fee-rule-editor.test.mjs tests/withdrawal-settings.test.mjs tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs`
 Expected: the Go test fails first until `CreateUserWithdrawal` returns a “no matching rule” error for gap amounts.
 
 - [ ] **Step 3: Finish the remaining implementation glue**
@@ -971,13 +971,13 @@ const submit = async () => {
 
 - [ ] **Step 4: Run the full regression suite to verify everything passes**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule|CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges|ParseWithdrawalFeeRulesRejectsEmptyRanges|ParseWithdrawalFeeRulesRejectsOverlappingRanges)' && cd web && node --test tests/withdrawal-fee-rule-editor.test.mjs tests/withdrawal-settings.test.mjs tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalRejectsAmountWithoutMatchingFeeRule|CalculateWithdrawalFeeAmountUsesLeftOpenRightClosedRanges|ParseWithdrawalFeeRulesRejectsEmptyRanges|ParseWithdrawalFeeRulesRejectsOverlappingRanges)' && cd web && node --test tests/withdrawal-fee-rule-editor.test.mjs tests/withdrawal-settings.test.mjs tests/wallet-withdrawal.test.mjs tests/withdrawal-locales.test.mjs`
 Expected: PASS for the focused Go suite and PASS for all four frontend source-test files.
 
 - [ ] **Step 5: Commit the final integration pass**
 
 ```bash
-cd /Users/money/project/subproject/hermestoken
+cd /Users/money/workflow/submodule/hermestoken
 git add \
   web/src/pages/Setting/Payment/SettingsWithdrawal.jsx \
   web/src/helpers/withdrawal.js \

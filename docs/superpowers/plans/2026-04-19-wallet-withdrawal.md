@@ -203,7 +203,7 @@ func TestRejectApprovedWithdrawalReturnsFrozenQuota(t *testing.T) {
 
 - [ ] **Step 2: Run model tests to verify they fail**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalFreezesQuotaAndStoresSnapshots|RejectApprovedWithdrawalReturnsFrozenQuota)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalFreezesQuotaAndStoresSnapshots|RejectApprovedWithdrawalReturnsFrozenQuota)'`
 Expected: FAIL with `undefined: CreateUserWithdrawalParams`, missing `WithdrawFrozenQuota`, and missing withdrawal status constants.
 
 - [ ] **Step 3: Add the withdrawal model and config parser**
@@ -387,14 +387,14 @@ common.OptionMap["WithdrawalInstruction"] = ""
 common.OptionMap["WithdrawalFeeRules"] = "[]"
 ```
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalFreezesQuotaAndStoresSnapshots|RejectApprovedWithdrawalReturnsFrozenQuota)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalFreezesQuotaAndStoresSnapshots|RejectApprovedWithdrawalReturnsFrozenQuota)'`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add model/user.go model/main.go model/option.go model/user_withdrawal.go model/user_withdrawal_setting.go model/user_withdrawal_test.go
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet withdrawal domain model"
+git -C /Users/money/workflow/submodule/hermestoken add model/user.go model/main.go model/option.go model/user_withdrawal.go model/user_withdrawal_setting.go model/user_withdrawal_test.go
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add wallet withdrawal domain model"
 ```
 
 ### Task 2: Implement Withdrawal Accounting and Query Helpers
@@ -444,7 +444,7 @@ func TestMarkPaidConsumesFrozenQuotaWithoutTouchingAvailableQuota(t *testing.T) 
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalRejectsSecondOpenOrder|MarkUserWithdrawalPaidConsumesFrozenQuotaWithoutTouchingAvailableQuota)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CreateUserWithdrawalRejectsSecondOpenOrder|MarkUserWithdrawalPaidConsumesFrozenQuotaWithoutTouchingAvailableQuota)'`
 Expected: FAIL because open-order guard and mark-paid helpers are not implemented yet.
 
 - [ ] **Step 3: Implement transactional helpers and list/detail queries**
@@ -502,14 +502,14 @@ func ListAdminWithdrawals(filter AdminWithdrawalFilter, pageInfo *common.PageInf
 
 - [ ] **Step 4: Run the model test set**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model -run 'Test(CreateUserWithdrawal|RejectApprovedWithdrawal|MarkUserWithdrawalPaid|CreateUserWithdrawalRejectsSecondOpenOrder)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model -run 'Test(CreateUserWithdrawal|RejectApprovedWithdrawal|MarkUserWithdrawalPaid|CreateUserWithdrawalRejectsSecondOpenOrder)'`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add model/user_withdrawal.go model/user.go model/user_withdrawal_test.go
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet withdrawal accounting helpers"
+git -C /Users/money/workflow/submodule/hermestoken add model/user_withdrawal.go model/user.go model/user_withdrawal_test.go
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add wallet withdrawal accounting helpers"
 ```
 
 ### Task 3: Add User and Admin Withdrawal APIs
@@ -584,7 +584,7 @@ func TestAdminApproveRejectAndMarkPaidWithdrawal(t *testing.T) {
 
 - [ ] **Step 2: Run controller tests to verify they fail**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./controller -run 'Test(UserCreateWithdrawal|AdminApproveRejectAndMarkPaidWithdrawal)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./controller -run 'Test(UserCreateWithdrawal|AdminApproveRejectAndMarkPaidWithdrawal)'`
 Expected: FAIL with missing handlers and routes.
 
 - [ ] **Step 3: Implement controllers and route wiring**
@@ -645,14 +645,14 @@ withdrawalAdminRoute.POST("/:id/mark-paid", controller.AdminMarkWithdrawalPaid)
 "withdraw_frozen_quota": user.WithdrawFrozenQuota,
 ```
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./controller -run 'Test(UserCreateWithdrawal|AdminApproveRejectAndMarkPaidWithdrawal)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./controller -run 'Test(UserCreateWithdrawal|AdminApproveRejectAndMarkPaidWithdrawal)'`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add controller/user_withdrawal.go controller/user.go controller/user_withdrawal_test.go router/api-router.go
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet withdrawal api flows"
+git -C /Users/money/workflow/submodule/hermestoken add controller/user_withdrawal.go controller/user.go controller/user_withdrawal_test.go router/api-router.go
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add wallet withdrawal api flows"
 ```
 
 ### Task 4: Add Withdrawal Settings to Root Payment Configuration
@@ -679,7 +679,7 @@ test('payment settings render withdrawal settings card', () => {
 
 - [ ] **Step 2: Run the frontend settings test to verify it fails**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-settings.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-settings.test.mjs`
 Expected: FAIL because `SettingsWithdrawal` does not exist.
 
 - [ ] **Step 3: Implement withdrawal settings card**
@@ -705,14 +705,14 @@ export default function SettingsWithdrawal({ options, refresh }) {
 
 - [ ] **Step 4: Wire it into payment settings and rerun tests**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-settings.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-settings.test.mjs`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add web/src/components/settings/PaymentSetting.jsx web/src/pages/Setting/Payment/SettingsWithdrawal.jsx web/tests/withdrawal-settings.test.mjs
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add withdrawal payment settings"
+git -C /Users/money/workflow/submodule/hermestoken add web/src/components/settings/PaymentSetting.jsx web/src/pages/Setting/Payment/SettingsWithdrawal.jsx web/tests/withdrawal-settings.test.mjs
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add withdrawal payment settings"
 ```
 
 ### Task 5: Build User Wallet Withdrawal UI
@@ -739,7 +739,7 @@ test('wallet topup page loads withdrawal config and renders withdrawal entry', (
 
 - [ ] **Step 2: Run the wallet UI test to verify it fails**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs`
 Expected: FAIL because the withdrawal UI files and API usage are absent.
 
 - [ ] **Step 3: Implement wallet withdrawal helpers and components**
@@ -777,14 +777,14 @@ useEffect(() => {
 }, []);
 ```
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/wallet-withdrawal.test.mjs`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add web/src/components/topup/index.jsx web/src/components/topup/WithdrawalCard.jsx web/src/components/topup/modals/WithdrawalApplyModal.jsx web/src/components/topup/modals/WithdrawalHistoryModal.jsx web/src/helpers/withdrawal.js web/tests/wallet-withdrawal.test.mjs
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet withdrawal user interface"
+git -C /Users/money/workflow/submodule/hermestoken add web/src/components/topup/index.jsx web/src/components/topup/WithdrawalCard.jsx web/src/components/topup/modals/WithdrawalApplyModal.jsx web/src/components/topup/modals/WithdrawalHistoryModal.jsx web/src/helpers/withdrawal.js web/tests/wallet-withdrawal.test.mjs
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add wallet withdrawal user interface"
 ```
 
 ### Task 6: Add Admin Withdrawal Management Page and Sidebar Entry
@@ -824,7 +824,7 @@ test('admin route tree exposes wallet withdrawal management', () => {
 
 - [ ] **Step 2: Run the route/sidebar tests to verify they fail**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-admin-route.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-admin-route.test.mjs`
 Expected: FAIL because the route and sidebar entries do not exist.
 
 - [ ] **Step 3: Implement the admin page shell and data hook**
@@ -863,14 +863,14 @@ withdrawal: '/console/withdrawal'
 "withdrawal": true,
 ```
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-admin-route.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-admin-route.test.mjs`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add web/src/pages/Withdrawal/index.jsx web/src/components/table/withdrawals web/src/hooks/withdrawals/useWithdrawalsData.jsx web/src/App.jsx web/src/components/layout/SiderBar.jsx web/src/hooks/common/useSidebar.js web/src/pages/Setting/Operation/SettingsSidebarModulesAdmin.jsx web/src/components/settings/personal/cards/NotificationSettings.jsx model/user.go web/tests/withdrawal-admin-route.test.mjs
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add admin withdrawal management page"
+git -C /Users/money/workflow/submodule/hermestoken add web/src/pages/Withdrawal/index.jsx web/src/components/table/withdrawals web/src/hooks/withdrawals/useWithdrawalsData.jsx web/src/App.jsx web/src/components/layout/SiderBar.jsx web/src/hooks/common/useSidebar.js web/src/pages/Setting/Operation/SettingsSidebarModulesAdmin.jsx web/src/components/settings/personal/cards/NotificationSettings.jsx model/user.go web/tests/withdrawal-admin-route.test.mjs
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add admin withdrawal management page"
 ```
 
 ### Task 7: Add Localization, Verify, and Ship-Readiness Checks
@@ -901,7 +901,7 @@ test('withdrawal locales define wallet and admin copy', () => {
 
 - [ ] **Step 2: Run the locale test to verify it fails**
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-locales.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-locales.test.mjs`
 Expected: FAIL because the new keys are not in every locale.
 
 - [ ] **Step 3: Add localization keys and rerun source tests**
@@ -919,20 +919,20 @@ Expected: FAIL because the new keys are not in every locale.
 
 - [ ] **Step 4: Run full targeted verification**
 
-Run: `cd /Users/money/project/subproject/hermestoken && go test ./model ./controller -run 'Test(CreateUserWithdrawal|RejectApprovedWithdrawal|MarkUserWithdrawalPaid|UserCreateWithdrawal|AdminApproveRejectAndMarkPaidWithdrawal)'`
+Run: `cd /Users/money/workflow/submodule/hermestoken && go test ./model ./controller -run 'Test(CreateUserWithdrawal|RejectApprovedWithdrawal|MarkUserWithdrawalPaid|UserCreateWithdrawal|AdminApproveRejectAndMarkPaidWithdrawal)'`
 Expected: PASS
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && node --test tests/withdrawal-settings.test.mjs tests/wallet-withdrawal.test.mjs tests/withdrawal-admin-route.test.mjs tests/withdrawal-locales.test.mjs`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && node --test tests/withdrawal-settings.test.mjs tests/wallet-withdrawal.test.mjs tests/withdrawal-admin-route.test.mjs tests/withdrawal-locales.test.mjs`
 Expected: PASS
 
-Run: `cd /Users/money/project/subproject/hermestoken/web && bun run build`
+Run: `cd /Users/money/workflow/submodule/hermestoken/web && bun run build`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git -C /Users/money/project/subproject/hermestoken add web/src/i18n/locales/en.json web/src/i18n/locales/zh-CN.json web/src/i18n/locales/zh-TW.json web/src/i18n/locales/ja.json web/src/i18n/locales/fr.json web/src/i18n/locales/ru.json web/src/i18n/locales/vi.json web/tests/withdrawal-locales.test.mjs
-git -C /Users/money/project/subproject/hermestoken commit -m "feat: add wallet withdrawal localization"
+git -C /Users/money/workflow/submodule/hermestoken add web/src/i18n/locales/en.json web/src/i18n/locales/zh-CN.json web/src/i18n/locales/zh-TW.json web/src/i18n/locales/ja.json web/src/i18n/locales/fr.json web/src/i18n/locales/ru.json web/src/i18n/locales/vi.json web/tests/withdrawal-locales.test.mjs
+git -C /Users/money/workflow/submodule/hermestoken commit -m "feat: add wallet withdrawal localization"
 ```
 
 ## Self-Review
